@@ -13,7 +13,7 @@ import com.oddlabs.tt.viewer.WorldViewer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-public final class GameCamera extends Camera {
+public class GameCamera extends Camera {
     public static final int SCROLL_BUFFER = 5;
     private static final float INIT_DISTANCE = 50;
     private static final float ANGLE_DELTA = (float) (Math.PI / 2);
@@ -128,6 +128,7 @@ public final class GameCamera extends Camera {
     }
 
     public void toggleOrbit(int direction) {
+        manualControl();
         auto_pan_direction = 0;
         if (orbit_direction == direction) {
             orbit_direction = 0;
@@ -147,6 +148,7 @@ public final class GameCamera extends Camera {
     }
 
     public void toggleAutoPan(int direction) {
+        manualControl();
         orbit_direction = 0;
         auto_pan_direction = auto_pan_direction == direction ? 0 : direction;
     }
@@ -154,6 +156,10 @@ public final class GameCamera extends Camera {
     public void stopAutoMotion() {
         orbit_direction = 0;
         auto_pan_direction = 0;
+    }
+
+    /** Called whenever the user takes manual control of the camera. */
+    public void manualControl() {
     }
 
     private void doOrbit(float time_delta) {
@@ -352,9 +358,7 @@ public final class GameCamera extends Camera {
         return x > 0 && x < getHeightMap().getMetersPerWorld() && y > 0 && y < getHeightMap().getMetersPerWorld();
     }
 
-    @Override
-    public void doAnimate(float t) {
-        setSmoothnessFactor(Globals.cinematic_camera ? CINEMATIC_SMOOTHNESS_FACTOR : SMOOTHNESS_FACTOR);
+    protected void doControl(float t) {
         getState().setMaxVertAngle(limitsUnlocked() ? CameraState.MAX_ANGLE_UNLOCKED : CameraState.MAX_ANGLE);
         doOrbit(t);
         doAutoPan(t);
@@ -362,6 +366,12 @@ public final class GameCamera extends Camera {
         doScroll(t);
         doPitch(t);
         doRotate(t);
+    }
+
+    @Override
+    public void doAnimate(float t) {
+        setSmoothnessFactor(Globals.cinematic_camera ? CINEMATIC_SMOOTHNESS_FACTOR : SMOOTHNESS_FACTOR);
+        doControl(t);
         updateDirection();
         getState().setFog(viewer.getWorld().getFog());
         // Enabling the fog here because it'll be disabled in other situations
@@ -370,6 +380,7 @@ public final class GameCamera extends Camera {
 
     @Override
     public void mouseScrolled(int amount) {
+        manualControl();
         zoom_time = Math.clamp(zoom_time + amount * .05f, -.15f, .15f);
     }
 
@@ -402,6 +413,8 @@ public final class GameCamera extends Camera {
                     setScrollSpeed();
                 }
             }
+            if (Renderer.getLocalInput().getInputProvider().isCursorInWindow())
+                manualControl();
             scroll_x = (x - view_width / 2f);
             scroll_y = (y - view_height / 2f);
             float inv_length = 1f / (float) Math.sqrt(scroll_x * scroll_x + scroll_y * scroll_y);
@@ -500,6 +513,7 @@ public final class GameCamera extends Camera {
             }
 
             if (handled) {
+                manualControl();
                 event.consume();
             }
         }
