@@ -124,12 +124,14 @@ public final class Game implements Serializable {
         return max_unit_count;
     }
 
+    // A matchmaking server built before these settings existed drops them when it relays a game, so a joiner reads
+    // 0 (and no ships). Neither count can be 0 in a real game; fall back to the defaults the host starts with.
     public int getInitialUnitCount() {
-        return initial_unit_count;
+        return initial_unit_count > 0 ? initial_unit_count : DEFAULT_INITIAL_UNIT_COUNT;
     }
 
     public int getMaxBuildingCount() {
-        return max_building_count;
+        return max_building_count > 0 ? max_building_count : DEFAULT_MAX_BUILDING_COUNT;
     }
 
     public boolean isShips() {
