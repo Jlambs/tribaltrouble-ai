@@ -9,7 +9,7 @@ import org.jspecify.annotations.NonNull;
  */
 class Strategy {
     /** Quarters to raise before or alongside the armory. */
-    int initial_quarters = 2;
+    int initial_quarters = 4;
     /** Quarters to have once the economy is running. More than five pays off little. */
     int max_quarters = 4;
     /** Seconds after which to aim for max_quarters. */
@@ -32,12 +32,23 @@ class Strategy {
     int quarters_builders = 12;
     int tower_builders = 8;
     /** Quarters completed before builders move to the armory. */
-    int quarters_before_armory = 2;
+    int quarters_before_armory = 4;
+    /** Raise the opening quarters next to the first one instead of next to the armory site. */
+    boolean opening_near_start = false;
+    /**
+     * When the enemy arms early (six warriors out, or an armory up with fewer than rush_quarters quarters) while ours
+     * is
+     * not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
+     * rush_seconds.
+     */
+    boolean rush_response = true;
+    int rush_quarters = 2;
+    float rush_seconds = 240f;
 
     /** Peons to keep inside each quarters to speed up reproduction, early and later in the game. */
     int hold_early = 4;
-    int hold_mid = 7;
-    int hold_late = 2;
+    int hold_mid = 14;
+    int hold_late = 8;
     float hold_mid_time = 240f;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
@@ -58,7 +69,7 @@ class Strategy {
     int towers_early = 1;
     int towers_mid = 3;
     int towers_late = 6;
-    float towers_early_time = 240f;
+    float towers_early_time = 420f;
     float towers_mid_time = 420f;
     float towers_late_time = 720f;
 
@@ -130,8 +141,10 @@ class Strategy {
         Strategy strategy = new Strategy();
         switch (map_size) {
             case Game.SIZE_SMALL, Game.SIZE_MEDIUM -> {
+                // Armies arrive twice as fast, so rushes pay: a safer opening with the armory after two quarters.
                 strategy.initial_quarters = 2;
-                strategy.max_quarters = 4;
+                strategy.quarters_before_armory = 2;
+                strategy.hold_mid = 7;
                 strategy.max_armory_distance = 230;
                 strategy.armory_distance_weight = .06f;
                 strategy.armory_delay_weight = .6f;
@@ -143,7 +156,6 @@ class Strategy {
                 strategy.chieftain_time = 300f;
             }
             case Game.SIZE_ENORMOUS -> {
-                strategy.initial_quarters = 3;
                 strategy.max_armory_distance = 700;
                 strategy.expand_time = 360f;
             }

@@ -25,6 +25,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,6 +71,9 @@ final class Economy {
     private boolean chieftain_topup;
     private int project_counter;
     private final List<@NonNull Building> forward_towers = new ArrayList<>();
+    private boolean rush_alert;
+    private float rush_alert_time;
+    private boolean had_armory;
 
     Economy(@NonNull ExpertAI ai) {
         this.ai = ai;
@@ -126,10 +130,16 @@ final class Economy {
         }
         DistanceField a_field = armory_site != null ? ai.map().computeField(ax, ay, 240) : null;
         for (int i = 1; i < strategy.initial_quarters; i++) {
-            Site q = a_field != null ? planner.findQuartersSite(reserved, ax, ay, 80, a_field, sx, sy,
-                    strategy.quarters_builders,
-                    .25f, .02f) : planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), sx, sy,
-                            strategy.quarters_builders, .25f, 0f);
+            Site q;
+            if (strategy.opening_near_start && q1 != null)
+                q = planner.findQuartersSite(reserved, q1.x, q1.y, 80, planner.getStartField(), ax, ay,
+                        strategy.quarters_builders, .25f, .02f);
+            else if (a_field != null)
+                q = planner.findQuartersSite(reserved, ax, ay, 80, a_field, sx, sy, strategy.quarters_builders, .25f,
+                        .02f);
+            else
+                q = planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), sx, sy,
+                        strategy.quarters_builders, .25f, 0f);
             if (q == null)
                 break;
             reserved.add(q);
@@ -177,6 +187,7 @@ final class Economy {
     }
 
     void plan() {
+        checkRush();
         planBuildings();
         computeGatherTargets();
     }
@@ -335,6 +346,7 @@ final class Economy {
         if (p.forward && p.building != null)
             forward_towers.add(p.building);
         if (p.type == Race.BUILDING_ARMORY && p.building != null) {
+            had_armory = true;
             Building armory = p.building;
             ai.owner().buildIronWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
             if (ai.owner().canUseRubber())
@@ -430,7 +442,7 @@ final class Economy {
         int feedable = Math.max(6, 4 * trees);
         int cap = switch (p.type) {
             case Race.BUILDING_ARMORY -> have_armory ? 12 : MAX_BUILDERS;
-            case Race.BUILDING_QUARTERS -> have_armory ? strategy.quarters_builders : MAX_BUILDERS;
+            case Race.BUILDING_QUARTERS -> armsRace() ? 3 : have_armory ? strategy.quarters_builders : MAX_BUILDERS;
             default -> strategy.tower_builders;
         };
         return Math.min(cap, feedable);
@@ -453,7 +465,12 @@ final class Economy {
         int armory_count = intel.armories.size() + intel.armory_sites.size() + countProjects(Race.BUILDING_ARMORY,
                 false);
         if (armory_count == 0) {
-            Site site = ai.planner().findArmorySite(reservedSites(null));
+            // A lost armory goes up again next to the quarters furthest from the fighting, not back where it fell.
+            Site site = had_armory ? safeArmorySite() : ai.planner().findArmorySite(reservedSites(null));
+            if (site != null && ai.military().threatNear(site.x, site.y, 25))
+                return;
+            if (site == null)
+                site = ai.planner().findArmorySite(reservedSites(null));
             if (site == null && !intel.peons.isEmpty()) {
                 Unit p = intel.peons.getFirst();
                 site = ai.planner().findQuartersSiteLike(reservedSites(null), p.getGridX(), p.getGridY(), 40,
@@ -564,6 +581,68 @@ final class Economy {
         p.forward = true;
     }
 
+    /** An armory site next to the quarters with the fewest enemy warriors around, or null. */
+    private @Nullable Site safeArmorySite() {
+        Military military = ai.military();
+        Building safest = null;
+        float least = Float.MAX_VALUE;
+        for (Building q : ai.intel().quarters) {
+            float danger = military.enemyStrengthNear(q.getGridX(), q.getGridY(), 40);
+            if (danger < least) {
+                least = danger;
+                safest = q;
+            }
+        }
+        if (safest == null)
+            return null;
+        return ai.planner().findQuartersSiteLike(reservedSites(null), safest.getGridX(), safest.getGridY(), 24,
+                Race.BUILDING_ARMORY);
+    }
+
+    /**
+     * An enemy arming early means an attack is coming before the opening quarters would pay off: once seen, the
+     * armory moves ahead of the quarters still waiting for builders.
+     */
+    private void checkRush() {
+        Intel intel = ai.intel();
+        if (rush_alert || !ai.strategy().rush_response || !intel.armories.isEmpty())
+            return;
+        int enemy_quarters = 0;
+        boolean enemy_armory = false;
+        for (Building b : intel.enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (id == Race.BUILDING_QUARTERS)
+                enemy_quarters++;
+            else if (id == Race.BUILDING_ARMORY)
+                enemy_armory = true;
+        }
+        if (intel.enemy_warriors.size() < 6 && !(enemy_armory && enemy_quarters < ai.strategy().rush_quarters))
+            return;
+        rush_alert = true;
+        rush_alert_time = ai.time();
+        ai.log("enemy arming early (" + intel.enemy_warriors.size() + " warriors, armory " + enemy_armory + ", " + enemy_quarters + " quarters): armory first");
+        for (Project p : projects)
+            if (p.type == Race.BUILDING_ARMORY)
+                p.priority = 1;
+        projects.sort(Comparator.comparingInt(p -> p.priority));
+    }
+
+    /**
+     * After an early-arming alarm, weapons come before more quarters until our warriors match the enemy's: only a few
+     * builders stay on quarters and the quarters let their peons out to gather and arm.
+     */
+    private boolean armsRace() {
+        if (!rush_alert || ai.time() > rush_alert_time + ai.strategy().rush_seconds)
+            return false;
+        float ours = 0f;
+        for (Unit w : ai.intel().warriors)
+            ours += Combat.value(w);
+        float theirs = 0f;
+        for (Unit w : ai.intel().enemy_warriors)
+            theirs += Combat.value(w);
+        return ours < 1.2f * theirs + 4f;
+    }
+
     /** Towers mostly guard the armory; every third one covers the quarters nearest the enemy. */
     private int @NonNull [] towerAnchor(int tower_count) {
         Intel intel = ai.intel();
@@ -618,7 +697,8 @@ final class Economy {
             return Math.min(2, strategy.hold_early);
         if (pop > max * 7 / 10)
             return strategy.hold_late;
-        return ai.time() < strategy.hold_mid_time ? strategy.hold_early : strategy.hold_mid;
+        int hold = ai.time() < strategy.hold_mid_time ? strategy.hold_early : strategy.hold_mid;
+        return armsRace() ? Math.min(2, hold) : hold;
     }
 
     private boolean needsBuilders() {
