@@ -142,7 +142,8 @@ final class WorldStarter implements LoadCallback {
         return switch (slot.getAIDifficulty()) {
             case PlayerSlot.AI_EASY -> PlayerTypes.AIEasy;
             case PlayerSlot.AI_NORMAL -> PlayerTypes.AINormal;
-            case PlayerSlot.AI_HARD -> PlayerTypes.AIHard;
+            // The match server does not know the expert AI yet; report it as hard.
+            case PlayerSlot.AI_HARD, PlayerSlot.AI_EXPERT -> PlayerTypes.AIHard;
             default -> PlayerTypes.None;
         };
     }

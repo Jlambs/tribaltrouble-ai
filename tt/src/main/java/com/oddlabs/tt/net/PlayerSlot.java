@@ -19,6 +19,23 @@ public final class PlayerSlot implements Serializable {
     public static final int AI_BATTLE_TUTORIAL = 6;
     public static final int AI_PASSIVE_CAMPAIGN = 7;
     public static final int AI_NEUTRAL_CAMPAIGN = 8;
+    public static final int AI_EXPERT = 9;
+
+    /** The AI difficulties offered in lobby menus, in the order the menus list them. */
+    private static final int[] MENU_DIFFICULTIES = {AI_EASY, AI_NORMAL, AI_HARD, AI_EXPERT};
+
+    /** The AI difficulty at a position (from 0) among the AI entries of a lobby menu. */
+    public static int difficultyOfMenuEntry(int entry) {
+        return MENU_DIFFICULTIES[Math.clamp(entry, 0, MENU_DIFFICULTIES.length - 1)];
+    }
+
+    /** The position (from 0) of an AI difficulty among the AI entries of a lobby menu. */
+    public static int menuEntryOfDifficulty(int difficulty) {
+        for (int i = 0; i < MENU_DIFFICULTIES.length; i++)
+            if (MENU_DIFFICULTIES[i] == difficulty)
+                return i;
+        return 0;
+    }
 
     public static final int OPEN = 1;
     public static final int CLOSED = 2;

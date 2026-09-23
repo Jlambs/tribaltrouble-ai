@@ -69,6 +69,19 @@ tasks.run.configure {
     classpath = files(layout.buildDirectory) + sourceSets.main.get().runtimeClasspath
 }
 
+// Headless AI-vs-AI matches for tuning the computer players, e.g.
+// ./gradlew :tt:aiMatch --args="--games 20 --a expert --b hard" (see AIMatchRunner for all flags)
+tasks.register<JavaExec>("aiMatch") {
+    group = "application"
+    description = "Play headless AI-vs-AI matches"
+    classpath = files(layout.buildDirectory) + sourceSets.main.get().runtimeClasspath
+    mainClass.set("com.oddlabs.tt.player.ai.sim.AIMatchRunner")
+    jvmArgs("-ea", "--enable-native-access=ALL-UNNAMED", "-Xmx2g")
+    if (System.getProperty("os.name").lowercase().contains("mac")) {
+        jvmArgs("-XstartOnFirstThread")
+    }
+}
+
 // --- Distribution & Packaging ---
 
 val dist = layout.buildDirectory.dir("dist")

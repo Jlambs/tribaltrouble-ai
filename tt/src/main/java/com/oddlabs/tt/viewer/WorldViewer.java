@@ -14,6 +14,7 @@ import com.oddlabs.tt.delegate.InGameMainMenu;
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.global.Globals;
+import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.gui.ActionButtonPanel;
 import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.gui.Group;
@@ -32,6 +33,7 @@ import com.oddlabs.tt.net.PeerHub;
 import com.oddlabs.tt.net.PlayerSlot;
 import com.oddlabs.tt.player.AI;
 import com.oddlabs.tt.player.AdvancedAI;
+import com.oddlabs.tt.player.ai.ExpertAI;
 import com.oddlabs.tt.player.NativeChieftainAI;
 import com.oddlabs.tt.player.PassiveAI;
 import com.oddlabs.tt.player.Player;
@@ -313,6 +315,12 @@ public final class WorldViewer implements Animated, AutoCloseable {
                 case PlayerSlot.AI_NORMAL -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_NORMAL);
                 case PlayerSlot.AI_HARD -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD);
                 case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY);
+                case PlayerSlot.AI_EXPERT -> {
+                    ExpertAI expert = new ExpertAI(player, unit_info);
+                    // Next to this session's other logs, for going over the game afterwards.
+                    expert.logTo(Settings.getSettings().last_event_log_dir);
+                    ai = expert;
+                }
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
                 }

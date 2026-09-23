@@ -71,6 +71,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
     private static final int COMPUTER_EASY_INDEX = 2;
     private static final int COMPUTER_NORMAL_INDEX = 3;
     private static final int COMPUTER_HARD_INDEX = 4;
+    private static final int COMPUTER_EXPERT_INDEX = 5;
 
     private static final int SEND_BUTTON_WIDTH = 60;
 
@@ -212,6 +213,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 case EASY_AI -> applyAi(server, i, race, team, PlayerSlot.AI_EASY);
                 case NORMAL_AI -> applyAi(server, i, race, team, PlayerSlot.AI_NORMAL);
                 case HARD_AI -> applyAi(server, i, race, team, PlayerSlot.AI_HARD);
+                case EXPERT_AI -> applyAi(server, i, race, team, PlayerSlot.AI_EXPERT);
             }
         }
     }
@@ -230,7 +232,8 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
         int index = slot_buttons[player_slot].getMenu().getChosenItemIndex();
         int race_index = race_buttons[player_slot].getMenu().getChosenItemIndex();
         int team_index = team_buttons[player_slot].getMenu().getChosenItemIndex();
-        int difficulty_index = slot_buttons[player_slot].getMenu().getChosenItemIndex() - 1;
+        int difficulty_index = index >= COMPUTER_EASY_INDEX ? PlayerSlot.difficultyOfMenuEntry(
+                index - COMPUTER_EASY_INDEX) : PlayerSlot.AI_NONE;
         boolean race_changed = player.getInfo() == null || race_index != player.getInfo().getRace();
         boolean team_changed = player.getInfo() == null || team_index != player.getInfo().getTeam();
         boolean ready_changed = ready != player.isReady();
@@ -258,6 +261,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
             case COMPUTER_EASY_INDEX:
             case COMPUTER_NORMAL_INDEX:
             case COMPUTER_HARD_INDEX:
+            case COMPUTER_EXPERT_INDEX:
                 assert !rated;
                 boolean new_ai = player.getType() != PlayerSlot.AI;
                 if (new_ai || race_changed || team_changed || difficulty_changed) {
@@ -331,7 +335,8 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 switch (player.getType()) {
                     case PlayerSlot.AI:
                         assert !rated;
-                        slot_button.setSelected(player.getAIDifficulty() + 1);
+                        slot_button.setSelected(COMPUTER_EASY_INDEX + PlayerSlot.menuEntryOfDifficulty(
+                                player.getAIDifficulty()));
                         race_button.setDisabled(!canControlSlot(i));
                         team_button.setDisabled(!canControlSlot(i));
                         break;
@@ -411,12 +416,14 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
         PulldownItem<Void> computer_easy_item = new PulldownItem<>(i18n("easy_ai"));
         PulldownItem<Void> computer_normal_item = new PulldownItem<>(i18n("normal_ai"));
         PulldownItem<Void> computer_hard_item = new PulldownItem<>(i18n("hard_ai"));
+        PulldownItem<Void> computer_expert_item = new PulldownItem<>(i18n("expert_ai"));
         pulldown_menu.addItem(open_item);
         pulldown_menu.addItem(closed_item);
         if (!rated) {
             pulldown_menu.addItem(computer_easy_item);
             pulldown_menu.addItem(computer_normal_item);
             pulldown_menu.addItem(computer_hard_item);
+            pulldown_menu.addItem(computer_expert_item);
         }
         PulldownButton<?> pulldown_button = new PulldownButton<>(gui_root, pulldown_menu, CLOSED_INDEX, 150);
         slot_buttons[index] = pulldown_button;
