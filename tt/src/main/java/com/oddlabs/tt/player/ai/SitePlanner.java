@@ -38,6 +38,8 @@ final class SitePlanner {
     private final int start_y;
     private final int enemy_x;
     private final int enemy_y;
+    /** How much more an exposed armory site costs against several enemies, who can all reach the middle. */
+    private final float threat_weight;
 
     SitePlanner(@NonNull MapAnalysis map, @NonNull Player owner, @NonNull Strategy strategy, int start_x, int start_y,
             int enemy_x, int enemy_y, @NonNull DistanceField start_field, @NonNull DistanceField enemy_field) {
@@ -50,6 +52,11 @@ final class SitePlanner {
         this.enemy_y = enemy_y;
         this.start_field = start_field;
         this.enemy_field = enemy_field;
+        int enemies = 0;
+        for (Player p : owner.getWorld().getPlayers())
+            if (owner.isEnemy(p))
+                enemies++;
+        this.threat_weight = strategy.armory_threat_weight * (1f + .75f * Math.max(0, enemies - 1));
     }
 
     private @NonNull BuildingTemplate template(int type) {
@@ -151,7 +158,7 @@ final class SitePlanner {
                         1.25f * averageDistance(iron, x, y, 15) - 5f);
                 float tree_cycle = HARVEST_SECONDS + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
                         1.25f * map.averageTreeDistance(x, y, 30, 60, 150f) - 5f);
-                float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d / 5f + strategy.armory_distance_weight * d + strategy.armory_threat_weight * Math.max(
+                float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d / 5f + strategy.armory_distance_weight * d + threat_weight * Math.max(
                         0f, exposure(x, y) - .42f);
                 candidates.add(new Site(x, y, -quick));
             }
@@ -179,7 +186,7 @@ final class SitePlanner {
             // Delays to the armory hold back the whole economy; weigh them against gathering speed, which pays off
             // on every warrior of the game.
             float delay = strategy.armory_delay_weight * (build + d / 5f);
-            float threat = strategy.armory_threat_weight * Math.max(0f, exposure(c.x, c.y) - .42f);
+            float threat = threat_weight * Math.max(0f, exposure(c.x, c.y) - .42f);
             float cost = gather + delay + strategy.armory_distance_weight * d + threat + (hasNear(map.getRocks(), c.x,
                     c.y, 45) ? 0f : 4f);
             if (debug_sites)

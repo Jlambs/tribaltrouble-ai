@@ -115,8 +115,9 @@ final class GameLog {
         String race = p.getPlayerInfo().getRace() == RacesResources.RACE_VIKINGS ? "vikings" : "natives";
         String chief = chief_hp >= 0 ? "chieftain " + chief_hp + "hp" : "no chieftain";
         StringBuilder line = new StringBuilder();
-        line.append(String.format(Locale.ROOT, "%s (%s, %s): %d units, %d inside buildings",
-                p.getPlayerInfo().getName(), race, controller(p), total, Math.max(0, total - out)));
+        line.append(String.format(Locale.ROOT, "%s (%s, %s, team %d): %d units, %d inside buildings",
+                p.getPlayerInfo().getName(), race, controller(p), p.getPlayerInfo().getTeam(), total,
+                Math.max(0, total - out)));
         line.append(String.format(Locale.ROOT, " | out: %d peons, warriors r%d i%d c%d, %s", peons, warriors[0],
                 warriors[1], warriors[2], chief));
         line.append(String.format(Locale.ROOT, " | Q%d A%d T%d (%d manned) +%d sites", quarters, armories, towers,

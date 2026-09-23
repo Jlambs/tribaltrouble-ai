@@ -237,21 +237,34 @@ final class MapAnalysis {
      */
     @NonNull
     DistanceField computeField(int sx, int sy, int max_cost) {
-        DistanceField field = new DistanceField(size, sx, sy);
+        return computeField(new int[]{sx}, new int[]{sy}, max_cost);
+    }
+
+    /**
+     * Distances to the nearest of several sources, such as every enemy start. A single source may be blocked, as in
+     * {@link #computeField(int, int, int)}; several sources must stand on open ground.
+     */
+    @NonNull
+    DistanceField computeField(int @NonNull [] xs, int @NonNull [] ys, int max_cost) {
+        DistanceField field = new DistanceField(size, xs[0], ys[0]);
         int[] cost = field.raw();
         // Dial's algorithm: costs grow in steps of 2 or 3, so four rotating buckets suffice.
         int[][] buckets = new int[4][];
         int[] counts = new int[4];
         for (int i = 0; i < 4; i++)
-            buckets[i] = new int[256];
-        if (!inside(sx, sy))
-            return field;
+            buckets[i] = new int[Math.max(256, xs.length)];
         // A building's own footprint may be crossed, so fields can start from the middle of a building.
-        Occupant source_occupant = grid.getOccupant(sx, sy);
+        Occupant source_occupant = xs.length == 1 && inside(xs[0], ys[0]) ? grid.getOccupant(xs[0], ys[0]) : null;
         if (source_occupant != null && source_occupant.getPenalty() != Occupant.STATIC)
             source_occupant = null;
-        cost[sy * size + sx] = 0;
-        buckets[0][counts[0]++] = sy * size + sx;
+        for (int i = 0; i < xs.length; i++) {
+            if (!inside(xs[i], ys[i]) || cost[ys[i] * size + xs[i]] == 0)
+                continue;
+            cost[ys[i] * size + xs[i]] = 0;
+            buckets[0][counts[0]++] = ys[i] * size + xs[i];
+        }
+        if (counts[0] == 0)
+            return field;
         int current = 0;
         int empty_rounds = 0;
         while (empty_rounds < 4) {

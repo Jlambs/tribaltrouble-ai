@@ -512,6 +512,10 @@ final class Economy {
                 target_towers = strategy.towers_late;
             if (ai.military().baseThreatLevel() > 0 && target_towers < 2)
                 target_towers = Math.max(target_towers, 1);
+            int enemies = ai.enemiesAlive();
+            boolean fronts = enemies > 1 && strategy.multi_front_towers;
+            if (fronts && target_towers > 0)
+                target_towers += enemies - 1;
             forward_towers.removeIf(Building::isDead);
             int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
                     false) - forward_towers.size() - countForward();
@@ -523,8 +527,16 @@ final class Economy {
                 for (Building t : intel.tower_sites)
                     existing.add(new int[]{t.getGridX(), t.getGridY()});
                 int[] center = towerAnchor(tower_count);
+                int[] face = {ai.planner().getEnemyX(), ai.planner().getEnemyY()};
+                if (fronts && tower_count % 2 == 1) {
+                    int[][] front = enemyFront(tower_count / 2);
+                    if (front != null) {
+                        center = front[0];
+                        face = front[1];
+                    }
+                }
                 Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], 7, 15, existing,
-                        ai.planner().getEnemyX(), ai.planner().getEnemyY());
+                        face[0], face[1]);
                 if (site != null)
                     addProject(Race.BUILDING_TOWER, site, 8);
             }
@@ -632,15 +644,28 @@ final class Economy {
      * builders stay on quarters and the quarters let their peons out to gather and arm.
      */
     private boolean armsRace() {
-        if (!rush_alert || ai.time() > rush_alert_time + ai.strategy().rush_seconds)
-            return false;
+        Strategy strategy = ai.strategy();
         float ours = 0f;
         for (Unit w : ai.intel().warriors)
             ours += Combat.value(w);
+        if (!rush_alert || ai.time() > rush_alert_time + strategy.rush_seconds)
+            return false;
         float theirs = 0f;
         for (Unit w : ai.intel().enemy_warriors)
             theirs += Combat.value(w);
         return ours < 1.2f * theirs + 4f;
+    }
+
+    /** Early in the game, enemies in the base that our warriors cannot handle. */
+    private boolean underPressure() {
+        Strategy strategy = ai.strategy();
+        Military military = ai.military();
+        if (!strategy.pressure_response || ai.time() >= strategy.pressure_time || military.baseThreatLevel() == 0)
+            return false;
+        float ours = 0f;
+        for (Unit w : ai.intel().warriors)
+            ours += Combat.value(w);
+        return ours < 1.2f * military.threatStrength() + 4f;
     }
 
     /** Towers mostly guard the armory; every third one covers the quarters nearest the enemy. */
@@ -663,6 +688,36 @@ final class Economy {
                 return new int[]{exposed.getGridX(), exposed.getGridY()};
         }
         return new int[]{armory.getGridX(), armory.getGridY()};
+    }
+
+    /**
+     * The k-th living enemy in turn, as {our building nearest to his start, his start}: the building his attacks go
+     * for first.
+     */
+    private int @Nullable [] @Nullable [] enemyFront(int k) {
+        List<Player> enemies = new ArrayList<>();
+        for (Player p : ai.owner().getWorld().getPlayers())
+            if (ai.owner().isEnemy(p) && p.isAlive())
+                enemies.add(p);
+        if (enemies.isEmpty())
+            return null;
+        Player enemy = enemies.get(k % enemies.size());
+        int ex = UnitGrid.toGridCoordinate(enemy.getStartX());
+        int ey = UnitGrid.toGridCoordinate(enemy.getStartY());
+        List<Building> own = new ArrayList<>(ai.intel().quarters);
+        own.addAll(ai.intel().armories);
+        Building nearest = null;
+        int best = Integer.MAX_VALUE;
+        for (Building b : own) {
+            int d = MapAnalysis.dist2(ex, ey, b.getGridX(), b.getGridY());
+            if (d < best) {
+                best = d;
+                nearest = b;
+            }
+        }
+        if (nearest == null)
+            return null;
+        return new int[][]{{nearest.getGridX(), nearest.getGridY()}, {ex, ey}};
     }
 
     /** Projects of a type, optionally only those still unplaced. */
@@ -708,6 +763,11 @@ final class Economy {
         return false;
     }
 
+    /** Against a single enemy, threats pass and hiding is cheap; against several the base is never quiet. */
+    private boolean gatherUnderThreat() {
+        return ai.strategy().gather_under_threat && (ai.enemiesAlive() > 1 || armsRace() || underPressure());
+    }
+
     private void manageQuarters() {
         Intel intel = ai.intel();
         boolean threatened = ai.military().baseThreatLevel() > 1;
@@ -715,7 +775,7 @@ final class Economy {
             int inside = q.getUnitContainer().getNumSupplies();
             int hold = holdFor(q);
             // Peons are safe inside while enemies roam next to the quarters.
-            if (threatened && ai.military().threatNear(q.getGridX(), q.getGridY(), 20))
+            if (threatened && ai.military().threatNear(q.getGridX(), q.getGridY(), gatherUnderThreat() ? 12 : 20))
                 continue;
             if (inside > hold)
                 ai.owner().deployUnits(q, DeployType.PEON, inside - hold);
@@ -756,7 +816,8 @@ final class Economy {
     private void considerExpansion() {
         Intel intel = ai.intel();
         Building armory = intel.armory();
-        if (armory == null || armory_field == null || ai.time() < 300f || ai.time() - last_expansion_check < 30f)
+        if (armory == null || armory_field == null || ai.time() < 300f || ai.time() - last_expansion_check < 30f
+                || !ai.strategy().expansion)
             return;
         if (ai.military().baseThreatLevel() > 0 || countProjects(Race.BUILDING_ARMORY, false) > 0)
             return;
@@ -1034,7 +1095,8 @@ final class Economy {
         }
 
         // 3. Gatherers.
-        boolean danger = ai.military().baseThreatLevel() > 1;
+        boolean danger = ai.military().baseThreatLevel() > 1 && (!gatherUnderThreat()
+                || ai.military().threatNear(armory.getGridX(), armory.getGridY(), 16));
         int[] have = {intel.countGatherers(PeonState.GATHER_TREE, armory), intel.countGatherers(PeonState.GATHER_IRON,
                 armory), intel.countGatherers(PeonState.GATHER_ROCK, armory), intel.countGatherers(
                         PeonState.GATHER_CHICKEN, armory)};

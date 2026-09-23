@@ -44,6 +44,12 @@ class Strategy {
     boolean rush_response = true;
     int rush_quarters = 2;
     float rush_seconds = 240f;
+    /**
+     * Until pressure_time, while enemies in the base outnumber our warriors, keep gathering away from the fighting
+     * instead of hiding while the armory starves.
+     */
+    boolean pressure_response = true;
+    float pressure_time = 720f;
 
     /** Peons to keep inside each quarters to speed up reproduction, early and later in the game. */
     int hold_early = 4;
@@ -65,6 +71,11 @@ class Strategy {
     int chieftain_min_quarters = 3;
     float chieftain_time = 330f;
 
+    /**
+     * Against several enemies, every other tower covers the building nearest to each enemy in turn, facing him, and
+     * one more tower is built per extra enemy: each attacks the building closest to him.
+     */
+    boolean multi_front_towers = true;
     /** Towers to build next to the armory, early and later. */
     int towers_early = 1;
     int towers_mid = 3;
@@ -77,6 +88,16 @@ class Strategy {
     float attack_min_strength = 18f;
     /** How much stronger than what can defend the target the army must be before attacking. */
     float attack_ratio = 1.35f;
+    /**
+     * While an attack is out, warriors gathering at home march out as one group to join it once they are worth
+     * reinforce_ratio of the attacking army (or at the unit cap), instead of idling until the attack ends.
+     */
+    boolean reinforce = true;
+    float reinforce_ratio = .5f;
+    /** Against several enemies, reinforce only at the unit cap: the others would walk into an emptied base. */
+    boolean reinforce_multi = false;
+    /** How much more an enemy manned tower counts than Combat.TOWER when judging an attack or retreat. */
+    float tower_weight = 1f;
     /** Army strength that attacks regardless of the odds. */
     float attack_max_strength = 70f;
     /** At the unit cap losses are replaced for free, so attack against this much of the defense. */
@@ -111,6 +132,41 @@ class Strategy {
     /** Answer harassment away from the base with this many times its strength, not the whole army; 0 sends all. */
     float response_ratio = 2f;
 
+    /**
+     * Against several enemies, keep gathering away from the enemies while the base is threatened but the armory
+     * itself is not: the base is hardly ever quiet, and stopping would starve the armory for good.
+     */
+    boolean gather_under_threat = true;
+
+    /** Open a second armory by fresh iron once the first one's surroundings are mined out. */
+    boolean expansion = true;
+
+    /**
+     * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_time: peon
+     * raids come before warriors do, and later wandering enemy gatherers would only draw the army about.
+     */
+    boolean peon_militia = true;
+    float militia_time = 600f;
+    /** Sparring only: send the starting peons at the enemy's peons for the first minutes, as some humans do. */
+    boolean peon_rush = false;
+
+    /**
+     * In a fight, give each warrior its own target: the enemy in range with the best value times hit chance times
+     * chance that nobody else's throw kills it first, instead of letting several throw at the same nearest one.
+     */
+    boolean micro_targets = true;
+    /**
+     * Order our stunned warriors again: the stun behaviour keeps them frozen, but the order replaces the stun
+     * controller, which is what takes away their chance to dodge.
+     */
+    boolean restore_dodge = true;
+
+    /**
+     * Take peons along on attacks against towers: a peon's swing always does 6 damage to a tower, eight times what an
+     * iron axe does, so they pull towers down while the army holds the ground or the stun keeps the tower quiet.
+     */
+    boolean sappers = true;
+
     /** Radius, in grid cells, around own buildings within which enemies count as attacking the base. */
     int base_radius = 28;
 
@@ -135,6 +191,23 @@ class Strategy {
                 throw new IllegalArgumentException("bad strategy override " + pair, e);
             }
         }
+    }
+
+    /** The strategy for a game on a map of the given size against the given number of enemy players. */
+    static @NonNull Strategy forGame(int map_size, int enemies) {
+        Strategy strategy = forMapSize(map_size);
+        if (enemies > 1) {
+            // Every enemy sends his waves at our nearest building: towers early, and many of them, hold them all,
+            // and the chieftain's stun is wanted sooner.
+            strategy.towers_early = 3;
+            strategy.towers_early_time = Math.min(strategy.towers_early_time, 200f);
+            strategy.towers_mid = 6;
+            strategy.towers_mid_time = Math.min(strategy.towers_mid_time, 330f);
+            strategy.towers_late = 14;
+            strategy.towers_late_time = 600f;
+            strategy.chieftain_time = Math.min(strategy.chieftain_time, 240f);
+        }
+        return strategy;
     }
 
     static @NonNull Strategy forMapSize(int map_size) {

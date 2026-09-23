@@ -14,6 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -58,13 +60,13 @@ public final class ExpertAI extends AI {
     private boolean game_over;
 
     public ExpertAI(@NonNull Player owner, @Nullable UnitInfo unit_info) {
-        this(owner, unit_info, Strategy.forMapSize(owner.getWorld().getMapSize()));
+        this(owner, unit_info, Strategy.forGame(owner.getWorld().getMapSize(), countEnemies(owner)));
     }
 
     /** An expert AI with some strategy numbers changed, for the developer match runner. */
     public static @NonNull ExpertAI withOverrides(@NonNull Player owner, @Nullable UnitInfo unit_info,
             @NonNull String overrides) {
-        Strategy strategy = Strategy.forMapSize(owner.getWorld().getMapSize());
+        Strategy strategy = Strategy.forGame(owner.getWorld().getMapSize(), countEnemies(owner));
         strategy.override(overrides);
         return new ExpertAI(owner, unit_info, strategy);
     }
@@ -99,6 +101,14 @@ public final class ExpertAI extends AI {
         game_log = new GameLog(file);
         game_log.add("Expert AI game log, started " + LocalDateTime.now(ZoneId.systemDefault()).withNano(0));
         logger.info("Expert AI log: " + file.toAbsolutePath());
+    }
+
+    private static int countEnemies(@NonNull Player owner) {
+        int n = 0;
+        for (Player p : owner.getWorld().getPlayers())
+            if (owner.isEnemy(p))
+                n++;
+        return n;
     }
 
     private static int indexOf(@NonNull Player owner) {
@@ -196,7 +206,8 @@ public final class ExpertAI extends AI {
         int ex = enemy != null ? UnitGrid.toGridCoordinate(enemy.getStartX()) : map.getSize() - sx;
         int ey = enemy != null ? UnitGrid.toGridCoordinate(enemy.getStartY()) : map.getSize() - sy;
         DistanceField start_field = map.computeField(sx, sy, Integer.MAX_VALUE);
-        DistanceField enemy_field = map.computeField(ex, ey, Integer.MAX_VALUE);
+        // Danger comes from every enemy start, not just the nearest: with several enemies the middle is no-man's land.
+        DistanceField enemy_field = enemyStarts(ex, ey);
         planner = new SitePlanner(map, owner, strategy, sx, sy, ex, ey, start_field, enemy_field);
         log(String.format("map %d cells, start %d,%d, nearest enemy %s starts %d,%d (%dm walk)", map.getSize(), sx, sy,
                 enemy, ex, ey, start_field.get(ex, ey)));
@@ -204,6 +215,35 @@ public final class ExpertAI extends AI {
         economy = new Economy(this);
         military = new Military(this);
         chieftain = new Chieftain(this);
+    }
+
+    private @NonNull DistanceField enemyStarts(int nearest_x, int nearest_y) {
+        List<int[]> starts = new ArrayList<>();
+        starts.add(new int[]{nearest_x, nearest_y});
+        for (Player p : getOwner().getWorld().getPlayers()) {
+            if (!getOwner().isEnemy(p))
+                continue;
+            int x = UnitGrid.toGridCoordinate(p.getStartX());
+            int y = UnitGrid.toGridCoordinate(p.getStartY());
+            if (x != nearest_x || y != nearest_y)
+                starts.add(new int[]{x, y});
+        }
+        int[] xs = new int[starts.size()];
+        int[] ys = new int[starts.size()];
+        for (int i = 0; i < xs.length; i++) {
+            xs[i] = starts.get(i)[0];
+            ys[i] = starts.get(i)[1];
+        }
+        return map().computeField(xs, ys, Integer.MAX_VALUE);
+    }
+
+    /** Enemy players still in the game. */
+    int enemiesAlive() {
+        int n = 0;
+        for (Player p : getOwner().getWorld().getPlayers())
+            if (getOwner().isEnemy(p) && p.isAlive())
+                n++;
+        return n;
     }
 
     private @Nullable Player nearestEnemy(int sx, int sy) {

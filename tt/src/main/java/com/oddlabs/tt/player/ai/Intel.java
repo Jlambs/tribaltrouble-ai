@@ -19,6 +19,7 @@ import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.model.behaviour.PlaceBuildingController;
 import com.oddlabs.tt.model.behaviour.RepairController;
+import com.oddlabs.tt.model.behaviour.StunBehaviour;
 import com.oddlabs.tt.model.behaviour.StunController;
 import com.oddlabs.tt.model.behaviour.TransferUnitController;
 import com.oddlabs.tt.model.behaviour.WalkController;
@@ -52,7 +53,9 @@ final class Intel {
         TRANSIT,
         FIGHT,
         MOVE,
-        STUNNED
+        STUNNED,
+        /** Following the army to pull down enemy towers; the economy leaves them alone. */
+        SAPPER
     }
 
     enum WarriorState {
@@ -83,6 +86,8 @@ final class Intel {
     // Own units
     final List<@NonNull Unit> peons = new ArrayList<>();
     final List<@NonNull Unit> warriors = new ArrayList<>();
+    /** Peons the military has taken along to pull down towers, kept by it across updates. */
+    final java.util.Set<@NonNull Unit> sappers = new java.util.LinkedHashSet<>();
     final Map<@NonNull Unit, @NonNull PeonState> peon_states = new LinkedHashMap<>();
     final Map<@NonNull Unit, @NonNull WarriorState> warrior_states = new LinkedHashMap<>();
     /** Construction site each builder works on. */
@@ -198,8 +203,10 @@ final class Intel {
     }
 
     private @NonNull PeonState peonState(@NonNull Unit unit, @NonNull Controller controller) {
-        if (unit.getCurrentController() instanceof StunController)
+        if (isStunned(unit))
             return PeonState.STUNNED;
+        if (sappers.contains(unit))
+            return PeonState.SAPPER;
         if (controller instanceof IdleController && unit.getCurrentController() instanceof HuntController)
             return PeonState.FIGHT;
         if (controller instanceof IdleController)
@@ -240,7 +247,7 @@ final class Intel {
     private static @NonNull WarriorState warriorState(@NonNull Unit unit, @NonNull Controller controller) {
         // Attack-moving and idle warriors push a hunt on top when they spot an enemy; that counts as fighting.
         Controller current = unit.getCurrentController();
-        if (current instanceof StunController)
+        if (isStunned(unit))
             return WarriorState.STUNNED;
         if (current instanceof HuntController || current instanceof AttackController)
             return WarriorState.FIGHT;
@@ -271,7 +278,17 @@ final class Intel {
         return WarriorType.IRON;
     }
 
+    /**
+     * Frozen by a stun. An order given to a stunned unit replaces its stun controller while the stun behaviour
+     * keeps it frozen, so both count.
+     */
     static boolean isStunned(@NonNull Unit unit) {
+        return !unit.isDead() && (unit.getCurrentController() instanceof StunController
+                || unit.getCurrentBehaviour() instanceof StunBehaviour);
+    }
+
+    /** Stunned with the stun controller still on top: no chance to dodge until it is ordered again. */
+    static boolean isDefenseless(@NonNull Unit unit) {
         return !unit.isDead() && unit.getCurrentController() instanceof StunController;
     }
 

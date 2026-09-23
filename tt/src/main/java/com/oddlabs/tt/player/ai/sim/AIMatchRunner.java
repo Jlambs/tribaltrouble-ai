@@ -41,6 +41,9 @@ import java.io.IOException;
  * <pre>
  * ./gradlew :tt:aiMatch --args="--games 4 --seed 1 --minutes 30 --a expert --b hard --size large --verbose"
  * </pre>
+ *
+ * <p>With {@code --vs 3} one A player faces three allied B players ({@code --ffa} puts everyone on their own team); A
+ * takes each start position in turn.
  */
 public final class AIMatchRunner {
     private static LandscapeResources landscape_resources;
@@ -58,7 +61,7 @@ public final class AIMatchRunner {
     private static RacesResources races_resources;
     /** Directory for the expert AIs' game logs, as in real games, or null. */
     private static String log_dir;
-    /** Race of each player slot: v for vikings, n for natives. */
+    /** Race of each player slot: v for vikings, n for natives; slots beyond the string are vikings. */
     private static String races = "vv";
 
     public static void main(String[] args) throws IOException {
@@ -71,6 +74,8 @@ public final class AIMatchRunner {
         boolean verbose = false;
         String battle = null;
         int size = 1024;
+        int vs = 1;
+        boolean ffa = false;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--games" -> games = Integer.parseInt(args[++i]);
@@ -92,6 +97,8 @@ public final class AIMatchRunner {
                 case "--pb" -> overrides_b = args[++i];
                 case "--races" -> races = args[++i];
                 case "--log" -> log_dir = args[++i];
+                case "--vs" -> vs = Integer.parseInt(args[++i]);
+                case "--ffa" -> ffa = true;
                 case "--size" -> size = switch (args[++i]) {
                     case "small" -> 256;
                     case "medium" -> 512;
@@ -116,19 +123,26 @@ public final class AIMatchRunner {
         }
         int wins_a = 0;
         int wins_b = 0;
+        int n = vs + 1;
         for (int g = 0; g < games; g++) {
-            // Alternate sides so neither AI always gets the same start.
-            boolean swap = g % 2 == 1;
-            int game_seed = seed + g / 2;
-            int result = play(game_seed, minutes, swap ? b : a, swap ? a : b, size, dump_dir, verbose);
-            int winner = result == 0 ? (swap ? 2 : 1) : result == 1 ? (swap ? 1 : 2) : 0;
-            score_a += swap ? -last_log_ratio : last_log_ratio;
+            // Rotate A through the start positions so no AI always gets the same one.
+            int a_slot = g % n;
+            int game_seed = seed + g / n;
+            String[] ais = new String[n];
+            int[] teams = new int[n];
+            for (int i = 0; i < n; i++) {
+                ais[i] = i == a_slot ? a : b;
+                teams[i] = ffa ? i : i == a_slot ? 0 : 1;
+            }
+            int result = play(game_seed, minutes, ais, teams, a_slot, size, dump_dir, verbose);
+            int winner = result == -1 ? 0 : result == teams[a_slot] ? 1 : 2;
+            score_a += last_log_ratio;
             if (winner == 1)
                 wins_a++;
             else if (winner == 2)
                 wins_b++;
             System.out.println(
-                    "GAME " + g + " seed=" + game_seed + " swap=" + swap + " winner=" + (winner == 1 ? a + "(A)" : winner == 2 ? b + "(B)" : "draw"));
+                    "GAME " + g + " seed=" + game_seed + " swap=" + (a_slot != 0) + " slot=" + a_slot + " winner=" + (winner == 1 ? a + "(A)" : winner == 2 ? b + "(B)" : "draw"));
         }
         System.out.println(
                 "SUMMARY " + a + "(A) " + wins_a + " - " + wins_b + " " + b + "(B), draws " + (games - wins_a - wins_b) + String.format(
@@ -151,15 +165,20 @@ public final class AIMatchRunner {
     }
 
     private static int raceOf(int slot) {
-        return races.charAt(slot) == 'n' ? RacesResources.RACE_NATIVES : RacesResources.RACE_VIKINGS;
+        return slot < races.length() && races.charAt(
+                slot) == 'n' ? RacesResources.RACE_NATIVES : RacesResources.RACE_VIKINGS;
     }
 
-    /** Plays one game and returns the index of the winning player, or -1 for a draw. */
-    private static int play(int seed, int minutes, String ai0, String ai1, int size, String dump_dir,
+    /**
+     * Plays one game and returns the winning team, or -1 for a draw. Sets last_log_ratio from the point of view of
+     * the player in a_slot.
+     */
+    private static int play(int seed, int minutes, String[] ais, int[] teams, int a_slot, int size, String dump_dir,
             boolean verbose) throws IOException {
         WorldGenerator generator = new IslandGenerator(size, terrain, hills, trees, supplies, seed * seed, false);
-        PlayerInfo[] infos = new PlayerInfo[]{new PlayerInfo(0, raceOf(0), ai0 + "#0"), new PlayerInfo(1, raceOf(1),
-                ai1 + "#1")};
+        PlayerInfo[] infos = new PlayerInfo[ais.length];
+        for (int i = 0; i < ais.length; i++)
+            infos[i] = new PlayerInfo(teams[i], raceOf(i), label(ais[i]) + "#" + i);
         int map_size = switch (size) {
             case 256 -> Game.SIZE_SMALL;
             case 512 -> Game.SIZE_MEDIUM;
@@ -176,8 +195,8 @@ public final class AIMatchRunner {
         }, params, world_info, generator.getTerrainType(), infos, generator.getFogInfo());
         UnitInfo unit_info = new UnitInfo(false, false, 0, false, params.getInitialUnitCount(), 0, 0, 0);
         Player[] players = world.getPlayers();
-        players[0].setAI(create(ai0, players[0], unit_info));
-        players[1].setAI(create(ai1, players[1], unit_info));
+        for (int i = 0; i < players.length; i++)
+            players[i].setAI(create(ais[i], players[i], unit_info));
         for (Player p : players)
             if (log_dir != null && p.getAI() instanceof ExpertAI expert)
                 expert.logTo(java.nio.file.Path.of(log_dir, "game_" + seed));
@@ -197,19 +216,24 @@ public final class AIMatchRunner {
         for (tick = 0; tick < minutes * ticks_per_minute; tick++) {
             world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
             if (tick % (ticks_per_minute / 2) == 0 && tick >= 5 * ticks_per_minute) {
-                boolean alive0 = players[0].isAlive() && hasBase(players[0]);
-                boolean alive1 = players[1].isAlive() && hasBase(players[1]);
-                if (!alive0 || !alive1) {
-                    winner = alive0 ? 0 : alive1 ? 1 : -1;
+                java.util.Set<Integer> alive = new java.util.LinkedHashSet<>();
+                for (int i = 0; i < players.length; i++)
+                    if (players[i].isAlive() && hasBase(players[i]))
+                        alive.add(teams[i]);
+                if (alive.size() <= 1) {
+                    winner = alive.isEmpty() ? -1 : alive.iterator().next();
                     break;
                 }
             }
             if (econ && tick % ticks_per_minute == 0 && tick > 0) {
                 int minute = tick / ticks_per_minute;
-                if (minute % 2 == 0)
-                    System.out.println(String.format("ECON seed=%d m=%d %s=%.0f/%d %s=%.0f/%d", seed, minute,
-                            players[0], potential(players[0]), players[0].getUnitCountContainer().getNumSupplies(),
-                            players[1], potential(players[1]), players[1].getUnitCountContainer().getNumSupplies()));
+                if (minute % 2 == 0) {
+                    StringBuilder line = new StringBuilder(String.format("ECON seed=%d m=%d", seed, minute));
+                    for (Player p : players)
+                        line.append(String.format(" %s=%.0f/%d", p, potential(p),
+                                p.getUnitCountContainer().getNumSupplies()));
+                    System.out.println(line);
+                }
             }
             if (verbose && tick % ticks_per_minute == 0) {
                 System.out.println("t=" + tick / ticks_per_minute + "m");
@@ -231,16 +255,26 @@ public final class AIMatchRunner {
                             128);
                 }
         }
-        float v0 = material(players[0]);
-        float v1 = material(players[1]);
-        last_log_ratio = winner == 0 ? 3f : winner == 1 ? -3f : Math.clamp((float) Math.log((v0 + 1f) / (v1 + 1f)), -3f,
-                3f);
+        // Material of A's team against everyone else.
+        float v0 = 0f;
+        float v1 = 0f;
+        int other_team = -1;
+        for (int i = 0; i < players.length; i++) {
+            if (teams[i] == teams[a_slot]) {
+                v0 += material(players[i]);
+            } else {
+                v1 += material(players[i]);
+                other_team = teams[i];
+            }
+        }
+        last_log_ratio = winner == teams[a_slot] ? 3f : winner != -1 ? -3f : Math.clamp((float) Math.log(
+                (v0 + 1f) / (v1 + 1f)), -3f, 3f);
         if (winner == -1) {
             // Out of time: the side with clearly more material wins.
             if (v0 > 1.5f * v1)
-                winner = 0;
+                winner = teams[a_slot];
             else if (v1 > 1.5f * v0)
-                winner = 1;
+                winner = other_team;
         }
         System.out.println("END t=" + String.format("%.1f", tick / (float) ticks_per_minute) + "m");
         for (Player p : players)
@@ -323,8 +357,39 @@ public final class AIMatchRunner {
             case "expertB" -> ExpertAI.withOverrides(p, unit_info, overrides_b);
             case "hard" -> new AdvancedAI(p, unit_info, AdvancedAI.DIFFICULTY_HARD);
             case "normal" -> new AdvancedAI(p, unit_info, AdvancedAI.DIFFICULTY_NORMAL);
-            default -> throw new IllegalArgumentException("unknown ai " + type);
+            default -> createByClass(type, p, unit_info);
         };
+    }
+
+    /**
+     * {@code class:<fully.qualified.Name>} or {@code class:<Name>:<params>}: any AI with a public (Player, UnitInfo)
+     * or (Player, UnitInfo, String) constructor, such as another project's AI compiled onto the classpath.
+     */
+    private static AI createByClass(String type, Player p, UnitInfo unit_info) {
+        if (!type.startsWith("class:"))
+            throw new IllegalArgumentException("unknown ai " + type);
+        String spec = type.substring("class:".length());
+        int colon = spec.indexOf(':');
+        String name = colon < 0 ? spec : spec.substring(0, colon);
+        try {
+            Class<?> c = Class.forName(name);
+            if (colon >= 0)
+                return (AI) c.getConstructor(Player.class, UnitInfo.class, String.class).newInstance(p, unit_info,
+                        spec.substring(colon + 1));
+            return (AI) c.getConstructor(Player.class, UnitInfo.class).newInstance(p, unit_info);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException("cannot create " + type, e);
+        }
+    }
+
+    /** Short player name for an AI spec: the class's simple name for class specs. */
+    private static String label(String type) {
+        if (!type.startsWith("class:"))
+            return type;
+        String spec = type.substring("class:".length());
+        int colon = spec.indexOf(':');
+        String name = colon < 0 ? spec : spec.substring(0, colon);
+        return name.substring(name.lastIndexOf('.') + 1);
     }
 
     private static void initHiddenContext() {
