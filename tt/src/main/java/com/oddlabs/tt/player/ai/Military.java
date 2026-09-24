@@ -93,7 +93,81 @@ final class Military {
     /** The enemy each warrior was last sent after with a direct attack order. */
     private final Map<@NonNull Unit, @NonNull Unit> hunt_targets = new LinkedHashMap<>();
     private final Map<@NonNull Unit, Float> dodge_orders = new LinkedHashMap<>();
+    private final Map<@NonNull Building, @NonNull Unit> tower_targets = new LinkedHashMap<>();
     private final Map<@NonNull Unit, Float> sapper_orders = new LinkedHashMap<>();
+    private float last_pillage_log = -100f;
+    /** When each enemy chieftain was last seen casting, judged by our units getting stunned around him. */
+    private final Map<@NonNull Unit, Float> enemy_casts = new LinkedHashMap<>();
+    private int own_stunned_before;
+    /** Seconds an enemy chieftain's spell takes to recharge, as far as the AI assumes. */
+    private static final float SPELL_RECHARGE = 40f;
+    /** Seconds from the first frame an enemy viking chieftain is seen raising his horn to his stun going off. */
+    private static final float STUN_WINDUP = 3.7f;
+    /** Reach of the stun in meters, measured from a point this far in front of the chieftain. */
+    private static final float STUN_RADIUS = 36f;
+    private static final float STUN_OFFSET = 2.57f;
+
+    /** A unit running out of an enemy stun's reach: where to, and until the stun has gone off. */
+    private record Dodge(int x, int y, float until) {
+    }
+
+    private final Map<@NonNull Unit, @NonNull Dodge> dodges = new LinkedHashMap<>();
+    /** Warriors throwing at a winding-up enemy chieftain, until his spell would go off. */
+    private final Map<@NonNull Unit, Float> caster_hunters = new LinkedHashMap<>();
+    /** When the current siege began, or negative; after a siege gives up, none until siege_cooldown. */
+    private float siege_start = -1f;
+    private float siege_cooldown = -1f;
+    private float blast_play_until = -1f;
+    private float last_blast_play = -100f;
+    private float siege_progress = -1f;
+    private float last_pull_log = -100f;
+    /** Which stunned tower each warrior was sent to pull down, so orders are not repeated mid-throw. */
+    private final Map<@NonNull Unit, @NonNull Building> siege_assign = new LinkedHashMap<>();
+    /** Cells from an enemy tower the sieging army waits at: out of its throws (16 cells). */
+    private static final int SIEGE_HOLD = 17;
+    /** Cells within which an enemy tower's garrison reaches a warrior: 6 + 8 for the tower + 1.9 for the target. */
+    private static final int TOWER_REACH = 16;
+    /** Enemy chieftains being hunted while they wind up, until their spell would go off. */
+    private final Map<@NonNull Unit, Float> caster_targets = new LinkedHashMap<>();
+    /** Chieftains, ours included, seen winding up a spell, and when a stun would go off. */
+    private final Map<@NonNull Unit, Float> windups = new LinkedHashMap<>();
+
+    /** A poison fog on the ground or about to be: who cast it, where, when, and whether it turned out to be fog. */
+    private static final class Fog {
+        final @NonNull Unit caster;
+        final float x;
+        final float y;
+        final float cast;
+        boolean confirmed;
+
+        Fog(@NonNull Unit caster, float x, float y, float cast) {
+            this.caster = caster;
+            this.x = x;
+            this.y = y;
+            this.cast = cast;
+        }
+    }
+
+    private final List<@NonNull Fog> fogs = new ArrayList<>();
+    /**
+     * A native chieftain's poison fog comes down 3.6 s into the wind-up, 26 m around a point just in front of him, and
+     * every 2 s for 20 s kills an enemy inside with even odds (his own side's units with a quarter of that).
+     */
+    private static final float FOG_RELEASE = 3.64f;
+    private static final float FOG_TIME = 20f;
+    private static final float FOG_RADIUS = 26f;
+    private static final float FOG_OFFSET = .9f;
+    /** A tower our sappers are raising by a besieged building, until it stands. */
+    private @Nullable Building creep_site;
+    /** Towers raised by sappers next to enemy buildings. */
+    private final List<@NonNull Building> creep_towers = new ArrayList<>();
+    private float last_creep_try = -100f;
+    /** Multiplies what the next attack must beat, raised by attacks that traded badly. */
+    private float attack_caution = 1f;
+    private float last_caution_ease;
+    private int attack_kills_start;
+    private int attack_losses_start;
+    private boolean attack_running;
     private final Map<@NonNull Unit, Float> militia_orders = new LinkedHashMap<>();
     private float last_militia_log = -100f;
     private float last_peon_rush = -100f;
@@ -194,6 +268,7 @@ final class Military {
     // Tick
 
     void tick() {
+        watchEnemyCasts();
         updateRoles();
         updateStaging();
         updateThreat();
@@ -202,6 +277,8 @@ final class Military {
             defend();
         if (!raiders.isEmpty())
             answerRaiders();
+        if (mode != Mode.ATTACK && siege_start >= 0f)
+            endSiege();
         switch (mode) {
             case HOME -> holdStaging();
             case MUSTER -> muster();
@@ -212,6 +289,7 @@ final class Military {
         raid();
         peonRush();
         restoreDodge();
+        towerFire();
         sapperTick();
         flushOrders();
     }
@@ -219,6 +297,7 @@ final class Military {
     void plan() {
         updateRoles();
         recordEnemyStrength();
+        easeCaution();
         if (mode == Mode.HOME && threat_level < 2 && ai.strategy().strikes)
             considerStrike();
         if (mode == Mode.HOME && threat_level < 2)
@@ -432,7 +511,11 @@ final class Military {
         Unit chief = intel.chieftain;
         boolean toot_ready = chief != null && ai.chieftain().stunReady();
         float effective = ours + towers + (toot_ready ? .6f * threat_strength : 0f);
-        float enemy = threat_strength * (enemyStunReadyNear(threat_x, threat_y, 25) ? 1.5f : 1f);
+        // Against a single enemy the army behind his raiders is his whole army; against several the base is busy
+        // enough without waiting for them.
+        float behind = ai.strategy().threat_look > 0 && ai.enemiesAlive() == 1 ? enemyStrengthNear(threat_x,
+                threat_y, ai.strategy().threat_look) : 0f;
+        float enemy = Math.max(threat_strength, behind) * (enemyStunReadyNear(threat_x, threat_y, 25) ? 1.5f : 1f);
         float engage_ratio = .8f - engage_state * ai.strategy().defend_hysteresis;
         boolean engage = effective >= engage_ratio * enemy
                 || (armory != null && MapAnalysis.dist2(threat_x, threat_y, armory.getGridX(),
@@ -444,6 +527,23 @@ final class Military {
                     threat_strength, threat_x, threat_y, ours, towers, engage ? "engage" : "fall back"));
         }
         engage_state = engage ? 1 : -1;
+        if (threat_level >= 2)
+            ExpertAI.debug_battle = new int[]{threat_x, threat_y};
+        if (ai.strategy().defend_exploit_stun && engage && chargeStunned(defenders, threat_x, threat_y)) {
+            evacuatePeons();
+            return;
+        }
+        if (blastDefense(defenders, enemy)) {
+            evacuatePeons();
+            return;
+        }
+        float hold = ai.strategy().hold_ratio;
+        // Against several enemies attacks come from every side, and a post would leave the rest of the base open.
+        if (engage && hold > 0f && ai.enemiesAlive() == 1 && enemy >= hold * Math.max(1f, ours)
+                && holdAtPost(defenders)) {
+            evacuatePeons();
+            return;
+        }
         if (engage) {
             for (Unit u : defenders) {
                 if (roles.get(u) == Role.RAID)
@@ -457,6 +557,50 @@ final class Military {
                 attackGround(u, armory.getGridX(), armory.getGridY(), false);
         }
         evacuatePeons();
+    }
+
+    /**
+     * Meets a strong threat at the building of ours nearest to it, a tower if one is close: defenders gather there and
+     * fight what comes within reach of it rather than walk out to the enemy. Returns false without a post.
+     */
+    private boolean holdAtPost(@NonNull List<@NonNull Unit> defenders) {
+        Intel intel = ai.intel();
+        Building post = null;
+        int best = Integer.MAX_VALUE;
+        List<Building> own = new ArrayList<>(intel.towers);
+        own.addAll(intel.armories);
+        own.addAll(intel.quarters);
+        for (Building b : own) {
+            int d = MapAnalysis.dist2(b.getGridX(), b.getGridY(), threat_x, threat_y);
+            // Towers count as a little nearer: fighting under one is worth a short walk.
+            if (b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_TOWER && Intel.isTowerActive(b))
+                d -= 10 * 10;
+            if (d < best) {
+                best = d;
+                post = b;
+            }
+        }
+        if (post == null)
+            return false;
+        int px = post.getGridX();
+        int py = post.getGridY();
+        List<Unit> close = new ArrayList<>();
+        for (Unit e : threats)
+            if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), px, py) <= 14 * 14)
+                close.add(e);
+        List<Unit> at_post = new ArrayList<>();
+        for (Unit u : defenders) {
+            if (roles.get(u) == Role.RAID)
+                roles.put(u, Role.ARMY);
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), px, py) <= 12 * 12)
+                at_post.add(u);
+            else
+                attackGround(u, px, py, false);
+        }
+        if (!close.isEmpty())
+            engageSpread(at_post, close, px, py, false);
+        huntChieftains(at_post);
+        return true;
     }
 
     private float towersStrength() {
@@ -473,10 +617,250 @@ final class Military {
                 continue;
             if (MapAnalysis.dist2(x, y, c.getGridX(), c.getGridY()) > radius * radius)
                 continue;
-            if (c.getMagicProgress(0) >= 1f || c.getMagicProgress(1) >= 1f)
+            if (enemySpellReady(c))
                 return true;
         }
         return false;
+    }
+
+    /**
+     * Whether an enemy chieftain may have his spell ready. A human cannot see the recharge, so unless hidden_info is
+     * set the AI assumes it is ready unless he was seen casting within the recharge time.
+     */
+    boolean enemySpellReady(@NonNull Unit chief) {
+        if (ai.strategy().hidden_info)
+            return chief.getMagicProgress(0) >= 1f || chief.getMagicProgress(1) >= 1f;
+        Float cast = enemy_casts.get(chief);
+        return cast == null || ai.time() - cast >= SPELL_RECHARGE;
+    }
+
+    /**
+     * Notes enemy casts from what a player sees: a chieftain casting, or several of our units stunned at once next to
+     * one.
+     */
+    private void watchEnemyCasts() {
+        Intel intel = ai.intel();
+        enemy_casts.keySet().removeIf(Unit::isDead);
+        // Casting is plain to see: the chieftain stops and blows his horn.
+        for (Unit e : intel.enemy_chieftains)
+            if (!e.isDead() && e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)
+                enemy_casts.put(e, ai.time());
+        List<Unit> stunned = new ArrayList<>();
+        for (Unit u : intel.warriors)
+            if (Intel.isStunned(u))
+                stunned.add(u);
+        for (Unit u : intel.peons)
+            if (Intel.isStunned(u))
+                stunned.add(u);
+        if (stunned.size() >= own_stunned_before + 2) {
+            int[] c = centroid(stunned);
+            Unit caster = null;
+            int best = 25 * 25;
+            for (Unit e : intel.enemy_chieftains) {
+                int d = MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0], c[1]);
+                if (!e.isDead() && d <= best) {
+                    best = d;
+                    caster = e;
+                }
+            }
+            if (caster != null) {
+                enemy_casts.put(caster, ai.time());
+                ai.log("enemy stun caught " + (stunned.size() - own_stunned_before) + " of our units");
+            }
+        }
+        own_stunned_before = stunned.size();
+    }
+
+    /** Whether a unit is running out of reach of an enemy stun; other orders leave it alone meanwhile. */
+    boolean isDodging(@NonNull Unit u) {
+        return dodges.containsKey(u);
+    }
+
+    /**
+     * Keeps our units out of the chieftains' spells, as a player watching the fight would. Called every frame, as the
+     * first tenths of a second decide who makes it.
+     */
+    void dodgeSpells() {
+        float now = ai.time();
+        dodges.values().removeIf(d -> d.until() < now);
+        // The horn stays up for a while after the spell: a wind-up is over once he stops casting.
+        windups.entrySet().removeIf(w -> w.getValue() < now && (w.getKey().isDead()
+                || !(w.getKey().getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)));
+        updateFogs(now);
+        Intel intel = ai.intel();
+        com.oddlabs.tt.model.Race vikings = ai.owner().getWorld().getRacesResources().getRace(
+                com.oddlabs.tt.model.RacesResources.RACE_VIKINGS);
+        List<Unit> casters = new ArrayList<>(intel.enemy_chieftains);
+        if (intel.chieftain != null)
+            casters.add(intel.chieftain);
+        for (Unit e : casters) {
+            if (e.isDead() || windups.containsKey(e)
+                    || !(e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController))
+                continue;
+            windups.put(e, now + STUN_WINDUP);
+            if (e.getOwner().getRace() != vikings) {
+                // Fog and lightning look alike until they come down: clear out at once, the fog gives 5.6 s.
+                if (ai.strategy().dodge_fog)
+                    fogs.add(new Fog(e, e.getPositionX() + FOG_OFFSET * e.getDirectionX(),
+                            e.getPositionY() + FOG_OFFSET * e.getDirectionY(), now));
+            } else if (e != intel.chieftain && ai.strategy().dodge_stun) {
+                dodgeStun(e, now);
+            }
+        }
+        for (Fog f : fogs)
+            keepOutOf(f, now);
+        keepHuntingCasters(now);
+        // Whatever else ordered them this frame, keep them running until they are clear.
+        for (Map.Entry<Unit, Dodge> en : dodges.entrySet()) {
+            Unit u = en.getKey();
+            Dodge d = en.getValue();
+            if (u.isDead() || u.isMounted() || Intel.isStunned(u)
+                    || MapAnalysis.dist2(u.getGridX(), u.getGridY(), d.x(), d.y()) <= 2 * 2)
+                continue;
+            if (u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.WalkController w
+                    && MapAnalysis.dist2(w.getTarget().getGridX(), w.getTarget().getGridY(), d.x(), d.y()) <= 3 * 3)
+                continue;
+            ai.owner().setLandscapeTarget(Selectable.newArray(u), d.x(), d.y(), Action.MOVE, false);
+        }
+    }
+
+    /** Drops fogs that lifted, or that turned out to be lightning or never came down. */
+    private void updateFogs(float now) {
+        for (Iterator<Fog> it = fogs.iterator(); it.hasNext();) {
+            Fog f = it.next();
+            if (now > f.cast + FOG_RELEASE + FOG_TIME + .5f) {
+                it.remove();
+            } else if (!f.confirmed && now >= f.cast + FOG_RELEASE + .1f) {
+                // By now it is plain to see which spell came down.
+                if (!f.caster.isDead()
+                        && f.caster.getLastMagicIndex() == com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_POISON) {
+                    f.confirmed = true;
+                    ai.log("poison fog down at " + com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(
+                            f.x) + "," + com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(
+                                    f.y) + (f.caster.getOwner() == ai.owner() ? " (ours)" : ""));
+                } else {
+                    it.remove();
+                }
+            } else if (!f.confirmed && f.caster.isDead()) {
+                it.remove();
+            }
+        }
+    }
+
+    /** Sends our units inside a fog, or about to walk in, out of it. The caster's own chieftain is immune. */
+    private void keepOutOf(@NonNull Fog f, float now) {
+        Intel intel = ai.intel();
+        List<Unit> units = new ArrayList<>(intel.warriors);
+        units.addAll(intel.peons);
+        if (intel.chieftain != null && f.caster != intel.chieftain)
+            units.add(intel.chieftain);
+        int grid = ai.map().getSize();
+        float reach = FOG_RADIUS + 3f;
+        float until = Math.min(now + 4f, f.cast + FOG_RELEASE + FOG_TIME);
+        for (Unit u : units) {
+            if (u.isDead() || u.isMounted() || Intel.isStunned(u) || dodges.containsKey(u)
+                    || u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)
+                continue;
+            float dx = u.getPositionX() - f.x;
+            float dy = u.getPositionY() - f.y;
+            if (dx * dx + dy * dy > reach * reach)
+                continue;
+            float d = (float) Math.sqrt(dx * dx + dy * dy);
+            if (d < 1f) {
+                dx = staging_x * 2f - f.x;
+                dy = staging_y * 2f - f.y;
+                d = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
+            }
+            float to = (FOG_RADIUS + 7f) / d;
+            int tx = Math.clamp(com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(f.x + dx * to), 0, grid - 1);
+            int ty = Math.clamp(com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(f.y + dy * to), 0, grid - 1);
+            dodges.put(u, new Dodge(tx, ty, until));
+            ai.owner().setLandscapeTarget(Selectable.newArray(u), tx, ty, Action.MOVE, false);
+        }
+    }
+
+    /**
+     * Runs our units out of reach of an enemy viking chieftain winding up his stun. It goes off 3.8 s after he raises
+     * his horn and freezes, defenseless for 10 s or more, whatever was within 36 m of him 1.6 s earlier and still is;
+     * the units near the edge have time to walk out, and those just outside must not walk in.
+     */
+    private void dodgeStun(@NonNull Unit e, float now) {
+        Intel intel = ai.intel();
+        float release = now + STUN_WINDUP;
+        float sx = e.getPositionX() + STUN_OFFSET * e.getDirectionX();
+        float sy = e.getPositionY() + STUN_OFFSET * e.getDirectionY();
+        List<Unit> units = new ArrayList<>(intel.warriors);
+        units.addAll(intel.peons);
+        if (intel.chieftain != null
+                && !(intel.chieftain.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController))
+            units.add(intel.chieftain);
+        int grid = ai.map().getSize();
+        int n = 0;
+        int hunters = 0;
+        for (Unit u : units) {
+            if (u.isDead() || u.isMounted() || Intel.isStunned(u))
+                continue;
+            float dx = u.getPositionX() - sx;
+            float dy = u.getPositionY() - sy;
+            float d = (float) Math.sqrt(dx * dx + dy * dy);
+            if (d > STUN_RADIUS + 10f)
+                continue;
+            // Out by the time it goes off, with a little to spare for the path around others.
+            float out = STUN_RADIUS + 3f - d;
+            if (out > .85f * u.getTemplate().getMetersPerSecond() * STUN_WINDUP) {
+                // Caught either way: throw at him instead, his spell dies with him.
+                if (ai.strategy().hunt_caster && intel.warriors.contains(u)
+                        && MapAnalysis.dist2(u.getGridX(), u.getGridY(), e.getGridX(),
+                                e.getGridY()) <= ai.strategy().hunt_caster_cells * ai.strategy().hunt_caster_cells) {
+                    caster_hunters.put(u, release);
+                    huntCaster(u, e);
+                    hunters++;
+                }
+                continue;
+            }
+            float to = Math.max(d, STUN_RADIUS + 6f) / Math.max(d, .1f);
+            int tx = Math.clamp(com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(sx + dx * to), 0, grid - 1);
+            int ty = Math.clamp(com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(sy + dy * to), 0, grid - 1);
+            dodges.put(u, new Dodge(tx, ty, release + .3f));
+            ai.owner().setLandscapeTarget(Selectable.newArray(u), tx, ty, Action.MOVE, false);
+            n++;
+        }
+        if (hunters > 0)
+            caster_targets.put(e, release);
+        if (n > 0 || hunters > 0)
+            ai.log("enemy chieftain winds up at " + e.getGridX() + "," + e.getGridY() + ": " + n + " units run out of reach, " + hunters + " go for him");
+    }
+
+    private void huntCaster(@NonNull Unit u, @NonNull Unit chief) {
+        hunt_targets.put(u, chief);
+        last_order.put(u, ai.time());
+        ai.intel().warrior_states.put(u, WarriorState.FIGHT);
+        ai.owner().setTarget(Selectable.newArray(u), chief, Action.ATTACK, true);
+    }
+
+    /** Keeps the warriors on a winding-up enemy chieftain until his spell goes off or he falls. */
+    private void keepHuntingCasters(float now) {
+        caster_hunters.values().removeIf(t -> t < now);
+        caster_targets.entrySet().removeIf(c -> c.getValue() < now || c.getKey().isDead());
+        for (Map.Entry<Unit, Float> en : caster_hunters.entrySet()) {
+            Unit u = en.getKey();
+            Unit chief = hunt_targets.get(u);
+            if (u.isDead() || Intel.isStunned(u))
+                continue;
+            if (chief == null || !caster_targets.containsKey(chief)) {
+                // Another order took him off the caster: put him back on the nearest one.
+                chief = null;
+                for (Unit c : caster_targets.keySet())
+                    if (chief == null || MapAnalysis.dist2(u.getGridX(), u.getGridY(), c.getGridX(),
+                            c.getGridY()) < MapAnalysis.dist2(u.getGridX(), u.getGridY(), chief.getGridX(),
+                                    chief.getGridY()))
+                        chief = c;
+                if (chief != null)
+                    huntCaster(u, chief);
+            } else if (!(u.getCurrentController() instanceof HuntController)) {
+                huntCaster(u, chief);
+            }
+        }
     }
 
     /**
@@ -486,6 +870,9 @@ final class Military {
     private void huntChieftains(@NonNull List<@NonNull Unit> units) {
         for (Unit chief : ai.intel().enemy_chieftains) {
             if (chief.isDead())
+                continue;
+            // Thirty hits bring down a healthy chieftain: only a wounded or helpless one is worth a squad.
+            if (ai.strategy().chief_per_hit && chief.getHitPoints() > 20 && !Intel.isStunned(chief))
                 continue;
             int[] c = centroid(units);
             if (MapAnalysis.dist2(c[0], c[1], chief.getGridX(), chief.getGridY()) > 20 * 20)
@@ -878,10 +1265,11 @@ final class Military {
                 s += enemyTowerValue(t);
         // Peons near their base pile onto attackers.
         s += .5f * Combat.strengthNear(intel.enemy_peons, x, y, 40);
-        // Weapons stocked in an armory nearby come out as soon as the attack shows up.
-        for (Building a : intel.enemy_armories)
-            if (!a.isDead() && MapAnalysis.dist2(a.getGridX(), a.getGridY(), x, y) <= 40 * 40)
-                s += stockStrength(a);
+        // Weapons stocked in an armory nearby come out as soon as the attack shows up, if the AI may look inside.
+        if (ai.strategy().hidden_info)
+            for (Building a : intel.enemy_armories)
+                if (!a.isDead() && MapAnalysis.dist2(a.getGridX(), a.getGridY(), x, y) <= 40 * 40)
+                    s += stockStrength(a);
         return s;
     }
 
@@ -967,9 +1355,11 @@ final class Military {
         float bonus = chief && !enemy_chief ? 1.4f : chief ? 1.05f : enemy_chief ? .7f : 1f;
         Player owner = ai.owner();
         boolean capped = owner.getUnitCountContainer().getNumSupplies() >= owner.getWorld().getMaxUnitCount() - 10;
-        boolean go = potential >= strategy.attack_min_strength && potential * bonus >= strategy.attack_ratio * defense;
-        go |= potential >= strategy.attack_max_strength && potential * bonus >= .8f * defense;
-        go |= capped && potential * bonus >= strategy.capped_ratio * defense;
+        float caution = attack_caution;
+        boolean go = potential >= strategy.attack_min_strength
+                && potential * bonus >= strategy.attack_ratio * caution * defense;
+        go |= potential >= strategy.attack_max_strength * caution && potential * bonus >= .8f * caution * defense;
+        go |= capped && potential * bonus >= strategy.capped_ratio * caution * defense;
         if (!go || ai.time() < next_wave_time)
             return;
         target = t;
@@ -1106,6 +1496,9 @@ final class Military {
             }
         }
         attack_initial_strength = s;
+        attack_kills_start = ai.owner().getUnitsKilled();
+        attack_losses_start = ai.owner().getUnitsLost();
+        attack_running = true;
         attack_start = ai.time();
         last_progress_time = ai.time();
         best_target_dist = Integer.MAX_VALUE;
@@ -1173,6 +1566,8 @@ final class Military {
                     c[1]) <= 20 * 20)
                 ours += Combat.value(e.getKey());
         int[] back = stepTowards(c[0], c[1], staging_x, staging_y, 6);
+        creepTick(c, ours);
+        Building site = creep_site;
         for (Unit p : intel.sappers) {
             Building tower = null;
             int best = 18 * 18;
@@ -1196,9 +1591,125 @@ final class Military {
             sapper_orders.put(p, ai.time());
             if (tower != null)
                 ai.owner().setTarget(Selectable.newArray(p), tower, Action.ATTACK, true);
-            else if (MapAnalysis.dist2(p.getGridX(), p.getGridY(), back[0], back[1]) > 6 * 6)
+            else if (site != null
+                    && !(p.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.RepairController))
+                ai.owner().setTarget(Selectable.newArray(p), site, Action.DEFAULT, false);
+            else if (site == null && MapAnalysis.dist2(p.getGridX(), p.getGridY(), back[0], back[1]) > 6 * 6)
                 move(p, back[0], back[1]);
         }
+    }
+
+    /**
+     * Towers raised by our sappers by enemy buildings, standing or going up, which the base's tower count leaves out.
+     */
+    int creepTowerCount() {
+        creep_towers.removeIf(Building::isDead);
+        return creep_towers.size() + (creep_site != null && !creep_site.isDead() ? 1 : 0);
+    }
+
+    /**
+     * Raises a tower next to the besieged building once the army holds the ground there, and mans the ones that
+     * stand with a warrior of the attack.
+     */
+    private void creepTick(int @NonNull [] c, float ours) {
+        creep_towers.removeIf(Building::isDead);
+        if (creep_site != null && (creep_site.isDead() || creep_site.isComplete())) {
+            if (!creep_site.isDead()) {
+                creep_towers.add(creep_site);
+                ai.log("creep tower up at " + creep_site.getGridX() + "," + creep_site.getGridY());
+            }
+            creep_site = null;
+        }
+        for (Building t : creep_towers) {
+            if (Intel.isTowerManned(t) || tower_assignments.containsValue(t))
+                continue;
+            Unit best = null;
+            int best_d = 30 * 30;
+            for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+                Unit u = e.getKey();
+                if (e.getValue() != Role.ATTACK || ai.intel().warrior_states.get(u) == WarriorState.STUNNED)
+                    continue;
+                int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY());
+                if (Intel.warriorType(u) == WarriorType.CHICKEN)
+                    d -= 15 * 15;
+                if (d < best_d) {
+                    best_d = d;
+                    best = u;
+                }
+            }
+            if (best != null) {
+                roles.put(best, Role.TOWER);
+                tower_assignments.put(best, t);
+                ai.owner().setTarget(Selectable.newArray(best), t, Action.DEFAULT, false);
+            }
+        }
+        Selectable<?> goal = target;
+        if (!ai.strategy().creep_towers || creep_site != null || goal == null || goal.isDead()
+                || ai.time() - last_creep_try < 20f || ai.intel().sappers.size() < 4)
+            return;
+        int gx = goal.getGridX();
+        int gy = goal.getGridY();
+        if (MapAnalysis.dist2(c[0], c[1], gx, gy) > 30 * 30 || ours < 1.2f * enemyStrengthNear(gx, gy, 20) + 4f)
+            return;
+        int near = 0;
+        for (Building t : creep_towers)
+            if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), gx, gy) <= 20 * 20)
+                near++;
+        if (near >= 2)
+            return;
+        last_creep_try = ai.time();
+        int[] spot = creepSpot(gx, gy, c);
+        if (spot == null)
+            return;
+        creep_site = ai.owner().getRace().getBuildingTemplate(com.oddlabs.tt.model.Race.BUILDING_TOWER).create(
+                ai.owner(), spot[0], spot[1]);
+        Unit placer = null;
+        int best_d = Integer.MAX_VALUE;
+        for (Unit p : ai.intel().sappers) {
+            int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), spot[0], spot[1]);
+            if (d < best_d) {
+                best_d = d;
+                placer = p;
+            }
+        }
+        if (placer != null)
+            ai.owner().setTarget(Selectable.newArray(placer), creep_site, Action.DEFAULT, false);
+        ai.log("sappers raise a tower at " + spot[0] + "," + spot[1] + " by " + goal);
+    }
+
+    /** A tower site in range of a besieged building, out of reach of active enemy towers, with trees to build from. */
+    private int @Nullable [] creepSpot(int gx, int gy, int @NonNull [] c) {
+        com.oddlabs.tt.model.BuildingTemplate tower = ai.owner().getRace().getBuildingTemplate(
+                com.oddlabs.tt.model.Race.BUILDING_TOWER);
+        MapAnalysis map = ai.map();
+        int[] best = null;
+        float best_score = -Float.MAX_VALUE;
+        for (int y = gy - 11; y <= gy + 11; y++) {
+            for (int x = gx - 11; x <= gx + 11; x++) {
+                int d2 = MapAnalysis.dist2(x, y, gx, gy);
+                if (d2 < 5 * 5 || d2 > 11 * 11 || !map.canPlace(tower, x, y))
+                    continue;
+                boolean covered = false;
+                for (Building t : ai.intel().enemy_towers) {
+                    if (Intel.isTowerActive(t) && MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= 12 * 12) {
+                        covered = true;
+                        break;
+                    }
+                }
+                if (covered)
+                    continue;
+                int trees = map.treesAround(x, y, 8);
+                if (trees < 2)
+                    continue;
+                float score = -(float) Math.sqrt(d2) - .3f * (float) Math.sqrt(MapAnalysis.dist2(x, y, c[0],
+                        c[1])) + Math.min(trees, 8);
+                if (score > best_score) {
+                    best_score = score;
+                    best = new int[]{x, y};
+                }
+            }
+        }
+        return best;
     }
 
     /** The point `cells` away from (x, y) in the direction of (to_x, to_y). */
@@ -1222,9 +1733,40 @@ final class Military {
         }
     }
 
+    /** Lets caution from past attacks wear off while the army sits capped at home. */
+    private void easeCaution() {
+        Player owner = ai.owner();
+        boolean capped = owner.getUnitCountContainer().getNumSupplies() >= owner.getWorld().getMaxUnitCount() - 10;
+        if (mode != Mode.HOME || !capped || attack_caution <= 1f || ai.strategy().caution_decay <= 1f) {
+            last_caution_ease = ai.time();
+            return;
+        }
+        if (ai.time() - last_caution_ease < 60f)
+            return;
+        last_caution_ease = ai.time();
+        float before = attack_caution;
+        attack_caution = Math.max(1f, attack_caution / ai.strategy().caution_decay);
+        ai.log(String.format("capped at home: caution %.2f -> %.2f", before, attack_caution));
+    }
+
     private void endAttack() {
         if (mode != Mode.HOME)
             ai.log("attack over, back home");
+        if (attack_running && ai.strategy().adaptive_caution) {
+            int kills = ai.owner().getUnitsKilled() - attack_kills_start;
+            int losses = ai.owner().getUnitsLost() - attack_losses_start;
+            if (kills + losses >= 10) {
+                float trade = kills / (float) Math.max(1, losses);
+                float before = attack_caution;
+                if (trade < 1f)
+                    attack_caution = Math.min(2.5f, attack_caution * 1.25f);
+                else if (trade > 1.5f)
+                    attack_caution = Math.max(1f, attack_caution / 1.25f);
+                ai.log(String.format("attack traded %d kills for %d losses: caution %.2f -> %.2f", kills, losses,
+                        before, attack_caution));
+            }
+        }
+        attack_running = false;
         for (Map.Entry<Unit, Role> e : roles.entrySet())
             if (e.getValue() == Role.ATTACK || e.getValue() == Role.REINFORCE)
                 e.setValue(Role.ARMY);
@@ -1325,11 +1867,20 @@ final class Military {
                             stunned.size(), asleep, awake, total));
                 }
                 int[] sc = centroid(stunned);
-                engageSpread(army, stunned, sc[0], sc[1], true);
+                List<Selectable<?>> prey = new ArrayList<>(stunned);
+                // The ones still awake keep throwing: each warrior weighs them against the helpless.
+                if (ai.strategy().charge_mixed)
+                    for (Unit e : intel.enemy_warriors)
+                        if (!Intel.isStunned(e) && MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0],
+                                c[1]) <= (ENGAGE_RADIUS + 8) * (ENGAGE_RADIUS + 8))
+                            prey.add(e);
+                engageSpread(army, prey, sc[0], sc[1], true);
                 huntChieftains(army);
                 return;
             }
         }
+        if (ai.strategy().siege && !pinned && siege(army, c, total))
+            return;
         if (!toot && !pinned && ai.strategy().precontact_ratio > 0f && !anyFighting(army)) {
             // Before contact, look at everything that can defend the area, not just what is next to us: turning
             // back now costs nothing, walking into a stronger defense costs the army.
@@ -1344,7 +1895,11 @@ final class Military {
                 return;
             }
         }
-        if (!toot && !pinned && local_enemy > ai.strategy().retreat_ratio * Math.max(ours, 1f)) {
+        boolean outmatched = local_enemy > ai.strategy().retreat_ratio * Math.max(ours, 1f);
+        boolean worn = total < .2f * attack_initial_strength && local_enemy > total;
+        if (!toot && !pinned && (outmatched || worn) && pillage(army, c, total))
+            return;
+        if (!toot && !pinned && outmatched) {
             ai.log(String.format("retreat: local %.1f vs enemy %.1f (army %.1f of %.1f)", ours, local_enemy, total,
                     attack_initial_strength));
             beginRetreat();
@@ -1497,6 +2052,291 @@ final class Military {
         for (Unit u : army)
             attackGround(u, hold_spot[0], hold_spot[1], false);
         return true;
+    }
+
+    /**
+     * Instead of turning back from towers with the enemy army beaten, go for the enemy's peons outside tower cover.
+     * Returns whether the army is pillaging.
+     */
+    private boolean pillage(@NonNull List<@NonNull Unit> army, int @NonNull [] c, float total) {
+        if (!ai.strategy().pillage || total < 6f || enemyStrengthNear(c[0], c[1], 30) > .5f * total)
+            return false;
+        Intel intel = ai.intel();
+        List<Unit> prey = new ArrayList<>();
+        for (Unit p : intel.enemy_peons) {
+            if (p.isDead() || MapAnalysis.dist2(p.getGridX(), p.getGridY(), c[0], c[1]) > 45 * 45)
+                continue;
+            boolean covered = false;
+            for (Building t : intel.enemy_towers) {
+                if (Intel.isTowerActive(t)
+                        && MapAnalysis.dist2(t.getGridX(), t.getGridY(), p.getGridX(), p.getGridY()) <= 11 * 11) {
+                    covered = true;
+                    break;
+                }
+            }
+            if (!covered && enemyStrengthNear(p.getGridX(), p.getGridY(), 16) < .5f * total)
+                prey.add(p);
+        }
+        if (prey.size() < 3)
+            return false;
+        if (ai.time() - last_pillage_log > 15f) {
+            last_pillage_log = ai.time();
+            ai.log(String.format("pillaging %d peons outside the towers with %.1f", prey.size(), total));
+        }
+        int[] pc = centroid(prey);
+        engageSpread(army, prey, pc[0], pc[1], false);
+        return true;
+    }
+
+    /**
+     * Sends the given warriors at enemies lying stunned around (x, y) while the ones still awake are no match for
+     * them. Returns whether they charge.
+     */
+    private boolean chargeStunned(@NonNull List<@NonNull Unit> units, int x, int y) {
+        List<Unit> stunned = stunnedEnemiesNear(x, y, 30);
+        if (stunned.isEmpty() || units.isEmpty())
+            return false;
+        float asleep = 0f;
+        for (Unit e : stunned)
+            asleep += Combat.lastingValue(e);
+        float ours = 0f;
+        for (Unit u : units)
+            ours += Combat.lastingValue(u);
+        float awake = enemyFightersNear(x, y, 30);
+        if (asleep < 3f || ours < .8f * awake || enemyStunReadyNear(x, y, 40))
+            return false;
+        int[] sc = centroid(stunned);
+        engageSpread(units, stunned, sc[0], sc[1], true);
+        huntChieftains(units);
+        return true;
+    }
+
+    /** Where the chieftain is meeting an enemy army alone to blast it, or null. */
+    int @Nullable [] blastPlay() {
+        return ai.time() < blast_play_until ? new int[]{threat_x, threat_y} : null;
+    }
+
+    /**
+     * Against a strong attack on the base with the blast charged: the defenders step back out of its reach and the
+     * chieftain walks up to the enemy alone. Returns whether the play has the defenders' orders this tick.
+     */
+    private boolean blastDefense(@NonNull List<@NonNull Unit> defenders, float enemy) {
+        Strategy strategy = ai.strategy();
+        float now = ai.time();
+        if (!strategy.blast || !strategy.blast_defense)
+            return false;
+        if (now >= blast_play_until) {
+            if (threat_level < 2 || enemy < strategy.blast_min || now - last_blast_play < 60f
+                    || !ai.chieftain().blastReady())
+                return false;
+            blast_play_until = now + strategy.blast_play_time;
+            last_blast_play = now;
+            ai.log(String.format("blast play against %.1f at %d,%d", enemy, threat_x, threat_y));
+        }
+        if (!ai.chieftain().blastReady() && ai.chieftain().sinceCast() > 5f) {
+            blast_play_until = now;
+            return false;
+        }
+        Unit chief = ai.intel().chieftain;
+        int cx = chief != null ? chief.getGridX() : threat_x;
+        int cy = chief != null ? chief.getGridY() : threat_y;
+        // Everyone out to 22 cells from the chieftain, on the far side from the enemy.
+        for (Unit u : defenders) {
+            if (Intel.isStunned(u))
+                continue;
+            int d2 = MapAnalysis.dist2(u.getGridX(), u.getGridY(), cx, cy);
+            if (d2 >= 22 * 22)
+                continue;
+            float dx = u.getGridX() - threat_x;
+            float dy = u.getGridY() - threat_y;
+            float len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
+            int[] to = {Math.round(threat_x + dx / len * 30f), Math.round(threat_y + dy / len * 30f)};
+            int size = ai.map().getSize();
+            move(u, Math.clamp(to[0], 0, size - 1), Math.clamp(to[1], 0, size - 1));
+        }
+        return true;
+    }
+
+    /** Whether the attacking army is holding outside enemy towers for the chieftain's stun. */
+    boolean sieging() {
+        return mode == Mode.ATTACK && siege_start >= 0f;
+    }
+
+    private void endSiege() {
+        if (siege_start >= 0f)
+            ai.log(String.format("siege over after %.0fs", ai.time() - siege_start));
+        siege_start = -1f;
+        siege_assign.clear();
+    }
+
+    /**
+     * Takes manned towers apart without walking into their throws: the army waits just outside their reach until the
+     * chieftain stuns them from his standoff, then the whole army pulls the stunned towers down in the ten seconds
+     * before they wake. Returns whether the siege has the army's orders this tick.
+     */
+    private boolean siege(@NonNull List<@NonNull Unit> army, int @NonNull [] c, float total) {
+        Intel intel = ai.intel();
+        float now = ai.time();
+        List<Building> awake = new ArrayList<>();
+        List<Building> helpless = new ArrayList<>();
+        for (Building t : intel.enemy_towers) {
+            if (!Intel.isTowerManned(t) || MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) > 34 * 34)
+                continue;
+            if (Intel.isTowerActive(t))
+                awake.add(t);
+            else
+                helpless.add(t);
+        }
+        // A field army is fought as usual; a siege is for towers.
+        float field = siege_start >= 0f ? .7f : .5f;
+        if ((awake.isEmpty() && helpless.isEmpty()) || enemyStrengthNear(c[0], c[1], 30) > field * total
+                || total < 10f) {
+            endSiege();
+            return false;
+        }
+        Unit chief = intel.chieftain;
+        boolean stunner = chief != null && !chief.isDead() && chief.getHitPoints() > 24
+                && ai.owner().getRace() == ai.owner().getWorld().getRacesResources().getRace(
+                        com.oddlabs.tt.model.RacesResources.RACE_VIKINGS);
+        float since = ai.chieftain().sinceCast();
+        // The towers to go for now: stunned ones, nearly fallen ones, and the ones our stun is about to land on (the
+        // walk in takes most of the ten seconds a stun lasts, so the army sets off while the horn is still up).
+        List<Building> goals = new ArrayList<>(helpless);
+        for (Building t : awake) {
+            boolean weak = t.getHitPoints() <= 50 && siege_assign.containsValue(t);
+            boolean about_to = stunner && since >= 1.8f && since < 4.5f && MapAnalysis.dist2(chief.getGridX(),
+                    chief.getGridY(), t.getGridX(), t.getGridY()) <= 300;
+            if (weak || about_to)
+                goals.add(t);
+        }
+        siege_assign.entrySet().removeIf(e -> e.getKey().isDead() || !goals.contains(e.getValue()));
+        if (!goals.isEmpty()) {
+            if (siege_start < 0f)
+                siege_start = now;
+            siege_progress = now;
+            if (now - last_pull_log >= 5f) {
+                last_pull_log = now;
+                int hp = 0;
+                for (Building t : goals)
+                    hp += t.getHitPoints();
+                ai.log(String.format("pulling down %d towers (%d stunned, %d hp) with %.1f", goals.size(),
+                        helpless.size(), hp, total));
+            }
+            pullDown(army, goals);
+            return true;
+        }
+        // Worth waiting for a stun that is at most half a recharge away, or one on its way down.
+        boolean pending = since < 5f;
+        if (!stunner || (!pending
+                && chief.getMagicProgress(com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_STUN) < .5f)
+                || now < siege_cooldown) {
+            endSiege();
+            return false;
+        }
+        if (siege_start < 0f) {
+            siege_start = now;
+            siege_progress = now;
+            ai.log(String.format("siege of %d towers with %.1f", awake.size(), total));
+        }
+        if (now - siege_progress > ai.strategy().siege_patience) {
+            ai.log("siege gives up");
+            siege_cooldown = now + 60f;
+            endSiege();
+            return false;
+        }
+        siege_assign.clear();
+        // Wait close in, just outside the nearest tower's reach, so the walk in fits inside the stun.
+        Building first = null;
+        int first_d = Integer.MAX_VALUE;
+        for (Building t : awake) {
+            int d = MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]);
+            if (d < first_d) {
+                first_d = d;
+                first = t;
+            }
+        }
+        int hx = c[0];
+        int hy = c[1];
+        if (first != null && first_d > 0) {
+            float len = (float) Math.sqrt(first_d);
+            hx = first.getGridX() + Math.round((c[0] - first.getGridX()) / len * (SIEGE_HOLD + 1));
+            hy = first.getGridY() + Math.round((c[1] - first.getGridY()) / len * (SIEGE_HOLD + 1));
+        }
+        int[] hold = outOfReach(hx, hy, awake);
+        int r2 = TOWER_REACH * TOWER_REACH;
+        for (Unit u : army) {
+            if (Intel.isStunned(u))
+                continue;
+            boolean exposed = false;
+            for (Building t : awake)
+                exposed |= MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY()) <= r2;
+            // Inside a tower's reach even a fight is not worth staying for; outside, fight whatever comes out.
+            if (exposed)
+                move(u, hold[0], hold[1]);
+            else
+                attackGround(u, hold[0], hold[1], false);
+        }
+        return true;
+    }
+
+    /** A point near (x, y) at least SIEGE_HOLD cells from every given tower. */
+    private int @NonNull [] outOfReach(int x, int y, @NonNull List<@NonNull Building> towers) {
+        for (int pass = 0; pass < 4; pass++) {
+            Building near = null;
+            int best = SIEGE_HOLD * SIEGE_HOLD;
+            for (Building t : towers) {
+                int d = MapAnalysis.dist2(x, y, t.getGridX(), t.getGridY());
+                if (d < best) {
+                    best = d;
+                    near = t;
+                }
+            }
+            if (near == null)
+                break;
+            float dx = x - near.getGridX();
+            float dy = y - near.getGridY();
+            if (dx * dx + dy * dy < 1f) {
+                dx = staging_x - near.getGridX();
+                dy = staging_y - near.getGridY();
+            }
+            float len = Math.max(.1f, (float) Math.sqrt(dx * dx + dy * dy));
+            x = near.getGridX() + Math.round(dx / len * (SIEGE_HOLD + 1));
+            y = near.getGridY() + Math.round(dy / len * (SIEGE_HOLD + 1));
+        }
+        int size = ai.map().getSize();
+        return new int[]{Math.clamp(x, 0, size - 1), Math.clamp(y, 0, size - 1)};
+    }
+
+    /**
+     * Sends the army at stunned towers, the nearest warriors to each, a dozen or so per tower: at three quarters of a
+     * hit for two points each they bring a hundred points down in moments.
+     */
+    private void pullDown(@NonNull List<@NonNull Unit> army, @NonNull List<@NonNull Building> helpless) {
+        List<Unit> free = new ArrayList<>();
+        for (Unit u : army)
+            if (!Intel.isStunned(u) && !u.isDead())
+                free.add(u);
+        int per = Math.max(6, Math.min(14, free.size() / helpless.size()));
+        for (Building t : helpless) {
+            free.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), t.getGridX(),
+                    t.getGridY()), MapAnalysis.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY())));
+            List<Unit> squad = new ArrayList<>();
+            for (int k = 0; k < per && !free.isEmpty(); k++) {
+                Unit u = free.removeFirst();
+                if (siege_assign.get(u) == t)
+                    continue;
+                siege_assign.put(u, t);
+                squad.add(u);
+            }
+            if (!squad.isEmpty())
+                ai.owner().setTarget(squad.toArray(new Selectable<?>[0]), t, Action.ATTACK, false);
+        }
+        // The rest fight whatever is around the towers.
+        if (!free.isEmpty()) {
+            int[] tc = centroid(new ArrayList<>(helpless));
+            for (Unit u : free)
+                attackGround(u, tc[0], tc[1], true);
+        }
     }
 
     /** Enemy warriors and chieftains lying stunned within radius cells of a spot. */
@@ -1870,7 +2710,7 @@ final class Military {
                 if (MapAnalysis.dist2(w.getGridX(), w.getGridY(), e.getGridX(), e.getGridY()) > r2)
                     continue;
                 float p = hitChance(w, e);
-                float score = Combat.lastingValue(e) * p * survive.getOrDefault(e, 1f);
+                float score = throwValue(w, e) * p * survival(survive, e);
                 if (score > best_score) {
                     best_score = score;
                     best = e;
@@ -1879,7 +2719,8 @@ final class Military {
             }
             if (best == null)
                 continue;
-            survive.merge(best, 1f - best_p, (a, b) -> a * b);
+            if (!isMultiHit(best))
+                survive.merge(best, 1f - best_p, (a, b) -> a * b);
             hunt_targets.put(w, best);
             last_order.put(w, ai.time());
             ai.intel().warrior_states.put(w, WarriorState.FIGHT);
@@ -1887,6 +2728,114 @@ final class Military {
             targeted.add(w);
         }
         return targeted;
+    }
+
+    /** A chieftain takes many hits; everyone else falls to one. */
+    private boolean isMultiHit(@NonNull Unit e) {
+        return ai.strategy().chief_per_hit && e.getAbilities().hasAbilities(Abilities.MAGIC);
+    }
+
+    /** Chance a target is still standing after the throws already on their way; chieftains take more than one. */
+    private float survival(@NonNull Map<Unit, Float> survive, @NonNull Unit e) {
+        return isMultiHit(e) ? 1f : survive.getOrDefault(e, 1f);
+    }
+
+    /**
+     * What one throw at an enemy is worth, in iron warriors. A chieftain's kill is worth about 25 of them, spread
+     * over the hits his remaining hit points take (an axe does 2, a rock axe 1): little while he is healthy, a lot
+     * when he is nearly down.
+     */
+    private float throwValue(@NonNull Unit thrower, @NonNull Unit e) {
+        if (!isMultiHit(e))
+            return Combat.lastingValue(e);
+        int damage = thrower.getAbilities().hasAbilities(Abilities.THROW)
+                && Intel.warriorType(thrower) != WarriorType.ROCK ? 2 : 1;
+        int hits = Math.max(1, (e.getHitPoints() + damage - 1) / damage);
+        return Math.min(6f, 25f / hits);
+    }
+
+    /** Cells within which a tower's garrison throws. */
+    private static final int TOWER_CELLS = 15;
+
+    /**
+     * Gives each manned tower its target, as a player can order it: the enemy in range worth most times the chance
+     * to hit it times the chance it survives what other towers already throw at it. Peons hacking at one of our towers
+     * come first. A target is kept while it lives and stays in range.
+     */
+    private void towerFire() {
+        if (!ai.strategy().tower_fire)
+            return;
+        Intel intel = ai.intel();
+        tower_targets.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead());
+        Map<Unit, Float> survive = new LinkedHashMap<>();
+        int r2 = TOWER_CELLS * TOWER_CELLS;
+        for (Building t : intel.towers) {
+            if (!t.isComplete() || t.getUnitCount() == 0)
+                continue;
+            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
+                continue;
+            Unit current = tower_targets.get(t);
+            if (current != null && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(),
+                    current.getGridY()) <= r2) {
+                survive.merge(current, 1f - towerHitChance(gunner, t, current), (a, b) -> a * b);
+                continue;
+            }
+            Unit best = null;
+            float best_score = 0f;
+            float best_p = 0f;
+            for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
+                for (Unit e : group) {
+                    if (e.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) > r2)
+                        continue;
+                    float value = throwValue(gunner, e);
+                    if (group == intel.enemy_peons && nearOwnTower(e))
+                        value = 1.5f;
+                    float p = towerHitChance(gunner, t, e);
+                    float score = value * p * survival(survive, e);
+                    if (score > best_score) {
+                        best_score = score;
+                        best = e;
+                        best_p = p;
+                    }
+                }
+            }
+            if (best == null) {
+                tower_targets.remove(t);
+                continue;
+            }
+            if (!isMultiHit(best))
+                survive.merge(best, 1f - best_p, (a, b) -> a * b);
+            tower_targets.put(t, best);
+            ai.owner().setTarget(Selectable.newArray(t), best, Action.ATTACK, false);
+        }
+    }
+
+    private boolean nearOwnTower(@NonNull Unit e) {
+        for (Building t : ai.intel().towers)
+            if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) <= 3 * 3)
+                return true;
+        return false;
+    }
+
+    /** A tower's garrison throws with three times the usual accuracy. */
+    private float towerHitChance(@NonNull Unit gunner, @NonNull Building tower, @NonNull Unit dst) {
+        MapAnalysis map = ai.map();
+        float dz = map.height(tower.getGridX(), tower.getGridY()) - map.height(dst.getGridX(), dst.getGridY());
+        float terrain = Math.clamp(dz / 80f, -.25f, .25f);
+        float p = 3f * (gunner.getOwner().getHitBonus() + terrain + baseHitChance(
+                gunner)) * (1f - dst.getDefenseChance());
+        return Math.clamp(p, 0f, 1f);
+    }
+
+    private static float baseHitChance(@NonNull Unit src) {
+        if (!src.getAbilities().hasAbilities(Abilities.THROW))
+            return .2f;
+        return switch (Intel.warriorType(src)) {
+            case ROCK -> .5f;
+            case IRON -> .75f;
+            case CHICKEN -> .95f;
+        };
     }
 
     /** Chance that a throw from src hits dst, as the game rolls it. */

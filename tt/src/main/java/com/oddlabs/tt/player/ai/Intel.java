@@ -331,6 +331,15 @@ final class Intel {
     }
 
     /** Gatherers of a type working for the given armory (or for whichever armory is nearest their supply). */
+    /** Gatherers of a kind working for exactly this building. */
+    int countLinkedGatherers(@NonNull PeonState state, @NonNull Building armory) {
+        int n = 0;
+        for (Map.Entry<Unit, PeonState> e : peon_states.entrySet())
+            if (e.getValue() == state && gather_buildings.get(e.getKey()) == armory)
+                n++;
+        return n;
+    }
+
     int countGatherers(@NonNull PeonState state, @Nullable Building armory) {
         int n = 0;
         for (Map.Entry<Unit, PeonState> e : peon_states.entrySet()) {

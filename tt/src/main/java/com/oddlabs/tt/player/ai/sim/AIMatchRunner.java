@@ -63,6 +63,9 @@ public final class AIMatchRunner {
     private static String log_dir;
     /** Race of each player slot: v for vikings, n for natives; slots beyond the string are vikings. */
     private static String races = "vv";
+    /** In lineup games: each team's material at the end of the last game, and whether teams are ranked by it. */
+    private static boolean lineup_mode;
+    private static float[] last_team_material = new float[0];
 
     public static void main(String[] args) throws IOException {
         int games = 1;
@@ -76,6 +79,7 @@ public final class AIMatchRunner {
         int size = 1024;
         int vs = 1;
         boolean ffa = false;
+        String lineup = null;
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
                 case "--games" -> games = Integer.parseInt(args[++i]);
@@ -99,6 +103,7 @@ public final class AIMatchRunner {
                 case "--log" -> log_dir = args[++i];
                 case "--vs" -> vs = Integer.parseInt(args[++i]);
                 case "--ffa" -> ffa = true;
+                case "--lineup" -> lineup = args[++i];
                 case "--size" -> size = switch (args[++i]) {
                     case "small" -> 256;
                     case "medium" -> 512;
@@ -119,6 +124,10 @@ public final class AIMatchRunner {
 
         if (battle != null) {
             BattleLab.run(createWorld(seed, size), battle.split(","));
+            System.exit(0);
+        }
+        if (lineup != null) {
+            playLineup(lineup, games, seed, minutes, size, dump_dir, verbose);
             System.exit(0);
         }
         int wins_a = 0;
@@ -148,6 +157,58 @@ public final class AIMatchRunner {
                 "SUMMARY " + a + "(A) " + wins_a + " - " + wins_b + " " + b + "(B), draws " + (games - wins_a - wins_b) + String.format(
                         " score %+.2f", score_a / games));
         System.exit(0);
+    }
+
+    /**
+     * Team games from a lineup like {@code "expert,expert/class:x.UltraAI,class:x.UltraAI"}: teams separated by '/',
+     * players within a team by ','. The players rotate through the start positions from game to game, so over as many
+     * games as there are players each takes every position once.
+     */
+    private static void playLineup(String lineup, int games, int seed, int minutes, int size, String dump_dir,
+            boolean verbose) throws IOException {
+        lineup_mode = true;
+        String[] team_specs = lineup.split("/");
+        java.util.List<String> order = new java.util.ArrayList<>();
+        java.util.List<Integer> order_teams = new java.util.ArrayList<>();
+        String[] names = new String[team_specs.length];
+        for (int t = 0; t < team_specs.length; t++) {
+            String[] members = team_specs[t].split(",");
+            StringBuilder name = new StringBuilder();
+            for (String m : members) {
+                order.add(m);
+                order_teams.add(t);
+                name.append(name.length() == 0 ? "" : "+").append(label(m));
+            }
+            names[t] = name.toString();
+        }
+        int n = order.size();
+        int[] wins = new int[team_specs.length];
+        int draws = 0;
+        for (int g = 0; g < games; g++) {
+            int shift = g % n;
+            int game_seed = seed + g / n;
+            String[] ais = new String[n];
+            int[] teams = new int[n];
+            for (int i = 0; i < n; i++) {
+                ais[i] = order.get((i + shift) % n);
+                teams[i] = order_teams.get((i + shift) % n);
+            }
+            int winner = play(game_seed, minutes, ais, teams, 0, size, dump_dir, verbose);
+            if (winner >= 0)
+                wins[winner]++;
+            else
+                draws++;
+            StringBuilder material = new StringBuilder();
+            for (int t = 0; t < last_team_material.length; t++)
+                material.append(String.format(" %s=%.0f", names[t], last_team_material[t]));
+            System.out.println(
+                    "GAME " + g + " seed=" + game_seed + " shift=" + shift + " winner=" + (winner >= 0 ? "team" + winner + "(" + names[winner] + ")" : "draw") + " material" + material);
+        }
+        StringBuilder line = new StringBuilder("LINEUP");
+        for (int t = 0; t < names.length; t++)
+            line.append(" team").append(t).append("(").append(names[t]).append(")=").append(wins[t]);
+        line.append(" draws=").append(draws).append(" games=").append(games);
+        System.out.println(line);
     }
 
     private static World createWorld(int seed, int size) {
@@ -269,7 +330,27 @@ public final class AIMatchRunner {
         }
         last_log_ratio = winner == teams[a_slot] ? 3f : winner != -1 ? -3f : Math.clamp((float) Math.log(
                 (v0 + 1f) / (v1 + 1f)), -3f, 3f);
-        if (winner == -1) {
+        if (lineup_mode) {
+            int nt = 0;
+            for (int t : teams)
+                nt = Math.max(nt, t + 1);
+            last_team_material = new float[nt];
+            for (int i = 0; i < players.length; i++)
+                last_team_material[teams[i]] += material(players[i]);
+            if (winner == -1) {
+                // Out of time: the team with clearly more material than any other wins.
+                int best = 0;
+                for (int t = 1; t < nt; t++)
+                    if (last_team_material[t] > last_team_material[best])
+                        best = t;
+                boolean clear = true;
+                for (int t = 0; t < nt; t++)
+                    if (t != best && last_team_material[best] <= 1.5f * last_team_material[t])
+                        clear = false;
+                if (clear)
+                    winner = best;
+            }
+        } else if (winner == -1) {
             // Out of time: the side with clearly more material wins.
             if (v0 > 1.5f * v1)
                 winner = teams[a_slot];
@@ -384,11 +465,20 @@ public final class AIMatchRunner {
 
     /** Short player name for an AI spec: the class's simple name for class specs. */
     private static String label(String type) {
+        if (type.equals("expert"))
+            return "Expert";
+        if (type.equals("hard"))
+            return "Hard";
         if (!type.startsWith("class:"))
             return type;
         String spec = type.substring("class:".length());
         int colon = spec.indexOf(':');
         String name = colon < 0 ? spec : spec.substring(0, colon);
+        // Other projects' AIs by project, not class: fable's is called HardAI, easily mistaken for the stock one.
+        if (name.contains(".fable."))
+            return "Fable";
+        if (name.contains(".ultra."))
+            return "Ultra";
         return name.substring(name.lastIndexOf('.') + 1);
     }
 

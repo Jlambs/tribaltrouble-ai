@@ -122,7 +122,7 @@ final class SitePlanner {
     Site findArmorySite(@NonNull List<@NonNull Site> reserved) {
         Site best = findArmorySite(reserved, strategy.max_armory_distance, start_field);
         // A start boxed in by cliffs may have nothing worth building on nearby; look further before settling.
-        if (best == null || -best.score > 170f) {
+        if (best == null || -best.score > strategy.armory_far_cost) {
             Site further = findArmorySite(reserved, strategy.max_armory_distance * 2, start_field);
             if (further != null && (best == null || further.score > best.score))
                 best = further;
@@ -137,6 +137,15 @@ final class SitePlanner {
     @Nullable
     Site findExpansionSite(@NonNull List<@NonNull Site> reserved, @NonNull DistanceField from_field) {
         return findArmorySite(reserved, strategy.max_armory_distance, from_field);
+    }
+
+    /**
+     * An expansion site up to twice max_armory_distance from the start, for when the iron around the base is gone;
+     * its score counts the walk, the delay and the exposure besides the gathering.
+     */
+    @Nullable
+    Site findFarExpansionSite(@NonNull List<@NonNull Site> reserved) {
+        return findArmorySite(reserved, strategy.max_armory_distance * 2, start_field);
     }
 
     private @Nullable Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance,

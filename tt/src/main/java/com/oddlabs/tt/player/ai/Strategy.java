@@ -66,6 +66,59 @@ class Strategy {
     boolean stun_patience = true;
     /** Charge enemies lying stunned near the attacking army instead of weighing the odds against them. */
     boolean exploit_stun = true;
+    /** While charging the stunned, let each warrior also pick from the enemies still awake around the army. */
+    boolean charge_mixed = false;
+    /**
+     * When an enemy viking chieftain raises his horn, run the units near the edge of the stun's reach out of it
+     * before it goes off, as a player watching the fight would.
+     */
+    boolean dodge_stun = true;
+    /**
+     * The viking chieftain's other spell, the sonic blast, kills nearly every unit within 18 cells, ours included, and
+     * takes 70 s to charge. Blow it instead of the stun when the enemies in reach are worth blast_ratio times our own
+     * units there and at least blast_min.
+     */
+    boolean blast = false;
+    float blast_ratio = 6f;
+    float blast_min = 12f;
+    /**
+     * Against a strong attack on the base with the blast charged, pull the defenders back out of its reach and send
+     * the chieftain to meet the enemy alone, for up to blast_play_time seconds.
+     */
+    boolean blast_defense = false;
+    float blast_play_time = 14f;
+    /** Past half the blast's charge, hold the stun for it (it still answers an enemy chieftain). */
+    boolean blast_save = false;
+    /**
+     * Warriors too deep inside the stun's reach to get out throw at the winding-up chieftain instead: he stands still,
+     * and his spell dies with him.
+     */
+    boolean hunt_caster = true;
+    /** Cells from the winding-up chieftain within which trapped warriors go for him. */
+    int hunt_caster_cells = 11;
+    /** Defenders charge enemies lying stunned around the threat, as the attacking army does. */
+    boolean defend_exploit_stun = false;
+    /** Keep out of poison fog, the enemy's and our own chieftain's (it hurts his own side too), until it lifts. */
+    boolean dodge_fog = true;
+    /**
+     * The native chieftain's spell: poison fog, or the lightning cloud, which hunts enemies down and cannot be walked
+     * out of.
+     */
+    boolean native_lightning = false;
+    /**
+     * Keep the chieftain just outside the reach of active enemy towers (they throw 16 cells, the stun reaches 18) and
+     * count the towers there as caught: he stuns them without taking a throw.
+     */
+    boolean chief_tower_standoff = true;
+    /**
+     * Watch how many of the enemies in reach each stun actually catches. Against an enemy who runs from the horn
+     * (share below dodge_catch), count only the ones too close to get away, within dodge_core cells, in full.
+     */
+    boolean stun_learn = false;
+    float dodge_catch = .6f;
+    int dodge_core = 10;
+    /** Count towers toward a stun only while the attacking army is near enough to pull them down. */
+    boolean tower_stun_follow_up = true;
 
     /** Chieftain training starts once this many quarters stand and this much time has passed. */
     int chieftain_min_quarters = 3;
@@ -137,9 +190,28 @@ class Strategy {
      * itself is not: the base is hardly ever quiet, and stopping would starve the armory for good.
      */
     boolean gather_under_threat = true;
+    /** Also in a 1v1: on smaller maps the fighting is at the base so often that hiding starves the armory. */
+    boolean gather_threat_1v1 = false;
+    /** A gatherer counts as stuck after this many round trips (at least 70 s) without its load changing; 0 = 70 s. */
+    float stuck_trip_factor = 0f;
 
     /** Open a second armory by fresh iron once the first one's surroundings are mined out. */
     boolean expansion = true;
+    /**
+     * When nothing within max_armory_distance of the armory beats it clearly, look for the expansion twice as far from
+     * the start, counting the walk, the delay and the exposure of the site.
+     */
+    boolean far_expansion = false;
+    /**
+     * Call back the gatherers still working for an armory that is no longer the main one: they walk ever further for
+     * its mined-out surroundings while the new armory waits for hands.
+     */
+    boolean recall_old_gatherers = true;
+    /** Expand for a smaller gain (this share of the current cost instead of three quarters) once iron is this far. */
+    float desperate_expansion = .9f;
+    float desperate_iron_cycle = 150f;
+    /** Look twice as far for the first armory when the best site nearby costs more than this (seconds per warrior). */
+    float armory_far_cost = 170f;
 
     /**
      * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_time: peon
@@ -159,13 +231,104 @@ class Strategy {
      * Order our stunned warriors again: the stun behaviour keeps them frozen, but the order replaces the stun
      * controller, which is what takes away their chance to dodge.
      */
-    boolean restore_dodge = true;
+    boolean restore_dodge = false;
 
     /**
      * Take peons along on attacks against towers: a peon's swing always does 6 damage to a tower, eight times what an
      * iron axe does, so they pull towers down while the army holds the ground or the stun keeps the tower quiet.
      */
     boolean sappers = true;
+
+    /**
+     * When the attack would turn back from towers but the enemy army around it is beaten, hunt the enemy's peons
+     * outside tower cover instead: a base that keeps its peons rebuilds its army in minutes.
+     */
+    boolean pillage = false;
+    /**
+     * Against manned towers with no strong field army about, hold just outside their reach while the chieftain's stun
+     * comes back, stun them from his standoff and tear the stunned towers down with the whole army before they wake.
+     */
+    boolean siege = false;
+    /** Give a siege up after this many seconds without a stun landing on a tower. */
+    float siege_patience = 100f;
+
+    /**
+     * Learn from each attack: one that lost more units than it killed makes the next one wait for 25% more strength
+     * (up to 2.5 times), one that traded well brings the bar back down.
+     */
+    boolean adaptive_caution = true;
+    /**
+     * At the unit cap waiting gains nothing: caution from past attacks eases by this factor every minute spent capped
+     * at home; 1 keeps it.
+     */
+    float caution_decay = 1.1f;
+
+    /**
+     * While the army holds the ground by a besieged building, the sappers raise a tower in range of it and out of
+     * reach of the enemy's towers, and a warrior mans it: it out-ranges every defender and keeps shelling.
+     */
+    boolean creep_towers = false;
+
+    /**
+     * Read what a human player cannot see: the weapons stocked in enemy armories and how far the enemy chieftain's
+     * spell has recharged. Off for fair play: the AI then assumes an enemy chieftain can cast unless it saw him cast
+     * within the recharge time.
+     */
+    boolean hidden_info = false;
+
+    /**
+     * Chickens are few and whoever hunts first gets them: up to chicken_hunters peons hunt from chicken_time on,
+     * two plus one per chicken_pool_div working peons.
+     */
+    int chicken_hunters = 7;
+    float chicken_time = 150f;
+    int chicken_pool_div = 18;
+
+    /**
+     * Point each manned tower at the enemy in range worth most, as a player can: no waiting for its own scan, no
+     * two towers on a doomed target, and peons pulling down our towers first.
+     */
+    boolean tower_fire = true;
+
+    /**
+     * Re-send gatherers whose load has not changed for a long while: the engine can keep one walking to a tree it
+     * cannot reach.
+     */
+    boolean unstick = true;
+
+    /**
+     * Cells the chieftain keeps from the nearest enemy warrior while closing in to stun: inside his 18-cell stun
+     * radius but out of throwing range, so he is not worn down before the spell is ready again. 0 walks right in.
+     */
+    int chief_keep_out = 11;
+    /**
+     * While the stun recharges, keep the chieftain this many cells from every enemy warrior (they throw 8), moving at
+     * once when one comes closer; 0 leaves him in the clump. Enemies value his head highly.
+     */
+    int chief_safe = 0;
+    /** Hit points at which the chieftain walks home to the armory. */
+    int chief_flee_hp = 24;
+
+    /**
+     * Judge a threat in the base by everything within this many cells of it, not just what is inside the base: a few
+     * raiders often walk ahead of the whole army, and chasing them out runs the defenders into it. 0 counts only the
+     * threat itself.
+     */
+    int threat_look = 30;
+
+    /**
+     * Against a strong enemy (at least this share of our defenders), meet him at our buildings and towers instead of
+     * walking out: whoever waits for the other wins most even fights. 0 always walks out, which tested better
+     * against both rival AIs (the posted defenders bunch up for the enemy's stun and let the raiders work).
+     */
+    float hold_ratio = 0f;
+
+    /**
+     * Value a chieftain by what one throw does to him: he has 60 hit points and an axe takes 2, so a healthy one is
+     * a poor target and a wounded one the best on the field. Otherwise he counts as a one-hit kill like a warrior, and
+     * warriors are also sent after him whenever he is near.
+     */
+    boolean chief_per_hit = true;
 
     /** Radius, in grid cells, around own buildings within which enemies count as attacking the base. */
     int base_radius = 28;
@@ -227,6 +390,12 @@ class Strategy {
                 strategy.towers_early_time = 150f;
                 strategy.attack_min_strength = 12f;
                 strategy.chieftain_time = 300f;
+                // The fighting reaches the base early and keeps coming back: a second armory only splits the
+                // economy just as it starts, while two more towers hold the base (medium, vs both rival AIs on two
+                // seed sets each: +.4 to +.7).
+                strategy.expansion = false;
+                strategy.towers_mid = 4;
+                strategy.towers_late = 8;
             }
             case Game.SIZE_ENORMOUS -> {
                 strategy.max_armory_distance = 700;

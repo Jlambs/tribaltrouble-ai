@@ -195,6 +195,7 @@ public final class ExpertAI extends AI {
             next_scan = time + SCAN_PERIOD;
             map().scanSupplies();
         }
+        military().dodgeSpells();
     }
 
     private void initialize() {

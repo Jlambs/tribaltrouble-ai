@@ -68,9 +68,16 @@ final class Economy {
     private @Nullable Project expansion_project;
     private @Nullable Building expansion;
     private float last_expansion_check = -100f;
+    private float last_old_recall = -100f;
     private boolean chieftain_topup;
     private int project_counter;
     private final List<@NonNull Building> forward_towers = new ArrayList<>();
+    /** Per gatherer: the load it carried and since when, to catch peons stuck walking to a supply. */
+    private final Map<@NonNull Unit, float @NonNull []> gather_progress = new LinkedHashMap<>();
+    /** Supplies a gatherer got stuck on, avoided until the time given. */
+    private final Map<@NonNull Supply, Float> bad_supplies = new LinkedHashMap<>();
+    private int unstuck;
+    private float last_unstuck_log;
     private boolean rush_alert;
     private float rush_alert_time;
     private boolean had_armory;
@@ -518,7 +525,7 @@ final class Economy {
                 target_towers += enemies - 1;
             forward_towers.removeIf(Building::isDead);
             int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
-                    false) - forward_towers.size() - countForward();
+                    false) - forward_towers.size() - countForward() - ai.military().creepTowerCount();
             if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) == 0
                     && ai.owner().canBuild(Race.BUILDING_TOWER)) {
                 List<int[]> existing = new ArrayList<>();
@@ -625,7 +632,8 @@ final class Economy {
             int id = b.getTemplate().getTemplateID();
             if (id == Race.BUILDING_QUARTERS)
                 enemy_quarters++;
-            else if (id == Race.BUILDING_ARMORY)
+            // A foundation is no commitment (a booming opening lays one out early too): only a standing armory is.
+            else if (id == Race.BUILDING_ARMORY && b.isComplete())
                 enemy_armory = true;
         }
         if (intel.enemy_warriors.size() < 6 && !(enemy_armory && enemy_quarters < ai.strategy().rush_quarters))
@@ -765,7 +773,8 @@ final class Economy {
 
     /** Against a single enemy, threats pass and hiding is cheap; against several the base is never quiet. */
     private boolean gatherUnderThreat() {
-        return ai.strategy().gather_under_threat && (ai.enemiesAlive() > 1 || armsRace() || underPressure());
+        return ai.strategy().gather_under_threat && (ai.enemiesAlive() > 1 || armsRace() || underPressure()
+                || ai.strategy().gather_threat_1v1);
     }
 
     private void manageQuarters() {
@@ -828,13 +837,23 @@ final class Economy {
         if (iron_cycle < 70f && current < 110f)
             return;
         Site site = ai.planner().findExpansionSite(reservedSites(null), armory_field);
+        float better = Float.MAX_VALUE;
+        if (site != null)
+            better = ai.planner().warriorGatherCost(ai.map().computeField(site.x, site.y, 220));
+        if (ai.strategy().far_expansion && better > .75f * current) {
+            // The whole neighbourhood is mined out: fresh iron further away pays for the walk.
+            Site far = ai.planner().findFarExpansionSite(reservedSites(null));
+            if (far != null && -far.score < Math.min(better, .75f * current)) {
+                site = far;
+                better = -far.score;
+            }
+        }
         if (site == null)
             return;
-        DistanceField field = ai.map().computeField(site.x, site.y, 220);
-        float better = ai.planner().warriorGatherCost(field);
         ai.log(String.format("expansion check: current armory %.0f (iron %.0fs), best site %d,%d %.0f", current,
                 iron_cycle, site.x, site.y, better));
-        if (better > .75f * current)
+        float gain = iron_cycle >= ai.strategy().desperate_iron_cycle ? ai.strategy().desperate_expansion : .75f;
+        if (better > gain * current)
             return;
         Project p = addProject(Race.BUILDING_ARMORY, site, 1);
         expansion_project = p;
@@ -865,6 +884,21 @@ final class Economy {
      */
     private void drainSecondary(@NonNull Building armory) {
         Player owner = ai.owner();
+        if (ai.strategy().recall_old_gatherers && ai.time() - last_old_recall >= 10f) {
+            last_old_recall = ai.time();
+            PeonState[] states = {PeonState.GATHER_TREE, PeonState.GATHER_IRON, PeonState.GATHER_ROCK, PeonState.GATHER_CHICKEN};
+            Class<?>[] types = {TreeSupply.class, IronSupply.class, RockSupply.class, RubberSupply.class};
+            int recalled = 0;
+            for (int t = 0; t < states.length; t++) {
+                int n = ai.intel().countLinkedGatherers(states[t], armory);
+                if (n > 0) {
+                    owner.recallGatherers(armory, supplyClass(types[t]), n);
+                    recalled += n;
+                }
+            }
+            if (recalled > 0)
+                ai.log("recalling " + recalled + " gatherers of the old armory at " + armory.getGridX() + "," + armory.getGridY());
+        }
         int workers = armory.getUnitContainer().getNumSupplies();
         if (workers == 0)
             return;
@@ -987,8 +1021,10 @@ final class Economy {
         // A chicken warrior is worth two iron ones, so chickens are hunted as soon as there are peons to spare.
         want_chicken = 0;
         int chickens_left = countChickens();
-        if (ai.owner().canUseRubber() && ai.time() > 150f && pool > 10 && chickens_left > 0)
-            want_chicken = Math.min(Math.min(7, chickens_left), 2 + pool / 18);
+        Strategy strategy = ai.strategy();
+        if (ai.owner().canUseRubber() && ai.time() > strategy.chicken_time && pool > 10 && chickens_left > 0)
+            want_chicken = Math.min(Math.min(strategy.chicken_hunters, chickens_left),
+                    2 + pool / strategy.chicken_pool_div);
         int rock_stock = armory.getSupplyContainer(RockSupply.class).getNumSupplies();
         int chicken_stock = armory.getSupplyContainer(RubberSupply.class).getNumSupplies();
         want_rock = (want_chicken > 0 || chicken_stock > 0) && rock_stock < 6 ? 1 + want_chicken / 4 : 0;
@@ -1122,6 +1158,7 @@ final class Economy {
                 ai.owner().recallGatherers(armory, supplyClass(types[t]), have[t] - want[t]);
         }
         retargetGatherers(armory);
+        unstickGatherers(armory);
         int workers = armory.getUnitContainer().getNumSupplies();
         int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
         if (deploy_for_gathering > 0 && workers > 3 && pending == 0)
@@ -1230,6 +1267,47 @@ final class Economy {
     }
 
     /**
+     * A gatherer whose load has not changed for 70 seconds is stuck, most often walking to a tree it cannot reach: it
+     * is sent to another supply and the old one is avoided for two minutes.
+     */
+    private void unstickGatherers(@NonNull Building armory) {
+        if (!ai.strategy().unstick)
+            return;
+        Intel intel = ai.intel();
+        float now = ai.time();
+        gather_progress.keySet().removeIf(Unit::isDead);
+        bad_supplies.values().removeIf(until -> until < now);
+        for (Unit peon : intel.peons) {
+            PeonState s = intel.peon_states.get(peon);
+            Class<?> type = s == PeonState.GATHER_TREE ? TreeSupply.class : s == PeonState.GATHER_IRON ? IronSupply.class : s == PeonState.GATHER_ROCK ? RockSupply.class : null;
+            if (type == null) {
+                gather_progress.remove(peon);
+                continue;
+            }
+            int amount = peon.getSupplyContainer() != null ? peon.getSupplyContainer().getNumSupplies() : 0;
+            float[] seen = gather_progress.get(peon);
+            if (seen == null || seen[0] != amount) {
+                gather_progress.put(peon, new float[]{amount, now});
+                continue;
+            }
+            // A gatherer on a long walk carries nothing new for a whole trip; only a stall well past it is stuck.
+            float trip = type == IronSupply.class ? iron_cycle : type == TreeSupply.class ? tree_cycle : 0f;
+            if (now - seen[1] < Math.max(70f, ai.strategy().stuck_trip_factor * trip))
+                continue;
+            Supply old = gather_targets.get(peon);
+            if (old != null)
+                bad_supplies.put(old, now + 120f);
+            gather_progress.put(peon, new float[]{amount, now});
+            unstuck++;
+            sendGatherer(peon, type, armory);
+        }
+        if (unstuck > 0 && now - last_unstuck_log > 60f) {
+            last_unstuck_log = now;
+            ai.log(unstuck + " stuck gatherers re-sent so far");
+        }
+    }
+
+    /**
      * Gatherers whose supply ran out walk to whatever is nearest the armory, which piles them onto the same tree.
      * Spread them over the supplies around instead.
      */
@@ -1285,6 +1363,9 @@ final class Economy {
             if (d == DistanceField.UNREACHABLE)
                 continue;
             if (ai.military().threatNear(s.getGridX(), s.getGridY(), 14))
+                continue;
+            Float bad = bad_supplies.get(s);
+            if (bad != null && bad > ai.time())
                 continue;
             int load = supply_load.getOrDefault(s, 0);
             float cost = d + load * load_penalty + (load >= max_load ? 60f : 0f);
