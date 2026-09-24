@@ -26,6 +26,7 @@ public final class RosterTemplate implements Serializable {
         HARD_AI,
         EXPERT_AI,
         ULTRA_AI,
+        FABLE_AI,
     }
 
     public static final class Slot implements Serializable {

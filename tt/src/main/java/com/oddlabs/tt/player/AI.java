@@ -110,6 +110,11 @@ public abstract class AI implements Animated {
         return owner.getWorld().getUnitGrid();
     }
 
+    /** True for the "Hard AI" skirmish opponent (used for achievements and difficulty dependent rules). */
+    public boolean isHardDifficulty() {
+        return false;
+    }
+
     protected final @NonNull Player getOwner() {
         return owner;
     }

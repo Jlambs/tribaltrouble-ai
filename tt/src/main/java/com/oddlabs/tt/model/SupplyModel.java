@@ -70,6 +70,10 @@ public abstract class SupplyModel extends Model implements Supply, Target, Model
         return num_supplies == 0;
     }
 
+    public final int getNumSupplies() {
+        return num_supplies;
+    }
+
     @Override
     public boolean hit() {
         hit_counter++;

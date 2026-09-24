@@ -80,6 +80,11 @@ public final class AdvancedAI extends AI {
     }
 
     @Override
+    public boolean isHardDifficulty() {
+        return difficulty == DIFFICULTY_HARD;
+    }
+
+    @Override
     public void animate(float t) {
         if (!shouldDoAction(t))
             return;

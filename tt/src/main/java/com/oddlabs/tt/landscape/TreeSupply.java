@@ -164,6 +164,10 @@ public final class TreeSupply extends AbstractTreeGroup implements Supply, Targe
         return num_supplies == 0;
     }
 
+    public int getNumSupplies() {
+        return num_supplies;
+    }
+
     @Override
     public boolean hit() {
         hit_counter++;
