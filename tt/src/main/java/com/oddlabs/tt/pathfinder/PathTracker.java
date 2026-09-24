@@ -172,7 +172,20 @@ public final class PathTracker {
     }
 
     private void update() {
-        unit.setPosition(bezier_path.getCurrentX(), bezier_path.getCurrentY());
+        float x = bezier_path.getCurrentX();
+        float y = bezier_path.getCurrentY();
+        // Crash guard only: in a rare deadlock chain the smoothed curve can overshoot off the map, where the landscape
+        // lookup behind setPosition used to throw. Positions the old code accepted are left untouched.
+        HeightMap map = unit_grid.getHeightMap();
+        int patches = map.getPatchesPerWorld();
+        int px = map.coordinateToPatch(x);
+        int py = map.coordinateToPatch(y);
+        if (px < 0 || py < 0 || px >= patches || py >= patches) {
+            float max = map.getMetersPerWorld() - 0.01f;
+            x = Math.max(0f, Math.min(max, x));
+            y = Math.max(0f, Math.min(max, y));
+        }
+        unit.setPosition(x, y);
         unit.setDirection(bezier_path.getCurrentDirectionX(), bezier_path.getCurrentDirectionY());
     }
 

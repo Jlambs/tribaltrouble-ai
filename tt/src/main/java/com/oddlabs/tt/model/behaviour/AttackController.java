@@ -30,6 +30,10 @@ public final class AttackController extends Controller {
         this.allocation = allocation;
     }
 
+    public Selectable<?> getTarget() {
+        return target;
+    }
+
     private boolean canAttack() {
         return unit.isCloseEnough(unit.getRange(target), target, UnitGrid.LAND) || unit.isCloseEnough(unit.getRange(
                 target), target, UnitGrid.SEA);

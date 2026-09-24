@@ -7,6 +7,7 @@ import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.net.PeerHub;
 import com.oddlabs.tt.player.AdvancedAI;
 import com.oddlabs.tt.player.ai.ExpertAI;
+import com.oddlabs.tt.player.ultra.UltraAI;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInfo;
 import com.oddlabs.tt.steam.SteamAchievementNames;
@@ -89,7 +90,8 @@ public final class GameOverTrigger implements Animated {
             }
 
             boolean hard_or_better = (current.getAI() instanceof AdvancedAI ai
-                    && ai.getDifficulty() == AdvancedAI.DIFFICULTY_HARD) || current.getAI() instanceof ExpertAI;
+                    && ai.getDifficulty() == AdvancedAI.DIFFICULTY_HARD) || current.getAI() instanceof ExpertAI
+                    || current.getAI() instanceof UltraAI;
             if (current != local_player && hard_or_better) {
                 if (ai_team == -1) {
                     ai_team = current.getPlayerInfo().getTeam();

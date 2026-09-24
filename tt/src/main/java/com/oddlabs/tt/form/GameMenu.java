@@ -72,6 +72,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
     private static final int COMPUTER_NORMAL_INDEX = 3;
     private static final int COMPUTER_HARD_INDEX = 4;
     private static final int COMPUTER_EXPERT_INDEX = 5;
+    private static final int COMPUTER_ULTRA_INDEX = 6;
 
     private static final int SEND_BUTTON_WIDTH = 60;
 
@@ -214,6 +215,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 case NORMAL_AI -> applyAi(server, i, race, team, PlayerSlot.AI_NORMAL);
                 case HARD_AI -> applyAi(server, i, race, team, PlayerSlot.AI_HARD);
                 case EXPERT_AI -> applyAi(server, i, race, team, PlayerSlot.AI_EXPERT);
+                case ULTRA_AI -> applyAi(server, i, race, team, PlayerSlot.AI_ULTRA);
             }
         }
     }
@@ -262,6 +264,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
             case COMPUTER_NORMAL_INDEX:
             case COMPUTER_HARD_INDEX:
             case COMPUTER_EXPERT_INDEX:
+            case COMPUTER_ULTRA_INDEX:
                 assert !rated;
                 boolean new_ai = player.getType() != PlayerSlot.AI;
                 if (new_ai || race_changed || team_changed || difficulty_changed) {
@@ -417,6 +420,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
         PulldownItem<Void> computer_normal_item = new PulldownItem<>(i18n("normal_ai"));
         PulldownItem<Void> computer_hard_item = new PulldownItem<>(i18n("hard_ai"));
         PulldownItem<Void> computer_expert_item = new PulldownItem<>(i18n("expert_ai"));
+        PulldownItem<Void> computer_ultra_item = new PulldownItem<>(i18n("ultra_ai"));
         pulldown_menu.addItem(open_item);
         pulldown_menu.addItem(closed_item);
         if (!rated) {
@@ -424,6 +428,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
             pulldown_menu.addItem(computer_normal_item);
             pulldown_menu.addItem(computer_hard_item);
             pulldown_menu.addItem(computer_expert_item);
+            pulldown_menu.addItem(computer_ultra_item);
         }
         PulldownButton<?> pulldown_button = new PulldownButton<>(gui_root, pulldown_menu, CLOSED_INDEX, 150);
         slot_buttons[index] = pulldown_button;

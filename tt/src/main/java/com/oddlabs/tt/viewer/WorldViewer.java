@@ -34,6 +34,7 @@ import com.oddlabs.tt.net.PlayerSlot;
 import com.oddlabs.tt.player.AI;
 import com.oddlabs.tt.player.AdvancedAI;
 import com.oddlabs.tt.player.ai.ExpertAI;
+import com.oddlabs.tt.player.ultra.UltraAI;
 import com.oddlabs.tt.player.NativeChieftainAI;
 import com.oddlabs.tt.player.PassiveAI;
 import com.oddlabs.tt.player.Player;
@@ -321,6 +322,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
                     expert.logTo(Settings.getSettings().last_event_log_dir);
                     ai = expert;
                 }
+                case PlayerSlot.AI_ULTRA -> ai = new UltraAI(player, unit_info);
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
                 }
