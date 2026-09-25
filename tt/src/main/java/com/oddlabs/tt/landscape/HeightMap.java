@@ -303,8 +303,8 @@ public final class HeightMap {
         y_f *= inv_meters_per_grid_unit;
 
         int size = getGridUnitsPerWorld();
-        x_f = (x_f % size + size) % size;
-        y_f = (y_f % size + size) % size;
+        x_f = wrap(x_f, size);
+        y_f = wrap(y_f, size);
 
         int x0 = (int) x_f;
         int y0 = (int) y_f;
@@ -323,6 +323,22 @@ public final class HeightMap {
         float h1 = h01 * (1 - dx) + h11 * dx;
 
         return h0 * (1 - dy) + h1 * dy;
+    }
+
+    /**
+     * Exactly {@code (v % size + size) % size}, bit for bit, but float remainders are slow and units call this nine
+     * times per move: {@code v % size} is {@code v} when {@code |v| < size}, and for {@code t} in
+     * {@code [size, 2 * size]}, {@code t % size} is {@code t - size} (exact) except {@code 0} at {@code 2 * size}.
+     */
+    private static float wrap(float v, int size) {
+        float t = (v > -size && v < size ? v : v % size) + size;
+        if (t >= size) {
+            t -= size;
+            if (t >= size) {
+                t -= size;
+            }
+        }
+        return t;
     }
 
     public float getNearestHeight(float x_f, float y_f) {
