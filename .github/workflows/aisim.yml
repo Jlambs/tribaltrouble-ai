@@ -1,0 +1,28 @@
+name: aisim
+
+# Checks the aisim branches: headless and the AI branches made from it. It runs on every branch that contains this
+# file, which upstream's branches do not. Upstream's gradle.yml only runs for main and release, so this is the only
+# CI these branches get. It plays no games: they need a desktop session with OpenGL and audio.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 26
+        uses: actions/setup-java@v4
+        with:
+          java-version: '26'
+          distribution: 'temurin'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Seed Spotless eclipse formatter p2 cache (avoids download.eclipse.org dependency)
+        run: mkdir -p ~/.m2/repository/dev/equo && cp -r ci/p2-data ~/.m2/repository/dev/equo/
+      - name: Verify code is formatted
+        run: ./gradlew spotlessCheck
+      - name: Build the game and the harness, and lint every AI package
+        run: ./aisim.sh build
