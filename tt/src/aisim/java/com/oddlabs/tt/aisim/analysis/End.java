@@ -12,7 +12,10 @@ import java.util.Map;
 public enum End {
     /** One team has no player left standing, by the engine's rule or by the harness's collapse rule. */
     elim,
-    /** The time limit came first; the teams' strength decides the winner (Match.DECISIVE_MARGIN). */
+    /**
+     * The time limit came first: a draw. (Runs before timeouts were draws gave the game to a team with a strength
+     * margin of 0.10 or more; their rows keep that winner.)
+     */
     timeout,
     /** An exception escaped an AI or the engine while the game ran. */
     crash,

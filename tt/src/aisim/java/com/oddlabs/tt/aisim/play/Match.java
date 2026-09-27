@@ -50,12 +50,6 @@ final class Match {
     private static final int COLLAPSE_UNITS = 8;
     /** Collapsing this long in a row puts a player out, when the job allows collapse. */
     private static final int COLLAPSE_SECONDS = 60;
-    /**
-     * A game that times out is a win only when the margin, (A - B) / (A + B) of the strength of A's team and of the
-     * strongest team against it, is at least this big either way: one of the two has at least 55% of their strength.
-     * Closer games are draws.
-     */
-    private static final double DECISIVE_MARGIN = 0.10;
     /** The tick of the w15 milestone: A's warriors at 15:00. */
     private static final int W15_TICK = 15 * 60 * GameTime.TICKS_PER_SECOND;
     /** The tick of the kd30 milestone: A's kills minus B's at 30:00. */
@@ -315,20 +309,17 @@ final class Match {
             }
         }
 
-        /** The time limit: the margin compares A's team with its strongest enemy, and only a decisive margin wins. */
+        /**
+         * The time limit: a draw, whoever is ahead, so that only beating every opponent wins. The margin, (A - B) /
+         * (A + B) of the strength of A's team and of its strongest enemy, still records who was ahead.
+         */
         void timedOut(double a_strength, double b_strength) {
             end = End.timeout;
+            winner = "draw";
             if (a_strength + b_strength == 0) {
                 margin = 0;
             } else {
                 margin = Math.round((a_strength - b_strength) / (a_strength + b_strength) * 1000) / 1000.0;
-            }
-            if (margin >= DECISIVE_MARGIN) {
-                winner = "a";
-            } else if (margin <= -DECISIVE_MARGIN) {
-                winner = "b";
-            } else {
-                winner = "draw";
             }
         }
 

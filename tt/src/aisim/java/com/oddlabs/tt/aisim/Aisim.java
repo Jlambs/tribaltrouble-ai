@@ -94,10 +94,10 @@ public final class Aisim {
                  is drawn per seed, the same for a seed in every run.
                  Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
             LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
-            GAME: --minutes M --rng N --no-collapse
+            GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.
-            defaults: --b hard --vs 1, vikings, every map setting random, 120 minutes (up to 600), seeds tune from
+            defaults: --b hard --vs 1, vikings, every map setting random, 360 minutes (up to 600), seeds tune from
                       every start, 4 workers (1..16); play: --a hard --seed 1 --side 0
             writing an AI (rules, orders, recipes): tt/src/main/java/com/oddlabs/tt/player/AGENTS.md
             """;
@@ -107,10 +107,10 @@ public final class Aisim {
     private static final Set<String> GAME_OPTIONS = union(MAP_OPTIONS, "a", "b", "vs", "teams", "minutes", "rng",
             "no-collapse", "stale-ok");
     /**
-     * The time limit in game minutes. A limit far below a game's natural length turns late-game play into "draws"
-     * decided by the timeout score (docs/aisim.md, --minutes).
+     * The time limit in game minutes. A game that reaches it is a draw, so only beating every opponent wins; the
+     * default leaves room for slow wins (docs/aisim.md, --minutes).
      */
-    private static final int DEFAULT_MINUTES = 120;
+    private static final int DEFAULT_MINUTES = 360;
     private static final int MAX_MINUTES = 600;
     private static final int DEFAULT_WORKERS = 4;
     private static final int MAX_WORKERS = 16;

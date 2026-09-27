@@ -99,8 +99,8 @@ tuned on: the same two batches with `--seeds holdout`. The maps of a batch are r
 is drawn per seed, so they cover every size and terrain, and they are the same maps in every run ([Maps](#maps)).
 Narrow them to what you are working on, such as `--size small,medium`.
 
-A 120-game batch takes from about a minute (games of the stock AIs end early) to about 20 minutes (most games run to
-the 120-minute limit) with 4 workers on a recent desktop; huge maps take the longest. Run batches in the background
+A 120-game batch takes from about a minute (games of the stock AIs end early) to an hour or more (most games run to
+the 360-minute limit) with 4 workers on a recent desktop; huge maps take the longest. Run batches in the background
 and keep working: they run from their snapshot, so rebuilding cannot disturb them.
 
 ## Opponents
@@ -449,15 +449,15 @@ MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0..10 --
      per seed, the same for a seed in every run.
      Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
 LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
-GAME: --minutes M --rng N --no-collapse
+GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
 ```
 
-- **Defaults**: `--b hard --vs 1`, vikings, every map setting random, 120 minutes, `--seeds tune` from every start,
+- **Defaults**: `--b hard --vs 1`, vikings, every map setting random, 360 minutes, `--seeds tune` from every start,
   4 workers (`--workers` 1..16). `play` also defaults to `--a hard --seed 1 --side 0`; `batch` needs `--a` or
   `--teams`. [Teams](#teams) and [Maps](#maps) explain the players and the map options.
-- **`--minutes`** (1..600, default 120) is the time limit. A limit far below the natural length of a game turns
-  late-game play into "draws" decided by the timeout margin. Games that run to the limit cost the most CPU, so
-  shorten it for quick opening experiments.
+- **`--minutes`** (1..600, default 360) is the time limit. A game that reaches it is a draw, however far ahead
+  either side is: only beating every opponent wins. A limit far below the natural length of a game turns late-game
+  play into draws. Games that run to the limit cost the most CPU, so shorten it for quick opening experiments.
 - **Start positions**: maps are rarely fair (resources can lie much farther from one start than from another), so a
   batch plays every map once from each start of A, rotating the seating ([Teams](#teams)). `--side S` plays only the
   games where A starts in slot S.
@@ -486,7 +486,7 @@ Checked every game second, first match wins:
 |---|---|
 | `elim`, via `engine` | Team A, or every player against it, has no living player by the game's own rule (units, an active chieftain or quarters left). |
 | `elim`, via `collapse` | A player had at most 8 units, no chieftain and no quarters or armory (built or started) for 60 s. The engine's rule would let one surviving peon drag a lost game to the time limit. `--no-collapse` turns it off (the `collapse` event is still recorded). |
-| `timeout` | At `--minutes`: the margin `m = (sA - sB) / (sA + sB)` of the strength of team A and of the strongest team against it (`Player.getStatus()` plus tower garrisons, which that engine score leaves out, summed over a team) decides. A wins if `m >= 0.10`, B if `m <= -0.10` (one of the two has at least 55% of their strength), else it is a draw. |
+| `timeout` | At `--minutes`: a draw, whoever is ahead. The row still records the margin `m = (sA - sB) / (sA + sB)` of the strength of team A and of the strongest team against it (`Player.getStatus()` plus tower garrisons, which that engine score leaves out, summed over a team), as a measure of who was ahead; it decides nothing. |
 | `crash` | An exception escaped an AI or the engine. |
 | `hang` | No simulation tick for 120 s of CPU or 600 s of wall time (an endless loop). |
 | `error` | The game could not be played: an AI could not be created (`ai_init`), an AI was compiled against an engine with other methods (`link error`), or the worker died. A run stops early when its first 3 games all end this way. |
@@ -530,7 +530,8 @@ rng collapse game logs`, where `seats` is each slot's `spec race team`, and `siz
 **Result row** (`results.jsonl`): `v run key seed side slots teams a map mapcode minutes rng collapse snap perturb end
 via winner t checksum score elim kd30 w15 margin A B recorderFailed problem replay wall cpu`. `side` is A's slot,
 `slots` the number of players, `map` the settings in short (`large tropical h2 t10 s10`). `winner` is `a` (team A), `b`,
-`draw`, or null for a game that does not count. Crash, `ai_init` and `link error` rows have every field, with `score`,
+`draw`, or null for a game that does not count; a `timeout` row is always a `draw` (rows written before this rule, when
+the default limit was 120 minutes, gave a timeout to the team with a margin of 0.10 or more, and keep that winner). Crash, `ai_init` and `link error` rows have every field, with `score`,
 `elim`, `kd30`, `w15` and `margin` null. Hang, dead-worker and harness-error rows have only the fields up to `perturb`
 plus `end winner t problem replay`. `t` is the game length, `wall` the wall-clock time and `cpu` the simulation thread's
 CPU time (unlike `wall`, not slowed by other load), all in seconds. `A` and `B` are the final census of team A and of B,
