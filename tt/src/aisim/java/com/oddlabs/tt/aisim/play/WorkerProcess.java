@@ -1,5 +1,6 @@
 package com.oddlabs.tt.aisim.play;
 
+import com.oddlabs.matchmaking.MatchmakingServerInterface;
 import com.oddlabs.tt.aisim.Aisim;
 import com.oddlabs.tt.aisim.build.Snapshot;
 import org.jspecify.annotations.NonNull;
@@ -53,10 +54,21 @@ final class WorkerProcess {
     /**
      * The worker heap for a game. A 1v1 game keeps about 60 MB live even at the unit cap; a larger heap only fills with
      * garbage between collections (memory taken from the other workers), and garbage collection is under 1% of the
-     * time. Games of 1 vs 3 and more, and games on huge maps, get more.
+     * time. Games of 4 players and more, and games on huge maps, get more; games of more than 12 players (beyond the
+     * skirmish menu) get 1 GB, since 16 vs 16 kept 356 MB live with 5090 units and all 32 at the unit cap make 8000.
      */
-    static @NonNull String heap(int vs, int size) {
-        return vs >= 3 || Job.SIZES[size].equals("huge") ? "512m" : "256m";
+    static @NonNull String heap(int players, int size) {
+        if (players > MatchmakingServerInterface.MAX_PLAYERS) {
+            return "1g";
+        }
+        return players >= 4 || Job.SIZES.get(size).equals("huge") ? "512m" : "256m";
+    }
+
+    /** The heap for every game of {@code jobs}: {@link #heap} of the largest. */
+    static @NonNull String heap(@NonNull List<Job> jobs) {
+        int players = jobs.stream().mapToInt(Job::slots).max().orElse(2);
+        int size = jobs.stream().mapToInt(Job::size).max().orElse(0);
+        return heap(players, size);
     }
 
     /**

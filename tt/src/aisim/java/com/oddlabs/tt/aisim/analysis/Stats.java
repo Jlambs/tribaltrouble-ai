@@ -28,7 +28,8 @@ public final class Stats {
         double z = Z95;
         double center = (p + z * z / (2 * n)) / (1 + z * z / n);
         double half = z * Math.sqrt(p * (1 - p) / n + z * z / (4.0 * n * n)) / (1 + z * z / n);
-        return new double[]{center - half, center + half};
+        // clamped: at a score of 0 or 1, rounding leaves the bound a hair outside, which prints as -0.000
+        return new double[]{Math.max(0, center - half), Math.min(1, center + half)};
     }
 
     /**

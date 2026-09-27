@@ -61,12 +61,12 @@ public final class Replay {
         if (until != null) {
             job.put("minutes", until);
         }
-        String matchup = original.get("a") + " vs " + original.get("b") + ", " + original.get("map");
+        String matchup = original.get("teams") + ", " + original.get("map");
         String setup = "seed " + original.get("seed") + ", A in slot " + original.get("side");
         String game = run + " " + key + " (" + matchup + ", " + setup + ")";
         System.out.println("replaying " + game + " on snapshot " + snap + " with AI logs on ...");
         Path natives = dir.resolve("n").resolve("r");
-        String heap = WorkerProcess.heap(job.get("vs").asInt(), job.get("size").asInt());
+        String heap = WorkerProcess.heap(job.get("seats").size(), job.get("size").asInt());
         WorkerProcess worker = new WorkerProcess(worker_log, natives, snap, heap);
         Map<String, Object> row = worker.play(job);
         worker.close();

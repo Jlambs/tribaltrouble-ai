@@ -14,7 +14,8 @@ import java.util.Set;
 
 /**
  * {@code compare BASE VARIANT [VARIANT...]}: runs compared over the same games (same key = same map, start position and
- * world seed), one variant with its base in detail, or several variants as one table.
+ * world seed), one variant with its base in detail, or several variants as one table. The runs may differ only in A's
+ * spec: every other player, the maps and how the games run must be the same.
  */
 public final class Compare {
     /** The paired metrics, all from the result rows. */
@@ -28,8 +29,11 @@ public final class Compare {
     public static int run(@NonNull String base, @NonNull List<String> variants, boolean force) throws IOException {
         Map<?, ?> base_meta = Runs.meta(base);
         List<String> refusals = new ArrayList<>();
+        Map<String, Map<String, Object>> base_rows = byKey(Runs.rows(base));
         for (String variant : variants) {
-            for (String problem : comparabilityProblems(base_meta, Runs.meta(variant))) {
+            List<String> problems = comparabilityProblems(base_meta, Runs.meta(variant));
+            problems.addAll(otherMaps(base_rows, byKey(Runs.rows(variant))));
+            for (String problem : problems) {
                 refusals.add(variants.size() == 1 ? problem : variant + ": " + problem);
             }
         }
@@ -56,8 +60,8 @@ public final class Compare {
         int variant_failed = variant_rows.size() - variant_counted.size();
         List<String> keys = commonKeys(base_counted, variant_counted);
         int identical = identicalGames(base_counted, variant_counted, keys);
-        System.out.printf(Locale.ROOT, "compare %s (A=%s) -> %s (A=%s) | B=%s | %s%n", base, base_meta.get("a"),
-                variant, variant_meta.get("a"), variant_meta.get("b"), variant_meta.get("config"));
+        System.out.printf(Locale.ROOT, "compare %s (A=%s) -> %s (A=%s) | %s | %s%n", base, base_meta.get("a"),
+                variant, variant_meta.get("a"), variant_meta.get("lineup"), variant_meta.get("config"));
         System.out.printf(Locale.ROOT,
                 "pairs %d (base %d/%s, variant %d/%s counted) | identical games %d | failed %d -> %d | snapshot %s -> %s%n",
                 keys.size(), base_counted.size(), base_meta.get("expected"), variant_counted.size(),
@@ -111,8 +115,8 @@ public final class Compare {
     private static int compareMany(@NonNull String base, @NonNull Map<?, ?> base_meta, @NonNull List<String> variants,
             @NonNull String forced) throws IOException {
         Map<String, Map<String, Object>> base_counted = countedByKey(Runs.rows(base));
-        System.out.printf(Locale.ROOT, "compare %s (A=%s) with %d variants | B=%s | %s%n", base, base_meta.get("a"),
-                variants.size(), base_meta.get("b"), base_meta.get("config"));
+        System.out.printf(Locale.ROOT, "compare %s (A=%s) with %d variants | %s | %s%n", base, base_meta.get("a"),
+                variants.size(), base_meta.get("lineup"), base_meta.get("config"));
         if (!forced.isEmpty()) {
             System.out.println("!! forced: " + forced);
         }
@@ -157,18 +161,47 @@ public final class Compare {
     }
 
     /**
-     * Why two runs do not play the same games: their config, B or B's frozen jar differ. A frozen tag never changes,
-     * so its sha differs only when a tag was deleted and frozen again.
+     * Why two runs do not play the same games: the players besides A (lineup), the maps and game settings (config), or
+     * the frozen jars of the players besides A differ. A frozen tag never changes, so its sha differs only when a tag
+     * was deleted and frozen again.
      */
     private static @NonNull List<String> comparabilityProblems(@NonNull Map<?, ?> base_meta,
             @NonNull Map<?, ?> variant_meta) {
         List<String> problems = new ArrayList<>();
-        for (String key : List.of("config", "b", "bPool")) {
+        for (String key : List.of("lineup", "config", "pools")) {
             if (!Objects.equals(base_meta.get(key), variant_meta.get(key))) {
                 problems.add(key + " differs: " + base_meta.get(key) + " vs " + variant_meta.get(key));
             }
         }
         return problems;
+    }
+
+    /**
+     * The games both runs played on different maps (their map codes differ), as problems; runs of the same config
+     * differ only when they took their maps from different map codes.
+     */
+    private static @NonNull List<String> otherMaps(@NonNull Map<String, Map<String, Object>> base,
+            @NonNull Map<String, Map<String, Object>> variant) {
+        List<String> keys = new ArrayList<>();
+        for (String key : commonKeys(base, variant)) {
+            if (!Objects.equals(base.get(key).get("mapcode"), variant.get(key).get("mapcode"))) {
+                keys.add(key);
+            }
+        }
+        if (keys.isEmpty()) {
+            return new ArrayList<>();
+        }
+        String shown = String.join(" ", keys.subList(0, Math.min(keys.size(), 5)));
+        return new ArrayList<>(List.of(keys.size() + " games are on other maps (" + shown + ")"));
+    }
+
+    /** Every game of a run by key, counted or not. */
+    private static @NonNull Map<String, Map<String, Object>> byKey(@NonNull List<Map<String, Object>> rows) {
+        Map<String, Map<String, Object>> games = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows) {
+            games.put((String) row.get("key"), row);
+        }
+        return games;
     }
 
     /** The counted games of a run by key, in results order. */

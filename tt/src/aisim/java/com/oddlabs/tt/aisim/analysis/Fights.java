@@ -29,14 +29,14 @@ public final class Fights {
     private static final String[] KINDS = {"rock", "iron", "rubber", "peon", "chief"};
     /** The letter of each of KINDS in a loss: rock, iron and chicken (rubber) warriors, peons, chieftain. */
     private static final String[] KIND_LETTERS = {"r", "i", "c", "p", "C"};
-    /** Where a fight was, by its share of the way from A's start to the nearest start of B's. */
+    /** Where a fight was, by its share of the way from team A's nearest start to team B's nearest start. */
     private static final String[] PLACES = {"A's base", "middle", "B's base"};
     private static final double A_BASE_BELOW = 0.35;
     private static final double B_BASE_ABOVE = 0.65;
     private static final int WORST_SHOWN = 8;
     private static final String LEGEND = """
-            (where: share of the way from A's start to B's nearest; lost: r i c rock, iron, chicken warriors, p peons, \
-            C chieftain; net: B's losses minus A's)""";
+            (where: share of the way from A's nearest start to B's nearest; lost: r i c rock, iron, chicken warriors, \
+            p peons, C chieftain; net: B's losses minus A's)""";
     private static final int A = 0;
     private static final int B = 1;
 
@@ -99,13 +99,16 @@ public final class Fights {
             return lost(B) - lost(A);
         }
 
-        /** Places the fight by its share of the way from A's start to the nearest start of B's. */
+        /** Places the fight by its share of the way from team A's nearest start to team B's nearest start. */
         void locate(@NonNull Game game) {
             List<Map<String, Object>> players = game.players();
             if (game.aSlot() >= players.size()) {
                 return; // a header without players: place stays A's base, share NaN
             }
-            double to_a = distanceTo(players.get(game.aSlot()));
+            double to_a = Double.MAX_VALUE;
+            for (int slot : game.aSlots()) {
+                to_a = Math.min(to_a, distanceTo(players.get(slot)));
+            }
             double to_b = Double.MAX_VALUE;
             for (int slot : game.bSlots()) {
                 to_b = Math.min(to_b, distanceTo(players.get(slot)));
@@ -205,8 +208,9 @@ public final class Fights {
 
     private static void printGame(@NonNull Game game, int min_deaths) {
         List<Fight> fights = fightsOf(game, min_deaths);
-        System.out.printf(Locale.ROOT, "%s: %d fights with %d+ deaths, A = s%d%n", game, fights.size(), min_deaths,
-                game.aSlot());
+        String team_a = String.join(" ", game.aSlots().stream().map(slot -> "s" + slot).toList());
+        System.out.printf(Locale.ROOT, "%s: %d fights with %d+ deaths, A = %s%n", game, fights.size(), min_deaths,
+                team_a);
         List<List<String>> rows = new ArrayList<>();
         rows.add(List.of("time", "where", "A lost", "B lost", "net", "razed"));
         for (Fight fight : fights) {

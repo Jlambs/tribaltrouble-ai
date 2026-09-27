@@ -21,6 +21,7 @@ import com.oddlabs.tt.resource.StructureBlend;
 import com.oddlabs.tt.resource.WorldInfo;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.joml.Vector4fc;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.glfw.GLFWErrorCallback;
 import org.lwjgl.opengl.GL;
@@ -119,7 +120,20 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
         NotificationListener no_notifications = new NotificationListener() {
         };
         return World.newWorld(silent_audio, landscape_resources, races_resources, no_notifications, parameters, info,
-                job.terrainType(), players, Landscape.getFogInfo(job.terrainType(), meters));
+                job.terrainType(), players, Landscape.getFogInfo(job.terrainType(), meters), colors(players.length));
+    }
+
+    /**
+     * The players' colours: the client's palette by slot, as World.newWorld takes it, repeated for the slots past its
+     * end (the menu's 12 players), which would otherwise get none. Colours only draw the game; they never change it.
+     */
+    private static @NonNull Vector4fc @NonNull [] colors(int players) {
+        Vector4fc[] palette = Settings.getSettings().team_colours;
+        Vector4fc[] colors = new Vector4fc[players];
+        for (int slot = 0; slot < players; slot++) {
+            colors[slot] = palette[slot % palette.length];
+        }
+        return colors;
     }
 
     /** The colormap size IslandGenerator computes: its grid units times getTexelsPerGridUnit(). */
@@ -138,12 +152,13 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
                 Math.max(detail_mip_level - Globals.LANDSCAPE_DETAIL_FADEOUT_BASE_LEVEL, 0));
     }
 
-    /** The player of {@code slot}: team 0 for A and 1 for B, named as the game file and the AI logs show it. */
+    /**
+     * The player of {@code slot}, its team and race as the job seats it, named as the game file and AI logs show it.
+     */
     private static @NonNull PlayerInfo playerInfo(@NonNull Job job, int slot) {
-        int team = slot == job.side() ? 0 : 1;
         int race = job.vikings(slot) ? RacesResources.RACE_VIKINGS : RacesResources.RACE_NATIVES;
         String name = "s" + slot + ":" + job.spec(slot);
-        return new PlayerInfo(team, race, name);
+        return new PlayerInfo(job.team(slot), race, name);
     }
 
     /** Frees the world's GL textures (only the client's render loop would). */

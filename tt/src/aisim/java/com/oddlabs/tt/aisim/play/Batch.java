@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Queue;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -50,20 +51,27 @@ public final class Batch {
     }
 
     /**
+     * What a run shares besides its jobs, as run.json and the summary show it. {@code lineup} is the teams with A's
+     * spec written as A, and {@code config} the maps and how the games run: runs that share both (and the frozen AIs
+     * besides A) play the same games, and compare pairs them game by game.
+     */
+    public record Setup(@NonNull String teams, @NonNull String lineup, @NonNull String config) {
+    }
+
+    /**
      * Plays {@code jobs} as run {@code name} on the latest snapshot with up to {@code workers} JVMs, then prints the
      * summary. Returns 2 if the run was cancelled or aborted, else the summary's exit code.
      */
-    public static int run(@NonNull String name, @NonNull List<Job> jobs, int workers) throws IOException {
+    public static int run(@NonNull String name, @NonNull Setup setup, @NonNull List<Job> jobs,
+            int workers) throws IOException {
         String snap = Snapshot.latest();
         Path dir = Runs.RUNS.resolve(name);
         Files.createDirectories(dir.resolve("log"));
-        writeRunJson(dir, name, jobs, workers, snap);
-        Job first = jobs.get(0);
-        String players = "A=" + first.a() + " vs B=" + first.b();
+        writeRunJson(dir, name, setup, jobs, workers, snap);
         String counts = jobs.size() + " games | " + workers + " workers";
         System.out.println(
-                "aisim " + name + ": " + players + " | " + first.config() + " | " + counts + " | snapshot " + snap);
-        String heap = WorkerProcess.heap(first.vs(), first.size());
+                "aisim " + name + ": " + setup.teams() + " | " + setup.config() + " | " + counts + " | snapshot " + snap);
+        String heap = WorkerProcess.heap(jobs);
         boolean completed = new RunInProgress(dir, snap, jobs, workers, heap).playAll();
         int status = Summary.run(name);
         return completed ? status : 2;
@@ -73,9 +81,10 @@ public final class Batch {
      * Writes the run's run.json. {@code workers} is the requested count, and {@code jobs} is what a replay later
      * forwards to the run's own (possibly older) snapshot.
      */
-    private static void writeRunJson(@NonNull Path dir, @NonNull String name, @NonNull List<Job> jobs, int workers,
-            @NonNull String snap) throws IOException {
+    private static void writeRunJson(@NonNull Path dir, @NonNull String name, @NonNull Setup setup,
+            @NonNull List<Job> jobs, int workers, @NonNull String snap) throws IOException {
         Job first = jobs.get(0);
+        String a = first.spec(first.side());
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("v", 1);
         meta.put("name", name);
@@ -83,11 +92,12 @@ public final class Batch {
         meta.put("java", System.getProperty("java.version"));
         meta.put("created", Instant.now().toString());
         meta.put("workers", workers);
-        meta.put("a", first.a());
-        meta.put("b", first.b());
-        meta.put("aPool", poolSha(first.a()));
-        meta.put("bPool", poolSha(first.b()));
-        meta.put("config", first.config());
+        meta.put("teams", setup.teams());
+        meta.put("a", a);
+        meta.put("lineup", setup.lineup());
+        meta.put("config", setup.config());
+        meta.put("aPool", poolSha(a));
+        meta.put("pools", otherPools(first));
         meta.put("expected", jobs.size());
         meta.put("jobs", jobs);
         Aisim.JSON.writerWithDefaultPrettyPrinter().writeValue(dir.resolve("run.json").toFile(), meta);
@@ -97,6 +107,18 @@ public final class Batch {
     private static @Nullable String poolSha(@NonNull String spec) {
         String name = AiSpec.nameOf(spec);
         return name.startsWith("@") ? Pool.of(name.substring(1)).sha() : null;
+    }
+
+    /** The jar hash of every frozen AI in a seat other than A's, by its name (@TAG). */
+    private static @NonNull Map<String, String> otherPools(@NonNull Job job) {
+        Map<String, String> pools = new TreeMap<>();
+        for (int slot = 0; slot < job.slots(); slot++) {
+            String sha = slot == job.side() ? null : poolSha(job.spec(slot));
+            if (sha != null) {
+                pools.put(AiSpec.nameOf(job.spec(slot)), sha);
+            }
+        }
+        return pools;
     }
 
     /**

@@ -108,17 +108,28 @@ scratch. Upstream's `gradle.yml` only runs for `main` and `release`.
 changing the harness, or merging an engine change:
 
 ```bash
-./aisim.sh lint starter chaos                                             # both ok
-rm -rf aisim/runs/t-*                                                     # the run names below are single-use
-./aisim.sh batch --a hard --b normal --seeds 1..3 --name t-det && ./aisim.sh replay t-det s2-1   # VERIFIED
-./aisim.sh batch --a chaos:nondet=1 --b hard --seeds 1..3 --minutes 6 --name t-nd   # replays: some MISMATCH
-./aisim.sh batch --a chaos:crash=90 --b hard --seeds 1 --minutes 5 --name t-crash   # crash rows, .err, exit 1
-AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --a chaos:hang=30 --b hard --seeds 1 --name t-hang   # hang
-./aisim.sh batch --a chaos:bogus=1 --b hard --seeds 1..3 --name t-init              # aborts, exit 2
-./aisim.sh batch --a chaos:err=1,count=1 --b hard --seeds 1 --minutes 5 --name t-err  # errors and counters
-./aisim.sh curves t-det --split && ./aisim.sh fights t-det && ./aisim.sh export t-det   # the analyses read t-det
-./aisim.sh compare t-det t-nd t-err --force                                   # the several-variant table
-./aisim.sh lab lab/starter/FirstArmory.java t-det                             # the example lab tool still compiles
+./aisim.sh lint starter chaos                                   # both ok
+rm -rf aisim/runs/check-*                                       # the run names below are single-use
+# replays of the same build: VERIFIED, for a 1 vs 1 run, a 2 vs 2 run, a free-for-all and 32 players
+./aisim.sh batch --a hard --b normal --seeds 1..3 --name check-replay && ./aisim.sh replay check-replay s2-1
+./aisim.sh batch --teams "hard easy vs normal*2" --seeds 1..2 --size small --minutes 10 --name check-teams &&
+    ./aisim.sh replay check-teams s1-1
+./aisim.sh batch --teams "hard vs normal/n vs easy" --seeds 1 --minutes 20 --name check-free-for-all &&
+    ./aisim.sh replay check-free-for-all s1-2
+# 32 players, beyond the skirmish menu's 12: the engine must still build and play them
+./aisim.sh batch --teams "hard*16 vs normal*16" --size large --seeds 3 --side 5 --minutes 3 --name check-32-players &&
+    ./aisim.sh replay check-32-players s3-5
+# faults: chaos:nondet=1 replays with some MISMATCH; crash rows with .err files, exit 1; a hang row; the bad param
+# aborts the run, exit 2; swallowed errors and counters in the summary
+./aisim.sh batch --a chaos:nondet=1 --b hard --seeds 1..3 --minutes 6 --name check-nondeterminism
+./aisim.sh batch --a chaos:crash=90 --b hard --seeds 1 --minutes 5 --name check-crash
+AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --a chaos:hang=30 --b hard --seeds 1 --name check-hang
+./aisim.sh batch --a chaos:bogus=1 --b hard --seeds 1..3 --name check-bad-param
+./aisim.sh batch --a chaos:err=1,count=1 --b hard --seeds 1 --minutes 5 --name check-ai-errors
+# the analyses
+./aisim.sh curves check-replay --split && ./aisim.sh fights check-teams && ./aisim.sh export check-teams
+./aisim.sh compare check-replay check-nondeterminism check-ai-errors --force   # the several-variant table
+./aisim.sh lab lab/starter/FirstArmory.java check-replay        # the example lab tool still compiles
 ```
 
 The example lab tool is the one piece of `lab/` that `headless` looks after: it shows lab tools how to use

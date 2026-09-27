@@ -39,6 +39,9 @@ import java.util.function.IntFunction;
  * then {@code world.tick(0.02f)} ({@link AnimationManager#ANIMATION_SECONDS_PER_TICK}) in a loop, which is what the
  * client does each lockstep tick minus human commands. Then it builds the game's result row.
  *
+ * <p>Everything is from A's point of view: team A is A and its allies, team B every other player, which in a game of
+ * three teams or more is several teams.
+ *
  * <p>One game at a time per JVM, always on the thread that called {@link #boot()}: the simulation keeps static
  * scratch buffers and the GL context belongs to that thread.
  */
@@ -48,8 +51,9 @@ final class Match {
     /** Collapsing this long in a row puts a player out, when the job allows collapse. */
     private static final int COLLAPSE_SECONDS = 60;
     /**
-     * A game that times out is a win only when the margin, (A - B) / (A + B) of the teams' strength, is at least this
-     * big either way: one team has at least 55% of the strength on the map. Closer games are draws.
+     * A game that times out is a win only when the margin, (A - B) / (A + B) of the strength of A's team and of the
+     * strongest team against it, is at least this big either way: one of the two has at least 55% of their strength.
+     * Closer games are draws.
      */
     private static final double DECISIVE_MARGIN = 0.10;
     /** The tick of the w15 milestone: A's warriors at 15:00. */
@@ -198,8 +202,7 @@ final class Match {
             }
             if (tick >= last_tick) {
                 double a = Field.strength.of(teamCensus(job, recorder, TEAM_A));
-                double b = Field.strength.of(teamCensus(job, recorder, TEAM_B));
-                outcome.timedOut(a, b);
+                outcome.timedOut(a, strongestOpponent(job, recorder));
                 return;
             }
         }
@@ -256,10 +259,22 @@ final class Match {
 
     /** Whether {@code slot} plays for team A ({@code team_a}) or for team B (not {@code team_a}). */
     private static boolean onTeam(@NonNull Job job, int slot, boolean team_a) {
-        return (slot == job.side()) == team_a;
+        return job.onTeamA(slot) == team_a;
     }
 
-    /** How the game went for A; {@code end} is never hang (hang rows come from the worker's watchdog). */
+    /** The strength of the strongest team against A: team B's, or in a game of three teams or more, its best one's. */
+    private static double strongestOpponent(@NonNull Job job, @NonNull GameRecorder recorder) {
+        Map<Integer, Double> strength_by_team = new TreeMap<>();
+        for (int slot = 0; slot < job.slots(); slot++) {
+            if (!job.onTeamA(slot)) {
+                double strength = Field.strength.of(recorder.census(slot));
+                strength_by_team.merge(job.team(slot), strength, Double::sum);
+            }
+        }
+        return strength_by_team.values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
+    }
+
+    /** How the game went for A's team; {@code end} is never hang (hang rows come from the worker's watchdog). */
     private static final class Outcome {
         /** Stack frames the row's problem text shows; the .err file has the full stack. */
         private static final int PROBLEM_FRAMES = 3;
@@ -284,7 +299,7 @@ final class Match {
         @Nullable
         Integer w15;
 
-        /** A team has nobody standing: the other team wins, or it is a draw when neither has anyone left. */
+        /** A team has nobody standing: the other one wins, or it is a draw when neither has anyone left. */
         void eliminated(boolean a_standing, boolean b_standing, boolean collapsed) {
             end = End.elim;
             via = collapsed ? "collapse" : "engine";
@@ -300,7 +315,7 @@ final class Match {
             }
         }
 
-        /** The time limit: the margin compares the teams' strengths, and only a decisive margin wins. */
+        /** The time limit: the margin compares A's team with its strongest enemy, and only a decisive margin wins. */
         void timedOut(double a_strength, double b_strength) {
             end = End.timeout;
             if (a_strength + b_strength == 0) {
@@ -363,8 +378,8 @@ final class Match {
     // ---------------------------------------------------------------- the teams' census
 
     /**
-     * The census of A's slot, or of B's team summed over its slots. armyX/armyY are the warrior-weighted centre of the
-     * team's armies (-1 without warriors), which for B's several slots is a weighted mean rather than a sum.
+     * The census of team A or team B, summed over its slots. armyX/armyY are the warrior-weighted centre of the team's
+     * armies (-1 without warriors), a weighted mean rather than a sum.
      */
     private static int @NonNull [] teamCensus(@NonNull Job job, @NonNull GameRecorder recorder, boolean team_a) {
         int[] sum = new int[Field.values().length];
@@ -419,15 +434,16 @@ final class Match {
     }
 
     /**
-     * The game file's header members. Only run, a and b go through GameRecorder.quote; the rest are written raw. Not
+     * The game file's header members. Only run, a and teams go through GameRecorder.quote; the rest are written raw.
+     * Not
      * built with Aisim.JSON, which escapes non-ASCII characters where GameRecorder.quote does not.
      */
     private static @NonNull String header(@NonNull Job job, @NonNull String snapshot) {
         StringBuilder text = new StringBuilder("\"source\":\"aisim\"");
         text.append(",\"run\":").append(GameRecorder.quote(job.run()));
         text.append(",\"key\":\"").append(job.key()).append('"');
-        text.append(",\"a\":").append(GameRecorder.quote(job.a()));
-        text.append(",\"b\":").append(GameRecorder.quote(job.b()));
+        text.append(",\"a\":").append(GameRecorder.quote(job.spec(job.side())));
+        text.append(",\"teams\":").append(GameRecorder.quote(job.teams()));
         text.append(",\"map\":\"").append(job.map()).append('"');
         text.append(",\"seed\":").append(job.seed());
         text.append(",\"mapcode\":\"").append(job.mapcode()).append('"');
@@ -527,10 +543,9 @@ final class Match {
         row.put("key", job.key());
         row.put("seed", job.seed());
         row.put("side", job.side());
-        row.put("vs", job.vs());
-        row.put("a", job.a());
-        row.put("b", job.b());
-        row.put("races", job.raceA().charAt(0) + "," + job.raceB().charAt(0));
+        row.put("slots", job.slots());
+        row.put("teams", job.teams());
+        row.put("a", job.spec(job.side()));
         row.put("map", job.map());
         row.put("mapcode", job.mapcode());
         row.put("minutes", job.minutes());
@@ -541,7 +556,7 @@ final class Match {
         return row;
     }
 
-    /** A team's final census plus its AIs' log counters summed over its slots and its first AI error in slot order. */
+    /** A team's final census plus its AIs' log counters summed over its slots, and its first AI error in slot order. */
     private static @NonNull Map<String, Object> teamBlock(@NonNull Job job, @NonNull World world,
             int @NonNull [] census, boolean team_a) {
         Map<String, Object> block = new LinkedHashMap<>();

@@ -22,8 +22,8 @@ import java.util.TreeMap;
  * methods are public.
  *
  * <p>Rows, headers, census samples and events are JSON objects as read: numbers, strings, lists and maps; {@link #num}
- * reads a number. A is the AI under test, B every player not on A's team. Nothing here throws a checked exception:
- * an unreadable file throws {@link UncheckedIOException}.
+ * reads a number. A is the AI under test, team A its team (A and its allies), B every player not on A's team.
+ * Nothing here throws a checked exception: an unreadable file throws {@link UncheckedIOException}.
  */
 public final class Game {
     /** The sums {@link #value} knows besides the census fields, and the fields each adds up. */
@@ -121,6 +121,17 @@ public final class Game {
             }
         }
         return 0;
+    }
+
+    /** Team A's slots: A and its allies, in slot order. */
+    public @NonNull List<Integer> aSlots() {
+        List<Integer> slots = new ArrayList<>();
+        for (int slot = 0; slot < Math.max(players().size(), aSlot() + 1); slot++) {
+            if (isA(slot)) {
+                slots.add(slot);
+            }
+        }
+        return slots;
     }
 
     /** B's slots: every player not on A's team. */

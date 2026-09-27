@@ -24,7 +24,7 @@ public final class Curves {
     private Curves() {
     }
 
-    /** One number per cell: the census of A's slot ({@code teamA}) or the sum of B's slots, over some games. */
+    /** One number per cell: the census of team A ({@code teamA}) or of team B, summed over its slots, over games. */
     record Series(@NonNull String label, @NonNull List<Game> games, boolean teamA) {
         /** How many of the games are still running at game second {@code t}. */
         int running(double t) {
@@ -161,13 +161,13 @@ public final class Curves {
         return now == null ? null : now - (before == null ? 0 : before);
     }
 
-    /** {@code field} summed over A's slot or B's slots at {@code t}; null when the game is over. */
+    /** {@code field} summed over team A's or team B's slots at {@code t}; null when the game is over. */
     private static @Nullable Double teamSum(@NonNull Game game, boolean team_a, @NonNull String field, double t) {
         if (t > game.lastSample()) {
             return null;
         }
         double sum = 0;
-        for (int slot : team_a ? List.of(game.aSlot()) : game.bSlots()) {
+        for (int slot : team_a ? game.aSlots() : game.bSlots()) {
             var census = game.census(slot, t);
             if (census != null) {
                 sum += Game.value(census, field);

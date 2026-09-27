@@ -20,12 +20,17 @@ import static com.oddlabs.tt.aisim.analysis.Game.num;
 
 /**
  * {@code summary RUN}: a run's results, printed at the end of every run and saved as its summary.txt. Numbers print
- * with Locale.ROOT. "A" is the AI under test, "B" its opponents' team.
+ * with Locale.ROOT. "A" is the team of the AI under test, "B" every player against it.
  */
 public final class Summary {
     /** How many of A's worst games and of the failed games the summary lists. */
     private static final int WORST_GAMES = 5;
     private static final int FAILED_GAMES = 10;
+    /** A's record from each start slot, this many slots to a line. */
+    private static final int SLOTS_PER_LINE = 4;
+    /** Map sizes and terrains in the skirmish menu's order, the order of the by-map lines. */
+    private static final List<String> MAP_ORDER = List.of("small", "medium", "large", "huge", "tropical",
+            "northern");
 
     private Summary() {
     }
@@ -38,12 +43,12 @@ public final class Summary {
         List<Map<String, Object>> failed = where(rows, row -> row.get("winner") == null);
         StringWriter text = new StringWriter();
         PrintWriter out = new PrintWriter(text);
-        out.printf(Locale.ROOT, "aisim run %s: A=%s vs B=%s | %s | snapshot %s%n", run, meta.get("a"), meta.get("b"),
-                meta.get("config"), meta.get("snap"));
+        out.printf(Locale.ROOT, "aisim run %s: %s | %s | snapshot %s%n", run, meta.get("teams"), meta.get("config"),
+                meta.get("snap"));
         out.printf(Locale.ROOT, "games %d/%s done, %d counted, %d failed%n", rows.size(), meta.get("expected"),
                 counted.size(), failed.size());
-        String players = "a=" + meta.get("a") + " b=" + meta.get("b");
-        String result_line = "RESULT " + run + " " + players + " n=" + counted.size() + "/" + meta.get("expected");
+        String result_line = "RESULT " + run + " a=" + meta.get("a") + " n=" + counted.size() + "/" + meta.get(
+                "expected");
         if (!counted.isEmpty()) {
             Headline headline = Headline.of(counted);
             headline.print(out, counted);
@@ -101,7 +106,7 @@ public final class Summary {
                     Stats.mean(counted, "kd30"), Stats.mean(counted, "margin"));
         }
 
-        /** The score with its interval, how the games ended, and A's record from each start slot. */
+        /** The score with its interval, how the games ended, and A's record from each start slot and on each map. */
         void print(@NonNull PrintWriter out, @NonNull List<Map<String, Object>> counted) {
             WinLossDraw collapse = WinLossDraw.of(where(counted, row -> "collapse".equals(row.get("via"))), null);
             out.printf(Locale.ROOT, "score %.3f [%.3f, %.3f]   W %d  L %d  D %d%n", score, interval[0], interval[1],
@@ -110,15 +115,44 @@ public final class Summary {
                     "  by elimination W %d L %d (by collapse W %d L %d) | by timeout W %d L %d D %d (%.0f%% of games)%n",
                     elim.won(), elim.lost(), collapse.won(), collapse.lost(), timeout.won(), timeout.lost(),
                     timeout.drawn(), 100.0 * timeout.games() / counted.size());
-            int vs = (int) num(counted.get(0), "vs"); // a 1 vs N game has the start slots 0..N
+            int players = (int) num(counted.get(0), "slots");
             List<String> slots = new ArrayList<>();
-            for (int slot = 0; slot <= vs; slot++) {
+            for (int slot = 0; slot < players; slot++) {
                 int start = slot;
                 WinLossDraw record = WinLossDraw.of(where(counted, row -> num(row, "side") == start), null);
                 slots.add(String.format(Locale.ROOT, "A in slot %d: W %d L %d D %d", slot, record.won(), record.lost(),
                         record.drawn()));
             }
-            out.println("  " + String.join(" | ", slots));
+            for (int i = 0; i < slots.size(); i += SLOTS_PER_LINE) {
+                out.println("  " + String.join(" | ", slots.subList(i, Math.min(i + SLOTS_PER_LINE, slots.size()))));
+            }
+            printByMap(out, counted, "size", 0);
+            printByMap(out, counted, "terrain", 1);
+        }
+
+        /**
+         * A's record on each value of one map setting, word {@code word} of the rows' map ("large tropical h2 t10
+         * s10"); nothing when every game had the same.
+         */
+        private static void printByMap(@NonNull PrintWriter out, @NonNull List<Map<String, Object>> counted,
+                @NonNull String setting, int word) {
+            Comparator<String> menu_order = Comparator.comparingInt(Summary::mapOrder);
+            Map<String, List<Map<String, Object>>> by_value = new TreeMap<>(
+                    menu_order.thenComparing(Comparator.naturalOrder()));
+            for (Map<String, Object> row : counted) {
+                String value = String.valueOf(row.get("map")).split(" ")[word];
+                by_value.computeIfAbsent(value, v -> new ArrayList<>()).add(row);
+            }
+            if (by_value.size() < 2) {
+                return;
+            }
+            List<String> records = new ArrayList<>();
+            by_value.forEach((value, rows) -> {
+                WinLossDraw record = WinLossDraw.of(rows, null);
+                records.add(String.format(Locale.ROOT, "%s W %d L %d D %d", value, record.won(), record.lost(),
+                        record.drawn()));
+            });
+            out.println("  A by map " + setting + ": " + String.join(" | ", records));
         }
 
         /** The RESULT line's fields after n=. */
@@ -232,6 +266,12 @@ public final class Summary {
         }
     }
 
+    /** A map size's or terrain's place in {@link #MAP_ORDER}; after them all for any other value. */
+    private static int mapOrder(@NonNull String value) {
+        int index = MAP_ORDER.indexOf(value);
+        return index < 0 ? MAP_ORDER.size() : index;
+    }
+
     /** The first failed games with their problem. */
     private static void printFailed(@NonNull PrintWriter out, @NonNull List<Map<String, Object>> failed) {
         if (failed.isEmpty()) {
@@ -254,7 +294,7 @@ public final class Summary {
         chief
     }
 
-    /** Median time of each milestone for A and for B's team (its first player to reach it), over the games. */
+    /** Median time of each milestone for team A and team B (a team's first player to reach it), over the games. */
     private static @NonNull String milestones(@NonNull List<Game> games) {
         Map<Milestone, List<Double>> a_times = new EnumMap<>(Milestone.class);
         Map<Milestone, List<Double>> b_times = new EnumMap<>(Milestone.class);
@@ -271,7 +311,7 @@ public final class Summary {
                 int slot = Game.slot(event);
                 Milestone reached = milestoneOf(event, slot, quarters_built);
                 if (reached != null) {
-                    (slot == game.aSlot() ? a_first : b_first).putIfAbsent(reached, num(event, "t"));
+                    (game.isA(slot) ? a_first : b_first).putIfAbsent(reached, num(event, "t"));
                 }
             }
             a_first.forEach((milestone, t) -> a_times.get(milestone).add(t));
@@ -298,7 +338,7 @@ public final class Summary {
         }
         return switch (String.valueOf(event.get("b"))) {
             case "quarters" -> {
-                // Q4 is one player's fourth quarters, so each slot counts on its own even within B's team
+                // Q4 is one player's fourth quarters, so each slot counts on its own even within a team
                 int count = quarters_built.merge(slot, 1, Integer::sum);
                 yield count == 1 ? Milestone.Q1 : count == 4 ? Milestone.Q4 : null;
             }
