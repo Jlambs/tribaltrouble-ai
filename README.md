@@ -29,6 +29,7 @@ See what we're working on right now on the **[current roadmap](https://github.co
   - [Build + Run Game Server](#build--run-game-server)
   - [Common Gradle Tasks](#common-gradle-tasks)
   - [Code Formatting](#code-formatting)
+- [🤖 Developing Computer Players](#-developing-computer-players)
 - [🚀 Releasing](#-releasing)
 - [🤝 Contributing](#-contributing)
 - [🌍 Translating](#-translating)
@@ -158,6 +159,14 @@ Workflow:
 
 - IntelliJ's format-on-save handles most of it as you edit
 - Before committing, run `./gradlew spotlessApply` to smooth over the small gap between IntelliJ's formatter and the Eclipse engine Spotless uses
+
+## 🤖 Developing Computer Players
+
+`./aisim.sh` plays headless AI-vs-AI games 50-400x faster than real time, compares AI versions game by game, replays any game with your AI's decision log, and records play-tests against your AI in the same format.
+
+It needs JDK 26, a desktop session with OpenGL 4.1 and an audio device, and Git Bash on Windows. Start with `./aisim.sh build`, then `./aisim.sh play --a hard --b normal`. See **[docs/aisim.md](./docs/aisim.md)**.
+
+To write your own AI, run `./aisim.sh new NAME` and read **[the AI guide](./tt/src/main/java/com/oddlabs/tt/player/AGENTS.md)**. It is written for coding agents and people alike, and covers the orders an AI can give, what it can read, and the fair-play rules that every build checks.
 
 ## 🚀 Releasing
 

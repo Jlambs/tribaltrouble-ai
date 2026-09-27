@@ -262,3 +262,6 @@ server/logs/
 !/assets/font/README
 /.gradle_local/
 **/steam_appid.txt
+
+# aisim harness output (snapshots, frozen AIs, runs)
+/aisim/

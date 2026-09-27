@@ -69,6 +69,42 @@ tasks.run.configure {
     classpath = files(layout.buildDirectory) + sourceSets.main.get().runtimeClasspath
 }
 
+// --- aisim: headless AI-vs-AI harness, run through ./aisim.sh (docs/aisim.md). Never packaged. ---
+
+val aisim: SourceSet by sourceSets.creating {
+    compileClasspath += sourceSets.main.get().output + sourceSets.main.get().compileClasspath
+    runtimeClasspath += sourceSets.main.get().runtimeClasspath
+}
+
+// The harness is classpath code; the --add-reads flag above names the game module, which it is not part of.
+tasks.named<JavaCompile>(aisim.compileJavaTaskName) {
+    options.compilerArgs.removeAll(listOf("--add-reads", "com.oddlabs.tt=ALL-UNNAMED"))
+}
+
+// so `./gradlew build` compiles the harness and the example AIs too
+tasks.named("check") {
+    dependsOn(aisim.classesTaskName)
+}
+
+// Writes the fresh build's class path as a java argument file; ./aisim.sh build runs the snapshot step from it. It
+// always reruns: it is cheap, and a stale file would snapshot the wrong classes. Folders that do not exist (a source
+// set without resources) are left out, and paths get forward slashes because argument files treat a backslash as an
+// escape.
+val aisimClasspath by tasks.registering {
+    description = "Builds the game and the aisim harness and writes the harness classpath for ./aisim.sh build"
+    val classpath = aisim.runtimeClasspath
+    dependsOn(classpath)
+    val out = layout.buildDirectory.file("aisim/live.args")
+    outputs.file(out)
+    outputs.upToDateWhen { false }
+    doLast {
+        val file = out.get().asFile
+        file.parentFile.mkdirs()
+        file.writeText("-cp \"" + classpath.files.filter { it.exists() }
+            .joinToString(File.pathSeparator) { it.absolutePath.replace('\\', '/') } + "\"\n")
+    }
+}
+
 // --- Distribution & Packaging ---
 
 val dist = layout.buildDirectory.dir("dist")
