@@ -3,6 +3,7 @@ package com.oddlabs.tt.viewer;
 import com.oddlabs.net.NetworkSelector;
 import com.oddlabs.router.SessionID;
 import com.oddlabs.matchmaking.Game;
+import com.oddlabs.tt.aikit.PlayTest;
 import com.oddlabs.tt.animation.Animated;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.audio.AudioManager;
@@ -277,6 +278,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
 
     @Override
     public void close() {
+        PlayTest.leave(world); // first, while the world is intact: a recorded play-test writes its quit line
         LocalEventQueue.getQueue().getManager().removeAnimation(this);
         peerhub.close();
         ingame_info.close(this);
@@ -315,7 +317,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
             AI ai = null;
             switch (slot.getAIDifficulty()) {
                 case PlayerSlot.AI_NORMAL -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_NORMAL);
-                case PlayerSlot.AI_HARD -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD);
+                case PlayerSlot.AI_HARD -> ai = PlayTest.hardAi(player, unit_info, ingame_info, world_params);
                 case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY);
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
