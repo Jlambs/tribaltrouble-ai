@@ -66,10 +66,10 @@ case "${1:-help}" in
         spec=$1
         shift
         read_snapshot # once: aisim.snap below always names the class path the game runs on
-        args="aisim/snap/$snap/cp.args"
+        cp_args="aisim/snap/$snap/cp.args"
         # Aisim guicheck (internal) checks SPEC and the build's freshness. ${stale_ok:+...} adds no argument when
         # stale_ok is empty (an empty array would do, but "${a[@]}" of one fails under set -u in macOS's bash 3.2).
-        "$JDK/bin/java" "${OPTS[@]}" "@$args" com.oddlabs.tt.aisim.Aisim guicheck ${stale_ok:+"$stale_ok"} "$spec" \
+        "$JDK/bin/java" "${OPTS[@]}" "@$cp_args" com.oddlabs.tt.aisim.Aisim guicheck ${stale_ok:+"$stale_ok"} "$spec" \
             || exit 2
         # the game's options, as tt/build.gradle.kts gives `gradlew :tt:run` (keep in sync)
         GUI_OPTS=(-ea -esa --enable-native-access=ALL-UNNAMED -Dcom.oddlabs.tt.developer=true
@@ -78,7 +78,7 @@ case "${1:-help}" in
         # the game finds its resources relative to tt/, as under gradlew :tt:run
         cd tt
         exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" "-Daisim.snap=$snap" \
-            "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/gui" "@../$args" com.oddlabs.tt.Main "$@"
+            "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/gui" "@../$cp_args" com.oddlabs.tt.Main "$@"
         ;;
     lab)
         # Your own tool: java runs a .java source file straight from source (with the other .java files of its folder)

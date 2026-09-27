@@ -1,6 +1,8 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.build;
 
-import com.oddlabs.tt.aikit.AiSpec;
+import com.oddlabs.tt.aikit.harness.AiSpec;
+import com.oddlabs.tt.aisim.Aisim;
+import com.oddlabs.tt.aisim.UsageException;
 import com.oddlabs.tt.player.AI;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -24,15 +26,15 @@ import java.util.Map;
  * <p>Only the package is frozen: it plays on the engine of whichever build runs it. A frozen AI that calls engine
  * methods a later build no longer has fails with a link error.
  */
-record Pool(@NonNull String tag, @NonNull String entry, @NonNull String packageName, @NonNull String sha,
-            @NonNull Path jar) {
+public record Pool(@NonNull String tag, @NonNull String entry, @NonNull String packageName, @NonNull String sha,
+                   @NonNull Path jar) {
 
     private static final Path POOL = Aisim.ROOT.resolve("pool");
     /** The longest tag. */
     private static final int MAX_TAG = 32;
 
     /** The frozen AI {@code @tag}; a usage error if it was never frozen. */
-    static @NonNull Pool of(@NonNull String tag) {
+    public static @NonNull Pool of(@NonNull String tag) {
         try {
             Map<?, ?> meta = Aisim.JSON.readValue(metaFile(tag).toFile(), Map.class);
             String entry = (String) meta.get("entry");
@@ -49,7 +51,7 @@ record Pool(@NonNull String tag, @NonNull String entry, @NonNull String packageN
      * A new loader per game means a frozen AI keeps no static state from one game to the next.
      */
     @NonNull
-    URLClassLoader newLoader() {
+    public URLClassLoader newLoader() {
         try {
             return new PoolLoader(tag, jar.toUri().toURL(), packageName + ".");
         } catch (MalformedURLException e) {
@@ -91,7 +93,7 @@ record Pool(@NonNull String tag, @NonNull String entry, @NonNull String packageN
      * freeze TAG NAME|CLASS [--from DIR|JAR]: freezes the package of AI {@code name} as {@code @tag}, from the last
      * build's game classes or from {@code from} (another checkout's class directory, or a jar).
      */
-    static int freeze(@NonNull String tag, @NonNull String name, @Nullable String from) throws IOException {
+    public static int freeze(@NonNull String tag, @NonNull String name, @Nullable String from) throws IOException {
         Path jar = newJar(tag);
         String entry = AiSpec.className(name);
         String package_name = entry.substring(0, entry.lastIndexOf('.'));

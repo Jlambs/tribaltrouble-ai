@@ -1,11 +1,27 @@
 package com.oddlabs.tt.aisim;
 
 import com.fasterxml.jackson.core.json.JsonWriteFeature;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
-import com.oddlabs.tt.aikit.AiSpec;
+import com.oddlabs.tt.aikit.harness.AiSpec;
+import com.oddlabs.tt.aisim.analysis.Compare;
+import com.oddlabs.tt.aisim.analysis.Curves;
+import com.oddlabs.tt.aisim.analysis.Export;
+import com.oddlabs.tt.aisim.analysis.Fights;
+import com.oddlabs.tt.aisim.analysis.Runs;
+import com.oddlabs.tt.aisim.analysis.Show;
+import com.oddlabs.tt.aisim.analysis.Summary;
+import com.oddlabs.tt.aisim.build.Lint;
+import com.oddlabs.tt.aisim.build.NewAi;
+import com.oddlabs.tt.aisim.build.Pool;
+import com.oddlabs.tt.aisim.build.Snapshot;
+import com.oddlabs.tt.aisim.play.Batch;
+import com.oddlabs.tt.aisim.play.Job;
+import com.oddlabs.tt.aisim.play.Replay;
+import com.oddlabs.tt.aisim.play.WorkerMain;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -20,12 +36,13 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.IntStream;
 
 /**
  * The command line of the headless AI-vs-AI harness: run it through {@code ./aisim.sh}; the manual is docs/aisim.md.
- * Each command is one method here that checks its options and hands over to the class doing the work.
+ * Each command checks its options here and hands over to the class doing the work.
  *
  * <p>Exit codes: 0 ok; 1 the run has crash, hang or error games, or a replay does not reproduce its game; 2 a usage
  * error, a refusal, or a cancelled or aborted run; 3 the harness itself failed (a bug; it prints the stack trace).
@@ -33,14 +50,17 @@ import java.util.stream.IntStream;
 public final class Aisim {
     // spotless:off
     /** ASCII-only JSON that ignores unknown fields, so runs stay readable by older and newer harness versions. */
-    static final ObjectMapper JSON = JsonMapper.builder()
+    public static final ObjectMapper JSON = JsonMapper.builder()
             .enable(JsonWriteFeature.ESCAPE_NON_ASCII)
             .disable(SerializationFeature.FAIL_ON_EMPTY_BEANS)
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build();
     // spotless:on
+    /** A JSON object as {@link #JSON} reads it: a LinkedHashMap of JSON values. */
+    public static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {
+    };
     /** Where the harness keeps everything it writes: snapshots, runs and frozen AIs. Git ignores it. */
-    static final Path ROOT = Path.of("aisim");
+    public static final Path ROOT = Path.of("aisim");
 
     private static final String USAGE = """
             usage: ./aisim.sh COMMAND [arguments] [options]      (manual: docs/aisim.md)
@@ -124,72 +144,74 @@ public final class Aisim {
 
     private static int run(@NonNull String @NonNull [] argv) throws IOException {
         String command = argv.length == 0 ? "help" : argv[0];
-        Options o = new Options(argv, 1);
+        Options options = new Options(argv, 1);
+        List<String> args = options.args;
         switch (command) {
             case "new" -> {
-                o.check(Set.of(), 1);
-                return NewAi.run(o.args.get(0));
+                options.check(Set.of(), 1);
+                return NewAi.run(args.get(0));
             }
             case "lint" -> {
-                o.check(Set.of("stale-ok"), o.args.size());
-                if (o.args.isEmpty() || o.args.stream().anyMatch(a -> !a.startsWith("@"))) {
-                    Snapshot.requireFresh(o.flag("stale-ok")); // linting the last build, not the edited sources
+                options.check(Set.of("stale-ok"), args.size());
+                if (args.isEmpty() || args.stream().anyMatch(target -> !target.startsWith("@"))) {
+                    Snapshot.requireFresh(options.flag("stale-ok")); // linting the last build, not the edited sources
                 }
-                return Lint.run(o.args);
+                return Lint.run(args);
             }
             case "play" -> {
-                return play(o);
+                return play(options);
             }
             case "batch" -> {
-                return batch(o);
+                return batch(options);
             }
             case "summary" -> {
-                o.check(Set.of(), 1);
-                return Report.summary(o.args.get(0));
+                options.check(Set.of(), 1);
+                return Summary.run(args.get(0));
             }
             case "compare" -> {
-                o.check(Set.of("force"), Math.max(2, o.args.size()));
-                return Report.compare(o.args.get(0), o.args.subList(1, o.args.size()), o.flag("force"));
+                options.check(Set.of("force"), Math.max(2, args.size()));
+                return Compare.run(args.get(0), args.subList(1, args.size()), options.flag("force"));
             }
             case "show" -> {
-                o.check(Set.of(), o.args.size() == 1 ? 1 : 2); // FILE.jsonl or RUN KEY
-                return Report.show(o.args);
+                options.check(Set.of(), args.size() == 1 ? 1 : 2); // FILE.jsonl or RUN KEY
+                return Show.run(args);
             }
             case "curves" -> {
-                o.check(Set.of("fields", "at", "split"), Math.max(1, o.args.size()));
-                List<String> fields = o.get("fields") == null ? Curves.FIELDS : List.of(o.get("fields").split(","));
-                return Curves.run(o.args, fields, minutes(o.get("at")), o.flag("split"));
+                options.check(Set.of("fields", "at", "split"), Math.max(1, args.size()));
+                String fields = options.get("fields");
+                List<String> field_list = fields == null ? Curves.FIELDS : List.of(fields.split(","));
+                return Curves.run(args, field_list, minutes(options.get("at")), options.flag("split"));
             }
             case "fights" -> {
-                o.check(Set.of("min"), o.args.size() == 2 ? 2 : 1); // RUN, RUN KEY or FILE.jsonl
-                return Fights.run(o.args, o.integer("min", Fights.DEFAULT_MIN_DEATHS, 1, 10000));
+                options.check(Set.of("min"), args.size() == 2 ? 2 : 1); // RUN, RUN KEY or FILE.jsonl
+                return Fights.run(args, options.integer("min", Fights.DEFAULT_MIN_DEATHS, 1, 10000));
             }
             case "export" -> {
-                o.check(Set.of(), Math.max(1, o.args.size()));
-                return Export.run(o.args);
+                options.check(Set.of(), Math.max(1, args.size()));
+                return Export.run(args);
             }
             case "replay" -> {
-                o.check(Set.of("snap", "until", "stale-ok"), 2);
-                Integer until = o.optionalInteger("until", 1, MAX_MINUTES);
-                return Replay.run(o.args.get(0), o.args.get(1), o.get("snap"), until, o.flag("stale-ok"));
+                options.check(Set.of("snap", "until", "stale-ok"), 2);
+                Integer until = options.optionalInteger("until", 1, MAX_MINUTES);
+                return Replay.run(args.get(0), args.get(1), options.get("snap"), until, options.flag("stale-ok"));
             }
             case "freeze" -> {
-                o.check(Set.of("from", "stale-ok"), 2);
-                String from = o.get("from");
+                options.check(Set.of("from", "stale-ok"), 2);
+                String from = options.get("from");
                 if (from == null) {
-                    Snapshot.requireFresh(o.flag("stale-ok")); // freezing the last build, not the edited sources
+                    Snapshot.requireFresh(options.flag("stale-ok")); // freezing the last build, not the edited sources
                 }
-                return Pool.freeze(o.args.get(0), o.args.get(1), from);
+                return Pool.freeze(args.get(0), args.get(1), from);
             }
             // internal commands, not in USAGE
             case "snapshot" -> { // ./aisim.sh build, after compiling
-                o.check(Set.of(), 0);
+                options.check(Set.of(), 0);
                 return Snapshot.snapshot();
             }
             case "guicheck" -> { // ./aisim.sh gui, before the game starts
-                return guiCheck(o);
+                return guiCheck(options);
             }
-            case "worker" -> { // a worker JVM started by Batch
+            case "worker" -> { // a worker JVM started by WorkerProcess
                 WorkerMain.run(argv[1]);
                 return 0;
             }
@@ -201,13 +223,13 @@ public final class Aisim {
     }
 
     /** play [--a SPEC] [--b SPEC] [--seed N] [--side S] [--name NAME] [MAP] */
-    private static int play(@NonNull Options o) throws IOException {
-        o.check(union(GAME_OPTIONS, "seed", "side", "name"), 0);
-        Snapshot.requireFresh(o.flag("stale-ok"));
-        String name = runName(o, "play-");
-        List<Integer> seeds = List.of(o.integer("seed", 1, 0, Job.MAP_SEEDS - 1));
-        int side = o.integer("side", 0, 0, MAX_VS);
-        Job job = jobs(name, o, seeds, side, true).get(0);
+    private static int play(@NonNull Options options) throws IOException {
+        options.check(union(GAME_OPTIONS, "seed", "side", "name"), 0);
+        Snapshot.requireFresh(options.flag("stale-ok"));
+        String name = runName(options, "play-");
+        List<Integer> seeds = List.of(options.integer("seed", 1, 0, Job.MAP_SEEDS - 1));
+        int side = options.integer("side", 0, 0, MAX_VS);
+        Job job = jobs(name, options, seeds, side, true).get(0);
         int status = Batch.run(name, List.of(job), 1);
         System.out.println("game " + job.game() + " | " + Runs.aiLogs(Path.of(job.game())));
         System.out.println("next: ./aisim.sh show " + name + " " + job.key());
@@ -215,23 +237,23 @@ public final class Aisim {
     }
 
     /** batch --a SPEC [--b SPEC] [--seeds tune|holdout|LIST] [--side S] [--workers W] [--name NAME] [MAP] */
-    private static int batch(@NonNull Options o) throws IOException {
-        o.check(union(GAME_OPTIONS, "seeds", "side", "workers", "name"), 0);
-        if (o.get("a") == null) {
+    private static int batch(@NonNull Options options) throws IOException {
+        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "name"), 0);
+        if (options.get("a") == null) {
             throw new UsageException("batch needs --a SPEC");
         }
-        Snapshot.requireFresh(o.flag("stale-ok"));
-        String name = runName(o, "");
-        int workers = o.integer("workers", DEFAULT_WORKERS, 1, MAX_WORKERS);
-        Integer side = o.optionalInteger("side", 0, MAX_VS);
-        List<Job> jobs = jobs(name, o, seeds(o.get("seeds", "tune")), side, false);
+        Snapshot.requireFresh(options.flag("stale-ok"));
+        String name = runName(options, "");
+        int workers = options.integer("workers", DEFAULT_WORKERS, 1, MAX_WORKERS);
+        Integer side = options.optionalInteger("side", 0, MAX_VS);
+        List<Job> jobs = jobs(name, options, seeds(options.get("seeds", "tune")), side, false);
         return Batch.run(name, jobs, workers);
     }
 
     /** guicheck [--stale-ok] SPEC: SPEC and the build's freshness, checked before ./aisim.sh gui starts the game. */
-    private static int guiCheck(@NonNull Options o) throws IOException {
-        o.check(Set.of("stale-ok"), 1);
-        String spec = o.args.get(0);
+    private static int guiCheck(@NonNull Options options) throws IOException {
+        options.check(Set.of("stale-ok"), 1);
+        String spec = options.args.get(0);
         // checkSpec accepts @TAG (harness only); the game has no pool loader, so refuse it here with a clearer message
         if (AiSpec.nameOf(spec).startsWith("@")) {
             throw new UsageException("the game cannot load frozen AIs (@TAG); give the AI's name or class");
@@ -239,7 +261,7 @@ public final class Aisim {
         checkSpec(spec);
         // aisim.sh passes whatever follows SPEC to the game, so name the one place where --stale-ok works
         String advice = "run ./aisim.sh build (or ./aisim.sh gui --stale-ok SPEC to play it anyway)";
-        Snapshot.requireFresh(o.flag("stale-ok"), advice);
+        Snapshot.requireFresh(options.flag("stale-ok"), advice);
         return 0;
     }
 
@@ -247,53 +269,30 @@ public final class Aisim {
      * The jobs of a run: every seed, from every start position of A unless {@code only_side} picks one, interleaved
      * so that a run cut short still has both starts of most seeds. {@code logs}: the games write AI logs.
      */
-    private static @NonNull List<Job> jobs(@NonNull String run, @NonNull Options o, @NonNull List<Integer> seeds,
+    private static @NonNull List<Job> jobs(@NonNull String run, @NonNull Options options, @NonNull List<Integer> seeds,
             @Nullable Integer only_side, boolean logs) {
-        String a = o.get("a", "hard");
-        String b = o.get("b", "hard");
+        String a = options.get("a", "hard");
+        String b = options.get("b", "hard");
         checkSpec(a);
         checkSpec(b);
-        int size = List.of(Job.SIZES).indexOf(o.get("size", "large"));
-        int terrain = List.of(Job.TERRAINS).indexOf(o.get("terrain", "tropical"));
-        if (size < 0 || terrain < 0) {
-            throw new UsageException("--size is small|medium|large|huge, --terrain is tropical|northern");
-        }
-        int hills = o.integer("hills", 2, 0, 10);
-        int trees = o.integer("trees", 10, 0, 10);
-        int supplies = o.integer("supplies", 10, 0, 10);
-        List<Integer> game_seeds = seeds;
-        String map = o.get("map");
-        if (map != null) {
-            for (String part : MAP_CODE_PARTS) {
-                if (o.flag(part)) {
-                    throw new UsageException("--map sets the seed and the map settings; drop --" + part);
-                }
-            }
-            Job.MapCode code = Job.MapCode.decode(map);
-            game_seeds = List.of(code.seed());
-            size = code.size();
-            terrain = code.terrain();
-            hills = code.hills();
-            trees = code.trees();
-            supplies = code.supplies();
-        }
-        String[] races = o.get("races", "v,v").split(",");
+        MapSettings map = mapSettings(options, seeds);
+        String[] races = options.get("races", "v,v").split(",");
         if (races.length != 2 || !races[0].matches(RACE) || !races[1].matches(RACE)) {
             throw new UsageException("--races is A's race,B's race, each v|n|vikings|natives");
         }
-        Integer rng_seed = o.optionalInteger("rng", 0, Integer.MAX_VALUE);
-        Long rng = rng_seed == null ? null : rng_seed.longValue();
+        Integer rng_option = options.optionalInteger("rng", 0, Integer.MAX_VALUE);
+        Long rng = rng_option == null ? null : rng_option.longValue();
         boolean same_race = races[0].charAt(0) == races[1].charAt(0);
         if (only_side == null && rng == null && a.equals(b) && same_race) {
             throw new UsageException("""
                     A and B are identical, so both start positions would replay the same game. Add --rng N (the \
                     world's random seed then differs per start position).""");
         }
-        int vs = o.integer("vs", 1, 1, MAX_VS);
-        int minutes = o.integer("minutes", DEFAULT_MINUTES, 1, MAX_MINUTES);
-        boolean collapse = !o.flag("no-collapse");
+        int vs = options.integer("vs", 1, 1, MAX_VS);
+        int minutes = options.integer("minutes", DEFAULT_MINUTES, 1, MAX_MINUTES);
+        boolean collapse = !options.flag("no-collapse");
         List<Job> jobs = new ArrayList<>();
-        for (int seed : game_seeds) {
+        for (int seed : map.seeds()) {
             if (seed < 0 || seed >= Job.MAP_SEEDS) {
                 throw new UsageException("seeds are the skirmish menu's 0.." + (Job.MAP_SEEDS - 1));
             }
@@ -303,14 +302,42 @@ public final class Aisim {
                 }
                 String key = "s" + seed + "-" + side;
                 String files = Aisim.slash(Runs.RUNS.resolve(run).resolve("g").resolve(key));
-                jobs.add(new Job(run, key, seed, side, a, b, vs, races[0], races[1], size, terrain, hills, trees,
-                        supplies, minutes, rng, collapse, files + ".jsonl", logs ? files : null));
+                jobs.add(new Job(run, key, seed, side, a, b, vs, races[0], races[1], map.size(), map.terrain(),
+                        map.hills(), map.trees(), map.supplies(), minutes, rng, collapse, files + ".jsonl",
+                        logs ? files : null));
             }
         }
         if (jobs.isEmpty()) {
             throw new UsageException("no games: --side must be 0.." + vs + " and --seeds must not be empty");
         }
         return jobs;
+    }
+
+    /** The seeds and the skirmish menu's map settings, by index into Job.SIZES and Job.TERRAINS. */
+    private record MapSettings(@NonNull List<Integer> seeds, int size, int terrain, int hills, int trees,
+                               int supplies) {
+    }
+
+    /** The map options, or the seed and settings of --map, which replaces them. */
+    private static @NonNull MapSettings mapSettings(@NonNull Options options, @NonNull List<Integer> seeds) {
+        String map = options.get("map");
+        if (map == null) {
+            int size = List.of(Job.SIZES).indexOf(options.get("size", "large"));
+            int terrain = List.of(Job.TERRAINS).indexOf(options.get("terrain", "tropical"));
+            if (size < 0 || terrain < 0) {
+                throw new UsageException("--size is small|medium|large|huge, --terrain is tropical|northern");
+            }
+            return new MapSettings(seeds, size, terrain, options.integer("hills", 2, 0, 10),
+                    options.integer("trees", 10, 0, 10), options.integer("supplies", 10, 0, 10));
+        }
+        for (String part : MAP_CODE_PARTS) {
+            if (options.flag(part)) {
+                throw new UsageException("--map sets the seed and the map settings; drop --" + part);
+            }
+        }
+        Job.MapCode code = Job.MapCode.decode(map);
+        return new MapSettings(List.of(code.seed()), code.size(), code.terrain(), code.hills(), code.trees(),
+                code.supplies());
     }
 
     /**
@@ -333,6 +360,23 @@ public final class Aisim {
         return new ArrayList<>(seeds);
     }
 
+    /** Adds first..last; a reversed range adds nothing. */
+    private static void addRange(@NonNull Set<Integer> seeds, int first, int last) {
+        IntStream.rangeClosed(first, last).forEach(seeds::add);
+    }
+
+    /** Adds one seed ("31") or a range ("1..20"); a malformed part throws NumberFormatException. */
+    private static void addParsed(@NonNull Set<Integer> seeds, @NonNull String part) {
+        int dots = part.indexOf("..");
+        if (dots < 0) {
+            seeds.add(Integer.parseInt(part));
+            return;
+        }
+        int first = Integer.parseInt(part.substring(0, dots));
+        int last = Integer.parseInt(part.substring(dots + 2));
+        addRange(seeds, first, last);
+    }
+
     /** curves --at: game minutes like 5,10,30 in rising order; null gives the summary's minutes. */
     private static @NonNull List<Integer> minutes(@Nullable String text) {
         if (text == null) {
@@ -352,26 +396,9 @@ public final class Aisim {
         return minutes;
     }
 
-    /** Adds first..last; a reversed range adds nothing. */
-    private static void addRange(@NonNull Set<Integer> seeds, int first, int last) {
-        IntStream.rangeClosed(first, last).forEach(seeds::add);
-    }
-
-    /** Adds one seed ("31") or a range ("1..20"); a malformed part throws NumberFormatException. */
-    private static void addParsed(@NonNull Set<Integer> seeds, @NonNull String part) {
-        int dots = part.indexOf("..");
-        if (dots < 0) {
-            seeds.add(Integer.parseInt(part));
-            return;
-        }
-        int first = Integer.parseInt(part.substring(0, dots));
-        int last = Integer.parseInt(part.substring(dots + 2));
-        addRange(seeds, first, last);
-    }
-
     /** --name, or prefix plus the date and time; a usage error when the name is malformed or the run exists. */
-    private static @NonNull String runName(@NonNull Options o, @NonNull String prefix) {
-        String name = o.get("name");
+    private static @NonNull String runName(@NonNull Options options, @NonNull String prefix) {
+        String name = options.get("name");
         if (name == null) {
             name = prefix + LocalDateTime.now(ZoneId.systemDefault()).format(RUN_TIME);
         }
@@ -383,7 +410,7 @@ public final class Aisim {
     }
 
     /** Usage error unless {@code name} is 1..max characters of A-Z a-z 0-9 . _ - */
-    static void requireName(@NonNull String name, @NonNull String what, int max) {
+    public static void requireName(@NonNull String name, @NonNull String what, int max) {
         if (!name.matches("[A-Za-z0-9._-]{1," + max + "}")) {
             throw new UsageException(what + " are 1.." + max + " characters of A-Z a-z 0-9 . _ -");
         }
@@ -404,7 +431,7 @@ public final class Aisim {
     }
 
     /** A path as printed for the user: forward slashes, which work in Git Bash and in Java on every OS. */
-    static @NonNull String slash(@NonNull Path path) {
+    public static @NonNull String slash(@NonNull Path path) {
         return path.toString().replace('\\', '/');
     }
 

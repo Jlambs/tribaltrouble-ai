@@ -1,5 +1,7 @@
-package com.oddlabs.tt.aikit;
+package com.oddlabs.tt.aikit.harness;
 
+import com.oddlabs.tt.aikit.AiLog;
+import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.animation.Animated;
 import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.model.LandBuilding;
@@ -159,11 +161,11 @@ public final class GameRecorder implements Animated {
     private void pollEvents() {
         Player[] players = world.getPlayers();
         for (int slot = 0; slot < players.length; slot++) {
-            poll(players[slot], slot);
+            pollPlayer(players[slot], slot);
         }
         if (world.getSecondsPerTick() != seconds_per_tick) {
             seconds_per_tick = world.getSecondsPerTick();
-            line(lineStart("speed") + ",\"spt\":" + seconds_per_tick + "}");
+            writeLine(lineStart("speed") + ",\"secondsPerTick\":" + seconds_per_tick + "}");
         }
         if (on_gui_finish != null) {
             finishIfOneTeamLeft();
@@ -173,7 +175,7 @@ public final class GameRecorder implements Animated {
     /** Writes an event line (harness events such as {@code collapse}); {@code members} are extra JSON members. */
     public void event(@NonNull String ev, int slot, @NonNull String members) {
         String extra = members.isEmpty() ? "" : "," + members;
-        line(lineStart(ev) + ",\"s\":" + slot + extra + "}");
+        writeLine(lineStart(ev) + ",\"s\":" + slot + extra + "}");
     }
 
     /**
@@ -188,7 +190,7 @@ public final class GameRecorder implements Animated {
             if (!failed) {
                 writeHeaderOnce();
                 writeCensus();
-                line(lineStart("end") + "," + end_members + ",\"checksum\":" + world.getChecksum() + "}");
+                writeLine(lineStart("end") + "," + end_members + ",\"checksum\":" + world.getChecksum() + "}");
             }
         } catch (RuntimeException | AssertionError | LinkageError e) {
             fail(e);
@@ -265,13 +267,13 @@ public final class GameRecorder implements Animated {
     private void writeHeader() {
         StringBuilder text = new StringBuilder("{\"ev\":\"game\",\"v\":1,").append(header);
         text.append(",\"meters\":").append(world.getHeightMap().getMetersPerWorld());
-        text.append(",\"spt\":").append(world.getSecondsPerTick());
+        text.append(",\"secondsPerTick\":").append(world.getSecondsPerTick());
         text.append(",\"players\":[");
         Player[] players = world.getPlayers();
         for (int slot = 0; slot < players.length; slot++) {
             text.append(slot == 0 ? "" : ",").append(playerJson(slot, players[slot]));
         }
-        line(text.append("]}").toString());
+        writeLine(text.append("]}").toString());
     }
 
     /** One player of the header: slot, name, team, race, AI label and start position. */
@@ -312,14 +314,15 @@ public final class GameRecorder implements Animated {
         }
         census_tick = world.getTick();
         for (int slot = 0; slot < world.getPlayers().length; slot++) {
-            event("tl", slot, members(Census.Field.values(), census(slot)) + ",\"chk\":" + world.getChecksum());
+            event("census", slot, members(Census.Field.values(), census(
+                    slot)) + ",\"checksum\":" + world.getChecksum());
         }
     }
 
     // ---------------------------------------------------------------- events
 
     /** Diffs one player against the previous poll and writes its events, always in this order. */
-    private void poll(@NonNull Player player, int slot) {
+    private void pollPlayer(@NonNull Player player, int slot) {
         Seen before = seen[slot];
         Seen now = observe(player);
         reportBuildings(slot, before, now);
@@ -342,13 +345,14 @@ public final class GameRecorder implements Animated {
         Race race = player.getRace();
         Seen now = new Seen();
         for (Selectable<?> s : player.getUnits().getSet()) {
-            if (s instanceof LandBuilding b) {
-                int kind = b.getTemplate().getTemplateID();
-                now.buildings.add(new KnownBuilding(b, kind, b.isComplete(), b.getGridX(), b.getGridY()));
-            } else if (s instanceof Unit u) {
-                now.units.add(new KnownUnit(u, Census.kindOf(race, u), u.getGridX(), u.getGridY()));
-                if (u.getCurrentController() instanceof StunController) {
-                    now.stunned.add(u);
+            if (s instanceof LandBuilding building) {
+                int kind = building.getTemplate().getTemplateID();
+                now.buildings.add(new KnownBuilding(building, kind, building.isComplete(), building.getGridX(),
+                        building.getGridY()));
+            } else if (s instanceof Unit unit) {
+                now.units.add(new KnownUnit(unit, Census.kindOf(race, unit), unit.getGridX(), unit.getGridY()));
+                if (unit.getCurrentController() instanceof StunController) {
+                    now.stunned.add(unit);
                 }
             }
         }
@@ -361,14 +365,14 @@ public final class GameRecorder implements Animated {
     /** New or newly completed buildings, in unit-set order (placed/built), then remembered ones now gone (razed). */
     private void reportBuildings(int slot, @NonNull Seen before, @NonNull Seen now) {
         for (KnownBuilding known : now.buildings) {
-            KnownBuilding old = find(before.buildings, known.building());
+            KnownBuilding old = findBuilding(before.buildings, known.building());
             if (old == null || (known.complete() && !old.complete())) {
-                building(known.complete() ? "built" : "placed", slot, known, "");
+                buildingEvent(known.complete() ? "built" : "placed", slot, known, "");
             }
         }
         for (KnownBuilding old : before.buildings) {
             if (old.building().isDead()) {
-                building("razed", slot, old, old.complete() ? "" : ",\"site\":1");
+                buildingEvent("razed", slot, old, old.complete() ? "" : ",\"site\":1");
             }
         }
     }
@@ -399,11 +403,11 @@ public final class GameRecorder implements Animated {
         int stunned = 0;
         long stun_x = 0;
         long stun_y = 0;
-        for (Unit u : now.stunned) {
-            if (!before.stunned.contains(u)) {
+        for (Unit unit : now.stunned) {
+            if (!before.stunned.contains(unit)) {
                 stunned++;
-                stun_x += u.getGridX();
-                stun_y += u.getGridY();
+                stun_x += unit.getGridX();
+                stun_y += unit.getGridY();
             }
         }
         if (stunned > 0) {
@@ -430,13 +434,13 @@ public final class GameRecorder implements Animated {
         return race.getMagicFactory(index).getClass().getSimpleName().replace("Factory", "");
     }
 
-    private void building(@NonNull String ev, int slot, @NonNull KnownBuilding b, @NonNull String extra) {
-        event(ev, slot, "\"b\":\"" + BUILDINGS[b.kind()] + "\"," + xy(b.x(), b.y()) + extra);
+    private void buildingEvent(@NonNull String ev, int slot, @NonNull KnownBuilding known, @NonNull String extra) {
+        event(ev, slot, "\"b\":\"" + BUILDINGS[known.kind()] + "\"," + xy(known.x(), known.y()) + extra);
     }
 
     /**
      * GUI only: ends the recording once at most one team has a living player. It uses seen[slot].alive as updated by
-     * this second's poll(), so the end line matches the out events.
+     * this second's pollPlayer(), so the end line matches the out events.
      */
     private void finishIfOneTeamLeft() {
         Player[] players = world.getPlayers();
@@ -454,9 +458,10 @@ public final class GameRecorder implements Animated {
     }
 
     /** Linear ==: hashing engine objects would draw identity hashes. */
-    private static @Nullable KnownBuilding find(@NonNull List<KnownBuilding> list, @NonNull LandBuilding b) {
+    private static @Nullable KnownBuilding findBuilding(@NonNull List<KnownBuilding> list,
+            @NonNull LandBuilding building) {
         for (KnownBuilding known : list) {
-            if (known.building() == b) {
+            if (known.building() == building) {
                 return known;
             }
         }
@@ -466,7 +471,7 @@ public final class GameRecorder implements Animated {
     // ---------------------------------------------------------------- the file
 
     /** Synchronized: the GUI shutdown hook flushes from another thread. */
-    private synchronized void line(@NonNull String json) {
+    private synchronized void writeLine(@NonNull String json) {
         if (failed || finished) {
             return;
         }
@@ -503,7 +508,7 @@ public final class GameRecorder implements Animated {
     }
 
     /**
-     * Stops recording after writing one {@code recorder_error} line; never throws. Writes directly: line() refuses
+     * Stops recording after writing one {@code recorder_error} line; never throws. Writes directly: writeLine() refuses
      * once failed is set.
      */
     private synchronized void fail(@NonNull Throwable e) {

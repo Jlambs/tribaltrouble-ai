@@ -19,13 +19,13 @@ public final class StarterAI extends AI {
     private final @NonNull AiLog log;
     private int ticks;
 
-    public StarterAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String params) {
+    public StarterAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String spec_params) {
         super(owner, units); // first: registers this AI and creates the starting units
-        AiParams p = AiParams.parse(params);
-        // Read params into final fields here, for example boolean rush = p.getBoolean("rush", false); the spec
+        AiParams params = AiParams.parse(spec_params);
+        // Read params into final fields here, for example boolean rush = params.getBoolean("rush", false); the spec
         // NAME:rush=1 then turns it on. The defaults should be your best known values: batches compare against them.
         log = AiLog.of(owner);
-        log.log("PARAM", p.done()); // fails on unknown keys, so a typo cannot silently play the defaults
+        log.log("PARAM", params.done()); // fails on unknown keys, so a typo cannot silently play the defaults
     }
 
     /** Runs every tick; deciding once a game second is plenty to start with. */

@@ -1,4 +1,4 @@
-package com.oddlabs.tt.aikit;
+package com.oddlabs.tt.aikit.harness;
 
 import com.oddlabs.tt.player.AI;
 import com.oddlabs.tt.player.AdvancedAI;

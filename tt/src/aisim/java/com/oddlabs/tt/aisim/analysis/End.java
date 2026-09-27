@@ -1,12 +1,15 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.analysis;
 
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+
+import java.util.Map;
 
 /**
  * How a game ended: the {@code end} field of its result row and of its game file's end line. Only elim and timeout
  * games have a winner and count; the others are listed as failed.
  */
-enum End {
+public enum End {
     /** One team has no player left standing, by the engine's rule or by the harness's collapse rule. */
     elim,
     /** The time limit came first; the teams' strength decides the winner (Match.DECISIVE_MARGIN). */
@@ -22,17 +25,23 @@ enum End {
     error;
 
     /** Whether the game played to its end, so it counts and its JVM's static engine state is intact. */
-    boolean normal() {
+    public boolean normal() {
         return this == elim || this == timeout;
     }
 
     /** The end of a result row's {@code end} value; null for a value that names none. */
-    static @Nullable End of(@Nullable Object row_end) {
+    public static @Nullable End of(@Nullable Object row_end) {
         for (End end : values()) {
             if (end.name().equals(row_end)) {
                 return end;
             }
         }
         return null;
+    }
+
+    /** Whether the game of result row {@code row} played to its end, so its worker JVM can play another. */
+    public static boolean endedNormally(@NonNull Map<String, Object> row) {
+        End end = of(row.get("end"));
+        return end != null && end.normal();
     }
 }

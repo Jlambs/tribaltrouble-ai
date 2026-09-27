@@ -133,18 +133,17 @@ means: kd30 +198.8 | w15 48.4 | margin +0.800 | length 22.4 min | cost 1.7 s CPU
 A swallowed errors 0 in 0 games | B swallowed errors 0 in 0 games     exceptions the AIs caught (AiLog.error)
 A counters: none | B counters: none                                    AiLog.count counters, per game
 curves (mean over games still running; A / B):
-  min games   units warriors workers       Q       A     T   kills strength
-    5    20   65/62  5.1/9.7   59/52 1.0/1.0 1.0/1.0   0/0   0/0.1   94/103
-   10    19  86/139    16/14  69/124   1/0.9   1/0.9 0.6/0   23/17  225/191
+  min games  units warriors workers quarters armories towers kills strength
+    5    20  65/62  5.1/9.7   59/52      1/1      1/1    0/0 0/0.1   94/103
+   10    19 86/139    16/14  69/124    1/0.9    1/0.9  0.6/0 23/17  225/191
 milestones (median seconds A / B, and in how many games): Q1 66/66 (19/19) Q4 -/- (0/0) A1 158/158 (19/19) ...
 worst games for A:
   s2-1      loss elim     31.4m margin -1.00  ./aisim.sh show example s2-1 | ./aisim.sh replay example s2-1
 RESULT example a=hard b=normal n=20/20 score=0.900 [0.699,0.972] W18 L2 D0 elim=18-2 ... fail=0
 ```
 
-Warriors include tower garrisons, workers are peons outside and inside buildings, and Q, A and T are quarters,
-armories and towers (`curves` explains the table). The milestones are the first quarters (Q1), the fourth (Q4), the
-first armory (A1), tower (T1) and chieftain.
+Warriors include tower garrisons, and workers are peons outside and inside buildings (`curves` explains the table).
+The milestones are the first quarters (Q1), the fourth (Q4), the first armory (A1), tower (T1) and chieftain.
 
 `compare BASE VARIANT` pairs the two runs game by game (same key = same map, start and world seed). Per metric it
 prints both runs' means and the paired difference with its standard error (SE), weighting maps equally, since a
@@ -195,15 +194,16 @@ work for every AI, the stock AI included.
 **`curves RUN`** is the summary's curve table with the fields, minutes and games you choose: census means at each
 minute over the games still running then, for A / B. `--split` shows A in the games it won / lost, which shows where
 the two part; several runs show A in each, over the games all of them counted. `--fields` takes census fields (see
-[Files](#files)), the sums `warriors` (tower garrisons included), `workers` (peons outside and inside), `harvest` and
-`stock`, and any of them with `/min` for the gain over the minute before; `--at` takes the minutes:
+[Files](#files)), the sums `warriors` (tower garrisons included), `workers` (peons outside and inside), `harvested`
+(all four harvested fields) and `stock` (all three stock fields), and any of them with `/min` for the gain over the
+minute before; `--at` takes the minutes:
 
 ```
-$ ./aisim.sh curves example --split --fields warriors,hIron/min,sIron --at 5,10,15
+$ ./aisim.sh curves example --split --fields warriors,harvestedIron/min,stockIron --at 5,10
 curves of example: mean over the games still running (A in the games it won / lost)
-  min games warriors hIron/min sIron
-    5  18/2  5.1/5.5     7.7/3 2.1/0
-   10  18/1    16/17     6.5/3 6.9/7
+  min games warriors harvestedIron/min stockIron
+    5  18/2  5.1/5.5             7.7/3     2.1/0
+   10  18/1    16/17             6.5/3     6.9/7
 ```
 
 **`fights RUN KEY`** splits one game into fights: deaths and razed buildings under 20 s apart and within 40 cells
@@ -250,12 +250,14 @@ A Java tool is one source file that `./aisim.sh lab` runs straight from source o
 
 `lab/starter/FirstArmory.java` is a complete example, and a template to copy. A tool can use:
 
-- **`com.oddlabs.tt.aisim.Game`**, one recorded game: `Game.counted(RUN)` (the counted games of a run),
+- **`com.oddlabs.tt.aisim.analysis.Game`**, one recorded game: `Game.counted(RUN)` (the counted games of a run),
   `Game.of(RUN, KEY)` and `Game.file(PATH)` (any game file). Per game: `row()` (the result row), `header()`,
-  `players()`, `events()` or `events("deaths")`, `census(slot)` and `census(slot, seconds)`, A's slot `a()`, B's
-  slots `b()`, `isA(slot)` and `result()` (win, loss or draw). `Game.num(map, key)` reads a number and
+  `players()`, `events()` or `events("deaths")`, `census(slot)` and `census(slot, seconds)`, A's slot `aSlot()`,
+  B's slots `bSlots()`, `isA(slot)` and `result()` (win, loss or draw). `Game.num(map, key)` reads a number and
   `Game.value(census, field)` a census field or one of the sums `curves` knows. The class comment and method
   comments say the rest.
+- **`Table`** and **`Stats`** from the same package: `Table.align(rows)` prints rows as an aligned table, as the
+  harness's commands do; `Stats.wilson` and `Stats.paired` are the statistics of `summary` and `compare`.
 - helper classes in other `.java` files of the same folder;
 - the engine, the harness and your AI's public classes, as of the last build: run `./aisim.sh build` after changing
   them.
@@ -294,7 +296,7 @@ Re-simulating a play-test with full logs: `./aisim.sh gui SPEC --eventload norma
 recorded input with SPEC on the latest snapshot, so do it before you rebuild: the header's `snap` must equal the first
 word of `aisim/snap/latest`. The game runs in `tt/`, so give the path to `event.log` as an absolute path or relative
 to `tt/`. The replay writes fresh files under `replay-<millis>/` in the session folder the game was originally
-recorded to, never over the originals; compare the `chk` of the `tl` lines to confirm it is the same game. A normal
+recorded to, never over the originals; compare the `checksum` of the `census` lines to confirm it is the same game. A normal
 (non-developer) start of the game deletes `event.log`, `std.out` and `std.err` from all but the previous session
 folder, so copy the folders you want to re-simulate under `aisim/`, for example to `aisim/playtests/`, and load them
 from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
@@ -436,7 +438,7 @@ aisim/                                  (in the repository root, git-ignored)
 ```
 
 **Result row** (`results.jsonl`): `v run key seed side vs a b races map mapcode minutes rng collapse snap perturb end
-via winner t checksum score elim kd30 w15 margin A B recErr problem replay wall cpu`. `winner` is `a`, `b`, `draw`,
+via winner t checksum score elim kd30 w15 margin A B recorderFailed problem replay wall cpu`. `winner` is `a`, `b`, `draw`,
 or null for a game that does not count. Crash, `ai_init` and `link error` rows have every field, with `score`, `elim`,
 `kd30`, `w15` and `margin` null. Hang, dead-worker and harness-error rows have only the fields up to `perturb` plus
 `end winner t problem replay`. `t` is the game length, `wall` the wall-clock time and `cpu` the simulation thread's
@@ -449,33 +451,34 @@ team plus `aiError` (the first swallowed error) and `counters`. In Python:
 
 | `ev` | Meaning |
 |---|---|
-| `game` | Header: run, key, specs, map, seed, map code, snapshot, and per player `s name team race ai x y` (start). |
-| `tl` | Census of player `s` every 30 s and at the end (fields below), plus `chk` (the world checksum). |
+| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, specs, map, seed, map code, snapshot, and per player `s name team race ai x y` (start). |
+| `census` | Census of player `s` every 30 s and at the end (fields below), plus `checksum` (the world's). |
 | `placed`, `built`, `razed` | A building (`b` quarters/armory/tower, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). |
 | `chief`, `chief_died` | The player gained or lost an active chieftain. |
 | `cast` | The chieftain cast `magic` (e.g. `Stun`, `PoisonFog`) at `x`, `y`. |
 | `stunned` | `n` of the player's units in the field became stunned, around `x`, `y` (tower garrisons are not seen). |
 | `deaths` | `n` of the player's units in the field were killed in the last second (by kind), around `x`, `y`. |
 | `collapse`, `out` | The collapse rule fired for the player / the player is out by the game's rule. |
-| `speed` | The game speed changed (`spt` = game seconds per tick; play-tests only). |
-| `recorder_error` | The recorder stopped; later data is missing (the row has `recErr: 1`). |
+| `speed` | The game speed changed (`secondsPerTick`; play-tests only). |
+| `recorder_error` | The recorder stopped; later data is missing (the row has `recorderFailed: true`). |
 | `end` | `end via winner checksum`. |
 
-The census (`tl`) fields, in order: `alive units peons rock iron rubber inside tower Q A T sites kills lost razed
-bLost hTree hRock hIron hRubber sRock sIron sRubber chief magics stunned ax ay status strength err`.
+The census fields, in order: `alive units peons rock iron rubber inside garrison quarters armories towers sites kills
+lost razed buildingsLost harvestedTree harvestedRock harvestedIron harvestedRubber stockRock stockIron stockRubber
+chief casts stunned armyX armyY status strength errors`.
 
 - `units` counts everyone, including peons inside buildings; `peons`, `rock`, `iron` and `rubber` are units outside.
-- `inside` sits in quarters and armories, `tower` in towers; `Q A T` count completed quarters, armories and towers,
-  `sites` the unfinished buildings.
-- `kills`, `lost`: units killed and lost; `razed`, `bLost`: enemy buildings destroyed and own buildings lost.
-- `hTree hRock hIron hRubber`: resources harvested; `sRock sIron sRubber`: weapons stocked in armories.
-- `chief`: an active chieftain (0/1); `magics`: its casts; `stunned`: own units stunned so far.
-- `ax ay`: the centre of the player's warriors (where the army is), -1 without warriors.
-- `status`: the engine's score (`Player.getStatus()`); `strength`: `status` plus tower garrisons; `err`: the AI's
+- `inside` sits in quarters and armories, `garrison` in towers; `quarters armories towers` count completed buildings,
+  `sites` the unfinished ones.
+- `kills`, `lost`: units killed and lost; `razed`, `buildingsLost`: enemy buildings destroyed and own buildings lost.
+- `harvested...`: resources harvested so far; `stock...`: weapons stocked in armories.
+- `chief`: an active chieftain (0/1); `casts`: its casts so far; `stunned`: own units stunned so far.
+- `armyX armyY`: the centre of the player's warriors (where the army is), -1 without warriors.
+- `status`: the engine's score (`Player.getStatus()`); `strength`: `status` plus tower garrisons; `errors`: the AI's
   swallowed errors so far.
 
 Units inside a razed building (tower garrisons, quarters and armory occupants) vanish from `units`, `inside` and
-`tower` without dying: they are in neither `deaths` nor `lost`, and the attacker gets no `kills` for them.
+`garrison` without dying: they are in neither `deaths` nor `lost`, and the attacker gets no `kills` for them.
 
 **CSV tables** (`export`): every line of both starts with its game's `run key seed side result` (`side` is A's slot,
 `result` A's win, loss or draw), so the tables of several runs can be joined into one.

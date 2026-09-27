@@ -1,5 +1,6 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.build;
 
+import com.oddlabs.tt.aisim.Aisim;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -52,7 +53,7 @@ record ClassFiles(@NonNull Path top, @Nullable FileSystem zip) implements AutoCl
 
     /** Whether there is a class file in the package at jar path {@code path} ("com/foo/"). */
     boolean hasPackage(@NonNull String path) throws IOException {
-        return files().stream().map(this::name).anyMatch(e -> e.startsWith(path) && e.endsWith(".class"));
+        return files().stream().map(this::name).anyMatch(name -> name.startsWith(path) && name.endsWith(".class"));
     }
 
     /** The content hash of every file, by jar entry name. */

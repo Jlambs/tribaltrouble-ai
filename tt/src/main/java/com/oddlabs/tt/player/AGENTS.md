@@ -26,10 +26,11 @@ first opponent to beat.
   other classes in the same package or below it. `freeze` copies exactly that package, so it must not use another
   AI's package. Keep tools out of it: the harness runs matches, and analyses and experiments go in `lab/<name>/`
   (see [Your own tools](#your-own-tools)).
-- **Constructor** `(Player owner, UnitInfo units, String params)`, calling `super(owner, units)` first: that
-  registers the AI and creates the starting units. The spec `myai:k=v,k=v` passes `k=v,k=v` as `params`. Parse them
-  with `AiParams`: `p.getInt("wave", 12)`, `getDouble`, `getBoolean` (true/false/1/0) and `getString`, each with
-  your default, then `p.done()`, which fails on keys nobody read, so a typo cannot silently play the defaults.
+- **Constructor** `(Player owner, UnitInfo units, String spec_params)`, calling `super(owner, units)` first: that
+  registers the AI and creates the starting units. The spec `myai:k=v,k=v` passes `k=v,k=v` as `spec_params`. Parse
+  them with `AiParams params = AiParams.parse(spec_params)`: `params.getInt("wave", 12)`, `getDouble`, `getBoolean`
+  (true/false/1/0) and `getString`, each with your default, then `params.done()`, which fails on keys nobody read, so
+  a typo cannot silently play the defaults.
 - **`animate(float t)`** is called on every world tick, `GameTime.TICKS_PER_SECOND` (50) per game second at normal
   speed, the harness's only speed. (It runs on the world's real-time animation manager, so in a GUI game at another
   speed, paused included, it keeps ticking 50 times per real second.) Decide once every second or few seconds, not
@@ -39,8 +40,8 @@ first opponent to beat.
   a decision log line (only in `play`, `replay` and GUI play-tests; otherwise it costs one field check).
   `log.count(key)` adds to a counter that shows in every result row and batch summary. `log.error(where, e)` records
   an exception you caught; the game goes on and the count shows in every row.
-- `AiLog`, `AiParams` and `GameTime` are the AI's toolkit in `com.oddlabs.tt.aikit`; the rest of that package is
-  the harness's.
+- `AiLog`, `AiParams` and `GameTime` are the AI's toolkit, `com.oddlabs.tt.aikit`. Its subpackage `aikit.harness`
+  is the harness's.
 - **Ships**: harness games never have ships. GUI games have them only on Archipelago maps or with the Ships advanced
   setting, so ship orders matter only for play-tests there.
 
@@ -202,7 +203,7 @@ on. AIs frozen from other checkouts (`freeze --from`) are not checked; `lint @TA
 Lint reads the compiled code. It catches mistakes, not deliberate cheating, so the rules below hold whether or not
 lint can see them. It counts an engine method that returns nothing as a change unless it knows the method only
 reads. When it flags one that only reads, add it to `isVoidQuery` in
-`tt/src/aisim/java/com/oddlabs/tt/aisim/Lint.java`, on the `headless` branch.
+`tt/src/aisim/java/com/oddlabs/tt/aisim/build/Lint.java`, on the `headless` branch.
 
 ### Fair play
 
@@ -220,8 +221,8 @@ An AI may do exactly what a human player can do through the UI, and nothing more
   - `Player.createHarvesters`, `setPreferredGamespeed` and `changePreferredGamespeed`;
   - creating another AI (`new AdvancedAI(...)`) or a `UnitInfo`. Either would give your player a second set of
     starting units;
-  - the harness's part of `com.oddlabs.tt.aikit` (`AiSpec`, `GameRecorder`, ...): an AI uses only `AiLog`,
-    `AiParams` and `GameTime`;
+  - the harness's part of the toolkit, `com.oddlabs.tt.aikit.harness` (`AiSpec`, `GameRecorder`, ...): an AI uses
+    only `com.oddlabs.tt.aikit` (`AiLog`, `AiParams` and `GameTime`);
   - another AI's package: an AI is one package (`freeze` copies only that one), so copy what you need into yours.
 - **Never give orders through another player's `Player`**. The engine would accept them for that player's units, and
   lint cannot see whose `Player` an order goes to.

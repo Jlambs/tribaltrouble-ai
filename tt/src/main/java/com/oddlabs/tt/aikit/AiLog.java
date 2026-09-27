@@ -26,8 +26,9 @@ import java.util.logging.Logger;
  * <p>Get the handle once, in the AI's constructor, with {@link #of(Player) AiLog.of(getOwner())}. Counters and errors
  * are always recorded and end up in every harness result row, so "this ability never fired" or "this AI swallowed 98
  * exceptions" shows up in batch summaries without reading logs. Log lines are only written when a sink is installed:
- * by the aisim harness for {@code play} and {@code replay}, and by {@link PlayTest} in games started with
- * {@code ./aisim.sh gui}. Without a sink a log call costs one field check and never evaluates its {@link Supplier}.
+ * by the aisim harness for {@code play} and {@code replay}, and by the play-test hook (aikit.harness.PlayTest) in games
+ * started with {@code ./aisim.sh gui}. Without a sink a log call costs one field check and never evaluates its
+ * {@link Supplier}.
  *
  * <p>Line format: {@code <seconds> s<slot> <TOPIC> <message>}, where seconds are {@link GameTime game seconds}, so
  * {@code awk '$1>=600 && $1<=900'} selects a time window and {@code grep ' ARMY '} a topic.
@@ -36,8 +37,8 @@ import java.util.logging.Logger;
  * logs-off batch checksums. Nothing here throws into the simulation or touches the world's random generator.
  *
  * <p>The static state refers to the world only weakly: a finished world must not stay reachable from here after the
- * player returns to the menu. In the game, {@link PlayTest#leave} also closes the handles when the world is closed;
- * the weak references cover every way of leaving a game that does not pass through it.
+ * player returns to the menu. In the game, PlayTest.leave also closes the handles when the world is closed; the
+ * weak references cover every way of leaving a game that does not pass through it.
  */
 public final class AiLog {
     private static final Logger logger = Logger.getLogger(AiLog.class.getName());
@@ -174,14 +175,14 @@ public final class AiLog {
     }
 
     /** {@link #end()} if the handles are bound to {@code world}; handles of any other world stay open. */
-    static synchronized void endFor(@NonNull World world) {
+    public static synchronized void endFor(@NonNull World world) {
         if (world == bound_world.get()) {
             end();
         }
     }
 
     /** The slot of {@code player} in its world. */
-    static int slotOf(@NonNull World world, @NonNull Player player) {
+    public static int slotOf(@NonNull World world, @NonNull Player player) {
         Player[] players = world.getPlayers();
         for (int i = 0; i < players.length; i++) {
             if (players[i] == player) {

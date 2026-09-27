@@ -1,6 +1,8 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.build;
 
-import com.oddlabs.tt.aikit.AiSpec;
+import com.oddlabs.tt.aikit.harness.AiSpec;
+import com.oddlabs.tt.aisim.Aisim;
+import com.oddlabs.tt.aisim.UsageException;
 import org.jspecify.annotations.NonNull;
 
 import javax.lang.model.SourceVersion;
@@ -14,7 +16,7 @@ import java.util.List;
  * goes into the game's source set, so the game can load it too; the template lives in the aisim source set, which
  * every build compiles, so a new AI always starts from code that compiles.
  */
-final class NewAi {
+public final class NewAi {
     /** Where {@code new} puts AI packages. */
     private static final Path AI_SOURCES = Path.of("tt/src/main/java/com/oddlabs/tt/player");
     private static final Path TEMPLATE = Path.of("tt/src/aisim/java/com/oddlabs/tt/player/starter/StarterAI.java");
@@ -25,7 +27,7 @@ final class NewAi {
     private NewAi() {
     }
 
-    static int run(@NonNull String name) throws IOException {
+    public static int run(@NonNull String name) throws IOException {
         if (AiSpec.isStock(name) || !AiSpec.isShortName(name) || !SourceVersion.isName(name)) {
             throw new UsageException("bad AI name '" + name + "': " + AI_NAMES);
         }

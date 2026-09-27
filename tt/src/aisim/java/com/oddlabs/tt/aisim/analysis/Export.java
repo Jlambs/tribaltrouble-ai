@@ -1,7 +1,8 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.analysis;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.oddlabs.tt.aikit.Census;
+import com.oddlabs.tt.aikit.harness.Census;
+import com.oddlabs.tt.aisim.Aisim;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -13,6 +14,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -21,20 +23,21 @@ import java.util.Set;
  * census.csv (one line per census sample) and events.csv (one line per event). Each line starts with its game's run,
  * key, seed, side (A's slot) and A's result, so the tables of several runs can be concatenated.
  */
-final class Export {
+public final class Export {
     /** The columns every line starts with. */
     private static final List<String> GAME_COLUMNS = List.of("run", "key", "seed", "side", "result");
 
     private Export() {
     }
 
-    static int run(@NonNull List<String> runs) throws IOException {
+    public static int run(@NonNull List<String> runs) throws IOException {
         for (String run : runs) {
             List<Game> games = Game.counted(run);
             Path dir = Runs.dir(run);
-            int samples = census(games, dir.resolve("census.csv"));
-            int events = events(games, dir.resolve("events.csv"));
-            System.out.printf("%s: %d games -> %s (%d census samples), %s (%d events)%n", run, games.size(),
+            int samples = writeCensus(games, dir.resolve("census.csv"));
+            int events = writeEvents(games, dir.resolve("events.csv"));
+            System.out.printf(Locale.ROOT, "%s: %d games -> %s (%d census samples), %s (%d events)%n", run,
+                    games.size(),
                     Aisim.slash(dir.resolve("census.csv")), samples, Aisim.slash(dir.resolve("events.csv")), events);
         }
         return 0;
@@ -44,7 +47,7 @@ final class Export {
      * census.csv: the game columns, the game's end, then per sample its slot, role (A or B), t and every census field
      * in docs/aisim.md order. A field an older game file lacks is empty.
      */
-    private static int census(@NonNull List<Game> games, @NonNull Path file) throws IOException {
+    private static int writeCensus(@NonNull List<Game> games, @NonNull Path file) throws IOException {
         List<String> fields = new ArrayList<>();
         for (Census.Field field : Census.Field.values()) {
             fields.add(field.name());
@@ -56,7 +59,7 @@ final class Export {
             header.addAll(fields);
             out.println(String.join(",", header));
             for (Game game : games) {
-                for (Map<String, Object> sample : game.events("tl")) {
+                for (Map<String, Object> sample : game.events("census")) {
                     List<String> line = gameCells(game);
                     line.add(cell(game.row().get("end")));
                     line.addAll(slotCells(game, sample));
@@ -76,11 +79,11 @@ final class Export {
      * events.csv: the game columns, then per event its t, slot and role (empty for events of no player), ev, and every
      * other member any event of the run has, in the order they first appear. The header and census lines are left out.
      */
-    private static int events(@NonNull List<Game> games, @NonNull Path file) throws IOException {
+    private static int writeEvents(@NonNull List<Game> games, @NonNull Path file) throws IOException {
         Set<String> members = new LinkedHashSet<>();
         for (Game game : games) {
-            for (Map<String, Object> e : exported(game)) {
-                members.addAll(e.keySet());
+            for (Map<String, Object> event : exportedEvents(game)) {
+                members.addAll(event.keySet());
             }
         }
         members.removeAll(List.of("ev", "t", "s"));
@@ -91,13 +94,13 @@ final class Export {
             header.addAll(members);
             out.println(String.join(",", header));
             for (Game game : games) {
-                for (Map<String, Object> e : exported(game)) {
+                for (Map<String, Object> event : exportedEvents(game)) {
                     List<String> line = gameCells(game);
-                    line.add(cell(e.get("t")));
-                    line.addAll(e.get("s") == null ? List.of("", "") : slotCells(game, e));
-                    line.add(cell(e.get("ev")));
+                    line.add(cell(event.get("t")));
+                    line.addAll(event.get("s") == null ? List.of("", "") : slotCells(game, event));
+                    line.add(cell(event.get("ev")));
                     for (String member : members) {
-                        line.add(cell(e.get(member)));
+                        line.add(cell(event.get(member)));
                     }
                     out.println(String.join(",", line));
                     lines++;
@@ -108,8 +111,9 @@ final class Export {
     }
 
     /** The events of a game that events.csv lists: all but the header and the census samples. */
-    private static @NonNull List<Map<String, Object>> exported(@NonNull Game game) {
-        return game.events().stream().filter(e -> !"game".equals(e.get("ev")) && !"tl".equals(e.get("ev"))).toList();
+    private static @NonNull List<Map<String, Object>> exportedEvents(@NonNull Game game) {
+        Set<String> left_out = Set.of("game", "census");
+        return game.events().stream().filter(event -> !left_out.contains(String.valueOf(event.get("ev")))).toList();
     }
 
     private static @NonNull List<String> gameCells(@NonNull Game game) {
@@ -117,14 +121,14 @@ final class Export {
         cells.add(cell(game.run()));
         cells.add(cell(game.key()));
         cells.add(String.valueOf(game.seed()));
-        cells.add(String.valueOf(game.a()));
+        cells.add(String.valueOf(game.aSlot()));
         cells.add(game.result());
         return cells;
     }
 
     /** The slot of an event or sample, and its role: A, or B for every player not on A's team. */
-    private static @NonNull List<String> slotCells(@NonNull Game game, @NonNull Map<String, Object> e) {
-        int slot = Game.slot(e);
+    private static @NonNull List<String> slotCells(@NonNull Game game, @NonNull Map<String, Object> event) {
+        int slot = Game.slot(event);
         return List.of(String.valueOf(slot), game.isA(slot) ? "A" : "B");
     }
 

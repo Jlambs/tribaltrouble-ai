@@ -38,8 +38,8 @@ public final class AiParams {
         return params;
     }
 
-    public int getInt(@NonNull String key, int def) {
-        String value = get(key, Integer.toString(def));
+    public int getInt(@NonNull String key, int fallback) {
+        String value = get(key, Integer.toString(fallback));
         try {
             return Integer.parseInt(value);
         } catch (NumberFormatException e) {
@@ -47,8 +47,8 @@ public final class AiParams {
         }
     }
 
-    public double getDouble(@NonNull String key, double def) {
-        String value = get(key, Double.toString(def));
+    public double getDouble(@NonNull String key, double fallback) {
+        String value = get(key, Double.toString(fallback));
         try {
             return Double.parseDouble(value);
         } catch (NumberFormatException e) {
@@ -57,8 +57,8 @@ public final class AiParams {
     }
 
     /** true/false or 1/0. */
-    public boolean getBoolean(@NonNull String key, boolean def) {
-        String value = get(key, Boolean.toString(def));
+    public boolean getBoolean(@NonNull String key, boolean fallback) {
+        String value = get(key, Boolean.toString(fallback));
         return switch (value) {
             case "true", "1" -> true;
             case "false", "0" -> false;
@@ -67,8 +67,8 @@ public final class AiParams {
         };
     }
 
-    public @NonNull String getString(@NonNull String key, @NonNull String def) {
-        return get(key, def);
+    public @NonNull String getString(@NonNull String key, @NonNull String fallback) {
+        return get(key, fallback);
     }
 
     /** Throws IllegalArgumentException naming unknown keys; returns the values in effect as {@code k=v k=v}. */
@@ -87,8 +87,8 @@ public final class AiParams {
         return String.join(" ", pairs);
     }
 
-    private @NonNull String get(@NonNull String key, @NonNull String def) {
-        String value = given.getOrDefault(key, def);
+    private @NonNull String get(@NonNull String key, @NonNull String fallback) {
+        String value = given.getOrDefault(key, fallback);
         effective.put(key, value);
         return value;
     }

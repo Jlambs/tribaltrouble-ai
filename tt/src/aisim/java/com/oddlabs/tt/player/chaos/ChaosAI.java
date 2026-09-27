@@ -20,23 +20,23 @@ import org.jspecify.annotations.NonNull;
  */
 public final class ChaosAI extends AI {
     private final @NonNull AiLog log;
-    private final int crash;
-    private final int hang;
-    private final boolean nondet;
-    private final boolean err;
-    private final boolean count;
+    private final int crash_second;
+    private final int hang_second;
+    private final boolean nondeterministic;
+    private final boolean report_errors;
+    private final boolean count_seconds;
     private int ticks;
 
-    public ChaosAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String params) {
+    public ChaosAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String spec_params) {
         super(owner, units);
-        AiParams p = AiParams.parse(params);
-        crash = p.getInt("crash", -1);
-        hang = p.getInt("hang", -1);
-        nondet = p.getBoolean("nondet", false);
-        err = p.getBoolean("err", false);
-        count = p.getBoolean("count", false);
+        AiParams params = AiParams.parse(spec_params);
+        crash_second = params.getInt("crash", -1);
+        hang_second = params.getInt("hang", -1);
+        nondeterministic = params.getBoolean("nondet", false);
+        report_errors = params.getBoolean("err", false);
+        count_seconds = params.getBoolean("count", false);
         log = AiLog.of(owner);
-        log.log("PARAM", p.done());
+        log.log("PARAM", params.done());
     }
 
     @Override
@@ -45,21 +45,21 @@ public final class ChaosAI extends AI {
             return;
         }
         int second = ticks / GameTime.TICKS_PER_SECOND;
-        if (count) {
+        if (count_seconds) {
             log.count("second");
         }
-        if (second == crash) {
+        if (second == crash_second) {
             throw new IllegalStateException("chaos: crash at " + second + " s");
         }
-        if (second == hang) {
+        if (second == hang_second) {
             while (ticks > 0) { // always true: spins until the worker's hang watchdog kills it
                 Thread.onSpinWait();
             }
         }
-        if (err && second % 60 == 0) {
+        if (report_errors && second % 60 == 0) {
             log.error("chaos", new IllegalStateException("chaos: error at " + second + " s"));
         }
-        if (nondet && second % 5 == 0) {
+        if (nondeterministic && second % 5 == 0) {
             Selectable<?>[][] groups = getOwner().classifyUnits();
             int x = UnitGrid.toGridCoordinate(getOwner().getStartX());
             int y = UnitGrid.toGridCoordinate(getOwner().getStartY());

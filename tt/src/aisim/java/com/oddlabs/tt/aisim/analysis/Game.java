@@ -1,6 +1,8 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.analysis;
 
-import com.oddlabs.tt.aikit.Census;
+import com.oddlabs.tt.aikit.harness.Census;
+import com.oddlabs.tt.aisim.Aisim;
+import com.oddlabs.tt.aisim.UsageException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -16,26 +18,28 @@ import java.util.TreeMap;
 
 /**
  * One recorded game: its result row and its game file, as docs/aisim.md (Files) describes them. The analysis commands
- * read games through this class, and so can your own tools in {@code lab/} (docs/aisim.md, Your own tools). Lab tools
- * on AI branches call its public methods, so keep them stable.
+ * read games through this class, and so do the tools in {@code lab/} (docs/aisim.md, Your own tools), which is why its
+ * methods are public.
  *
  * <p>Rows, headers, census samples and events are JSON objects as read: numbers, strings, lists and maps; {@link #num}
  * reads a number. A is the AI under test, B every player not on A's team. Nothing here throws a checked exception:
  * an unreadable file throws {@link UncheckedIOException}.
  */
 public final class Game {
-    private static final String[] WARRIORS = {"rock", "iron", "rubber", "tower"};
-    private static final String[] WORKERS = {"peons", "inside"};
-    private static final String[] HARVEST = {"hTree", "hRock", "hIron", "hRubber"};
-    private static final String[] STOCK = {"sRock", "sIron", "sRubber"};
+    /** The sums {@link #value} knows besides the census fields, and the fields each adds up. */
+    private static final Map<String, List<String>> SUMS = Map.of(
+            "warriors", List.of("rock", "iron", "rubber", "garrison"),
+            "workers", List.of("peons", "inside"),
+            "harvested", List.of("harvestedTree", "harvestedRock", "harvestedIron", "harvestedRubber"),
+            "stock", List.of("stockRock", "stockIron", "stockRubber"));
 
     private final @Nullable String run;
     private final @NonNull Map<String, Object> row;
     private final @NonNull Path file;
     /** The game file's lines, read on first use. */
     private @Nullable List<Map<String, Object>> events;
-    /** Each slot's census samples in time order, built with {@link #events}. */
-    private final @NonNull Map<Integer, List<Map<String, Object>>> census = new TreeMap<>();
+    /** Each slot's census samples in time order, indexed with {@link #events}. */
+    private final @NonNull Map<Integer, List<Map<String, Object>>> census_by_slot = new TreeMap<>();
     private double last_sample = -1;
 
     private Game(@Nullable String run, @NonNull Map<String, Object> row, @NonNull Path file) {
@@ -48,9 +52,9 @@ public final class Game {
     public static @NonNull List<Game> counted(@NonNull String run) {
         Path dir = Runs.dir(run);
         List<Game> games = new ArrayList<>();
-        for (Map<String, Object> r : read(() -> Runs.rows(run))) {
-            if (r.get("winner") != null) {
-                games.add(new Game(run, r, Runs.gameFile(dir, r.get("key"))));
+        for (Map<String, Object> row : read(() -> Runs.rows(run))) {
+            if (row.get("winner") != null) {
+                games.add(new Game(run, row, Runs.gameFile(dir, row.get("key"))));
             }
         }
         return games;
@@ -84,7 +88,6 @@ public final class Game {
         return row;
     }
 
-    /** The game file. */
     public @NonNull Path path() {
         return file;
     }
@@ -104,7 +107,7 @@ public final class Game {
      * A's slot: the row's {@code side}. In a game file read alone, the slot its key names, and in a play-test the first
      * player that is not human.
      */
-    public int a() {
+    public int aSlot() {
         if (!row.isEmpty()) {
             return (int) num(row, "side");
         }
@@ -120,15 +123,8 @@ public final class Game {
         return 0;
     }
 
-    /** True when {@code slot} plays on A's team. */
-    public boolean isA(int slot) {
-        int a = a();
-        Object team = teamOf(slot);
-        return slot == a || (team != null && team.equals(teamOf(a)));
-    }
-
     /** B's slots: every player not on A's team. */
-    public @NonNull List<Integer> b() {
+    public @NonNull List<Integer> bSlots() {
         List<Integer> slots = new ArrayList<>();
         for (int slot = 0; slot < players().size(); slot++) {
             if (!isA(slot)) {
@@ -136,6 +132,13 @@ public final class Game {
             }
         }
         return slots;
+    }
+
+    /** True when {@code slot} plays on A's team. */
+    public boolean isA(int slot) {
+        int a = aSlot();
+        Object team = teamOf(slot);
+        return slot == a || (team != null && team.equals(teamOf(a)));
     }
 
     /** A's result: win, loss or draw; unknown for a play-test that has no winner. */
@@ -150,7 +153,7 @@ public final class Game {
             return Runs.resultOfA(winner);
         }
         if (winner_team != null) {
-            return winner_team.equals(teamOf(a())) ? "win" : "loss";
+            return winner_team.equals(teamOf(aSlot())) ? "win" : "loss";
         }
         return "unknown";
     }
@@ -159,10 +162,10 @@ public final class Game {
     public @NonNull List<Map<String, Object>> events() {
         if (events == null) {
             List<Map<String, Object>> lines = read(() -> Runs.readJsonl(file));
-            for (Map<String, Object> e : lines) {
-                if ("tl".equals(e.get("ev"))) {
-                    census.computeIfAbsent(slot(e), s -> new ArrayList<>()).add(e);
-                    last_sample = Math.max(last_sample, num(e, "t"));
+            for (Map<String, Object> line : lines) {
+                if ("census".equals(line.get("ev"))) {
+                    census_by_slot.computeIfAbsent(slot(line), slot -> new ArrayList<>()).add(line);
+                    last_sample = Math.max(last_sample, num(line, "t"));
                 }
             }
             events = lines;
@@ -172,13 +175,13 @@ public final class Game {
 
     /** The events named {@code ev} (such as deaths or built), in time order. */
     public @NonNull List<Map<String, Object>> events(@NonNull String ev) {
-        return events().stream().filter(e -> ev.equals(e.get("ev"))).toList();
+        return events().stream().filter(event -> ev.equals(event.get("ev"))).toList();
     }
 
     /** The header, the game file's first line; empty when the game never started. */
     public @NonNull Map<String, Object> header() {
-        List<Map<String, Object>> all = events();
-        return all.isEmpty() ? Map.of() : all.get(0);
+        List<Map<String, Object>> lines = events();
+        return lines.isEmpty() ? Map.of() : lines.get(0);
     }
 
     /** The players, by slot: s name team race ai x y (x, y is the start). */
@@ -190,7 +193,7 @@ public final class Game {
     /** The census samples of {@code slot}, every 30 game seconds and at the end. */
     public @NonNull List<Map<String, Object>> census(int slot) {
         events();
-        return census.getOrDefault(slot, List.of());
+        return census_by_slot.getOrDefault(slot, List.of());
     }
 
     /**
@@ -220,7 +223,7 @@ public final class Game {
 
     /** The number at {@code key}; 0 when it is missing, null or not a number. */
     public static double num(@NonNull Map<?, ?> map, @NonNull String key) {
-        return Runs.num(map, key);
+        return map.get(key) instanceof Number n ? n.doubleValue() : 0;
     }
 
     /** The slot of an event or census sample (its {@code s}). */
@@ -229,28 +232,24 @@ public final class Game {
     }
 
     /**
-     * A census field of {@code census} (docs/aisim.md), or one of the sums {@code warriors} (rock iron rubber tower),
-     * {@code workers} (peons inside), {@code harvest} (hTree hRock hIron hRubber) and {@code stock} (sRock sIron
-     * sRubber). An unknown name throws IllegalArgumentException; check it with {@link #isField}.
+     * A census field of {@code census} (docs/aisim.md), or one of the sums {@code warriors} (rock iron rubber
+     * garrison), {@code workers} (peons inside), {@code harvested} (the four harvested fields) and {@code stock} (the
+     * three stock fields). An unknown name throws IllegalArgumentException; check it with {@link #isField}.
      */
     public static double value(@NonNull Map<?, ?> census, @NonNull String field) {
-        return switch (field) {
-            case "warriors" -> sum(census, WARRIORS);
-            case "workers" -> sum(census, WORKERS);
-            case "harvest" -> sum(census, HARVEST);
-            case "stock" -> sum(census, STOCK);
-            default -> {
-                if (!isField(field)) {
-                    throw new IllegalArgumentException("unknown census field " + field);
-                }
-                yield num(census, field);
-            }
-        };
+        List<String> summed = SUMS.get(field);
+        if (summed != null) {
+            return summed.stream().mapToDouble(name -> num(census, name)).sum();
+        }
+        if (!isField(field)) {
+            throw new IllegalArgumentException("unknown census field " + field);
+        }
+        return num(census, field);
     }
 
     /** True for the names {@link #value} knows. */
     public static boolean isField(@NonNull String name) {
-        if (List.of("warriors", "workers", "harvest", "stock").contains(name)) {
+        if (SUMS.containsKey(name)) {
             return true;
         }
         for (Census.Field field : Census.Field.values()) {
@@ -259,14 +258,6 @@ public final class Game {
             }
         }
         return false;
-    }
-
-    private static double sum(@NonNull Map<?, ?> census, @NonNull String @NonNull [] fields) {
-        double sum = 0;
-        for (String field : fields) {
-            sum += num(census, field);
-        }
-        return sum;
     }
 
     /** The team of player {@code slot}, or null when the header does not list it. */

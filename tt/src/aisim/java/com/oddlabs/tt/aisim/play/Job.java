@@ -1,5 +1,6 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.play;
 
+import com.oddlabs.tt.aisim.UsageException;
 import com.oddlabs.tt.procedural.Landscape;
 import com.oddlabs.tt.util.WordsEncoding;
 import org.jspecify.annotations.NonNull;
@@ -16,19 +17,19 @@ import java.math.BigInteger;
  * only a nullable field may be removed (an older worker then reads null). Helper methods must not start with get or
  * is: Jackson would write them as fields.
  */
-record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNull String a, @NonNull String b,
-           int vs, @NonNull String raceA, @NonNull String raceB, int size, int terrain, int hills, int trees,
-           int supplies, int minutes, @Nullable Long rng, boolean collapse, @NonNull String game,
-           @Nullable String logs) {
+public record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNull String a, @NonNull String b,
+                  int vs, @NonNull String raceA, @NonNull String raceB, int size, int terrain, int hills, int trees,
+                  int supplies, int minutes, @Nullable Long rng, boolean collapse, @NonNull String game,
+                  @Nullable String logs) {
 
     /** Map sizes by {@link #size}, as in the skirmish menu (huge is the menu's "Enormous"). */
-    static final String[] SIZES = {"small", "medium", "large", "huge"};
+    public static final String[] SIZES = {"small", "medium", "large", "huge"};
     /** The world's side in meters by {@link #size}. */
     private static final int[] METERS = {256, 512, 1024, 2048};
     /** Terrains by {@link #terrain}, as in the skirmish menu. */
-    static final String[] TERRAINS = {"tropical", "northern"};
+    public static final String[] TERRAINS = {"tropical", "northern"};
     /** The skirmish menu's map seeds are 0..MAP_SEEDS-1. */
-    static final int MAP_SEEDS = 40000;
+    public static final int MAP_SEEDS = 40000;
 
     int slots() {
         return vs + 1;
@@ -86,7 +87,7 @@ record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNul
      * A skirmish map code: the menu settings as one mixed-radix number, the seed its lowest digit, written as words
      * (TerrainMenu.setMapcode and parseBigInteger).
      */
-    record MapCode(int seed, int size, int terrain, int hills, int trees, int supplies) {
+    public record MapCode(int seed, int size, int terrain, int hills, int trees, int supplies) {
 
         // The digits' ranges, TerrainMenu's SLIDER_, TERRAIN_TYPE_ and SIZE_CARDINALITY. The menu has more terrain
         // and size codes than aisim plays: Archipelago is a size, and aisim plays no ships.
@@ -105,7 +106,7 @@ record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNul
             return WordsEncoding.encode(BigInteger.valueOf(code));
         }
 
-        static @NonNull MapCode decode(@NonNull String words) {
+        public static @NonNull MapCode decode(@NonNull String words) {
             long code;
             try {
                 code = WordsEncoding.decode(words.trim()).longValueExact();

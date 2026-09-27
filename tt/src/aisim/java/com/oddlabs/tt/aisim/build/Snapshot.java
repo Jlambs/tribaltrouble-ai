@@ -1,5 +1,7 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.build;
 
+import com.oddlabs.tt.aisim.Aisim;
+import com.oddlabs.tt.aisim.UsageException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -25,7 +27,7 @@ import java.util.stream.Stream;
  * {@code aisim/snap/<id>/cp.args} lists the blobs plus the (immutable) Gradle cache jars. Nothing ever runs from the
  * Gradle output directories, so Windows never finds them locked.
  */
-final class Snapshot {
+public final class Snapshot {
     private static final Path SNAP = Aisim.ROOT.resolve("snap");
     /** "ID MILLIS": the newest snapshot and when it was built; aisim.sh reads the ID too. */
     private static final Path LATEST = SNAP.resolve("latest");
@@ -46,7 +48,7 @@ final class Snapshot {
     }
 
     /** The id of the latest build snapshot. */
-    static @NonNull String latest() {
+    public static @NonNull String latest() {
         return readLatest()[0];
     }
 
@@ -70,7 +72,7 @@ final class Snapshot {
     }
 
     /** Refuses to run the latest snapshot if a source file changed after it was built. */
-    static void requireFresh(boolean stale_ok) throws IOException {
+    public static void requireFresh(boolean stale_ok) throws IOException {
         requireFresh(stale_ok, "run ./aisim.sh build (or pass --stale-ok to run the snapshot anyway)");
     }
 
@@ -78,7 +80,7 @@ final class Snapshot {
      * {@link #requireFresh(boolean)} with the refusal's {@code advice}: gui needs its own, because there --stale-ok
      * only works before SPEC (aisim.sh passes everything after SPEC to the game).
      */
-    static void requireFresh(boolean stale_ok, @NonNull String advice) throws IOException {
+    public static void requireFresh(boolean stale_ok, @NonNull String advice) throws IOException {
         if (stale_ok) {
             return;
         }
@@ -101,7 +103,7 @@ final class Snapshot {
      * Snapshots the class path this JVM runs from (the live build), unless an AI package in it breaks a rule that
      * {@link Lint} checks: then it returns 2 and the previous snapshot stays the latest.
      */
-    static int snapshot() throws IOException {
+    public static int snapshot() throws IOException {
         Path root = Path.of("").toAbsolutePath();
         if (!Lint.checkBuild(liveClasses(root, MAIN_CLASSES))) {
             return 2;
@@ -282,7 +284,7 @@ final class Snapshot {
     }
 
     /** Snapshot {@code id}'s class path argument file; a usage error if there is no such snapshot (replay --snap). */
-    static @NonNull Path cpArgs(@NonNull String id) {
+    public static @NonNull Path cpArgs(@NonNull String id) {
         Path args = SNAP.resolve(id).resolve(CP_ARGS);
         if (!Files.exists(args)) {
             throw new UsageException("no snapshot " + id);

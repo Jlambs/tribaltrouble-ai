@@ -59,23 +59,23 @@ final class Options {
     }
 
     @NonNull
-    String get(@NonNull String key, @NonNull String def) {
-        return values.getOrDefault(key, def);
+    String get(@NonNull String key, @NonNull String fallback) {
+        return values.getOrDefault(key, fallback);
     }
 
-    /** The option as a number in min..max, or {@code def} when it is absent. */
-    int integer(@NonNull String key, int def, int min, int max) {
+    /** The option as a number in min..max, or {@code fallback} when it is absent. */
+    int integer(@NonNull String key, int fallback, int min, int max) {
         String value = get(key);
-        int n;
+        int number;
         try {
-            n = value == null ? def : Integer.parseInt(value);
+            number = value == null ? fallback : Integer.parseInt(value);
         } catch (NumberFormatException e) {
             throw new UsageException("--" + key + " needs a number, not '" + value + "'");
         }
-        if (n < min || n > max) {
+        if (number < min || number > max) {
             throw new UsageException("--" + key + " must be " + min + ".." + max);
         }
-        return n;
+        return number;
     }
 
     /** The option checked as in {@link #integer}, or null when it is absent. */

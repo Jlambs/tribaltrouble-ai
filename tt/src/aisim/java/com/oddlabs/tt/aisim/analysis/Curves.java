@@ -1,5 +1,6 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.analysis;
 
+import com.oddlabs.tt.aisim.UsageException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -13,19 +14,21 @@ import java.util.function.Function;
  * Curve tables: census values at chosen game minutes, as means over the games still running then. {@code summary}
  * prints A / B, {@code compare} A of each run, and {@code curves} whichever fields, minutes and games you ask for.
  */
-final class Curves {
-    static final List<String> FIELDS = List.of("units", "warriors", "workers", "Q", "A", "T", "kills", "strength");
-    static final List<Integer> MINUTES = List.of(5, 10, 15, 20, 30, 45, 60, 90);
+public final class Curves {
+    public static final List<String> FIELDS = List.of("units", "warriors", "workers", "quarters", "armories", "towers",
+            "kills", "strength");
+    public static final List<Integer> MINUTES = List.of(5, 10, 15, 20, 30, 45, 60, 90);
+    /** Appended to a field, the field's gain over the minute before. */
     private static final String PER_MINUTE = "/min";
 
     private Curves() {
     }
 
-    /** One number per cell: the census of A's slot ({@code a}) or the sum of B's slots, over some games. */
-    record Series(@NonNull String label, @NonNull List<Game> games, boolean a) {
+    /** One number per cell: the census of A's slot ({@code teamA}) or the sum of B's slots, over some games. */
+    record Series(@NonNull String label, @NonNull List<Game> games, boolean teamA) {
         /** How many of the games are still running at game second {@code t}. */
         int running(double t) {
-            return (int) games.stream().filter(g -> t <= g.lastSample()).count();
+            return (int) games.stream().filter(game -> t <= game.lastSample()).count();
         }
 
         /** The mean of {@code field} over the games still running at {@code t}; 0 when none is. */
@@ -33,7 +36,7 @@ final class Curves {
             double sum = 0;
             int running = 0;
             for (Game game : games) {
-                Double value = value(game, a, field, t);
+                Double value = value(game, teamA, field, t);
                 if (value != null) {
                     sum += value;
                     running++;
@@ -47,7 +50,7 @@ final class Curves {
      * {@code curves RUN [RUN...]}: A / B of one run, A in the games it won / lost ({@code split}), or A of each run
      * over the games they all counted.
      */
-    static int run(@NonNull List<String> runs, @NonNull List<String> fields, @NonNull List<Integer> minutes,
+    public static int run(@NonNull List<String> runs, @NonNull List<String> fields, @NonNull List<Integer> minutes,
             boolean split) {
         checkFields(fields);
         List<Series> series = new ArrayList<>();
@@ -56,9 +59,16 @@ final class Curves {
             if (runs.size() > 1) {
                 throw new UsageException("--split works on one run");
             }
-            List<Game> games = Game.counted(runs.get(0));
-            series.add(new Series("won", games.stream().filter(g -> g.result().equals("win")).toList(), true));
-            series.add(new Series("lost", games.stream().filter(g -> g.result().equals("loss")).toList(), true));
+            String run = runs.get(0);
+            List<Game> games = Game.counted(run);
+            List<Game> won = games.stream().filter(game -> game.result().equals("win")).toList();
+            List<Game> lost = games.stream().filter(game -> game.result().equals("loss")).toList();
+            if (won.isEmpty() || lost.isEmpty()) {
+                String has = run + " has " + won.size() + " won and " + lost.size() + " lost";
+                throw new UsageException("--split needs games A won and games it lost; " + has);
+            }
+            series.add(new Series("won", won, true));
+            series.add(new Series("lost", lost, true));
             what = "A in the games it won / lost";
         } else if (runs.size() == 1) {
             List<Game> games = Game.counted(runs.get(0));
@@ -78,11 +88,11 @@ final class Curves {
 
     /** A of each run, over the games every run counted. */
     private static @NonNull List<Series> onCommonGames(@NonNull List<String> runs) {
-        List<List<Game>> loaded = new ArrayList<>();
+        List<List<Game>> games_by_run = new ArrayList<>();
         Set<String> common = null;
         for (String run : runs) {
             List<Game> games = Game.counted(run);
-            loaded.add(games);
+            games_by_run.add(games);
             Set<String> keys = new HashSet<>(games.stream().map(Game::key).toList());
             if (common == null) {
                 common = keys;
@@ -96,7 +106,7 @@ final class Curves {
         List<Series> series = new ArrayList<>();
         for (int i = 0; i < runs.size(); i++) {
             Set<String> shared = common;
-            List<Game> games = loaded.get(i).stream().filter(g -> shared.contains(g.key())).toList();
+            List<Game> games = games_by_run.get(i).stream().filter(game -> shared.contains(game.key())).toList();
             series.add(new Series(runs.get(i), games, true));
         }
         return series;
@@ -126,6 +136,9 @@ final class Curves {
             }
             rows.add(row);
         }
+        if (rows.size() == 1) {
+            return List.of("  (no curves: not every series has a game that ran to minute " + minutes.get(0) + ")");
+        }
         return Table.align(rows, "r");
     }
 
@@ -135,26 +148,26 @@ final class Curves {
     }
 
     /**
-     * {@code field} of A ({@code a}) or of B's team in {@code game} at game second {@code t}; null when the game is
-     * over. {@code F/min} is the gain of F over the minute before.
+     * {@code field} of A ({@code team_a}) or of B's team in {@code game} at game second {@code t}; null when the game
+     * is over. {@code F/min} is the gain of F over the minute before.
      */
-    static @Nullable Double value(@NonNull Game game, boolean a, @NonNull String field, double t) {
+    static @Nullable Double value(@NonNull Game game, boolean team_a, @NonNull String field, double t) {
         if (!field.endsWith(PER_MINUTE)) {
-            return sum(game, a, field, t);
+            return teamSum(game, team_a, field, t);
         }
-        String name = field.substring(0, field.length() - PER_MINUTE.length());
-        Double now = sum(game, a, name, t);
-        Double before = sum(game, a, name, t - 60);
+        String name = withoutPerMinute(field);
+        Double now = teamSum(game, team_a, name, t);
+        Double before = teamSum(game, team_a, name, t - 60);
         return now == null ? null : now - (before == null ? 0 : before);
     }
 
     /** {@code field} summed over A's slot or B's slots at {@code t}; null when the game is over. */
-    private static @Nullable Double sum(@NonNull Game game, boolean a, @NonNull String field, double t) {
+    private static @Nullable Double teamSum(@NonNull Game game, boolean team_a, @NonNull String field, double t) {
         if (t > game.lastSample()) {
             return null;
         }
         double sum = 0;
-        for (int slot : a ? List.of(game.a()) : game.b()) {
+        for (int slot : team_a ? List.of(game.aSlot()) : game.bSlots()) {
             var census = game.census(slot, t);
             if (census != null) {
                 sum += Game.value(census, field);
@@ -166,12 +179,15 @@ final class Curves {
     /** Rejects unknown field names before anything is printed. */
     private static void checkFields(@NonNull List<String> fields) {
         for (String field : fields) {
-            String name = field.endsWith(PER_MINUTE) ? field.substring(0, field.length() - PER_MINUTE.length()) : field;
-            if (!Game.isField(name)) {
+            if (!Game.isField(withoutPerMinute(field))) {
                 throw new UsageException("""
-                        unknown field %s: use a census field (docs/aisim.md, Files), warriors, workers, harvest or \
+                        unknown field %s: use a census field (docs/aisim.md, Files), warriors, workers, harvested or \
                         stock, optionally with /min""".formatted(field));
             }
         }
+    }
+
+    private static @NonNull String withoutPerMinute(@NonNull String field) {
+        return field.endsWith(PER_MINUTE) ? field.substring(0, field.length() - PER_MINUTE.length()) : field;
     }
 }

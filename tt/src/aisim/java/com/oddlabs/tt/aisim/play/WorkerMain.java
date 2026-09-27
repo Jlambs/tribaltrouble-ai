@@ -1,6 +1,8 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.play;
 
 import com.oddlabs.tt.aikit.GameTime;
+import com.oddlabs.tt.aisim.Aisim;
+import com.oddlabs.tt.aisim.analysis.End;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -19,14 +21,14 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * The inside of a worker JVM that {@link Batch} starts: boots the engine once, then plays one {@link Job} per stdin
+ * The inside of a worker JVM ({@link WorkerProcess}): boots the engine once, then plays one {@link Job} per stdin
  * line and answers each with exactly one {@code @@} row line on the original stdout. Everything else it prints goes to
  * stderr, the worker log. A watchdog thread ends a game that hangs and the JVM once its parent is gone.
  *
  * <p>Exit codes: 0 at the end of its input, 3 after a game that did not end normally (its static engine state may be
  * half updated, so the parent starts a fresh JVM), 3 on a hang and 4 when the parent died.
  */
-final class WorkerMain {
+public final class WorkerMain {
     /**
      * A game is hung when the simulation does not advance a single tick in this much CPU or wall time. Set them with
      * -Daisim.hangCpu and -Daisim.hangWall in AISIM_JAVA_OPTS.
@@ -40,26 +42,26 @@ final class WorkerMain {
      * The game the simulation thread is playing. {@code answered} makes sure the parent gets exactly one row for it,
      * from the game or from the watchdog, whichever comes first.
      */
-    private record Current(@NonNull Job job, @NonNull AtomicBoolean answered) {
+    private record CurrentGame(@NonNull Job job, @NonNull AtomicBoolean answered) {
     }
 
-    private static volatile @Nullable Current current;
+    private static volatile @Nullable CurrentGame current;
 
     private WorkerMain() {
     }
 
-    static void run(@NonNull String snap) throws IOException {
+    public static void run(@NonNull String snap) throws IOException {
         PrintStream protocol = System.out; // rows are ASCII JSON, so its encoding does not matter
         System.setOut(System.err); // engine chatter goes to the worker log
         Logger.getLogger("").setLevel(Level.WARNING); // keeps the engine's INFO logging out of the worker log
         Match.boot();
         Thread simulation = Thread.currentThread();
-        Batch.startDaemon("aisim-watchdog", () -> watch(simulation, protocol, snap));
+        Batch.startDaemon("aisim-watchdog", () -> watchForHang(simulation, protocol, snap));
         BufferedReader in = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
         String line;
         while ((line = in.readLine()) != null) {
             Job job = Aisim.JSON.readValue(line, Job.class);
-            Current game = new Current(job, new AtomicBoolean());
+            CurrentGame game = new CurrentGame(job, new AtomicBoolean());
             current = game;
             Map<String, Object> row;
             try {
@@ -70,7 +72,7 @@ final class WorkerMain {
             }
             current = null;
             answer(protocol, game, row);
-            if (!Batch.endedNormally(row)) {
+            if (!End.endedNormally(row)) {
                 System.exit(3);
             }
         }
@@ -78,10 +80,10 @@ final class WorkerMain {
     }
 
     /** Sends {@code row} to the parent, unless the game was already answered (by the game or by the watchdog). */
-    private static void answer(@NonNull PrintStream protocol, @NonNull Current game,
+    private static void answer(@NonNull PrintStream protocol, @NonNull CurrentGame game,
             @NonNull Map<String, Object> row) throws IOException {
         if (game.answered().compareAndSet(false, true)) {
-            protocol.println(Batch.ROW_PREFIX + Aisim.JSON.writeValueAsString(row));
+            protocol.println(WorkerProcess.ROW_PREFIX + Aisim.JSON.writeValueAsString(row));
             protocol.flush();
         }
     }
@@ -90,17 +92,17 @@ final class WorkerMain {
      * Reports a hang (no simulation tick for {@link #HANG_CPU_SECONDS} of CPU or {@link #HANG_WALL_SECONDS} of wall
      * time) with the stuck stack, and dies with the parent.
      */
-    @SuppressWarnings("ReferenceEquality") // a new game is a new Current object
-    private static void watch(@NonNull Thread simulation, @NonNull PrintStream protocol, @NonNull String snap) {
+    @SuppressWarnings("ReferenceEquality") // a new game is a new CurrentGame object
+    private static void watchForHang(@NonNull Thread simulation, @NonNull PrintStream protocol, @NonNull String snap) {
         ThreadMXBean threads = ManagementFactory.getThreadMXBean();
-        Current watched = null;
+        CurrentGame watched = null;
         int tick = -1;
         long cpu_at_tick = 0;
         long wall_at_tick = 0;
         while (true) {
             Batch.sleep(WATCH_MILLIS);
             haltIfOrphaned();
-            Current game = current;
+            CurrentGame game = current;
             long cpu = threads.getThreadCpuTime(simulation.threadId());
             long wall = System.nanoTime();
             if (game == null || game != watched || Match.progress != tick) {
@@ -127,7 +129,7 @@ final class WorkerMain {
      * Writes the hung game's stack to its .err file and answers the parent with a hang row. A failure is only printed:
      * without a row, the parent records the worker's exit code instead.
      */
-    private static void reportHang(@NonNull PrintStream protocol, @NonNull String snap, @NonNull Current game,
+    private static void reportHang(@NonNull PrintStream protocol, @NonNull String snap, @NonNull CurrentGame game,
             int tick, @NonNull String symptom, StackTraceElement @NonNull [] stack) {
         StringBuilder text = new StringBuilder();
         for (StackTraceElement frame : stack) {

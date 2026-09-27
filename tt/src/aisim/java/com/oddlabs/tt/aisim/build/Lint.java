@@ -1,9 +1,8 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.build;
 
 import com.oddlabs.tt.aikit.AiLog;
-import com.oddlabs.tt.aikit.AiParams;
-import com.oddlabs.tt.aikit.AiSpec;
-import com.oddlabs.tt.aikit.GameTime;
+import com.oddlabs.tt.aikit.harness.AiSpec;
+import com.oddlabs.tt.aisim.UsageException;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.model.Army;
 import com.oddlabs.tt.model.BuildingTemplate;
@@ -32,6 +31,7 @@ import java.lang.classfile.CodeModel;
 import java.lang.classfile.FieldModel;
 import java.lang.classfile.MethodModel;
 import java.lang.classfile.Opcode;
+import java.lang.classfile.attribute.SourceFileAttribute;
 import java.lang.classfile.constantpool.LoadableConstantEntry;
 import java.lang.classfile.constantpool.MemberRefEntry;
 import java.lang.classfile.constantpool.MethodHandleEntry;
@@ -52,13 +52,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * Checks an AI's compiled classes against the rules in {@value #RULES}. Breaking a fair-play rule is an error, and
@@ -70,26 +69,25 @@ import java.util.stream.Stream;
  * Player. Any other engine method that returns nothing counts as a change, unless {@link Checker#isVoidQuery} lists it
  * as a read; an engine method that returns a value counts as a read, unless {@link Checker#isValuedChange} lists it as
  * a change. Both lists are hand-kept: when the engine gains a method that only reads but returns nothing, lint reports
- * it until it is added to isVoidQuery. Of com.oddlabs.tt.aikit an AI may use only {@link #TOOLKIT}.
+ * it until it is added to isVoidQuery. An AI may use com.oddlabs.tt.aikit, but not its subpackage harness.
  *
  * <p>It catches mistakes, not deliberate cheats: it does not follow data, so it cannot see which player an order goes
  * to, what reflection reaches, or that a collection the engine handed out gets modified.
  */
-final class Lint {
+public final class Lint {
     /** Where the rules are written down, for messages. */
-    static final String RULES = "tt/src/main/java/com/oddlabs/tt/player/AGENTS.md";
+    public static final String RULES = "tt/src/main/java/com/oddlabs/tt/player/AGENTS.md";
     /** AI packages are com.oddlabs.tt.player.NAME, as AiSpec names them; the build checks every one. */
     private static final String AI_PACKAGES = "com/oddlabs/tt/player/";
-    /** The aikit classes an AI may use; the rest of aikit is the harness's. */
-    private static final Set<String> TOOLKIT = Set.of(AiLog.class.getName(), AiParams.class.getName(),
-            GameTime.class.getName());
-    private static final String AIKIT = "com.oddlabs.tt.aikit.";
+    /** The AI toolkit package (AiLog, AiParams, GameTime): all of it is for AIs. */
+    private static final String TOOLKIT = AiLog.class.getPackageName();
+    /** The harness's part of the toolkit, which AIs must not use. */
+    private static final String HARNESS_PACKAGE = AiSpec.class.getPackageName() + ".";
     private static final String MAIN_SOURCES = "tt/src/main/java/";
     private static final String AISIM_SOURCES = "tt/src/aisim/java/";
 
     /** Every order a player can give, as name + descriptor: what the game's UI sends over the network. */
-    private static final Set<String> ORDERS = Stream.of(PlayerInterface.class.getMethods()).map(
-            m -> m.getName() + descriptor(m)).collect(Collectors.toUnmodifiableSet());
+    private static final Set<String> ORDERS = orderSignatures();
     /** Engine methods that change the game directly, by name, with the order that does the same the fair way. */
     // spotless:off
     private static final Map<String, String> ORDER_FOR = Map.ofEntries(
@@ -121,7 +119,8 @@ final class Lint {
             (lint counts engine methods that return nothing as changes: if this one only reads, list it in \
             Lint.isVoidQuery)""";
     private static final String HARNESS = """
-            is the harness's: of com.oddlabs.tt.aikit an AI uses only AiLog, AiParams and GameTime""";
+            is the harness's (com.oddlabs.tt.aikit.harness): an AI uses only com.oddlabs.tt.aikit (AiLog, AiParams, \
+            GameTime)""";
     private static final String OTHER_AI = """
             belongs to another AI: an AI is one package (freeze copies only that package), so copy what you need \
             into yours""";
@@ -180,8 +179,10 @@ final class Lint {
     /** One problem: where, how bad, what. Sorted by place. */
     record Finding(@NonNull String file, int line, boolean error, @NonNull String message) {
 
-        static final Comparator<Finding> ORDER = Comparator.comparing(Finding::file).thenComparingInt(
-                Finding::line).thenComparing(Finding::message);
+        private static final Comparator<Finding> BY_FILE = Comparator.comparing(Finding::file);
+        private static final Comparator<Finding> BY_PLACE = BY_FILE.thenComparingInt(Finding::line);
+        /** By place, then by message. */
+        static final Comparator<Finding> ORDER = BY_PLACE.thenComparing(Finding::message);
 
         /** {@code file:line: error: message}, the compiler format that editors and terminals link. */
         @NonNull
@@ -219,7 +220,7 @@ final class Lint {
      * lint [NAME|CLASS|@TAG ...]: checks AIs of the last build (by default every AI package in it) or frozen AIs.
      * Returns 1 when one has errors.
      */
-    static int run(@NonNull List<String> targets) throws IOException {
+    public static int run(@NonNull List<String> targets) throws IOException {
         String snap = Snapshot.latest();
         List<Result> results = new ArrayList<>();
         if (targets.isEmpty()) {
@@ -259,7 +260,7 @@ final class Lint {
     private static @NonNull List<Result> checkAll(@NonNull ClassFiles main) throws IOException {
         List<Result> results = new ArrayList<>();
         for (String path : aiPackages(main)) {
-            results.add(check(main, path, MAIN_SOURCES, Lint.class.getClassLoader(), aiNameOf(path)));
+            results.add(checkPackage(main, path, MAIN_SOURCES, Lint.class.getClassLoader(), aiNameOf(path)));
         }
         return results;
     }
@@ -269,7 +270,7 @@ final class Lint {
         if (name.startsWith("@")) {
             Pool pool = Pool.of(name.substring(1));
             try (ClassFiles jar = ClassFiles.open(pool.jar()); URLClassLoader loader = pool.newLoader()) {
-                return check(jar, pathOf(pool.packageName()), "", loader, name);
+                return checkPackage(jar, pathOf(pool.packageName()), "", loader, name);
             }
         }
         if (AiSpec.isStock(name)) {
@@ -280,12 +281,12 @@ final class Lint {
         String path = pathOf(package_name);
         try (ClassFiles main = ClassFiles.open(Snapshot.mainClasses(snap))) {
             if (main.hasPackage(path)) {
-                return check(main, path, MAIN_SOURCES, Lint.class.getClassLoader(), name);
+                return checkPackage(main, path, MAIN_SOURCES, Lint.class.getClassLoader(), name);
             }
         }
         try (ClassFiles aisim = ClassFiles.open(Snapshot.aisimClasses(snap))) {
             if (aisim.hasPackage(path)) {
-                return check(aisim, path, AISIM_SOURCES, Lint.class.getClassLoader(), name);
+                return checkPackage(aisim, path, AISIM_SOURCES, Lint.class.getClassLoader(), name);
             }
         }
         throw new UsageException("the last build has no classes of package " + package_name + " (" + name + ")");
@@ -327,16 +328,25 @@ final class Lint {
      * Checks every class of the package at {@code path} (subpackages included: freeze copies them too). Source file
      * names in findings start with {@code source_root}; {@code loader} resolves the classes the code refers to.
      */
-    private static @NonNull Result check(@NonNull ClassFiles classes, @NonNull String path,
+    private static @NonNull Result checkPackage(@NonNull ClassFiles classes, @NonNull String path,
             @NonNull String source_root, @NonNull ClassLoader loader, @NonNull String name) throws IOException {
         Checker checker = new Checker(path.replace('/', '.'), loader);
         for (Path file : classes.files()) {
             String entry = classes.name(file);
             if (entry.startsWith(path) && entry.endsWith(".class")) {
-                checker.check(ClassFile.of().parse(Files.readAllBytes(file)), source_root);
+                checker.checkClass(ClassFile.of().parse(Files.readAllBytes(file)), source_root);
             }
         }
         return new Result(name, checker.findings());
+    }
+
+    /** Name plus descriptor of every PlayerInterface method. */
+    private static @NonNull Set<String> orderSignatures() {
+        Set<String> signatures = new HashSet<>();
+        for (Method method : PlayerInterface.class.getMethods()) {
+            signatures.add(method.getName() + descriptor(method));
+        }
+        return Set.copyOf(signatures);
     }
 
     /** A method's descriptor, as in class files: (Ljava/lang/String;I)V. */
@@ -344,7 +354,7 @@ final class Lint {
         return MethodType.methodType(method.getReturnType(), method.getParameterTypes()).toMethodDescriptorString();
     }
 
-    /** The checks of one AI package; {@link #findings()} after every class went through {@link #check}. */
+    /** The checks of one AI package; {@link #findings()} after every class went through {@link #checkClass}. */
     private static final class Checker {
         /** The package with a trailing dot: classes starting with it are the AI's own. */
         private final @NonNull String own;
@@ -371,12 +381,15 @@ final class Lint {
             return List.copyOf(findings);
         }
 
-        void check(@NonNull ClassModel model, @NonNull String source_root) {
+        void checkClass(@NonNull ClassModel model, @NonNull String source_root) {
             String internal = model.thisClass().asInternalName();
             String folder = internal.substring(0, internal.lastIndexOf('/') + 1);
             String top_level = internal.substring(folder.length()).split("\\$")[0];
-            String source = model.findAttribute(Attributes.sourceFile()).map(a -> a.sourceFile().stringValue()).orElse(
-                    top_level + ".java");
+            String source = top_level + ".java"; // unless the class file names its source file
+            Optional<SourceFileAttribute> source_attribute = model.findAttribute(Attributes.sourceFile());
+            if (source_attribute.isPresent()) {
+                source = source_attribute.get().sourceFile().stringValue();
+            }
             String file = source_root + folder + source;
             // javac's lookup class for a switch over an enum reads every constant: that is not the AI using one
             in_synthetic_class = model.flags().has(AccessFlag.SYNTHETIC);
@@ -396,85 +409,94 @@ final class Lint {
             for (CodeElement element : code) {
                 switch (element) {
                     case LineNumber number -> line = number.line();
-                    case InvokeInstruction call -> call(file, line, call.owner().asInternalName(),
+                    case InvokeInstruction call -> checkCall(file, line, call.owner().asInternalName(),
                             call.name().stringValue(), call.type().stringValue());
-                    case FieldInstruction access when access.opcode() == Opcode.PUTFIELD
-                            || access.opcode() == Opcode.PUTSTATIC -> write(file, line, access.owner().asInternalName(),
-                                    access.name().stringValue());
-                    case FieldInstruction access when !in_synthetic_class && access.owner().asInternalName().equals(
-                            ACTION) && access.name().equalsString("DEFEND") -> warning(file, line, DEFEND);
-                    case InvokeDynamicInstruction dynamic -> handles(file, line, dynamic);
+                    case FieldInstruction access -> checkFieldAccess(file, line, access);
+                    case InvokeDynamicInstruction dynamic -> checkMethodHandles(file, line, dynamic);
                     default -> {
                     }
                 }
             }
         }
 
+        /** A field write, or a read of Action.DEFEND. */
+        private void checkFieldAccess(@NonNull String file, int line, @NonNull FieldInstruction access) {
+            String owner = access.owner().asInternalName();
+            String name = access.name().stringValue();
+            if (access.opcode() == Opcode.PUTFIELD || access.opcode() == Opcode.PUTSTATIC) {
+                checkFieldWrite(file, line, owner, name);
+            } else if (!in_synthetic_class && owner.equals(ACTION) && name.equals("DEFEND")) {
+                warning(file, line, DEFEND);
+            }
+        }
+
         /** Method references (Unit::hit) are method handles in an invokedynamic's arguments. */
-        private void handles(@NonNull String file, int line, @NonNull InvokeDynamicInstruction dynamic) {
+        private void checkMethodHandles(@NonNull String file, int line, @NonNull InvokeDynamicInstruction dynamic) {
             for (LoadableConstantEntry argument : dynamic.invokedynamic().bootstrap().arguments()) {
                 if (argument instanceof MethodHandleEntry handle) {
                     MemberRefEntry member = handle.reference();
                     String owner = member.owner().asInternalName();
                     String name = member.name().stringValue();
                     switch (handle.kind()) {
-                        case MethodHandleInfo.REF_putField, MethodHandleInfo.REF_putStatic -> write(file, line, owner,
+                        case MethodHandleInfo.REF_putField, MethodHandleInfo.REF_putStatic -> checkFieldWrite(file,
+                                line, owner,
                                 name);
                         case MethodHandleInfo.REF_getField, MethodHandleInfo.REF_getStatic -> {
                         }
-                        default -> call(file, line, owner, name, member.type().stringValue());
+                        default -> checkCall(file, line, owner, name, member.type().stringValue());
                     }
                 }
             }
         }
 
-        private void call(@NonNull String file, int line, @NonNull String owner, @NonNull String name,
+        private void checkCall(@NonNull String file, int line, @NonNull String owner, @NonNull String name,
                 @NonNull String descriptor) {
             Class<?> type = owner.startsWith("[") ? null : load(owner); // an array's clone()
             if (type == null) {
                 return; // not on the class path: nothing to check it against
             }
-            Class<?> where = name.equals("<init>") ? type : declaringMethod(type, name, descriptor);
-            String class_name = where.getName();
-            if (class_name.startsWith(own) || TOOLKIT.contains(class_name)) {
+            Class<?> declarer = name.equals("<init>") ? type : declaringMethod(type, name, descriptor);
+            String class_name = declarer.getName();
+            if (class_name.startsWith(own) || declarer.getPackageName().equals(TOOLKIT)) {
                 return;
             }
-            String member = name.equals("<init>") ? "new " + where.getSimpleName() : where.getSimpleName() + "." + name;
-            if (class_name.startsWith(AIKIT)) {
+            String simple_name = declarer.getSimpleName();
+            String member = name.equals("<init>") ? "new " + simple_name : simple_name + "." + name;
+            if (class_name.startsWith(HARNESS_PACKAGE)) {
                 error(file, line, member + " " + HARNESS);
-            } else if (isOtherAi(where)) {
+            } else if (isOtherAi(declarer)) {
                 error(file, line, member + " " + OTHER_AI);
             } else if (class_name.startsWith("com.oddlabs.")) {
-                engine(file, line, where, name, descriptor);
+                checkEngineCall(file, line, declarer, name, descriptor);
             } else {
-                jdk(file, line, where, name, descriptor);
+                checkJdkCall(file, line, declarer, name, descriptor);
             }
         }
 
-        private void engine(@NonNull String file, int line, @NonNull Class<?> where, @NonNull String name,
+        private void checkEngineCall(@NonNull String file, int line, @NonNull Class<?> declarer, @NonNull String name,
                 @NonNull String descriptor) {
-            String member = where.getSimpleName() + "." + name;
+            String member = declarer.getSimpleName() + "." + name;
             if (name.equals("<init>")) {
-                construct(file, line, where);
+                checkConstruction(file, line, declarer);
                 return;
             }
             // the base class's helpers give their orders through the AI's own Player (reclassify() gives some)
-            if (where == AI.class) {
+            if (declarer == AI.class) {
                 return;
             }
             checks_sites |= name.equals("isPlacingLegal") || name.equals("doIsPlacingLegal");
-            if (PlayerInterface.class.isAssignableFrom(where) && ORDERS.contains(name + descriptor)) {
-                order(file, line, name);
+            if (PlayerInterface.class.isAssignableFrom(declarer) && ORDERS.contains(name + descriptor)) {
+                checkOrder(file, line, name);
                 return;
             }
-            if (ChieftainAI.class.isAssignableFrom(where)) {
+            if (ChieftainAI.class.isAssignableFrom(declarer)) {
                 error(file, line, member + " " + CHIEFTAIN_AI);
                 return;
             }
             boolean returns_nothing = descriptor.endsWith(")V");
-            boolean changes = returns_nothing ? !isVoidQuery(where, name) : isValuedChange(where, name);
+            boolean changes = returns_nothing ? !isVoidQuery(declarer, name) : isValuedChange(declarer, name);
             if (changes) {
-                String hint = where == Army.class ? ARMY : ORDER_FOR.get(name);
+                String hint = declarer == Army.class ? ARMY : ORDER_FOR.get(name);
                 String use = hint == null ? "" : ": use " + hint;
                 String unsure = hint == null && returns_nothing ? " " + VOID_HINT : "";
                 error(file, line, member + " " + CHANGES + use + unsure);
@@ -495,19 +517,19 @@ final class Lint {
             return load(internalName(AiSpec.className(name))) != null;
         }
 
-        private void construct(@NonNull String file, int line, @NonNull Class<?> where) {
-            checks_sites |= where == BuildingSiteScanFilter.class;
-            String created = "new " + where.getSimpleName() + " ";
-            if (Element.class.isAssignableFrom(where)) {
+        private void checkConstruction(@NonNull String file, int line, @NonNull Class<?> declarer) {
+            checks_sites |= declarer == BuildingSiteScanFilter.class;
+            String created = "new " + declarer.getSimpleName() + " ";
+            if (Element.class.isAssignableFrom(declarer)) {
                 error(file, line, created + CREATES);
-            } else if (AI.class.isAssignableFrom(where) && where != AI.class) {
-                error(file, line, created + SECOND_AI); // where == AI: the super(owner, units) call
-            } else if (where == UnitInfo.class) {
+            } else if (AI.class.isAssignableFrom(declarer) && declarer != AI.class) {
+                error(file, line, created + SECOND_AI); // declarer == AI: the super(owner, units) call
+            } else if (declarer == UnitInfo.class) {
                 error(file, line, created + STARTING_UNITS);
             }
         }
 
-        private void order(@NonNull String file, int line, @NonNull String name) {
+        private void checkOrder(@NonNull String file, int line, @NonNull String name) {
             switch (name) {
                 case "createHarvesters" -> error(file, line, NOT_AN_ORDER);
                 case "setPreferredGamespeed", "changePreferredGamespeed" -> error(file, line,
@@ -519,31 +541,31 @@ final class Lint {
         }
 
         /** Void engine methods that only look at the game: scans, checksums, debug output and the AI's animation. */
-        private static boolean isVoidQuery(@NonNull Class<?> where, @NonNull String name) {
-            boolean scan = (where == UnitGrid.class && name.equals("scan"))
-                    || (where == Selectable.class && name.equals("scanVicinity"))
-                    || ScanFilter.class.isAssignableFrom(where);
-            boolean animation = where == AnimationManager.class
+        private static boolean isVoidQuery(@NonNull Class<?> declarer, @NonNull String name) {
+            boolean scan = (declarer == UnitGrid.class && name.equals("scan"))
+                    || (declarer == Selectable.class && name.equals("scanVicinity"))
+                    || ScanFilter.class.isAssignableFrom(declarer);
+            boolean animation = declarer == AnimationManager.class
                     && (name.equals("registerAnimation") || name.equals("removeAnimation"));
-            boolean looks = where == StateChecksum.class || name.equals("updateChecksum")
+            boolean looks = declarer == StateChecksum.class || name.equals("updateChecksum")
                     || name.equals("printDebugInfo");
             return scan || animation || looks;
         }
 
         /** Engine methods that return a value and still change the game. */
-        private static boolean isValuedChange(@NonNull Class<?> where, @NonNull String name) {
-            boolean supplies = SupplyContainer.class.isAssignableFrom(where)
+        private static boolean isValuedChange(@NonNull Class<?> declarer, @NonNull String name) {
+            boolean supplies = SupplyContainer.class.isAssignableFrom(declarer)
                     && (name.equals("increaseSupply") || name.equals("exit"));
-            boolean harvest = Supply.class.isAssignableFrom(where) && (name.equals("hit") || name.equals("respawn"));
-            boolean build = (where == Player.class && name.equals("buildBuilding"))
-                    || (where == BuildingTemplate.class && name.equals("create"));
+            boolean harvest = Supply.class.isAssignableFrom(declarer) && (name.equals("hit") || name.equals("respawn"));
+            boolean build = (declarer == Player.class && name.equals("buildBuilding"))
+                    || (declarer == BuildingTemplate.class && name.equals("create"));
             return supplies || harvest || build;
         }
 
-        private void jdk(@NonNull String file, int line, @NonNull Class<?> where, @NonNull String name,
+        private void checkJdkCall(@NonNull String file, int line, @NonNull Class<?> declarer, @NonNull String name,
                 @NonNull String descriptor) {
-            String type = where.getName();
-            String simple = where.getSimpleName();
+            String type = declarer.getName();
+            String simple = declarer.getSimpleName();
             String member = name.equals("<init>") ? "new " + simple : simple + "." + name;
             boolean reflective_type = type.equals("java.lang.Class") || type.equals("java.lang.invoke.MethodHandles")
                     || (type.startsWith("java.lang.reflect.") && !type.equals("java.lang.reflect.Array"));
@@ -574,8 +596,7 @@ final class Lint {
                 };
                 case "java.lang.Math", "java.lang.StrictMath" -> name.equals("random") ? UNSEEDED : null;
                 case "java.util.Random", "java.util.SplittableRandom" -> no_seed ? UNSEEDED : null;
-                case "java.util.random.RandomGenerator" -> name.equals("getDefault") || name.equals(
-                        "of") ? UNSEEDED : null;
+                case "java.util.random.RandomGenerator" -> Set.of("getDefault", "of").contains(name) ? UNSEEDED : null;
                 case "java.security.SecureRandom" -> name.equals("<init>") ? UNSEEDED : null;
                 case "java.util.concurrent.ThreadLocalRandom" -> name.equals("current") ? UNSEEDED : null;
                 case "java.util.UUID" -> name.equals("randomUUID") ? UNSEEDED : null;
@@ -590,16 +611,16 @@ final class Lint {
             };
         }
 
-        private void write(@NonNull String file, int line, @NonNull String owner, @NonNull String name) {
+        private void checkFieldWrite(@NonNull String file, int line, @NonNull String owner, @NonNull String name) {
             Class<?> type = load(owner);
             if (type == null) {
                 return;
             }
-            Class<?> where = declaringField(type, name);
-            String class_name = where.getName();
-            boolean engine = class_name.startsWith("com.oddlabs.") && !TOOLKIT.contains(class_name);
+            Class<?> declarer = declaringField(type, name);
+            String class_name = declarer.getName();
+            boolean engine = class_name.startsWith("com.oddlabs.") && !declarer.getPackageName().equals(TOOLKIT);
             if (engine && !class_name.startsWith(own)) {
-                error(file, line, "writes " + where.getSimpleName() + "." + name + ": " + WRITES);
+                error(file, line, "writes " + declarer.getSimpleName() + "." + name + ": " + WRITES);
             }
         }
 

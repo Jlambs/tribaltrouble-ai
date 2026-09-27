@@ -1,5 +1,6 @@
-package com.oddlabs.tt.aikit;
+package com.oddlabs.tt.aikit.harness;
 
+import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.landscape.World;
@@ -141,7 +142,7 @@ public final class PlayTest {
             String snap = System.getProperty(SNAP_PROPERTY, "");
             Writer out = Files.newBufferedWriter(dir.resolve(game + ".jsonl"), StandardCharsets.UTF_8);
             AiLog.begin(world, slot -> dir.resolve(game + "-ai-s" + slot + ".log"),
-                    "ctx=gui spec=" + spec + " snap=" + snap);
+                    "source=gui spec=" + spec + " snap=" + snap);
             GameRecorder started = GameRecorder.startGui(world, out, header(params, snap, playback), PlayTest::release);
             addFlushHookOnce();
             logger.info("Recording this game to " + dir);
@@ -179,7 +180,7 @@ public final class PlayTest {
 
     /** The game file's extra header members. */
     private static @NonNull String header(@NonNull WorldParameters params, @NonNull String snap, boolean playback) {
-        StringBuilder text = new StringBuilder("\"ctx\":\"gui\"");
+        StringBuilder text = new StringBuilder("\"source\":\"gui\"");
         text.append(",\"mapcode\":").append(GameRecorder.quote(params.getMapcode()));
         text.append(",\"units\":").append(params.getInitialUnitCount());
         text.append(",\"maxUnits\":").append(params.getMaxUnitCount());

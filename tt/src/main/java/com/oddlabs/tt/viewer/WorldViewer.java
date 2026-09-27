@@ -3,7 +3,7 @@ package com.oddlabs.tt.viewer;
 import com.oddlabs.net.NetworkSelector;
 import com.oddlabs.router.SessionID;
 import com.oddlabs.matchmaking.Game;
-import com.oddlabs.tt.aikit.PlayTest;
+import com.oddlabs.tt.aikit.harness.PlayTest;
 import com.oddlabs.tt.animation.Animated;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.audio.AudioManager;

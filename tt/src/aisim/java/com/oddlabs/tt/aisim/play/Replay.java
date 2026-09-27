@@ -1,7 +1,12 @@
-package com.oddlabs.tt.aisim;
+package com.oddlabs.tt.aisim.play;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.oddlabs.tt.aisim.Aisim;
+import com.oddlabs.tt.aisim.UsageException;
+import com.oddlabs.tt.aisim.analysis.Runs;
+import com.oddlabs.tt.aisim.analysis.Table;
+import com.oddlabs.tt.aisim.build.Snapshot;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -14,7 +19,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
 
-import static com.oddlabs.tt.aisim.Runs.num;
+import static com.oddlabs.tt.aisim.analysis.Game.num;
 
 /**
  * replay RUN KEY: plays one game of a run again, with AI logs on, and compares it with the original sample by sample.
@@ -22,7 +27,7 @@ import static com.oddlabs.tt.aisim.Runs.num;
  * and that logging does not change their decisions; on another snapshot it shows whether that build plays the game
  * the same way.
  */
-final class Replay {
+public final class Replay {
     /** Printed under a replay MISMATCH: the usual ways an AI loses determinism. */
     private static final String NONDETERMINISM_HINT = """
               the AI is not deterministic: check for wall-clock reads, unseeded Random, iterating classifyUnits() or \
@@ -32,17 +37,18 @@ final class Replay {
     }
 
     /**
-     * Replays game {@code key} of {@code run} with AI logs on, on the run's snapshot or on {@code snap_arg}, for
+     * Replays game {@code key} of {@code run} with AI logs on, on the run's snapshot or on {@code snap_option}, for
      * {@code until} game minutes or to the end, and verifies it. Returns 1 when a finished game replayed on its own
      * snapshot differs.
      */
-    static int run(@NonNull String run, @NonNull String key, @Nullable String snap_arg, @Nullable Integer until,
+    public static int run(@NonNull String run, @NonNull String key, @Nullable String snap_option,
+            @Nullable Integer until,
             boolean stale_ok) throws IOException {
         Path dir = Runs.dir(run);
         Map<String, Object> original = Runs.row(run, key);
         ObjectNode job = originalJob(dir, run, key);
         String run_snap = (String) original.get("snap");
-        String snap_id = requestedSnapshot(snap_arg, stale_ok);
+        String snap_id = requestedSnapshot(snap_option, stale_ok);
         boolean same_build = snap_id == null || snap_id.equals(run_snap);
         String snap = same_build ? run_snap : snap_id;
         Path out = dir.resolve(same_build ? "replay" : "replay-" + snap_id);
@@ -57,11 +63,11 @@ final class Replay {
         }
         String matchup = original.get("a") + " vs " + original.get("b") + ", " + original.get("map");
         String setup = "seed " + original.get("seed") + ", A in slot " + original.get("side");
-        System.out.println(
-                "replaying " + run + " " + key + " (" + matchup + ", " + setup + ") on snapshot " + snap + " with AI logs on ...");
+        String game = run + " " + key + " (" + matchup + ", " + setup + ")";
+        System.out.println("replaying " + game + " on snapshot " + snap + " with AI logs on ...");
         Path natives = dir.resolve("n").resolve("r");
-        String heap = Batch.heap(job.get("vs").asInt(), job.get("size").asInt());
-        Batch.Worker worker = new Batch.Worker(worker_log, natives, snap, heap);
+        String heap = WorkerProcess.heap(job.get("vs").asInt(), job.get("size").asInt());
+        WorkerProcess worker = new WorkerProcess(worker_log, natives, snap, heap);
         Map<String, Object> row = worker.play(job);
         worker.close();
         if (row == null) {
@@ -88,12 +94,13 @@ final class Replay {
     }
 
     /** The snapshot that --snap asks for, checked to exist ("latest" also to be fresh); null without --snap. */
-    private static @Nullable String requestedSnapshot(@Nullable String snap_arg, boolean stale_ok) throws IOException {
-        if (snap_arg == null) {
+    private static @Nullable String requestedSnapshot(@Nullable String snap_option,
+            boolean stale_ok) throws IOException {
+        if (snap_option == null) {
             return null;
         }
-        String id = snap_arg;
-        if (snap_arg.equals("latest")) {
+        String id = snap_option;
+        if (snap_option.equals("latest")) {
             Snapshot.requireFresh(stale_ok);
             id = Snapshot.latest();
         }
@@ -149,10 +156,9 @@ final class Replay {
         } else {
             System.out.println("DIFFERENT from " + difference);
         }
-        String outcome = replay.get("end") + " winner " + replay.get("winner") + " at " + Report.clock(num(replay,
-                "t"));
-        System.out.println("replay " + outcome + " | game " + Aisim.slash(replay_file) + " | " + Runs.aiLogs(
-                replay_file));
+        String outcome = replay.get("end") + " winner " + replay.get("winner") + " at " + Table.clock(num(replay, "t"));
+        String files = "game " + Aisim.slash(replay_file) + " | " + Runs.aiLogs(replay_file);
+        System.out.println("replay " + outcome + " | " + files);
         return failed ? 1 : 0;
     }
 
@@ -171,9 +177,9 @@ final class Replay {
     /** A game file's census samples keyed by time and slot, in file order. */
     private static @NonNull Map<String, Map<String, Object>> samples(@NonNull Path file) throws IOException {
         Map<String, Map<String, Object>> samples = new LinkedHashMap<>();
-        for (Map<String, Object> e : Runs.readJsonl(file)) {
-            if ("tl".equals(e.get("ev"))) {
-                samples.put(String.format(Locale.ROOT, "%.2f s%s", num(e, "t"), e.get("s")), e);
+        for (Map<String, Object> line : Runs.readJsonl(file)) {
+            if ("census".equals(line.get("ev"))) {
+                samples.put(String.format(Locale.ROOT, "%.2f s%s", num(line, "t"), line.get("s")), line);
             }
         }
         return samples;

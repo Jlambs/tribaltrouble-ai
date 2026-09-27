@@ -48,7 +48,7 @@ These are the places a merge from upstream can conflict. On any conflict, take u
 
 | File | The change |
 |---|---|
-| `tt/src/main/java/com/oddlabs/tt/viewer/WorldViewer.java` | Three lines: the import of `com.oddlabs.tt.aikit.PlayTest`; the Hard slot `case PlayerSlot.AI_HARD -> ai = PlayTest.hardAi(player, unit_info, ingame_info, world_params);` (upstream creates `new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD)`); and `PlayTest.leave(world);` as the first line of `close()`. For every game except an `./aisim.sh gui` play-test they change nothing. |
+| `tt/src/main/java/com/oddlabs/tt/viewer/WorldViewer.java` | Three lines: the import of `com.oddlabs.tt.aikit.harness.PlayTest`; the Hard slot `case PlayerSlot.AI_HARD -> ai = PlayTest.hardAi(player, unit_info, ingame_info, world_params);` (upstream creates `new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD)`); and `PlayTest.leave(world);` as the first line of `close()`. For every game except an `./aisim.sh gui` play-test they change nothing. |
 | `tt/src/main/java/com/oddlabs/tt/landscape/HeightMap.java` | `computeInterpolatedHeight` wraps coordinates without float remainders: bit for bit the same results (the comment there proves it), games about 22% faster. A candidate for an upstream pull request; once upstream has it, this row goes away. |
 | `tt/build.gradle.kts` | The `aisim` block after `tasks.run`: the source set, `check` depending on it, and the `aisimClasspath` task. |
 | `README.md` | The "Developing Computer Players" section and its line in the contents. |
@@ -59,9 +59,9 @@ this file, `.github/workflows/aisim.yml`, `lab/`, `tt/src/aisim/`, `tt/src/main/
 `AGENTS.md` and `CLAUDE.md` in `tt/src/main/java/com/oddlabs/tt/player/`. They conflict only if upstream adds a file
 of the same name (most likely `AGENTS.md`, `CLAUDE.md` or `.gitattributes`); then merge the two.
 
-A merge can also break the build without a conflict, when upstream changes engine code the harness uses: `Match`
-builds worlds the way `IslandGenerator`, `TerrainMenu` and `Client` do, `Census` and `GameRecorder` read player and
-building getters, and `Lint` lists engine classes and methods. Fix those on `headless`.
+A merge can also break the build without a conflict, when upstream changes engine code the harness uses:
+`ClientWorld` builds worlds the way `IslandGenerator`, `TerrainMenu` and `Client` do, `Census` and `GameRecorder` read
+player and building getters, and `Lint` lists engine classes and methods. Fix those on `headless`.
 
 ### Engine getters for AIs
 
@@ -122,8 +122,8 @@ AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --a chaos:hang=30 --b hard -
 ```
 
 The example lab tool is the one piece of `lab/` that `headless` looks after: it shows lab tools how to use
-`com.oddlabs.tt.aisim.Game`, whose public methods lab tools on AI branches call. Keep them working as they are; add,
-never rename or remove.
+`com.oddlabs.tt.aisim.analysis`, whose `Game`, `Table` and `Stats` lab tools on AI branches call. Keep their public
+methods working as they are; add, never rename or remove.
 
 After a change to the recorder or to how games are played, also check that games are unchanged: batch the same
 games on the build before and after, and `compare` them; every game must be identical.
