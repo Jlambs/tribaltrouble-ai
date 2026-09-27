@@ -80,6 +80,17 @@ case "${1:-help}" in
         exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" "-Daisim.snap=$snap" \
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/gui" "@../$args" com.oddlabs.tt.Main "$@"
         ;;
+    lab)
+        # Your own tool: java runs a .java source file straight from source (with the other .java files of its folder)
+        # on the last build's class path. No -Xmx, so JDK_JAVA_OPTIONS can set the heap (docs/aisim.md#your-own-tools).
+        shift
+        if [ $# -eq 0 ] || [ "${1%.java}" = "$1" ]; then
+            echo "aisim: usage: ./aisim.sh lab FILE.java [args]" >&2
+            exit 2
+        fi
+        read_snapshot
+        exec "$JDK/bin/java" -ea -Djava.awt.headless=true "@aisim/snap/$snap/cp.args" "$@"
+        ;;
     *)
         read_snapshot
         exec "$JDK/bin/java" "${OPTS[@]}" "@aisim/snap/$snap/cp.args" com.oddlabs.tt.aisim.Aisim "$@"

@@ -124,8 +124,9 @@ record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNul
             code /= TERRAIN_VALUES;
             int size = (int) (code % SIZE_VALUES);
             if (terrain >= TERRAINS.length || size >= SIZES.length) {
-                throw new UsageException(
-                        "map code '" + words + "' is not a small..huge tropical or northern map " + "(aisim plays no Archipelago maps)");
+                throw new UsageException("""
+                        map code '%s' is not a small..huge tropical or northern map (aisim plays no Archipelago \
+                        maps)""".formatted(words));
             }
             return new MapCode(seed, size, terrain, hills, trees, supplies);
         }

@@ -10,7 +10,7 @@ How this fork is organised, how upstream changes come in, and how to check the h
 |---|---|---|
 | `main` | Upstream (Tribal-Trouble/tribaltrouble), unchanged. | Only syncs from upstream. |
 | `headless` | `main` plus the harness (`aisim.sh`, `tt/src/aisim`), the AI toolkit (`tt/src/main/java/com/oddlabs/tt/aikit`), their docs and CI, and the few engine lines listed [below](#where-headless-differs-from-upstream). | Harness, toolkit and doc changes, and read-only engine getters that AIs need. |
-| one per AI | `headless` plus one AI package, `tt/src/main/java/com/oddlabs/tt/player/<name>/`. | Only that package. |
+| one per AI | `headless` plus one AI package, `tt/src/main/java/com/oddlabs/tt/player/<name>/`, and its scratch folder of tools and notes, `lab/<name>/`. | Only those two folders. |
 
 Changes flow one way: `main` -> `headless` -> AI branches, always by merge. Never rebase `headless`: the AI branches
 are built on its commits, and rebasing it would give each of them a history to untangle.
@@ -55,9 +55,9 @@ These are the places a merge from upstream can conflict. On any conflict, take u
 | `.gitignore` | `/aisim/`. |
 
 Everything else on `headless` is new files: `AGENTS.md`, `CLAUDE.md`, `.gitattributes`, `aisim.sh`, `docs/aisim.md`,
-this file, `.github/workflows/aisim.yml`, `tt/src/aisim/`, `tt/src/main/java/com/oddlabs/tt/aikit/`, and `AGENTS.md`
-and `CLAUDE.md` in `tt/src/main/java/com/oddlabs/tt/player/`. They conflict only if upstream adds a file of the same
-name (most likely `AGENTS.md`, `CLAUDE.md` or `.gitattributes`); then merge the two.
+this file, `.github/workflows/aisim.yml`, `lab/`, `tt/src/aisim/`, `tt/src/main/java/com/oddlabs/tt/aikit/`, and
+`AGENTS.md` and `CLAUDE.md` in `tt/src/main/java/com/oddlabs/tt/player/`. They conflict only if upstream adds a file
+of the same name (most likely `AGENTS.md`, `CLAUDE.md` or `.gitattributes`); then merge the two.
 
 A merge can also break the build without a conflict, when upstream changes engine code the harness uses: `Match`
 builds worlds the way `IslandGenerator`, `TerrainMenu` and `Client` do, `Census` and `GameRecorder` read player and
@@ -77,8 +77,9 @@ git switch -c myai headless
 ./aisim.sh new myai                     # tt/src/main/java/com/oddlabs/tt/player/myai/MyaiAI.java
 ```
 
-Commit only that package on the AI's branch. When the AI needs a harness or toolkit change, make it on `headless` and
-merge `headless` in.
+Commit only that package and `lab/myai/` (the AI's own tools and notes, [aisim.md](./aisim.md#your-own-tools)) on
+the AI's branch. When the AI needs a harness or toolkit change, make it on `headless` and merge `headless` in. A lab
+tool that proves generally useful can become a harness command there, rewritten to work for any AI.
 
 ## Playing AIs from other branches
 
@@ -98,8 +99,8 @@ git worktree add ../tt-rival rival                                   # the other
 
 `.github/workflows/aisim.yml` runs on every push to a branch that contains it, which is `headless` and the AI branches:
 `spotlessCheck`, then `./aisim.sh build`, which compiles the game, the harness and the example AIs and lints every AI
-package. It plays no games, since those need OpenGL and an audio device. Upstream's `gradle.yml` only runs for `main`
-and `release`.
+package. It plays no games, since those need OpenGL and an audio device, and does not look at `lab/`, which is
+scratch. Upstream's `gradle.yml` only runs for `main` and `release`.
 
 ## Checking the harness itself
 
@@ -115,7 +116,14 @@ rm -rf aisim/runs/t-*                                                     # the 
 AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --a chaos:hang=30 --b hard --seeds 1 --name t-hang   # hang
 ./aisim.sh batch --a chaos:bogus=1 --b hard --seeds 1..3 --name t-init              # aborts, exit 2
 ./aisim.sh batch --a chaos:err=1,count=1 --b hard --seeds 1 --minutes 5 --name t-err  # errors and counters
+./aisim.sh curves t-det --split && ./aisim.sh fights t-det && ./aisim.sh export t-det   # the analyses read t-det
+./aisim.sh compare t-det t-nd t-err --force                                   # the several-variant table
+./aisim.sh lab lab/starter/FirstArmory.java t-det                             # the example lab tool still compiles
 ```
+
+The example lab tool is the one piece of `lab/` that `headless` looks after: it shows lab tools how to use
+`com.oddlabs.tt.aisim.Game`, whose public methods lab tools on AI branches call. Keep them working as they are; add,
+never rename or remove.
 
 After a change to the recorder or to how games are played, also check that games are unchanged: batch the same
 games on the build before and after, and `compare` them; every game must be identical.

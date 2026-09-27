@@ -162,7 +162,7 @@ Workflow:
 
 ## 🤖 Developing Computer Players
 
-`./aisim.sh` plays headless AI-vs-AI games 50-400x faster than real time, compares AI versions game by game, replays any game with your AI's decision log, and records play-tests against your AI in the same format.
+`./aisim.sh` plays headless AI-vs-AI games 50-400x faster than real time, compares AI versions game by game, replays any game with your AI's decision log, and records play-tests against your AI in the same format. Its analyses (economy curves, fights, CSV export) work for any AI, and each AI keeps its own analysis tools and notes in `lab/<name>/`.
 
 It needs JDK 26, a desktop session with OpenGL 4.1 and an audio device, and Git Bash on Windows. Start with `./aisim.sh build`, then `./aisim.sh play --a hard --b normal`. See **[docs/aisim.md](./docs/aisim.md)**.
 

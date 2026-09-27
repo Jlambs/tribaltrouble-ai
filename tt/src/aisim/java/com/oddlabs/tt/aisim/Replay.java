@@ -24,7 +24,9 @@ import static com.oddlabs.tt.aisim.Runs.num;
  */
 final class Replay {
     /** Printed under a replay MISMATCH: the usual ways an AI loses determinism. */
-    private static final String NONDETERMINISM_HINT = "  the AI is not deterministic: check for wall-clock reads, " + "unseeded Random, iterating classifyUnits() or identity-hashed collections, static state kept across " + "games, or decisions that depend on logging";
+    private static final String NONDETERMINISM_HINT = """
+              the AI is not deterministic: check for wall-clock reads, unseeded Random, iterating classifyUnits() or \
+            identity-hashed collections, static state kept across games, or decisions that depend on logging""";
 
     private Replay() {
     }

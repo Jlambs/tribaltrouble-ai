@@ -4,21 +4,22 @@
 and records every game so you can see why it was won or lost. It is built for this loop:
 
 ```
-edit your AI -> build -> batch against an opponent -> compare with the last version -> show/replay lost games -> edit
+edit your AI -> build -> batch against an opponent -> compare with the last version -> find out why it lost -> edit
 ```
 
 and for play-tests: `./aisim.sh gui SPEC` lets you play against your AI, and records that game in the same format.
 
 Everything runs through `./aisim.sh` (Git Bash on Windows). All output is plain text and JSON lines, so scripts and
-coding agents can drive it as well as you can. How to write the AI itself is in
-**[the AI guide](../tt/src/main/java/com/oddlabs/tt/player/AGENTS.md)**; how this branch is maintained is in
-[maintaining.md](./maintaining.md).
+coding agents can drive it as well as you can. Its analyses are generic, and questions about your own AI are best
+answered by tools you write yourself, in your AI's `lab/` folder ([Your own tools](#your-own-tools)). How to write the
+AI itself is in **[the AI guide](../tt/src/main/java/com/oddlabs/tt/player/AGENTS.md)**; how this branch is maintained
+is in [maintaining.md](./maintaining.md).
 
 Contents: [Words used here](#words-used-here) · [Requirements](#requirements) · [Quick start](#quick-start) ·
 [The development loop](#the-development-loop) · [Opponents](#opponents) · [Reading results](#reading-results) ·
-[Why did it lose?](#why-did-it-lose-show-and-replay) · [Play-tests](#play-tests) ·
-[Troubleshooting](#troubleshooting) · Reference: [Commands](#commands), [How a game ends](#how-a-game-ends),
-[Files](#files)
+[Why did it lose?](#why-did-it-lose-show-and-replay) · [Across a run](#across-a-run-curves-fights-and-export) ·
+[Your own tools](#your-own-tools) · [Play-tests](#play-tests) · [Troubleshooting](#troubleshooting) · Reference:
+[Commands](#commands), [How a game ends](#how-a-game-ends), [Files](#files)
 
 ## Words used here
 
@@ -33,6 +34,8 @@ Contents: [Words used here](#words-used-here) · [Requirements](#requirements) �
 - **Snapshot**: an immutable copy of a build. `build` makes one, and every other command runs from the latest one,
   so you can keep editing while batches run.
 - **Frozen AI**: a copy of one AI package from a build, played as `@TAG` by any later build (`freeze`).
+- **Lab**: `lab/<name>/`, the scratch folder of AI `<name>` for its own analysis tools and notes, committed with the
+  AI but never part of it.
 - **Census**: a player's numbers at one moment (units, buildings, kills, ...), recorded every 30 game seconds.
 - **Counted** games ended by elimination or at the time limit; **failed** games (crash, hang, error) are listed but
   not counted.
@@ -130,17 +133,18 @@ means: kd30 +198.8 | w15 48.4 | margin +0.800 | length 22.4 min | cost 1.7 s CPU
 A swallowed errors 0 in 0 games | B swallowed errors 0 in 0 games     exceptions the AIs caught (AiLog.error)
 A counters: none | B counters: none                                    AiLog.count counters, per game
 curves (mean over games still running; A / B):
-   min games   units     warriors  peons+in  Q         A         T         kills     strength
-     5    20   65/62     5/10      59/52     1/1       1/1       0/0       0/0       94/103
-    10    19   86/139    16/14     69/124    1/1       1/1       1/0       23/17     225/191
+  min games   units warriors workers       Q       A     T   kills strength
+    5    20   65/62  5.1/9.7   59/52 1.0/1.0 1.0/1.0   0/0   0/0.1   94/103
+   10    19  86/139    16/14  69/124   1/0.9   1/0.9 0.6/0   23/17  225/191
 milestones (median seconds A / B, and in how many games): Q1 66/66 (19/19) Q4 -/- (0/0) A1 158/158 (19/19) ...
 worst games for A:
   s2-1      loss elim     31.4m margin -1.00  ./aisim.sh show example s2-1 | ./aisim.sh replay example s2-1
 RESULT example a=hard b=normal n=20/20 score=0.900 [0.699,0.972] W18 L2 D0 elim=18-2 ... fail=0
 ```
 
-Q, A and T are quarters, armories and towers; the milestones are the first quarters (Q1), the fourth (Q4), the first
-armory (A1), tower (T1) and chieftain.
+Warriors include tower garrisons, workers are peons outside and inside buildings, and Q, A and T are quarters,
+armories and towers (`curves` explains the table). The milestones are the first quarters (Q1), the fourth (Q4), the
+first armory (A1), tower (T1) and chieftain.
 
 `compare BASE VARIANT` pairs the two runs game by game (same key = same map, start and world seed). Per metric it
 prints both runs' means and the paired difference with its standard error (SE), weighting maps equally, since a
@@ -148,6 +152,14 @@ map's starts are not independent. `*` marks a difference larger than 2 SE. It co
 checksum): when almost all are identical, the variant is inert or never triggers. It refuses runs whose B, frozen B
 version, map settings, races, `--vs`, minutes, `--rng` or `--no-collapse` differ (`--force` compares anyway), and
 prints A's curves for both runs.
+
+`compare BASE V1 V2 ...` compares several variants with one base as a table, a line per variant with the paired
+difference of each metric. That is the table of a param sweep:
+
+```bash
+for wave in 8 12 16; do ./aisim.sh batch --name wave$wave --a myai:wave=$wave; done
+./aisim.sh compare base wave8 wave12 wave16
+```
 
 How to decide:
 
@@ -174,6 +186,83 @@ census and the final checksum with the original game. Only AIs that use `AiLog` 
   when your change altered this game. `--until MIN` stops early.
 - Replaying a hang takes up to the hang limit again: `AISIM_JAVA_OPTS=-Daisim.hangCpu=30 ./aisim.sh replay ...`,
   and read `g/<key>.err` for the stuck stack.
+
+## Across a run: curves, fights and export
+
+Three more commands look across all counted games of a run. Like `show`, they read only the recorded files, so they
+work for every AI, the stock AI included.
+
+**`curves RUN`** is the summary's curve table with the fields, minutes and games you choose: census means at each
+minute over the games still running then, for A / B. `--split` shows A in the games it won / lost, which shows where
+the two part; several runs show A in each, over the games all of them counted. `--fields` takes census fields (see
+[Files](#files)), the sums `warriors` (tower garrisons included), `workers` (peons outside and inside), `harvest` and
+`stock`, and any of them with `/min` for the gain over the minute before; `--at` takes the minutes:
+
+```
+$ ./aisim.sh curves example --split --fields warriors,hIron/min,sIron --at 5,10,15
+curves of example: mean over the games still running (A in the games it won / lost)
+  min games warriors hIron/min sIron
+    5  18/2  5.1/5.5     7.7/3 2.1/0
+   10  18/1    16/17     6.5/3 6.9/7
+```
+
+**`fights RUN KEY`** splits one game into fights: deaths and razed buildings under 20 s apart and within 40 cells
+of each other. For each fight it prints when, where (A's base, the middle or B's base, by the fight's share of the way
+from A's start to B's nearest: below 0.35, above 0.65, else the middle), each side's losses by kind and the buildings
+lost. **`fights RUN`** sums a whole run by place, also in the games A won and lost, and lists A's worst fights:
+
+```
+$ ./aisim.sh fights example
+fights of example: 146 with 8+ deaths in 20 games, per game:
+  where    fights A lost B lost    net net when A won (18) net when A lost (2)
+  A's base    1.5   24.6   15.0   -9.7                +2.8              -122.0
+  middle      2.2   15.6   20.4   +4.9                +5.1                +2.5
+  B's base    3.6   38.9  240.6 +201.7              +218.5               +50.5
+A's worst fights:
+  game time        where                      A lost       B lost net
+  s2-1 26:34-29:05 A's base 0.16            98 (98p)            0 -98
+```
+
+Losses are counted by kind: `r`, `i` and `c` rock, iron and chicken (rubber) warriors, `p` peons, `C` the chieftain.
+`--min N` (default 8) leaves out fights with fewer deaths. `fights FILE.jsonl` reads any game file; in a play-test, A
+is the first player that is not human.
+
+**`export RUN`** writes the counted games as CSV next to the results: `census.csv`, a line per census sample, and
+`events.csv`, a line per event (both in [Files](#files)). Spreadsheets, `awk` and pandas read them as they are.
+
+## Your own tools
+
+The commands above are generic on purpose. The questions that matter most are about your own AI (does the rush start
+too early? which maps starve it of iron? which of its decisions came before the lost fights?), and the best answers
+come from small tools written for them. Write them whenever a question comes up twice.
+
+Each AI has a scratch folder for them, `lab/<name>/` at the repository root (`lab/myai/` for `myai`), committed on the
+AI's branch with the AI: analyses, scripts, experiments and notes, kept as a record of how the AI was made. Nothing
+checks, formats or compiles it, and the game never sees it: the AI guide's
+[Your own tools](../tt/src/main/java/com/oddlabs/tt/player/AGENTS.md#your-own-tools) says what may and may not cross
+between the two.
+
+A Java tool is one source file that `./aisim.sh lab` runs straight from source on the last build's class path:
+
+```bash
+./aisim.sh lab lab/starter/FirstArmory.java example     # when A built its first armory, in won and lost games
+```
+
+`lab/starter/FirstArmory.java` is a complete example, and a template to copy. A tool can use:
+
+- **`com.oddlabs.tt.aisim.Game`**, one recorded game: `Game.counted(RUN)` (the counted games of a run),
+  `Game.of(RUN, KEY)` and `Game.file(PATH)` (any game file). Per game: `row()` (the result row), `header()`,
+  `players()`, `events()` or `events("deaths")`, `census(slot)` and `census(slot, seconds)`, A's slot `a()`, B's
+  slots `b()`, `isA(slot)` and `result()` (win, loss or draw). `Game.num(map, key)` reads a number and
+  `Game.value(census, field)` a census field or one of the sums `curves` knows. The class comment and method
+  comments say the rest.
+- helper classes in other `.java` files of the same folder;
+- the engine, the harness and your AI's public classes, as of the last build: run `./aisim.sh build` after changing
+  them.
+
+Tools print to the terminal; write any files they produce under `aisim/`, which git ignores, not into `lab/`.
+`aisim.sh` sets no heap limit for them; `JDK_JAVA_OPTIONS=-Xmx4g ./aisim.sh lab ...` sets one. Other languages work as
+well: every file is plain JSON lines (see [Files](#files)), and `export` turns a run into CSV.
 
 ## Play-tests
 
@@ -216,7 +305,15 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
   takes about 0.6-0.8 GB in total, most of it the graphics driver's copy of the game's textures; use `--workers`.
   Cancel a run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers die with their parent.
 - The CPU goes to the engine's unit movement and path finding, map generation (about 0.8 s per game) and the AIs.
-  `summary` prints the cost per game.
+  `summary` prints the cost per game. To see where one game's time goes, replay it under Java Flight Recorder
+  (`jfr` is in the JDK's `bin` folder):
+
+  ```bash
+  AISIM_JAVA_OPTS=-XX:StartFlightRecording=filename=aisim/profile.jfr,settings=profile ./aisim.sh replay RUN KEY
+  jfr view hot-methods aisim/profile.jfr               # the busiest methods
+  jfr print --stack-depth 64 --events jdk.ExecutionSample aisim/profile.jfr |
+      awk '/jdk.ExecutionSample/ {n++; in_ai=0} /player\.myai\./ && !in_ai {ai++; in_ai=1} END {print ai+0 " of " n " samples in myai"}'
+  ```
 - Snapshots cost about 2-3 MB per changed build (the game and harness classes as jars); the ~65 MB of assets and
   resources are stored once. Snapshots hold absolute paths into `aisim/snap/blobs` and the Gradle cache: after
   moving the checkout or clearing `~/.gradle/caches`, run `./aisim.sh build`; runs from older snapshots can then no
@@ -253,9 +350,13 @@ The same list as `./aisim.sh help`:
 ./aisim.sh play    [--a SPEC] [--b SPEC] [--seed N] [--side S] [--name NAME] [MAP]
 ./aisim.sh batch   --a SPEC [--b SPEC] [--seeds tune|holdout|LIST] [--side S] [--workers W] [--name NAME] [MAP]
 ./aisim.sh summary RUN
-./aisim.sh compare BASE VARIANT [--force]
+./aisim.sh compare BASE VARIANT [VARIANT...] [--force]
 ./aisim.sh show    RUN KEY | FILE.jsonl
 ./aisim.sh replay  RUN KEY [--snap latest|ID] [--until MIN]
+./aisim.sh curves  RUN [RUN...] [--fields F,F] [--at MIN,MIN] [--split]
+./aisim.sh fights  RUN [KEY] | FILE.jsonl [--min N]
+./aisim.sh export  RUN [RUN...]
+./aisim.sh lab     FILE.java [args]
 ./aisim.sh freeze  TAG NAME|CLASS [--from DIR|JAR]
 ./aisim.sh gui     [--stale-ok] SPEC [game args]
 MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0-10 --trees 0-10 --supplies 0-10
@@ -322,6 +423,7 @@ aisim/                                  (in the repository root, git-ignored)
     run.json                            the run: specs, config, snapshot, every job
     results.jsonl                       one row per game, in completion order
     summary.txt
+    census.csv, events.csv              from `export`
     g/<key>.jsonl                       per game: header, a census of every player every 30 s, events, end
     g/<key>-ai-s<slot>.log              AI decision logs (play only; only AIs that use AiLog write one)
     g/<key>.err                         the full stack of a crash, hang or error
@@ -374,6 +476,14 @@ bLost hTree hRock hIron hRubber sRock sIron sRubber chief magics stunned ax ay s
 
 Units inside a razed building (tower garrisons, quarters and armory occupants) vanish from `units`, `inside` and
 `tower` without dying: they are in neither `deaths` nor `lost`, and the attacker gets no `kills` for them.
+
+**CSV tables** (`export`): every line of both starts with its game's `run key seed side result` (`side` is A's slot,
+`result` A's win, loss or draw), so the tables of several runs can be joined into one.
+
+- `census.csv`: then `end slot role t` and the census fields in the order above. `role` is `A`, or `B` for every
+  player not on A's team.
+- `events.csv`: then `t slot role ev` (slot and role empty for events of no player, such as `end`), then every other
+  member that any event of the run has, empty where an event lacks it. The header and the census lines are left out.
 
 **AI log** (`<key>-ai-s<slot>.log`): a `# ai-log` header line (slot, player name, key, snapshot), then
 `<seconds> s<slot> <TOPIC> <message>`, e.g. `   30.00 s0 STAT  units 20`.

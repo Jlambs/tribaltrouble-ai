@@ -25,7 +25,7 @@ This repository is a fork of Tribal-Trouble/tribaltrouble for developing compute
   (`tt/src/main/java/com/oddlabs/tt/aikit`) and their docs. Changes to those, and read-only engine getters that AIs
   need, are committed here.
 - Each AI has a branch of its own off `headless`, which commits only its package
-  (`tt/src/main/java/com/oddlabs/tt/player/<name>/`).
+  (`tt/src/main/java/com/oddlabs/tt/player/<name>/`) and its scratch folder of tools and notes (`lab/<name>/`).
 - Changes flow `main` -> `headless` -> AI branches, by merge, never by rebase.
 
 `docs/maintaining.md` has the steps, and the list of files where `headless` differs from upstream.
@@ -34,8 +34,8 @@ This repository is a fork of Tribal-Trouble/tribaltrouble for developing compute
 
 Read `tt/src/main/java/com/oddlabs/tt/player/AGENTS.md` before writing AI code. It covers how an AI plugs in, the
 orders it can give, the fair-play and determinism rules, and recipes. Start an AI with `./aisim.sh new NAME`. The
-harness (`./aisim.sh`, manual in `docs/aisim.md`) plays, compares and replays AIs. An AI never changes game
-mechanics: engine code stays as it is.
+harness (`./aisim.sh`, manual in `docs/aisim.md`) plays, compares, replays and analyses AIs. Write your own analysis
+tools in `lab/<name>/`; the AI must play without them. An AI never changes game mechanics: engine code stays as it is.
 
 ## Changing the harness
 

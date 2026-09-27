@@ -10,6 +10,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
@@ -51,9 +52,15 @@ public final class Aisim {
               batch   --a SPEC [--b SPEC] [--seeds tune|holdout|LIST] [--side S] [--workers W] [--name NAME] [MAP]
                                                  every seed from every start -> aisim/runs/NAME/
               summary RUN                        results of a (running) run
-              compare BASE VARIANT [--force]     paired comparison of two runs over the same games
+              compare BASE VARIANT [VARIANT...] [--force]
+                                                 paired comparison over the same games; several variants: one table
               show    RUN KEY | FILE.jsonl       one game as a table plus key events (harness or GUI game file)
               replay  RUN KEY [--snap latest|ID] [--until MIN]   rerun one game with AI logs; verify it
+              curves  RUN [RUN...] [--fields F,F] [--at MIN,MIN] [--split]
+                                                 census means per minute: A / B, A won / lost, or A of each run
+              fights  RUN [KEY] | FILE.jsonl [--min N]   fights of one game, or of a run by where they were
+              export  RUN [RUN...]               a run's games as census.csv and events.csv, for scripts
+              lab     FILE.java [args]           run your own tool (lab/NAME/) on the last build's class path
               freeze  TAG NAME|CLASS [--from DIR|JAR]   freeze an AI package as opponent @TAG
               gui     [--stale-ok] SPEC [game args]     play the game yourself; SPEC plays the skirmish Hard slots
             SPEC: easy|normal|hard | NAME (com.oddlabs.tt.player.NAME.NameAI) | CLASS | @TAG, then optional :k=v,k=v
@@ -104,6 +111,9 @@ public final class Aisim {
         } catch (IOException e) {
             System.err.println("aisim: " + e);
             status = 2;
+        } catch (UncheckedIOException e) {
+            System.err.println("aisim: " + e.getCause());
+            status = 2;
         } catch (RuntimeException e) {
             e.printStackTrace();
             status = 3;
@@ -138,12 +148,25 @@ public final class Aisim {
                 return Report.summary(o.args.get(0));
             }
             case "compare" -> {
-                o.check(Set.of("force"), 2);
-                return Report.compare(o.args.get(0), o.args.get(1), o.flag("force"));
+                o.check(Set.of("force"), Math.max(2, o.args.size()));
+                return Report.compare(o.args.get(0), o.args.subList(1, o.args.size()), o.flag("force"));
             }
             case "show" -> {
                 o.check(Set.of(), o.args.size() == 1 ? 1 : 2); // FILE.jsonl or RUN KEY
                 return Report.show(o.args);
+            }
+            case "curves" -> {
+                o.check(Set.of("fields", "at", "split"), Math.max(1, o.args.size()));
+                List<String> fields = o.get("fields") == null ? Curves.FIELDS : List.of(o.get("fields").split(","));
+                return Curves.run(o.args, fields, minutes(o.get("at")), o.flag("split"));
+            }
+            case "fights" -> {
+                o.check(Set.of("min"), o.args.size() == 2 ? 2 : 1); // RUN, RUN KEY or FILE.jsonl
+                return Fights.run(o.args, o.integer("min", Fights.DEFAULT_MIN_DEATHS, 1, 10000));
+            }
+            case "export" -> {
+                o.check(Set.of(), Math.max(1, o.args.size()));
+                return Export.run(o.args);
             }
             case "replay" -> {
                 o.check(Set.of("snap", "until", "stale-ok"), 2);
@@ -262,8 +285,9 @@ public final class Aisim {
         Long rng = rng_seed == null ? null : rng_seed.longValue();
         boolean same_race = races[0].charAt(0) == races[1].charAt(0);
         if (only_side == null && rng == null && a.equals(b) && same_race) {
-            throw new UsageException(
-                    "A and B are identical, so both start positions would replay the same game. " + "Add --rng N (the world's random seed then differs per start position).");
+            throw new UsageException("""
+                    A and B are identical, so both start positions would replay the same game. Add --rng N (the \
+                    world's random seed then differs per start position).""");
         }
         int vs = o.integer("vs", 1, 1, MAX_VS);
         int minutes = o.integer("minutes", DEFAULT_MINUTES, 1, MAX_MINUTES);
@@ -307,6 +331,25 @@ public final class Aisim {
             }
         }
         return new ArrayList<>(seeds);
+    }
+
+    /** curves --at: game minutes like 5,10,30 in rising order; null gives the summary's minutes. */
+    private static @NonNull List<Integer> minutes(@Nullable String text) {
+        if (text == null) {
+            return Curves.MINUTES;
+        }
+        List<Integer> minutes = new ArrayList<>();
+        for (String part : text.split(",")) {
+            try {
+                minutes.add(Integer.parseInt(part));
+            } catch (NumberFormatException e) {
+                throw new UsageException("--at is game minutes like 5,10,30");
+            }
+        }
+        if (!minutes.equals(minutes.stream().sorted().distinct().toList()) || minutes.get(0) < 1) {
+            throw new UsageException("--at is game minutes from 1 up, in rising order, like 5,10,30");
+        }
+        return minutes;
     }
 
     /** Adds first..last; a reversed range adds nothing. */

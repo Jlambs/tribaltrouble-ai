@@ -41,6 +41,7 @@ final class NewAi {
         Files.writeString(file, fromTemplate(name, simple_name));
         System.out.println("created " + Aisim.slash(file) + " (spec " + name + ")");
         System.out.println("rules, orders and recipes: " + Lint.RULES);
+        System.out.println("your own analysis tools and notes: lab/" + name + "/ (docs/aisim.md#your-own-tools)");
         System.out.println("next: ./aisim.sh build, then ./aisim.sh play --a " + name + " --b easy");
         return 0;
     }

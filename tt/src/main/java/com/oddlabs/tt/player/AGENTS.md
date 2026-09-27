@@ -14,15 +14,18 @@ documented in `docs/aisim.md`. Paths here are relative to the repository root, w
 ```
 
 Then work in the loop that `docs/aisim.md` describes: batch the new version and the previous one (a param's default,
-or a frozen copy) against the same opponent, `compare`, and `show` / `replay` the games it lost. The stock AI
-(`easy`, `normal`, `hard`: `AdvancedAI.java` in this folder) is the first opponent to beat.
+or a frozen copy) against the same opponent, `compare`, and `show` / `replay` the games it lost. Write your own
+analysis tools in `lab/<name>/` whenever the harness's generic ones do not answer a question (see
+[Your own tools](#your-own-tools)). The stock AI (`easy`, `normal`, `hard`: `AdvancedAI.java` in this folder) is the
+first opponent to beat.
 
 ## How an AI plugs in
 
 - **One package per AI**: `com.oddlabs.tt.player.<name>` in `tt/src/main/java`, so the game itself can load it too
   (`./aisim.sh gui <name>` puts it in the skirmish Hard slots). The entry class is `<Name>AI extends AI`. Put your
   other classes in the same package or below it. `freeze` copies exactly that package, so it must not use another
-  AI's package. Keep tools such as match runners and experiments out of it: the harness is the tool.
+  AI's package. Keep tools out of it: the harness runs matches, and analyses and experiments go in `lab/<name>/`
+  (see [Your own tools](#your-own-tools)).
 - **Constructor** `(Player owner, UnitInfo units, String params)`, calling `super(owner, units)` first: that
   registers the AI and creates the starting units. The spec `myai:k=v,k=v` passes `k=v,k=v` as `params`. Parse them
   with `AiParams`: `p.getInt("wave", 12)`, `getDouble`, `getBoolean` (true/false/1/0) and `getString`, each with
@@ -277,3 +280,20 @@ The design is yours: nothing in the harness depends on how your AI is organised.
 - `AdvancedAI.java` in this folder is a complete, simple AI. Read it to see how the game works, but it predates these
   rules: it sets rally points with `Building.setRallyPoint`, leaves its chieftain to the stock chieftain AI, and uses
   `Action.DEFEND`. Copy those parts and lint refuses them (DEFEND only gets a warning).
+
+## Your own tools
+
+The harness's analyses (`summary`, `compare`, `show`, `curves`, `fights`) are generic. For questions about your AI,
+write tools of your own: scripts that read recorded games, experiments, helper functions for them, notes on what you
+tried. They go in `lab/<name>/` at the repository root and are committed on your AI's branch with it, as a
+scratchpad and a record of how the AI was made. Nothing checks, formats or compiles them. `docs/aisim.md` (Your own
+tools) shows how to run a Java tool and what it can read.
+
+The AI must play without them, because the game ships only the AI's package:
+
+- **Everything the AI runs during a game is in its package**, helpers included, and follows the rules above. If
+  your AI analyses something to decide (the map at the start, say), that analysis is AI code.
+- **Lab tools study games from outside.** They may use the AI's classes; the AI never uses theirs. The build does not
+  compile `lab/`, so the AI cannot come to depend on it, and `freeze` and the game take only the package.
+- **What a tool finds out goes into the AI as code**: a constant, a table or a param default, with a comment naming
+  the tool and the run it came from, so it can be worked out again.

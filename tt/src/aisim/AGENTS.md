@@ -16,6 +16,9 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 | `WorkerMain` | The inside of a worker JVM: boots the engine, plays jobs, the hang watchdog. |
 | `Match` | Plays one game as the client simulates it, and builds its result row. |
 | `Runs`, `Report`, `Stats` | Reading run folders; summary, compare and show; the statistics. |
+| `Game` | One recorded game: its result row and game file. Public: lab tools read games through it. |
+| `Curves`, `Fights`, `Export` | curves (also summary's and compare's curve tables), fights, export. |
+| `Table` | Aligned text tables. |
 | `Replay` | replay and its verification. |
 | `Snapshot`, `Pool`, `ClassFiles` | Build snapshots; frozen AIs; reading and writing class folders and jars. |
 | `Lint` | The fair-play and determinism check of AI packages. |
@@ -43,6 +46,10 @@ The harness's part of the toolkit lives in the game's source set, `tt/src/main/j
   - the lint rules in `Lint` with the Rules section of the AI guide.
 - Only `AiLog`, `AiParams` and `GameTime` of aikit are for AIs (`Lint.TOOLKIT`); keep their API stable, since frozen
   AIs link against it.
+- `Game`'s public methods are the API of lab tools (`lab/<name>/` on AI branches, `docs/aisim.md` Your own tools):
+  add to them, never rename or remove one. `lab/starter/FirstArmory.java` uses it and runs in the self-check.
+- Analyses read only recorded files, so they work for every AI. One that needs to know an AI's internals belongs in
+  that AI's `lab/`, not here.
 
 ## Before committing
 

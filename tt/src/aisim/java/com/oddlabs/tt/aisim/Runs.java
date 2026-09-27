@@ -15,7 +15,7 @@ import java.util.stream.Stream;
 /**
  * Reads run folders, {@code aisim/runs/<run>/}: run.json (the run's settings and jobs), results.jsonl (one result
  * row per finished game, in completion order) and {@code g/<key>.jsonl} (each game's recording). docs/aisim.md
- * describes the formats.
+ * describes the formats. {@link Game} is the public view of one game.
  */
 final class Runs {
     static final Path RUNS = Aisim.ROOT.resolve("runs");
@@ -55,25 +55,6 @@ final class Runs {
     /** The game file of game {@code key} in the run folder {@code run_dir}. */
     static @NonNull Path gameFile(@NonNull Path run_dir, @NonNull Object key) {
         return run_dir.resolve("g").resolve(key + ".jsonl");
-    }
-
-    /** The game file named by RUN KEY or FILE.jsonl; a usage error if it does not exist. */
-    static @NonNull Path requireGameFile(@NonNull List<String> args) {
-        Path file = args.size() == 2 ? gameFile(dir(args.get(0)), args.get(1)) : Path.of(args.get(0));
-        if (!Files.exists(file)) {
-            throw new UsageException("no game file " + Aisim.slash(file));
-        }
-        return file;
-    }
-
-    /** The events of the game of each row, in row order. */
-    static @NonNull List<List<Map<String, Object>>> gameEvents(@NonNull Path run_dir,
-            @NonNull List<Map<String, Object>> rows) throws IOException {
-        List<List<Map<String, Object>>> games = new ArrayList<>();
-        for (Map<String, Object> r : rows) {
-            games.add(readJsonl(gameFile(run_dir, r.get("key"))));
-        }
-        return games;
     }
 
     /**

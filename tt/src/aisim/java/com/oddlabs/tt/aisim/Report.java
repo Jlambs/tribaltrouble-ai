@@ -18,18 +18,15 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.function.ToDoubleFunction;
 import java.util.stream.Stream;
 
 import static com.oddlabs.tt.aisim.Runs.num;
 
 /**
- * The text reports: {@code summary} of a run, {@code compare} of two runs game by game, and {@code show} of one game.
+ * The text reports: {@code summary} of a run, {@code compare} of runs game by game, and {@code show} of one game.
  * Numbers print with Locale.ROOT. "A" is the AI under test, "B" its opponents' team.
  */
 final class Report {
-    /** The game minutes of the curve tables. */
-    private static final int[] CURVE_MINUTES = {5, 10, 15, 20, 30, 45, 60, 90};
     /** The paired metrics of compare, all from the result rows. */
     private static final String[] METRICS = {"score", "elim", "kd30", "w15", "margin"};
     /** compare warns that the variant is inert when at least this share of the games played identically. */
@@ -75,10 +72,12 @@ final class Report {
             headline.print(out, valid);
             printMeans(out, valid);
             printHealth(out, valid);
-            List<List<Map<String, Object>>> games = Runs.gameEvents(dir, valid);
+            List<Game> games = Game.counted(run);
             out.println("curves (mean over games still running; A / B):");
-            curveLines(curves(games, valid, true), curves(games, valid, false)).forEach(out::println);
-            out.println(milestones(games, valid));
+            List<Curves.Series> sides = List.of(new Curves.Series("A", games, true), new Curves.Series("B", games,
+                    false));
+            Curves.table(sides, Curves.FIELDS, Curves.MINUTES).forEach(out::println);
+            out.println(milestones(games));
             printWorstGames(out, run, valid);
             result += headline.resultFields();
         }
@@ -261,84 +260,7 @@ final class Report {
         }
     }
 
-    // ---------------------------------------------------------------- curves and milestones
-
-    /** A curve column: its title and its value in one census line. */
-    private record Column(@NonNull String title, @NonNull ToDoubleFunction<Map<String, Object>> value) {
-    }
-
-    private static final List<Column> CURVE_COLUMNS = List.of(new Column("units", e -> num(e, "units")),
-            new Column("warriors", Report::warriors), new Column("peons+in", e -> num(e, "peons") + num(e, "inside")),
-            new Column("Q", e -> num(e, "Q")), new Column("A", e -> num(e, "A")), new Column("T", e -> num(e, "T")),
-            new Column("kills", e -> num(e, "kills")), new Column("strength", e -> num(e, "strength")));
-
-    /** A census line's warriors, towers included (as Match counts them for w15). */
-    private static double warriors(@NonNull Map<?, ?> census) {
-        return num(census, "rock") + num(census, "iron") + num(census, "rubber") + num(census, "tower");
-    }
-
-    /** Per curve minute: the games still running and the column means over them. */
-    private record Curves(double @NonNull [] running, double @NonNull [] @NonNull [] means) {
-    }
-
-    /**
-     * The curve table of A ({@code of_a}) or of B's team over the games of {@code rows}. A game counts at a minute
-     * while any of its players is alive then.
-     */
-    private static @NonNull Curves curves(@NonNull List<List<Map<String, Object>>> games,
-            @NonNull List<Map<String, Object>> rows, boolean of_a) {
-        int columns = CURVE_COLUMNS.size();
-        double[] games_running = new double[CURVE_MINUTES.length];
-        double[][] means = new double[CURVE_MINUTES.length][columns];
-        for (int m = 0; m < CURVE_MINUTES.length; m++) {
-            for (int g = 0; g < games.size(); g++) {
-                int a_slot = (int) num(rows.get(g), "side");
-                double[] sum = new double[columns];
-                boolean running = false;
-                for (Map<String, Object> e : games.get(g)) {
-                    if ("tl".equals(e.get("ev")) && num(e, "t") == CURVE_MINUTES[m] * 60 && num(e, "alive") > 0) {
-                        running = true;
-                        if (((int) num(e, "s") == a_slot) == of_a) {
-                            for (int i = 0; i < columns; i++) {
-                                sum[i] += CURVE_COLUMNS.get(i).value().applyAsDouble(e);
-                            }
-                        }
-                    }
-                }
-                if (running) {
-                    games_running[m]++;
-                    for (int i = 0; i < columns; i++) {
-                        means[m][i] += sum[i];
-                    }
-                }
-            }
-            if (games_running[m] > 0) {
-                for (int i = 0; i < columns; i++) {
-                    means[m][i] /= games_running[m];
-                }
-            }
-        }
-        return new Curves(games_running, means);
-    }
-
-    /** The curve table as "left/right" cells, up to the first minute where either side has no game left. */
-    private static @NonNull List<String> curveLines(@NonNull Curves left, @NonNull Curves right) {
-        StringBuilder header = new StringBuilder("   min games  ");
-        CURVE_COLUMNS.forEach(c -> header.append(String.format(Locale.ROOT, " %-9s", c.title())));
-        List<String> lines = new ArrayList<>();
-        lines.add(header.toString().stripTrailing());
-        for (int m = 0; m < CURVE_MINUTES.length && left.running()[m] > 0 && right.running()[m] > 0; m++) {
-            double games = Math.min(left.running()[m], right.running()[m]);
-            StringBuilder line = new StringBuilder(String.format(Locale.ROOT, "  %4d %5.0f  ", CURVE_MINUTES[m],
-                    games));
-            for (int i = 0; i < CURVE_COLUMNS.size(); i++) {
-                String cell = String.format(Locale.ROOT, "%.0f/%.0f", left.means()[m][i], right.means()[m][i]);
-                line.append(String.format(Locale.ROOT, " %-9s", cell));
-            }
-            lines.add(line.toString());
-        }
-        return lines;
-    }
+    // ---------------------------------------------------------------- milestones
 
     /** The build-order milestones, in print order; name() is the printed label. */
     private enum Milestone {
@@ -350,8 +272,7 @@ final class Report {
     }
 
     /** Median time of each milestone for A and for B's team (its first player to reach it), per game. */
-    private static @NonNull String milestones(@NonNull List<List<Map<String, Object>>> games,
-            @NonNull List<Map<String, Object>> rows) {
+    private static @NonNull String milestones(@NonNull List<Game> games) {
         int count = Milestone.values().length;
         List<List<Double>> a_times = new ArrayList<>();
         List<List<Double>> b_times = new ArrayList<>();
@@ -359,18 +280,17 @@ final class Report {
             a_times.add(new ArrayList<>());
             b_times.add(new ArrayList<>());
         }
-        for (int g = 0; g < games.size(); g++) {
-            int a_slot = (int) num(rows.get(g), "side");
+        for (Game game : games) {
             // Per team (0 = A, 1 = B's team) the first time of each milestone; -1 until reached.
             double[][] first = new double[2][count];
             Arrays.fill(first[0], -1);
             Arrays.fill(first[1], -1);
             Map<Integer, Integer> quarters_built = new TreeMap<>(); // by slot
-            for (Map<String, Object> e : games.get(g)) {
-                int slot = (int) num(e, "s");
+            for (Map<String, Object> e : game.events()) {
+                int slot = Game.slot(e);
                 Milestone hit = milestoneOf(e, slot, quarters_built);
                 if (hit != null) {
-                    int team = slot == a_slot ? 0 : 1;
+                    int team = slot == game.a() ? 0 : 1;
                     reach(first[team], hit.ordinal(), num(e, "t"));
                 }
             }
@@ -425,16 +345,28 @@ final class Report {
 
     // ---------------------------------------------------------------- compare
 
-    /** Paired comparison of two runs over the same games (same key = same map, start position and world seed). */
-    static int compare(@NonNull String base, @NonNull String variant, boolean force) throws IOException {
+    /**
+     * Paired comparison of runs over the same games (same key = same map, start position and world seed): one variant
+     * with its base in detail, or several variants as one table.
+     */
+    static int compare(@NonNull String base, @NonNull List<String> variants, boolean force) throws IOException {
         Map<?, ?> base_meta = Runs.meta(base);
-        Map<?, ?> variant_meta = Runs.meta(variant);
-        List<String> refusals = comparabilityProblems(base_meta, variant_meta);
+        List<String> refusals = new ArrayList<>();
+        for (String variant : variants) {
+            for (String problem : comparabilityProblems(base_meta, Runs.meta(variant))) {
+                refusals.add(variants.size() == 1 ? problem : variant + ": " + problem);
+            }
+        }
         String reasons = String.join("; ", refusals);
         if (!refusals.isEmpty() && !force) {
             throw new UsageException(
                     "the runs are not comparable game by game (" + reasons + "); --force compares anyway");
         }
+        if (variants.size() > 1) {
+            return compareMany(base, base_meta, variants, reasons);
+        }
+        String variant = variants.get(0);
+        Map<?, ?> variant_meta = Runs.meta(variant);
         List<Map<String, Object>> base_all = Runs.rows(base);
         List<Map<String, Object>> variant_all = Runs.rows(variant);
         Map<String, Map<String, Object>> base_counted = counted(base_all);
@@ -458,20 +390,73 @@ final class Report {
             System.out.println("!! forced: " + reasons);
         }
         if (same >= INERT_SHARE * keys.size()) {
-            System.out.println(
-                    "!! " + same + " of " + keys.size() + " games are identical: the variant changes " + "almost nothing (inert, or the change never triggers)");
+            System.out.println("""
+                    !! %d of %d games are identical: the variant changes almost nothing (inert, or the change never \
+                    triggers)""".formatted(same, keys.size()));
         }
         if (failed_base != failed_variant) {
             System.out.println("!! failed games differ; failed games are not counted and can flatter a run");
         }
         printPairedMetrics(base_counted, variant_counted, keys);
-        List<Map<String, Object>> base_paired = keys.stream().map(base_counted::get).toList();
-        List<Map<String, Object>> variant_paired = keys.stream().map(variant_counted::get).toList();
         System.out.println("A's curves over the paired games (base / variant):");
-        Curves base_curves = curves(Runs.gameEvents(Runs.dir(base), base_paired), base_paired, true);
-        Curves variant_curves = curves(Runs.gameEvents(Runs.dir(variant), variant_paired), variant_paired, true);
-        curveLines(base_curves, variant_curves).forEach(System.out::println);
+        Curves.Series base_series = new Curves.Series(base, paired(base, keys), true);
+        Curves.Series variant_series = new Curves.Series(variant, paired(variant, keys), true);
+        Curves.table(List.of(base_series, variant_series), Curves.FIELDS, Curves.MINUTES).forEach(System.out::println);
         return 0;
+    }
+
+    /** The counted games of {@code run} whose key is one of {@code keys}. */
+    private static @NonNull List<Game> paired(@NonNull String run, @NonNull List<String> keys) {
+        Set<String> wanted = Set.copyOf(keys);
+        return Game.counted(run).stream().filter(g -> wanted.contains(g.key())).toList();
+    }
+
+    /**
+     * Several variants against one base, a line each: the paired difference of every metric over the games both
+     * counted. The base's line holds its means over all its counted games.
+     */
+    private static int compareMany(@NonNull String base, @NonNull Map<?, ?> base_meta, @NonNull List<String> variants,
+            @NonNull String forced) throws IOException {
+        Map<String, Map<String, Object>> base_counted = counted(Runs.rows(base));
+        System.out.printf(Locale.ROOT, "compare %s (A=%s) with %d variants | B=%s | %s%n", base, base_meta.get("a"),
+                variants.size(), base_meta.get("b"), base_meta.get("config"));
+        if (!forced.isEmpty()) {
+            System.out.println("!! forced: " + forced);
+        }
+        List<List<String>> rows = new ArrayList<>();
+        List<String> header = new ArrayList<>(List.of("run", "A", "pairs", "identical"));
+        header.addAll(List.of(METRICS));
+        rows.add(header);
+        String base_games = String.valueOf(base_counted.size());
+        List<String> base_row = new ArrayList<>(List.of(base, String.valueOf(base_meta.get("a")), base_games, ""));
+        for (String metric : METRICS) {
+            base_row.add(String.format(Locale.ROOT, "%.3f", Stats.mean(base_counted.values(), metric)));
+        }
+        rows.add(base_row);
+        int status = 0;
+        for (String variant : variants) {
+            Map<String, Map<String, Object>> variant_counted = counted(Runs.rows(variant));
+            List<String> keys = base_counted.keySet().stream().filter(variant_counted::containsKey).sorted().toList();
+            List<String> row = new ArrayList<>(List.of(variant, String.valueOf(Runs.meta(variant).get("a")),
+                    String.valueOf(keys.size()), String.valueOf(identical(base_counted, variant_counted, keys))));
+            for (String metric : METRICS) {
+                if (keys.isEmpty()) {
+                    row.add("-");
+                    continue;
+                }
+                Stats.Paired p = Stats.paired(base_counted, variant_counted, keys, metric);
+                row.add(String.format(Locale.ROOT, "%+.3f+-%.3f%s", p.delta(), p.se(), p.significant() ? "*" : " "));
+            }
+            rows.add(row);
+            status = keys.isEmpty() ? 1 : status;
+        }
+        Table.align(rows, "llr").forEach(System.out::println);
+        System.out.println("""
+                (base: means over its counted games; variants: delta +- SE over the games both runs counted, paired, \
+                maps weighted equally; * = |delta| > 2 SE)""");
+        String all = base + " " + String.join(" ", variants);
+        System.out.println("next: ./aisim.sh compare " + base + " VARIANT (in detail) | ./aisim.sh curves " + all);
+        return status;
     }
 
     /**
@@ -532,12 +517,11 @@ final class Report {
     // ---------------------------------------------------------------- show
 
     /** Prints one game: players, a census table every 5 minutes, key events. Works on harness and GUI game files. */
-    static int show(@NonNull List<String> args) throws IOException {
-        Path file = Runs.requireGameFile(args);
-        List<Map<String, Object>> events = Runs.readJsonl(file);
-        printPlayers(file, events);
-        printCensusTable(events);
-        printKeyEvents(events);
+    static int show(@NonNull List<String> args) {
+        Game game = Game.named(args);
+        printPlayers(game);
+        printCensusTable(game.events());
+        printKeyEvents(game.events());
         if (args.size() == 2) {
             String next = "next: ./aisim.sh replay " + args.get(0) + " " + args.get(1);
             System.out.println(next + "   (the same game again, with the log of every AI that uses AiLog)");
@@ -546,22 +530,19 @@ final class Report {
     }
 
     /** The game file's map line and its players, from the header event. */
-    private static void printPlayers(@NonNull Path file, @NonNull List<Map<String, Object>> events) {
-        Map<String, Object> header = events.isEmpty() ? Map.of() : events.get(0);
+    private static void printPlayers(@NonNull Game game) {
+        Map<String, Object> header = game.header();
         String place = header.get("map") == null ? "" : header.get("map") + " seed " + header.get("seed") + " ";
-        System.out.println(Aisim.slash(file) + ": " + place + "map code \"" + header.get("mapcode") + "\"");
-        if (header.get("players") instanceof List<?> players) {
-            for (Object p : players) {
-                Map<?, ?> player = (Map<?, ?>) p;
-                System.out.printf(Locale.ROOT, "  s%s %-28s team %s %-7s start %s,%s%n", player.get("s"),
-                        player.get("ai"), player.get("team"), player.get("race"), player.get("x"), player.get("y"));
-            }
+        System.out.println(Aisim.slash(game.path()) + ": " + place + "map code \"" + header.get("mapcode") + "\"");
+        for (Map<String, Object> player : game.players()) {
+            System.out.printf(Locale.ROOT, "  s%s %-28s team %s %-7s start %s,%s%n", player.get("s"), player.get("ai"),
+                    player.get("team"), player.get("race"), player.get("x"), player.get("y"));
         }
     }
 
     /** Every player's census every {@link #CENSUS_EVERY} seconds and at the last sample. */
     private static void printCensusTable(@NonNull List<Map<String, Object>> events) {
-        System.out.println("  time slot units warriors peons+in  Q  A  T sites kills lost strength casts stunned err");
+        System.out.println("  time slot units warriors  workers  Q  A  T sites kills lost strength casts stunned err");
         double end = events.stream().filter(e -> "tl".equals(e.get("ev"))).mapToDouble(e -> num(e, "t")).max().orElse(
                 0);
         for (Map<String, Object> e : events) {
@@ -569,8 +550,8 @@ final class Report {
             if ("tl".equals(e.get("ev")) && (Math.round(t) % CENSUS_EVERY == 0 || t == end)) {
                 System.out.printf(Locale.ROOT,
                         "  %s  s%-2d %5.0f %8.0f %8.0f %3.0f%3.0f%3.0f %5.0f %5.0f %4.0f %8.0f %5.0f %7.0f %3.0f%n",
-                        clock(t), (int) num(e, "s"), num(e, "units"), warriors(e),
-                        num(e, "peons") + num(e, "inside"), num(e, "Q"), num(e, "A"), num(e, "T"), num(e, "sites"),
+                        clock(t), (int) num(e, "s"), num(e, "units"), Game.value(e, "warriors"),
+                        Game.value(e, "workers"), num(e, "Q"), num(e, "A"), num(e, "T"), num(e, "sites"),
                         num(e, "kills"), num(e, "lost"), num(e, "strength"), num(e, "magics"), num(e, "stunned"),
                         num(e, "err"));
             }
