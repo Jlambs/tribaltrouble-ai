@@ -74,6 +74,20 @@ class Strategy {
      * gained, 9 lost.
      */
     boolean tower_unstun = true;
+    /** Skip, for 10 minutes, a target whose attack stalled (Military.stalled_targets). */
+    boolean skip_stalled = true;
+    /** Owner-aware attack gate against several enemies (Military.defenseFor) and a local chieftain malus. */
+    boolean gate_owner = false;
+    /** Reinforce the attack under base threat while the threat is worth less than this share of all our warriors. */
+    float reinforce_threat_ratio = 0f;
+    /** Finish a raided copy (sites, chieftain, units within finish_range cells) before choosing another. */
+    boolean finish_copies = false;
+    int finish_range = 90;
+    /** Keep the tower target under the building cap; front towers add at most front_tower_bonus_max. */
+    boolean tower_cap = false;
+    int front_tower_bonus_max = 100;
+    /** Shepherds only for copies whose wave origin is within this many cells of our start. */
+    int shepherd_range = 100000;
     int snipe_min = 6;
     int snipe_range = 45;
     /**
@@ -478,6 +492,14 @@ class Strategy {
         tower_mutual = params.getBoolean("tower_mutual", tower_mutual);
         snipers = params.getBoolean("snipers", snipers);
         tower_unstun = params.getBoolean("tower_unstun", tower_unstun);
+        skip_stalled = params.getBoolean("skip_stalled", skip_stalled);
+        gate_owner = params.getBoolean("gate_owner", gate_owner);
+        reinforce_threat_ratio = (float) params.getDouble("reinforce_threat_ratio", reinforce_threat_ratio);
+        finish_copies = params.getBoolean("finish_copies", finish_copies);
+        finish_range = params.getInt("finish_range", finish_range);
+        tower_cap = params.getBoolean("tower_cap", tower_cap);
+        front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);
+        shepherd_range = params.getInt("shepherd_range", shepherd_range);
         snipe_min = params.getInt("snipe_min", snipe_min);
         snipe_range = params.getInt("snipe_range", snipe_range);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);

@@ -528,7 +528,11 @@ final class Economy {
             int enemies = ai.enemiesAlive();
             boolean fronts = enemies > 1 && strategy.multi_front_towers;
             if (fronts && target_towers > 0)
-                target_towers += enemies - 1;
+                target_towers += Math.min(enemies - 1, strategy.front_tower_bonus_max);
+            if (strategy.tower_cap)
+                // Leave room under the building cap for every quarters, two armories and a spare site.
+                target_towers = Math.min(target_towers,
+                        ai.owner().getWorld().getMaxBuildingCount() - strategy.max_quarters - 3);
             forward_towers.removeIf(Building::isDead);
             sniper_towers.removeIf(Building::isDead);
             int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,

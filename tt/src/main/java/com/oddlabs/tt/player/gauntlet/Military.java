@@ -76,6 +76,13 @@ final class Military {
 
     // Attack.
     private @Nullable Selectable<?> target;
+    /**
+     * Targets whose attack stalled (the army could not get there: a site on ground it cannot reach), and when. Target
+     * choice skips them for STALL_MEMORY seconds, so the army moves on instead of marching at them for hours (the
+     * N=10 draw gfinal-vs10-hv s93: 5 hours of attacks on an unreachable site while two remnant copies lived on).
+     */
+    private final Map<@NonNull Selectable<?>, Float> stalled_targets = new LinkedHashMap<>();
+    private static final float STALL_MEMORY = 600f;
     /** The copy whose buildings the attacks go after first while it is alive (focus_bonus). */
     private com.oddlabs.tt.player.@Nullable Player focus_owner;
     private int target_x;
@@ -307,7 +314,11 @@ final class Military {
                 && base_threat_strength < ai.strategy().attack_threat_ratio * armyStrength();
         if (mode == Mode.HOME && (threat_level < 2 || small_threat))
             considerAttack();
-        if (mode == Mode.ATTACK && threat_level < 2 && ai.strategy().reinforce)
+        // reinforce_threat_ratio: reinforce the attack with the base under threat too, while what stands in the base is
+        // worth less than that share of our whole army.
+        boolean reinforce_ok = threat_level < 2
+                || base_threat_strength < ai.strategy().reinforce_threat_ratio * (armyStrength() + attackStrength());
+        if (mode == Mode.ATTACK && reinforce_ok && ai.strategy().reinforce)
             considerReinforcing();
         if (mode == Mode.HOME && threat_level <= ai.strategy().raid_threat)
             considerRaid();
@@ -1285,6 +1296,96 @@ final class Military {
         return s;
     }
 
+    /**
+     * The defense of a target building or unit. With gate_owner (against several enemies) only its owner's warriors
+     * come from afar (a Hard copy defends with its own idle warriors, wherever they stand: AdvancedAI.nodeDefendBase),
+     * at half value beyond defense_radius; other copies count only within defense_radius. Without it, defenseAt, which
+     * counts every enemy warrior beyond defense_radius at 0.3: at N=10 that alone is ~2.7 copy armies.
+     */
+    private float defenseFor(@NonNull Selectable<?> t) {
+        int x = t.getGridX();
+        int y = t.getGridY();
+        if (!ai.strategy().gate_owner || ai.enemiesAlive() <= 1)
+            return defenseAt(x, y);
+        Intel intel = ai.intel();
+        Player owner = t.getOwner();
+        int r = ai.strategy().defense_radius;
+        int r2 = r * r;
+        float s = 0f;
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
+            for (Unit u : group) {
+                if (u.isDead())
+                    continue;
+                boolean near = MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) <= r2;
+                if (u.getOwner() == owner)
+                    s += Combat.value(u) * (near ? 1f : .5f);
+                else if (near)
+                    s += Combat.value(u);
+            }
+        s *= 1.1f;
+        for (Building tw : intel.enemy_towers)
+            if (MapAnalysis.dist2(tw.getGridX(), tw.getGridY(), x, y) <= 22 * 22)
+                s += enemyTowerValue(tw);
+        s += .5f * Combat.strengthNear(intel.enemy_peons, x, y, 40);
+        return s;
+    }
+
+    /** A copy with no quarters or armory, finished or placed: raided, and kept in only by its units or a site. */
+    private boolean homeless(@NonNull Player p) {
+        for (Building b : ai.intel().enemy_buildings) {
+            if (b.isDead() || b.getOwner() != p)
+                continue;
+            int id = b.getTemplate().getTemplateID();
+            if (b.isComplete() && (id == com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                    || id == com.oddlabs.tt.model.Race.BUILDING_ARMORY))
+                return false;
+        }
+        return true;
+    }
+
+    /**
+     * finish_copies: the copy the army just raided (no finished quarters or armory left) is finished before another is
+     * chosen: its quarters and armory sites first, then its chieftain (which alone keeps a copy in: the collapse rule
+     * needs no chieftain), then its other units, all within finish_range cells of the army.
+     */
+    private @Nullable Selectable<?> finishTarget(int from_x, int from_y) {
+        Intel intel = ai.intel();
+        int range2 = ai.strategy().finish_range * ai.strategy().finish_range;
+        Selectable<?> best = null;
+        float best_score = Float.MAX_VALUE;
+        for (Building b : intel.enemy_buildings) {
+            if (b.isDead() || b.isComplete() || stalled_targets.containsKey(b))
+                continue;
+            int id = b.getTemplate().getTemplateID();
+            if (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY)
+                continue;
+            int d = MapAnalysis.dist2(from_x, from_y, b.getGridX(), b.getGridY());
+            if (d > range2 || !homeless(b.getOwner()))
+                continue;
+            if (d < best_score) {
+                best_score = d;
+                best = b;
+            }
+        }
+        if (best != null)
+            return best;
+        // Units of homeless copies: chieftains count as four times nearer.
+        for (List<Unit> group : List.of(intel.enemy_chieftains, intel.enemy_warriors, intel.enemy_peons))
+            for (Unit u : group) {
+                if (u.isDead() || stalled_targets.containsKey(u))
+                    continue;
+                int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
+                if (d > range2 || !homeless(u.getOwner()))
+                    continue;
+                float score = group == intel.enemy_chieftains ? d / 4f : d;
+                if (score < best_score) {
+                    best_score = score;
+                    best = u;
+                }
+            }
+        return best;
+    }
+
     private @Nullable Selectable<?> chooseTarget(int from_x, int from_y) {
         Intel intel = ai.intel();
         Strategy strategy = ai.strategy();
@@ -1315,6 +1416,13 @@ final class Military {
                     return prey;
             }
         }
+        if (strategy.finish_copies && ai.enemiesAlive() > 1) {
+            Selectable<?> finish = finishTarget(from_x, from_y);
+            if (finish != null) {
+                ai.aiLog().count("finish_target");
+                return finish;
+            }
+        }
         Selectable<?> best = null;
         float best_score = Float.MAX_VALUE;
         // gate_freeze: a copy without quarters (finished or placed) cannot train the chieftain its waves need from
@@ -1333,15 +1441,19 @@ final class Military {
             for (Unit u : threats)
                 if (!u.isDead() && !u.getAbilities().hasAbilities(Abilities.BUILD))
                     base_threat.merge(u.getOwner(), Combat.value(u), Float::sum);
+        stalled_targets.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > STALL_MEMORY);
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
         candidates.addAll(intel.enemy_quarters);
         candidates.addAll(intel.enemy_towers);
+        candidates.removeIf(stalled_targets::containsKey);
         if (strategy.gate_freeze)
             for (Building b : intel.enemy_buildings)
                 if (!b.isComplete() && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS)
                     candidates.add(b);
-        if (candidates.isEmpty())
+        if (candidates.isEmpty()) {
             candidates.addAll(intel.enemy_buildings);
+            candidates.removeIf(stalled_targets::containsKey);
+        }
         for (Building b : candidates) {
             if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())))
                 continue;
@@ -1353,7 +1465,7 @@ final class Military {
                         || strategy.gate_freeze ? 0f : 60f;
                 default -> 120f;
             };
-            float score = d + priority + strategy.target_defense_weight * defenseAt(b.getGridX(), b.getGridY());
+            float score = d + priority + strategy.target_defense_weight * defenseFor(b);
             if (strategy.target_home_weight > 0f)
                 score += strategy.target_home_weight * MapAnalysis.meters(staging_x, staging_y, b.getGridX(),
                         b.getGridY());
@@ -1371,6 +1483,8 @@ final class Military {
             units.addAll(intel.enemy_chieftains);
             int best_d = Integer.MAX_VALUE;
             for (Unit u : units) {
+                if (u.isDead() || stalled_targets.containsKey(u))
+                    continue;
                 int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
                 if (d < best_d) {
                     best_d = d;
@@ -1408,7 +1522,7 @@ final class Military {
             return;
         float army = armyStrength();
         float potential = army + stockStrength();
-        float defense = defenseAt(t.getGridX(), t.getGridY());
+        float defense = defenseFor(t);
         if (strategy.project_defense) {
             // The enemy keeps arming while we march; judge the fight at the moment of arrival.
             int d = ai.planner().getEnemyField().get(staging_x, staging_y);
@@ -1418,8 +1532,11 @@ final class Military {
         // Chieftains decide battles: count ours as a big plus and theirs as a big minus, unless ours can answer his.
         boolean chief = intel.chieftain != null && intel.chieftain.getHitPoints() > 30;
         boolean enemy_chief = false;
+        int cr2 = strategy.defense_radius * strategy.defense_radius;
         for (Unit c : intel.enemy_chieftains)
-            enemy_chief |= !c.isDead() && c.getHitPoints() > 15;
+            enemy_chief |= !c.isDead() && c.getHitPoints() > 15 && (!strategy.gate_owner || ai.enemiesAlive() <= 1
+                    || c.getOwner() == t.getOwner()
+                    || MapAnalysis.dist2(c.getGridX(), c.getGridY(), t.getGridX(), t.getGridY()) <= cr2);
         float bonus = chief && !enemy_chief ? 1.4f : chief ? 1.05f : enemy_chief ? .7f : 1f;
         Player owner = ai.owner();
         boolean capped = owner.getUnitCountContainer().getNumSupplies() >= owner.getWorld().getMaxUnitCount() - 10;
@@ -1573,7 +1690,9 @@ final class Military {
         last_progress_time = ai.time();
         best_target_dist = Integer.MAX_VALUE;
         mode = s > 0 ? Mode.ATTACK : Mode.HOME;
-        ai.log(String.format("attack with %.1f on %s at %d,%d", s, t, t.getGridX(), t.getGridY()));
+        // Name the target without the engine's toString (a Unit's shows an identity hash, which differs between JVMs).
+        String what = (t instanceof Building ? "building " : "unit ") + t.getTemplate().getClass().getSimpleName() + " of " + t.getOwner().getPlayerInfo().getName();
+        ai.log(String.format("attack with %.1f on %s at %d,%d", s, what, t.getGridX(), t.getGridY()));
         if (mode == Mode.ATTACK)
             recruitSappers(t.getGridX(), t.getGridY());
     }
@@ -2045,7 +2164,23 @@ final class Military {
             last_progress_time = ai.time();
         }
         if (ai.time() - last_progress_time > 75f && local_enemy == 0f) {
-            ai.log("attack stalled");
+            if (ai.logging()) {
+                // Why: how big is the region the target stands in, and can our staging point reach it?
+                DistanceField f = target_field;
+                int cells = 0;
+                if (f != null)
+                    for (int cost : f.raw())
+                        if (cost != DistanceField.UNREACHABLE)
+                            cells++;
+                int fc = cells;
+                ai.log("attack stalled (target region " + fc + " cells, staging " + (f != null && f.getAround(staging_x,
+                        staging_y, 2) != DistanceField.UNREACHABLE ? "reaches it" : "cut off") + ")");
+            } else
+                ai.log("attack stalled");
+            if (target != null && ai.strategy().skip_stalled) {
+                stalled_targets.put(target, ai.time());
+                ai.aiLog().count("target_stalled");
+            }
             beginRetreat();
         }
     }
