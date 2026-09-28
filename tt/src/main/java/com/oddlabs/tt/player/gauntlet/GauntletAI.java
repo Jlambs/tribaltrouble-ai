@@ -49,6 +49,7 @@ public final class GauntletAI extends AI {
     private @Nullable Chieftain chieftain;
     private @Nullable Decoys decoys;
     private @Nullable Shepherd shepherd;
+    private @Nullable Lures lures;
 
     private int ticks;
     private float time;
@@ -102,8 +103,10 @@ public final class GauntletAI extends AI {
         time = ticks / (float) GameTime.TICKS_PER_SECOND;
         try {
             reflexes.tick();
-            if (initialized && ticks % 5 == 0)
+            if (initialized && ticks % 5 == 0) {
                 shepherd().guard();
+                lures().guard();
+            }
             think();
         } catch (RuntimeException | AssertionError e) {
             // Engine getters assert on units that just died: count the error (every result row shows it), log the
@@ -172,6 +175,7 @@ public final class GauntletAI extends AI {
         chieftain = new Chieftain(this);
         decoys = new Decoys(this);
         shepherd = new Shepherd(this);
+        lures = new Lures(this);
         intel.decoys = decoys;
     }
 
@@ -310,6 +314,11 @@ public final class GauntletAI extends AI {
     Shepherd shepherd() {
         assert shepherd != null;
         return shepherd;
+    }
+
+    Lures lures() {
+        assert lures != null;
+        return lures;
     }
 
     @NonNull

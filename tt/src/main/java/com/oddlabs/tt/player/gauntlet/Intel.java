@@ -96,6 +96,8 @@ final class Intel {
     final java.util.Set<@NonNull Unit> sappers = new java.util.LinkedHashSet<>();
     /** Peons of the Shepherd, kept by it until it lets them go. */
     final java.util.Set<@NonNull Unit> shepherds = new java.util.LinkedHashSet<>();
+    /** Peons out luring idle enemies into tower reach (Lures): kept out of the economy like shepherds. */
+    final java.util.Set<@NonNull Unit> lures = new java.util.LinkedHashSet<>();
     final Map<@NonNull Unit, @NonNull PeonState> peon_states = new LinkedHashMap<>();
     final Map<@NonNull Unit, @NonNull WarriorState> warrior_states = new LinkedHashMap<>();
     /** Construction site each builder works on. */
@@ -221,7 +223,7 @@ final class Intel {
             return PeonState.STUNNED;
         if (sappers.contains(unit))
             return PeonState.SAPPER;
-        if (shepherds.contains(unit))
+        if (shepherds.contains(unit) || lures.contains(unit))
             return PeonState.SHEPHERD;
         if (controller instanceof IdleController && unit.getCurrentController() instanceof HuntController)
             return PeonState.FIGHT;

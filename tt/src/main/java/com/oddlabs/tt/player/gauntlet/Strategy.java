@@ -94,6 +94,12 @@ class Strategy {
     boolean evacuate = false;
     /** Gatherers skip supplies an idle enemy can see (Economy.seenByParked). */
     boolean gather_avoid_parked = false;
+    /** Lure-kiting (Lures): up to lure_max peons pull blobs of lure_min+ idle enemies into tower reach. */
+    boolean lure = false;
+    int lure_max = 2;
+    int lure_min = 3;
+    int lure_range = 45;
+    float lure_time = 420f;
     /** From tower_parallel_late_time on: tower projects and placed sites at a time (the siege razes towers). */
     int tower_parallel_late = 1;
     int sites_parallel_late = 2;
@@ -514,6 +520,11 @@ class Strategy {
         shepherd_range = params.getInt("shepherd_range", shepherd_range);
         evacuate = params.getBoolean("evacuate", evacuate);
         gather_avoid_parked = params.getBoolean("gather_avoid_parked", gather_avoid_parked);
+        lure = params.getBoolean("lure", lure);
+        lure_max = params.getInt("lure_max", lure_max);
+        lure_min = params.getInt("lure_min", lure_min);
+        lure_range = params.getInt("lure_range", lure_range);
+        lure_time = (float) params.getDouble("lure_time", lure_time);
         tower_parallel_late = params.getInt("tower_parallel_late", tower_parallel_late);
         sites_parallel_late = params.getInt("sites_parallel_late", sites_parallel_late);
         tower_parallel_late_time = (float) params.getDouble("tower_parallel_late_time", tower_parallel_late_time);

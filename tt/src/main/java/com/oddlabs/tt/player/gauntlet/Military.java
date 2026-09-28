@@ -543,7 +543,9 @@ final class Military {
             if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), threat_x, threat_y) <= 16 * 16)
                 towers += Combat.towerValue(t);
         Unit chief = intel.chieftain;
-        boolean toot_ready = chief != null && ai.chieftain().stunReady();
+        // Strict shred never stuns: its charge is for the blast.
+        boolean toot_ready = chief != null && ai.chieftain().stunReady()
+                && !(ai.strategy().shred && ai.strategy().shred_strict);
         float effective = ours + towers + (toot_ready ? .6f * threat_strength : 0f);
         // Against a single enemy the army behind his raiders is his whole army; against several the base is busy
         // enough without waiting for them.
@@ -1551,7 +1553,8 @@ final class Military {
             defense += Math.max(0f, enemyGrowthPerSecond()) * march;
         }
         // Chieftains decide battles: count ours as a big plus and theirs as a big minus, unless ours can answer his.
-        boolean chief = intel.chieftain != null && intel.chieftain.getHitPoints() > 30;
+        boolean chief = intel.chieftain != null && intel.chieftain.getHitPoints() > 30
+                && !(strategy.shred && strategy.shred_strict); // strict shred keeps him home
         boolean enemy_chief = false;
         int cr2 = strategy.defense_radius * strategy.defense_radius;
         for (Unit c : intel.enemy_chieftains)
