@@ -423,6 +423,9 @@ first and zeroes both charges). Param dodge_blast_only (dodge only when getLastM
 | target_defense_weight=2 | 11 | 0.264 | -1.21 | | 4/7 | no |
 | target_home_weight=1 | 10 | 0.251 | -1.21 | -0.02 | 3/7 | no |
 | quarters_first=true | 10 | 0.240 | -1.20 | -0.03 | 6/10 | no |
+| chief_keep_out=14 | 11 | 0.246 | -1.23 | | 6/9 | no |
+| hidden_info=true (read enemy chieftain charge and armory stock) | 7 (z -2.1) | 0.212 (z -2.7) | -1.21 | -0.04 | 2/9 | no: worse |
+| our AI as natives (gauntlet/n) | 4 (z -2.8) | 0.134 | -1.67 (lsr10 -0.26, z -7.2) | | 2/12 | no: the native swing restart (31 ticks) is far weaker |
 | (g-shep frozen, old recruitment) | 15 | 0.265 | -1.19 | | 6/5 vs base4 | |
 | (shepdecoy: decoys with shepherds, vs gshep-vs8-hv) | 12 vs 15 | | | | 6/9 | no |
 | (atk10: attack_ratio=1.0, vs gshep-vs8-hv) | 13 vs 15 | | | | 8/10 | no |
@@ -435,3 +438,6 @@ Late-game economy at N=8 (play-v8-s5, 18-20 min): 43-54 iron gatherers but ~5 ir
 our start are gone within minutes, the rest lies in the contested central disc (~120 s trips) and gatherers die on
 the way; the copies harvest most of the map's iron (they are 8). The window to win is the economic peak, 8-20 min:
 eliminations must come faster then.
+
+Map geometry does not explain N=8 wins (500 games of gshep/base4/blastonly): win rate 9-14 % whether the nearest
+copy starts 90-100, 100-120 or 120-140 cells away.

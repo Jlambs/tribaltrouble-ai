@@ -309,7 +309,7 @@ final class Military {
             considerAttack();
         if (mode == Mode.ATTACK && threat_level < 2 && ai.strategy().reinforce)
             considerReinforcing();
-        if (mode == Mode.HOME && threat_level == 0)
+        if (mode == Mode.HOME && threat_level <= ai.strategy().raid_threat)
             considerRaid();
     }
 

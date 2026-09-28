@@ -204,6 +204,8 @@ class Strategy {
     float forward_ratio = 1.4f;
     /** Highest base threat level at which the army still escorts forward tower builders. */
     int forward_threat = 0;
+    /** Highest base threat level at which a raid on enemy peons may leave. */
+    int raid_threat = 0;
 
     /**
      * Defenders engage a threat at .8 of its strength; once engaged they hold down to .8 minus this, and once fallen
@@ -420,6 +422,7 @@ class Strategy {
     void apply(@NonNull AiParams params) {
         decoys = params.getBoolean("decoys", decoys);
         forward_threat = params.getInt("forward_threat", forward_threat);
+        raid_threat = params.getInt("raid_threat", raid_threat);
         shepherd = params.getBoolean("shepherd", shepherd);
         shred = params.getBoolean("shred", shred);
         shred_min = params.getInt("shred_min", shred_min);
