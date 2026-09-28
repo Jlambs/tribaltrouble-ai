@@ -760,3 +760,11 @@ Wins at N=11 are bimodal (militiaoff-vs11-hv): 6 wins at 62-85 min and losses wi
 24-38 min. By 15 min the wins have put out 2.8 copies against 1.8 in the losses that last past 25 min, with the same
 own strength (850 vs 778); iron harvested flattens after 15 min in the losses (220 -> 258 by 25 min) but keeps
 growing in the wins (235 -> 326). Levers: more copies out at 10-15 min, and iron after 15 min.
+
+**New defaults (the full stack):** peon_militia=false for N>1 (forGame), tower_front_entry, tower_reaim and
+tower_prequeue_any on. Screens: towmicro2-vs11-hv (tower_reaim + tower_prequeue_any) elim +.026 (z 2.2), W 7 vs 3,
+3.7 re-aims and 220 pre-queues per game (54 before); qrally (quarters_rally) neutral to negative.
+- full-vs11-hv (1..200) vs t2: elim +.050 (z 3.9), lsr10 +.26, lsr15 +.45, lsr20 +.62 (z 4.9), kd +.17, +3.0 min,
+  W 5 vs 3. Against militiaoff alone: elim -.002, lsr20 +.07: the tower micro adds survival, not eliminations, at N=11.
+- **N=8 fresh seeds 201..400: full-vs8-hv-b W 111 vs 99 of 200** (cur-vs8-hv-b: the tower bundle and stall_calm
+  defaults), elim +.054 (z 2.2), lsr10 +.12 (z 4.8). (For reference @g-final2 had 65/200 on these seeds.)

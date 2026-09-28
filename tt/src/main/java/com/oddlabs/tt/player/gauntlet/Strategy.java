@@ -142,16 +142,23 @@ class Strategy {
     boolean peon_dodge = false;
     /** Our chieftain walks away from enemies hunting him, towards our towers (Dodges). */
     boolean chief_dodge = false;
-    /** Gunners enter their tower from the threat side (Military.frontCell). */
-    boolean tower_front_entry = false;
+    /**
+     * Gunners enter their tower from the threat side (Military.frontCell): a garrison throws from its entry cell. Vs
+     * hard*11 elim +.025 (z 2.1, front-vs11-hv); in the stack with tower_reaim and tower_prequeue_any vs hard*8 on
+     * fresh seeds W 111 vs 99 of 200 (full-vs8-hv-b).
+     */
+    boolean tower_front_entry = true;
     /** Reinforcements head for the army's march waypoint, join near any attacker, and are waited for (Military). */
     boolean reinforce_intercept = false;
     /** Shepherds hold their spot (flee at 9 cells, not 12) while their copy's launch is imminent (Shepherd). */
     boolean shepherd_hold = false;
-    /** Quiet towers re-enter from the side of idle enemies out of their reach (Military.reaimTowers). */
-    boolean tower_reaim = false;
+    /**
+     * Quiet towers re-enter from the side of idle enemies out of their reach (Military.reaimTowers). With
+     * tower_prequeue_any vs hard*11: elim +.026 (z 2.2), W 7 vs 3 (towmicro2-vs11-hv).
+     */
+    boolean tower_reaim = true;
     /** Queue the next tower target for any hit chance, not only sure hits (Military.prequeue). */
-    boolean tower_prequeue_any = false;
+    boolean tower_prequeue_any = true;
     float rock_stream_time = 540f;
     float rock_stream_iron_s = 70f;
     int rock_stream_max = 30;
@@ -777,6 +784,10 @@ class Strategy {
             // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
             // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
             strategy.gate_owner = true;
+            // Neighbouring copies' gatherers work near our start and passed for raiders: the militia sent most of the
+            // starting peons after single enemy peons, again and again (vs hard*11 militiaoff-vs11-hv elim +.051,
+            // z 4.1, lsr10 +.26, z 5.8). Hard copies never raid with peons.
+            strategy.peon_militia = false;
         }
         return strategy;
     }
