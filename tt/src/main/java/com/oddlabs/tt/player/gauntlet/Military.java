@@ -1194,7 +1194,7 @@ final class Military {
 
     /** Whether the army is free and strong enough to stand guard out in the field. */
     boolean canEscort() {
-        return mode == Mode.HOME && threat_level == 0
+        return mode == Mode.HOME && threat_level <= ai.strategy().forward_threat
                 && armyStrength() >= Math.max(12f, ai.strategy().forward_ratio * enemyFieldStrength());
     }
 

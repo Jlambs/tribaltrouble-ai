@@ -202,6 +202,8 @@ class Strategy {
     int forward_towers = 0;
     float forward_tower_time = 420f;
     float forward_ratio = 1.4f;
+    /** Highest base threat level at which the army still escorts forward tower builders. */
+    int forward_threat = 0;
 
     /**
      * Defenders engage a threat at .8 of its strength; once engaged they hold down to .8 minus this, and once fallen
@@ -417,6 +419,7 @@ class Strategy {
     /** Sets any field from the spec's params (gauntlet:attack_ratio=1.2,...), for tuning experiments. */
     void apply(@NonNull AiParams params) {
         decoys = params.getBoolean("decoys", decoys);
+        forward_threat = params.getInt("forward_threat", forward_threat);
         shepherd = params.getBoolean("shepherd", shepherd);
         shred = params.getBoolean("shred", shred);
         shred_min = params.getInt("shred_min", shred_min);
