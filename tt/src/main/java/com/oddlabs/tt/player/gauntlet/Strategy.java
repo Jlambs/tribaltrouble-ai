@@ -109,19 +109,24 @@ class Strategy {
     /** Tower targets out to the garrison's full reach (15.9 cells) instead of 15 (Military.towerReach2). */
     boolean tower_full_reach = false;
     /** Retarget towers on the tick their target dies (Military.towerReflex). */
-    boolean tower_reflex = false;
+    boolean tower_reflex = true;
     /** Retarget warriors on the tick their target dies (Military.armyReflex). */
     boolean army_reflex = false;
-    /** Tower reach measured from the garrison's entry cell, 15.9 cells (Military.towerOrigin). */
-    boolean tower_gunner_reach = false;
+    /**
+     * Tower micro, on by default (vs hard*11, tow2-vs11-hv: W 4 vs 0 of 200, lsr20 +.52 z 4.9, kd +.073 z 2.7): reach
+     * from the garrison's entry cell (tower_gunner_reach), the next target queued while a long axe flies
+     * (tower_prequeue), retarget on the kill tick (tower_reflex), attackers of the tower first (tower_self_first),
+     * chicken gunners whenever a tower is quiet (chicken_gunners).
+     */
+    boolean tower_gunner_reach = true;
     /** Queue a tower's next target when it starts a throw its target cannot survive (Military.prequeue). */
-    boolean tower_prequeue = false;
+    boolean tower_prequeue = true;
     /** Towers shoot their own attackers first (Military.towerSelfFactor). */
-    boolean tower_self_first = false;
+    boolean tower_self_first = true;
     /** Swap iron gunners for chicken warriors whenever a tower is quiet, not only when the base is. */
-    boolean chicken_gunners = false;
+    boolean chicken_gunners = true;
     /** The attack's stall clock runs only while calm; a reachable stall re-targets instead of retreating. */
-    boolean stall_calm = false;
+    boolean stall_calm = true;
     /** Top up the chieftain's training quarters under threat too, and keep it full at the unit cap. */
     boolean chief_topup_any = false;
     /** Gatherers per ore node before the next node is preferred, and the metres a gatherer already there costs. */
