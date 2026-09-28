@@ -278,3 +278,32 @@ snapshot. (1) The shepherd's guard pass runs every 5 ticks on Intel's enemy list
 in shep-vs7-hn, each aborting that tick's animate (so think was skipped when due). (2) The STAT transit breakdown
 did the same on our peons, only when logging: logging changed decisions. Both now check isDead first; shep-vs6-hn
 (buggy build) stopped; fixed build re-run as shep3-* and shep2-vs8-hn.
+
+Fixed shepherd (dead-unit checks, guard every 5 ticks, spots 14-22 cells, 12 cells clear):
+
+| run (paired) | W | elim | lsr15 | lsr20 | kd | gained/lost | shepherds lost/game |
+|---|---|---|---|---|---|---|---|
+| shep2-vs8-hn vs k1-vs8-hn | 6 vs 2 | 0.184 vs 0.100 (z +3.9) | -1.28 vs -2.15 (z +5.9) | -1.94 vs -3.14 (z +6.7) | +0.15 (z +5.2) | 4/0 | |
+| shep3-vs7-hn vs swing-vs7-hn | 23 vs 19 | 0.347 vs 0.300 | -0.95 vs -1.40 (z +4.4) | -1.34 vs -2.22 (z +5.4) | +0.19 (z +4.6) | 12/8 | 34.0 (16.7 drawn) |
+
+The strength gain is large and robust; wins lag. The 40-minute game play-shep4-s12 shows why: with 65-83
+warriors at home from 10 to 14 minutes, the army never mustered once. Expert's attack test counts every enemy
+warrior within 150 cells of the target in full (all the leashed blobs of neighbouring copies) and adds every
+copy's growth times the march time (project_defense); at N=8 that never clears 1.35x. Then shepherds fail one by
+one (no legal spot when a blob idles within ~21 cells of our buildings, or killed walking out) and the base falls
+at 12-23 min. Tests queued: defense_radius=60 + project_defense=false (shepatk-*), combinations with
+reinforce_multi and parallel towers (combo1/2-*). New counters: shepherd_nospot_building / _unit / _ground.
+
+### 2026-09-28: attack gate for leashed copies (big win)
+
+defense_radius=60 (enemy warriors beyond 60 cells of the target count 0.3 instead of full, was 150) and
+project_defense=false (no longer add every copy's growth times the march time):
+
+| run (paired) | W | elim | lsr15 | kd | gained/lost |
+|---|---|---|---|---|---|
+| shepatk-vs8-hn vs shep2-vs8-hn | **12 vs 6** | 0.259 vs 0.184 (z +2.7) | -1.25 vs -1.28 | +0.04 | 10/4 |
+| shepatk-vs7-hn vs shep3-vs7-hn | **35 vs 23** (z +2.4) | 0.491 vs 0.347 (z +3.7) | -0.91 vs -0.95 | +0.05 | 19/7 |
+| shep3-vs6-hn (shepherd only) vs swing-vs6-hn | 57 vs 52 | 0.650 vs 0.588 | -0.72 vs -0.96 (z +2.7) | +0.09 | 18/13 |
+
+Shepherd no-spot counters (shepatk-vs8-hn, per game, counted per 0.5 s per copy): no legal ground 2,323, another
+unit of ours nearer 1,092, our building within ~21 cells 979. Replay of shep2-vs8-hn s3-0: VERIFIED.

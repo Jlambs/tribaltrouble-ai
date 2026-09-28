@@ -39,6 +39,8 @@ class Strategy {
      * its last units are hunted down (within 90 cells) once its buildings are gone, before it can rebuild.
      */
     float focus_bonus = 0f;
+    /** Against several enemies, the enemy warriors within this many cells of a target count in full as its defense. */
+    int defense_radius = 150;
     boolean focus_finish = false;
     int sites_parallel = 2;
     /** Quarters completed before builders move to the armory. */
@@ -357,6 +359,14 @@ class Strategy {
     float shepherd_time = 200f;
     float shepherd_until = 100000f;
     /**
+     * Farthest a shepherd stands from the wave's leader, in cells (it must stay within 0.66 of our nearest building).
+     */
+    int shepherd_max_r = 22;
+    /** Chebyshev cells a shepherd's spot keeps from every enemy unit (idle and walking units scan 8). */
+    int shepherd_clear = 12;
+    /** Weight of a spot's distance from the copy's own quarters and armory, beside its distance from our start. */
+    float shepherd_home_weight = 0f;
+    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -382,8 +392,12 @@ class Strategy {
         shepherd = params.getBoolean("shepherd", shepherd);
         shepherd_time = (float) params.getDouble("shepherd_time", shepherd_time);
         shepherd_until = (float) params.getDouble("shepherd_until", shepherd_until);
+        shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
+        shepherd_clear = params.getInt("shepherd_clear", shepherd_clear);
+        shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
+        defense_radius = params.getInt("defense_radius", defense_radius);
         focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
         swing_restart = params.getBoolean("swing_restart", swing_restart);

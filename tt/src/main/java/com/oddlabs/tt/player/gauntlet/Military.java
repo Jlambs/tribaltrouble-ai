@@ -1261,7 +1261,8 @@ final class Military {
         Intel intel = ai.intel();
         // Defenders waiting for an attacker win even fights about three times in four. With several enemies, only
         // the warriors within reach of the spot come to its defense in time; the rest count for a little.
-        float s = 1.1f * (ai.enemiesAlive() > 1 ? enemyFieldStrengthNear(x, y, 150) : enemyFieldStrength());
+        float s = 1.1f * (ai.enemiesAlive() > 1 ? enemyFieldStrengthNear(x, y,
+                ai.strategy().defense_radius) : enemyFieldStrength());
         for (Building t : intel.enemy_towers)
             if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= 22 * 22)
                 s += enemyTowerValue(t);

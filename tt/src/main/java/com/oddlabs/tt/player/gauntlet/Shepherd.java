@@ -316,9 +316,11 @@ final class Shepherd {
             return null;
         int unit2 = nearestOtherUnit2(ox, oy, s);
         float limit = (float) Math.sqrt(Math.min(building2 * .44f, unit2 * .8f));
-        int max_r = (int) Math.min(22f, limit);
-        if (max_r < 14)
+        int max_r = (int) Math.min(ai.strategy().shepherd_max_r, limit);
+        if (max_r < 14) {
+            ai.aiLog().count(building2 * .44f < unit2 * .8f ? "shepherd_nospot_building" : "shepherd_nospot_unit");
             return null;
+        }
         List<Building> guarded = new ArrayList<>();
         for (Selectable<?> sel : f.copy.getUnits().getSet())
             if (sel instanceof Building b && !b.isDead()
@@ -330,7 +332,7 @@ final class Shepherd {
         int by = ai.planner().getStartY();
         int[] best = null;
         float best_score = -Float.MAX_VALUE;
-        for (int r = 14; r <= max_r; r += 2) {
+        for (int r = 14; r <= max_r; r += r < 22 ? 2 : 4) {
             for (int a = 0; a < 24; a++) {
                 double ang = a * Math.PI / 12;
                 int x = ox + (int) Math.round(r * Math.cos(ang));
@@ -355,24 +357,34 @@ final class Shepherd {
                 if (!ok)
                     continue;
                 float score = (float) Math.sqrt(MapAnalysis.dist2(x, y, bx, by)) - r * .5f;
+                float home_weight = ai.strategy().shepherd_home_weight;
+                if (home_weight > 0f && !guarded.isEmpty()) {
+                    int home = Integer.MAX_VALUE;
+                    for (Building b : guarded)
+                        home = Math.min(home, MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y));
+                    score += home_weight * (float) Math.sqrt(home);
+                }
                 if (score > best_score) {
                     best_score = score;
                     best = new int[]{x, y};
                 }
             }
         }
+        if (best == null)
+            ai.aiLog().count("shepherd_nospot_ground");
         return best;
     }
 
     private boolean clearOfEnemies(@NonNull Intel intel, int x, int y) {
+        int c = ai.strategy().shepherd_clear;
         for (Unit e : intel.enemy_warriors)
-            if (Math.abs(e.getGridX() - x) <= CLEAR_CELLS && Math.abs(e.getGridY() - y) <= CLEAR_CELLS)
+            if (Math.abs(e.getGridX() - x) <= c && Math.abs(e.getGridY() - y) <= c)
                 return false;
         for (Unit e : intel.enemy_peons)
-            if (Math.abs(e.getGridX() - x) <= CLEAR_CELLS && Math.abs(e.getGridY() - y) <= CLEAR_CELLS)
+            if (Math.abs(e.getGridX() - x) <= c && Math.abs(e.getGridY() - y) <= c)
                 return false;
         for (Unit e : intel.enemy_chieftains)
-            if (Math.abs(e.getGridX() - x) <= CLEAR_CELLS && Math.abs(e.getGridY() - y) <= CLEAR_CELLS)
+            if (Math.abs(e.getGridX() - x) <= c && Math.abs(e.getGridY() - y) <= c)
                 return false;
         return true;
     }
