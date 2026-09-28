@@ -68,8 +68,12 @@ class Strategy {
      * (Economy.planSniper).
      */
     boolean snipers = false;
-    /** Re-order a tower on the tick its garrison's stun comes on top, so it keeps throwing (Reflexes). */
-    boolean tower_unstun = false;
+    /**
+     * Re-order a tower on the tick its garrison's stun comes on top, so it keeps throwing (Reflexes). vs hard*8:
+     * tunstun-vs8-hv 23 vs 19 (seeds 1..100), tunstun-vs8-hv-b 52 vs 43 of 200 (fresh seeds 201..400); 22 games
+     * gained, 9 lost.
+     */
+    boolean tower_unstun = true;
     int snipe_min = 6;
     int snipe_range = 45;
     /**

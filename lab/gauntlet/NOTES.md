@@ -569,3 +569,8 @@ until the attack ends, when it comes on top again and can be deferred once more.
 per tick, one order per tower per stun resumption). play-tunstun9-s11 (N=9, seed 11): 35 tower un-stuns, kills
 1,551 vs 1,319 on the same seed without it, 39:21 vs 37:23 survived; replay VERIFIED. Batches queued (N=8, N=9).
 tower_mutual (towers 10-13 cells apart) running.
+
+tunstun-vs8-hv (tower_unstun=true, paired with aggro-vs8-hv): **23 vs 19** (6 gained, 2 lost), elim +.044 (z 2.2),
+prog +.057 (z 2.3), lsr20 +.18 (z 2.9); 13.5 tower un-stuns per game, no errors. tmutual-vs8-hv (tower_mutual=true):
+21 vs 19 (10/8), lsr20 +.195 (z 1.6): maybe. Queued: tunstun-vs8-hv-b (fresh seeds 201..400, paired with
+aggro-vs8-hv-b), tunstun-vs9-hv, tower_unstun + tower_mutual.
