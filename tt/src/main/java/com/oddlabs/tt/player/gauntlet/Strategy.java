@@ -148,6 +148,10 @@ class Strategy {
     boolean reinforce_intercept = false;
     /** Shepherds hold their spot (flee at 9 cells, not 12) while their copy's launch is imminent (Shepherd). */
     boolean shepherd_hold = false;
+    /** Quiet towers re-enter from the side of idle enemies out of their reach (Military.reaimTowers). */
+    boolean tower_reaim = false;
+    /** Queue the next tower target for any hit chance, not only sure hits (Military.prequeue). */
+    boolean tower_prequeue_any = false;
     float rock_stream_time = 540f;
     float rock_stream_iron_s = 70f;
     int rock_stream_max = 30;
@@ -601,6 +605,8 @@ class Strategy {
         tower_front_entry = params.getBoolean("tower_front_entry", tower_front_entry);
         reinforce_intercept = params.getBoolean("reinforce_intercept", reinforce_intercept);
         shepherd_hold = params.getBoolean("shepherd_hold", shepherd_hold);
+        tower_reaim = params.getBoolean("tower_reaim", tower_reaim);
+        tower_prequeue_any = params.getBoolean("tower_prequeue_any", tower_prequeue_any);
         rock_stream_time = (float) params.getDouble("rock_stream_time", rock_stream_time);
         rock_stream_iron_s = (float) params.getDouble("rock_stream_iron_s", rock_stream_iron_s);
         rock_stream_max = params.getInt("rock_stream_max", rock_stream_max);

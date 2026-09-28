@@ -1180,8 +1180,106 @@ final class Military {
         return null;
     }
 
+    /** tower_reaim: when each tower last re-aimed. */
+    private final Map<@NonNull Building, Float> reaimed = new LinkedHashMap<>();
+    private float last_reaim = -10f;
+
+    /**
+     * tower_reaim, every 2 s: a manned tower with no awake enemy within 14 cells and nothing in its reach, but idle
+     * enemies (which never answer being hit) that one of the 16 cells around it would reach and its entry cell does not
+     * (at least 3 more), is re-entered from that cell: the garrison throws from the cell it entered by, so its reach
+     * disc moves 2-2.8 cells that way. Once per tower per 30 s.
+     */
+    private void reaimTowers() {
+        if (!ai.strategy().tower_reaim || ai.time() - last_reaim < 2f)
+            return;
+        last_reaim = ai.time();
+        Intel intel = ai.intel();
+        List<Unit> idle = new ArrayList<>();
+        List<Unit> awake = new ArrayList<>();
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead())
+                continue;
+            boolean parked = e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                    && e.getCurrentController() == e.getPrimaryController();
+            (parked ? idle : awake).add(e);
+        }
+        if (idle.isEmpty())
+            return;
+        for (Building t : intel.towers) {
+            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0
+                    || tower_assignments.containsValue(t))
+                continue;
+            Float last = reaimed.get(t);
+            if (last != null && ai.time() - last < 30f)
+                continue;
+            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
+                continue;
+            int tx = t.getGridX();
+            int ty = t.getGridY();
+            boolean quiet = true;
+            for (Unit e : awake)
+                if (MapAnalysis.dist2(tx, ty, e.getGridX(), e.getGridY()) <= 14 * 14) {
+                    quiet = false;
+                    break;
+                }
+            if (!quiet)
+                continue;
+            int gx = gunner.getGridX();
+            int gy = gunner.getGridY();
+            int now = 0;
+            for (Unit e : idle)
+                if (MapAnalysis.dist2(gx, gy, e.getGridX(), e.getGridY()) <= 252)
+                    now++;
+            if (now > 0)
+                continue; // it has something to throw at already
+            int[] best = null;
+            int best_n = 0;
+            for (int dy = -2; dy <= 2; dy++)
+                for (int dx = -2; dx <= 2; dx++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dy)) != 2)
+                        continue;
+                    int cx = tx + dx;
+                    int cy = ty + dy;
+                    if (!ai.map().passable(cx, cy))
+                        continue;
+                    int n = 0;
+                    for (Unit e : idle)
+                        if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= 252)
+                            n++;
+                    if (n > best_n) {
+                        best_n = n;
+                        best = new int[]{cx, cy};
+                    }
+                }
+            if (best == null || best_n < 3)
+                continue;
+            boolean safe = true;
+            for (Unit e : awake)
+                if (MapAnalysis.dist2(best[0], best[1], e.getGridX(), e.getGridY()) <= 12 * 12) {
+                    safe = false;
+                    break;
+                }
+            if (!safe)
+                continue;
+            reaimed.put(t, ai.time());
+            ai.owner().exitTower(t);
+            if (gunner.isDead() || gunner.isMounted())
+                continue;
+            roles.put(gunner, Role.TOWER);
+            tower_assignments.put(gunner, t);
+            front_entry.put(gunner, new float[]{best[0], best[1], ai.time() - 6f}); // 6 s to get there
+            ai.landscapeOrder(Selectable.newArray(gunner), best[0], best[1], Action.MOVE, false);
+            ai.aiLog().count("tower_reaim");
+            for (int i = 0; i < best_n; i++)
+                ai.aiLog().count("reaim_gain");
+        }
+    }
+
     private void manTowers() {
         Intel intel = ai.intel();
+        reaimTowers();
         // Gunners at (or long on the way to) their front cell go in now.
         for (java.util.Iterator<Map.Entry<Unit, float[]>> it = front_entry.entrySet().iterator(); it.hasNext();) {
             Map.Entry<Unit, float[]> e = it.next();
@@ -3312,14 +3410,18 @@ final class Military {
         if (!(gunner.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.AttackController a)
                 || !(a.getTarget() instanceof Unit x) || x.isDead() || isMultiHit(x))
             return false;
-        if (towerHitChance(gunner, t, x) < .99f)
+        float px = towerHitChance(gunner, t, x);
+        if (px < .99f && !ai.strategy().tower_prequeue_any)
             return false;
         // Cells the axe covers in the throw's last second: iron 25 m/s, rock 20, rubber 30 (2 m per cell).
         WarriorType type = Intel.warriorType(gunner);
         float fly = type == WarriorType.ROCK ? 9.5f : type == WarriorType.CHICKEN ? 14.5f : 12f;
         if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x.getGridX(), x.getGridY()) <= fly * fly)
             return false;
-        inflight.put(x, ai.time());
+        // A sure hit dooms the target for everyone; a likely miss leaves it to the queue underneath (the order waits
+        // below the running throw, and X's own controller resumes if its axe misses).
+        if (px >= .99f)
+            inflight.put(x, ai.time());
         int queued = tower_queued.getOrDefault(t, 0);
         if (queued >= 20)
             return false; // each queued order stays on the garrison's controller stack until the fight ends
