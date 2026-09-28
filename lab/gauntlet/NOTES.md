@@ -768,3 +768,32 @@ tower_prequeue_any on. Screens: towmicro2-vs11-hv (tower_reaim + tower_prequeue_
   W 5 vs 3. Against militiaoff alone: elim -.002, lsr20 +.07: the tower micro adds survival, not eliminations, at N=11.
 - **N=8 fresh seeds 201..400: full-vs8-hv-b W 111 vs 99 of 200** (cur-vs8-hv-b: the tower bundle and stall_calm
   defaults), elim +.054 (z 2.2), lsr10 +.12 (z 4.8). (For reference @g-final2 had 65/200 on these seeds.)
+- **Fresh N=11 seeds 201..400: full-vs11-hv-b W 6 vs 2** (t2-vs11-hv-b), elim +.040 (z 3.2), lsr10 +.28 (z 6.3),
+  lsr20 +.57 (z 4.6). The full stack at N=11 so far: 11 wins in 400 games (old defaults: 5 in 400).
+- Screens on the full stack (paired with full-vs11-hv): chieftain_time=180 neutral (-.008); initial_quarters=3
+  negative (elim -.026, z -2.1; lsr10 -.10, z -5.2).
+
+### Audit of 40 logged N=11 games (camp-mf-vs11-hv; 4 lens auditors, a skeptic each, a judge)
+
+Reports: session scratchpad audit/{opening,campaign,defense,economy}.md, *-verify.md, judge.md; 18 of the findings
+survived verification. What frames them:
+- Every copy that goes out is put out by an attack (77 of 80), and **after the first "calling the army home" no copy
+  ever goes out** (48 before, 1 after, over a median 548 s more; 24 of 40 games recall). Military.defend recalls at
+  base threat > home army + towers and > recall_ratio (2) x the attack's current, shrinking strength: it ends 21-22
+  of 39 main attacks, a median 238 cells out at 57 % of peak, 9 of them within ~60 m of the target.
+- The army is iron-limited, not gate-limited: weapons in stock ~0 all game; at 12 min (peak 88 warriors) ATTACK 59,
+  home 19, towers 10. The map runs out of iron at 10-12 min, and the engine respawns a node only once 75 % are empty,
+  one every 10 s at a random empty spot (SupplyManager). We collect ~12 % of the map's iron after 14 min.
+- Units vanish uncounted inside razed buildings: ~50 per armory razing, ~18 per quarters, ~200 per game; idle peons
+  are sent into the primary armory even while a blob besieges it and it has no ore.
+- rock_stream doubled rock harvested (86 vs 45 by 18 min) but kept only 4-5 more rock warriors alive.
+- The screened towers_early/mid/late values change no decision (Economy adds min(alive-1, front_tower_bonus_max=100)
+  to every tower target) and expand_time is dead with initial_quarters = max_quarters = 4: dropped from the queue.
+
+New params (all default off, commits c6a1c828 and 059dfce6): chief_trainer_near (train in the quarters near the
+armory with no enemy within 30 cells; top up only with peons sent there), danger_refuge (spare peons avoid a
+threatened ore-less armory; quarters hold theirs), expand_under_threat (expansion check under threat, at a quiet site
+and route), launch_recheck (drop a timed-out muster that the staging army cannot back) and recall_cooldown,
+retreat_rearguard, and a consistency bundle: rush_opening_only, target_path (re-targets by walking distance),
+defend_stable (stun credit only near the threat, armory hysteresis 14/17, 3 s engage dwell), tower_cooldown.
+Screens queued: recall_ratio=99 (N=11 and N=8), each new param, the bundle, and the remaining param screens.
