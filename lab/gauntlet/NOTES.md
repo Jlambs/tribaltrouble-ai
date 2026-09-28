@@ -655,3 +655,15 @@ blasts per game, 37-91 enemy warriors in reach. Batch queued. Lure-kiting (Lures
 relaxing the bait geometry (8-16 lures per 30 min, 2/3 get home), but draws only 0-4 hunters each (only the member
 that sees the peon hunts). Batch queued. Rock surge (rock gatherers from idle armory workers while iron starves)
 queued.
+
+More N=10 screens (paired with gateown-vs10-hv, i.e. on top of gate_owner, seeds 1..100):
+
+| variant | elim diff | other | verdict |
+|---|---|---|---|
+| shred v2 fixed (shred_strict, min_hp 15, range 70) | -.007 | 2.75 blasts, 59 caught per game; lsr20 +.22 (z 1.6), kd +.03 | no (strength up a little, eliminations flat) |
+| lure (21 lures per game, 15 get home) | +.004 | lsr15 -.10 (z -1.8) | no |
+| rock_surge (div 3, min workers 8, stock 40) | +.004 | rock harvested 63 vs 57: barely fires | no |
+| gather_avoid_parked (vs gfinal) | -.006 | | no |
+
+First attack at N=10 with gate_owner: muster at 384-393 s (6.5 min) instead of 456-549 s. Running: current defaults
+(gate_owner, endgame fix) at N=10 seeds 1..200 and N=11 seeds 1..300.
