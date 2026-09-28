@@ -607,3 +607,13 @@ no swallowed errors. Second half running; the N=8 exam of @g-final (final-vs8-g-
 ok): **W 25 / L 75 / D 0**, Wilson 95 % [17.5, 34.3], all 25 wins by elimination (4 via collapse), 0 failed, no
 swallowed errors, 37.0 min mean length, 32.7 s CPU per game. Replays s30001-0, s30002-0, s30003-0: VERIFIED. Dev
 before: 52/200 on fresh seeds 201..400. **N* = 8** (N=9 dev 9/200).
+
+## After the report: N=10 and N=11 (2026-09-28, user asked for even a single win at N=10 or 11)
+
+Baselines of @g-final on dev seeds (running): gfinal-vs10-hv (1..200), gfinal-vs10-hn (1..100), gfinal-vs11-hv
+(1..100). **First N=10 win: gfinal-vs10-hv s40-0** (seed 40, hills 2), a 68-minute game, 4,075 kills for 1,230 losses;
+replay VERIFIED. The nearest copies start 91 (s1) and 100 cells (s9) away; s9 is out at 11.2 min, s1 at 14.0. From
+11 min the waves raze towers and quarters again and again (the main armory falls at 32.9 min), but the base keeps
+rebuilding and a second armory stands from 24 min; the army campaigns almost without pause and puts out s8 (25.6),
+s5 (34.1), s4 (41.5), s7 (49.4), s10 (60.6), s2 (64.8), s3 (68.2). Logged N=10 losses (play-gfinal10-s11, -s23): the
+army attacks only at ~10 min (at N=9: ~4 min), with threat level 2 from 5 min.
