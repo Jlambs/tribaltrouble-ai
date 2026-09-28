@@ -542,3 +542,30 @@ attacked. From 16 min 20-60 idle enemy warriors stand within 45 cells of our bui
 our towers, all 14 of which are manned; the waves raze the expansion armory, the towers one by one and the base by
 19-21 min, with 4-5 copies left. New param target_threat_weight (meters off a target's score per unit of strength
 its owner has in our base); tthreat5, tthreat15 and thome05 (target_home_weight=0.5) queued on N=8.
+
+### 2026-09-28: N=8 screens on the aggressive defaults (paired with aggro-vs8-hv, 19/100, seeds 1..100)
+
+| variant | W | gained/lost | notes | verdict |
+|---|---|---|---|---|
+| gate_freeze=true (v2: quarters sites too) | 17 | 11/13 | elim +.004, kd +.04 | no |
+| attack_max_strength=50 | 19 | 1/1 | inert | no |
+| reinforce_ratio=0.3 | 17 | 4/6 | | no |
+| precontact_ratio=0.8 | 19 | 1/1 | inert | no |
+| retreat_ratio=2.0 | 19 | 0/0 | inert | no |
+| target_home_weight=0.5 | 19 | 2/2 | nearly inert | no |
+| target_threat_weight=5 | 16 | 0/3 | kd +.012 (z 2.2) | no |
+| target_threat_weight=15 | 13 | 5/11 | elim -.033 | no: worse |
+| snipers=true (sniper towers by parked blobs) | 16 | 3/6 | lsr10 -.015 (z -2.7); 24 planned per game, most never placed (sniper_nospot_unsafe 34 per game: blobs overlap and awake units pass) | no |
+
+Where parked enemies stand (STAT pb/pt histograms, play-park9b-s11): 16-45 cells from our nearest building and
+15-45 from our nearest manned tower, i.e. where the building they razed stood; all towers are manned (man=14/14)
+until they fall.
+
+**Tower garrisons and stuns** (source-read): Stun.animate stuns the garrison of every tower in its radius, and
+towerFire skipped stunned gunners. An order to a tower (LandBuilding.setTarget) pushes an AttackController on the
+garrison without clearing its stack: given on the tick the StunController comes on top (Unit.stun leaves the unit
+interruptible for that tick, as K1 uses), it decides at once and the garrison throws on; the stun waits under it
+until the attack ends, when it comes on top again and can be deferred once more. New param tower_unstun (Reflexes,
+per tick, one order per tower per stun resumption). play-tunstun9-s11 (N=9, seed 11): 35 tower un-stuns, kills
+1,551 vs 1,319 on the same seed without it, 39:21 vs 37:23 survived; replay VERIFIED. Batches queued (N=8, N=9).
+tower_mutual (towers 10-13 cells apart) running.
