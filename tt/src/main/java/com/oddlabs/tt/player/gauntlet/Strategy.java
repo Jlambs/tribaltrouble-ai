@@ -122,6 +122,13 @@ class Strategy {
     boolean chicken_gunners = false;
     /** The attack's stall clock runs only while calm; a reachable stall re-targets instead of retreating. */
     boolean stall_calm = false;
+    /** Top up the chieftain's training quarters under threat too, and keep it full at the unit cap. */
+    boolean chief_topup_any = false;
+    /** Gatherers per ore node before the next node is preferred, and the metres a gatherer already there costs. */
+    int ore_load = 3;
+    float ore_load_penalty = 6f;
+    /** Rally point of every quarters on the primary armory (Economy.choosePrimaryArmory). */
+    boolean quarters_rally = false;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
@@ -562,6 +569,10 @@ class Strategy {
         tower_self_first = params.getBoolean("tower_self_first", tower_self_first);
         chicken_gunners = params.getBoolean("chicken_gunners", chicken_gunners);
         stall_calm = params.getBoolean("stall_calm", stall_calm);
+        chief_topup_any = params.getBoolean("chief_topup_any", chief_topup_any);
+        ore_load = params.getInt("ore_load", ore_load);
+        ore_load_penalty = (float) params.getDouble("ore_load_penalty", ore_load_penalty);
+        quarters_rally = params.getBoolean("quarters_rally", quarters_rally);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);

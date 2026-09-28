@@ -40,7 +40,6 @@ final class Economy {
     private static final int MAX_BUILDERS = 20;
     /** Peons per supply before another supply is preferred, for trees and for ore. */
     private static final int TREE_LOAD = 2;
-    private static final int ORE_LOAD = 3;
 
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Project> projects = new ArrayList<>();
@@ -1004,9 +1003,13 @@ final class Economy {
         Player owner = ai.owner();
         int pop = owner.getUnitCountContainer().getNumSupplies();
         int max = owner.getWorld().getMaxUnitCount();
+        boolean training = quarters.getChieftainContainer() != null && quarters.getChieftainContainer().isTraining();
+        // Training takes 40 breed ticks of the trainer, 440 / n^(1/3) s with n inside, and goes on at the unit cap.
+        if (training && strategy.chief_topup_any)
+            return strategy.hold_chieftain;
         if (pop >= max - 2)
             return 0;
-        if (quarters.getChieftainContainer() != null && quarters.getChieftainContainer().isTraining())
+        if (training)
             return strategy.hold_chieftain;
         if (ai.intel().armories.isEmpty() && !ai.intel().quarters.isEmpty() && needsBuilders())
             return Math.min(2, strategy.hold_early);
@@ -1069,7 +1072,18 @@ final class Economy {
         if (expansion != null && !expansion.isDead() && expansion.isComplete())
             primary = expansion;
         intel.setPrimaryArmory(primary);
+        // quarters_rally: peons a quarters sends out walk into the armory its rally point names; without one they
+        // enter the nearest armory, often the drained old one once the expansion is primary.
+        Building armory = intel.armory();
+        if (ai.strategy().quarters_rally && armory != null && armory != rally_armory) {
+            rally_armory = armory;
+            for (Building q : intel.quarters)
+                if (!q.isDead() && q.isComplete() && !evacuating.containsKey(q))
+                    ai.owner().setRallyPoint(q, armory);
+        }
     }
+
+    private @Nullable Building rally_armory;
 
     /**
      * Opens a second armory next to fresh iron once the first one's surroundings are mined out, when the walk saved
@@ -1382,7 +1396,9 @@ final class Economy {
         // 2. Chieftain training quarters top-up.
         chieftain_topup = false;
         Building trainer = ai.chieftain().trainingQuarters();
-        if (trainer != null && ai.military().baseThreatLevel() == 0 && !evacuating.containsKey(trainer)) {
+        boolean topup_ok = ai.military().baseThreatLevel() == 0 || (ai.strategy().chief_topup_any && trainer != null
+                && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
+        if (trainer != null && topup_ok && !evacuating.containsKey(trainer)) {
             int need = ai.strategy().hold_chieftain - trainer.getUnitContainer().getNumSupplies() - countHeadingTo(
                     trainer);
             if (need > 0) {
@@ -1629,8 +1645,8 @@ final class Economy {
             return pickChicken(armory);
         DistanceField field = armory_field;
         List<? extends Supply> supplies = type == TreeSupply.class ? ai.map().getTrees() : type == IronSupply.class ? ai.map().getIron() : ai.map().getRocks();
-        int max_load = type == TreeSupply.class ? TREE_LOAD : ORE_LOAD;
-        float load_penalty = type == TreeSupply.class ? 9f : 6f;
+        int max_load = type == TreeSupply.class ? TREE_LOAD : ai.strategy().ore_load;
+        float load_penalty = type == TreeSupply.class ? 9f : ai.strategy().ore_load_penalty;
         Supply best = null;
         float best_cost = Float.MAX_VALUE;
         int ax = armory.getGridX();
