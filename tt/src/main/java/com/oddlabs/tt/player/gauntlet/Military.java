@@ -1534,11 +1534,13 @@ final class Military {
         }
         setTarget(t);
         float s = 0f;
-        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
-            if (e.getValue() == Role.ARMY) {
-                e.setValue(Role.ATTACK);
-                s += Combat.value(e.getKey());
-            }
+        List<Unit> army = new ArrayList<>();
+        for (Map.Entry<Unit, Role> e : roles.entrySet())
+            if (e.getValue() == Role.ARMY)
+                army.add(e.getKey());
+        for (Unit u : beyondGuard(army)) {
+            roles.put(u, Role.ATTACK);
+            s += Combat.value(u);
         }
         attack_initial_strength = s;
         attack_kills_start = ai.owner().getUnitsKilled();
@@ -2474,6 +2476,10 @@ final class Military {
             group.add(u);
             home += Combat.value(u);
         }
+        group = beyondGuard(group);
+        home = 0f;
+        for (Unit u : group)
+            home += Combat.value(u);
         if (group.isEmpty())
             return;
         float away = attackStrength();
@@ -2487,6 +2493,30 @@ final class Military {
         for (Unit u : group)
             roles.put(u, Role.REINFORCE);
         ai.log(String.format("reinforcing the attack (%.1f) with %.1f", away, home));
+    }
+
+    /**
+     * The units of a home group that may leave: all but a guard of home_guard strength, the ones nearest the armory,
+     * kept to hold the base while the army is out (at N=8 the base otherwise falls behind the attacks).
+     */
+    private @NonNull List<@NonNull Unit> beyondGuard(@NonNull List<@NonNull Unit> group) {
+        float guard = ai.strategy().home_guard;
+        Building armory = ai.intel().armory();
+        if (guard <= 0f || armory == null)
+            return group;
+        List<Unit> sorted = new ArrayList<>(group);
+        int ax = armory.getGridX();
+        int ay = armory.getGridY();
+        sorted.sort(java.util.Comparator.comparingInt(u -> MapAnalysis.dist2(u.getGridX(), u.getGridY(), ax, ay)));
+        float kept = 0f;
+        List<Unit> leave = new ArrayList<>();
+        for (Unit u : sorted) {
+            if (kept < guard)
+                kept += Combat.value(u);
+            else
+                leave.add(u);
+        }
+        return leave;
     }
 
     /** Marches reinforcements to the attacking army; they join it once close. */

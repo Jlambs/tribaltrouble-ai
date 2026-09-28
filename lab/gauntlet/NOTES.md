@@ -475,3 +475,12 @@ Consolidated: dodge_blast_only on by default (commit c002c1ae), frozen as g-v8. 
 Robustness sweep of @g-v8 (lab/gauntlet/robustness.sh, first half): random maps of every size and terrain.
 duel vs hard 59-1 (60 games), as natives vs hard*3 53-25-2 (80), in team B vs hard 40-0 (40), allied with hard vs
 hard*3 64-11 (75); 0 failed games, no swallowed errors.
+
+### 2026-09-28: g-v8 fresh-seed estimate at N=8; home guard
+
+gv8-vs8-hv-b (@g-v8 vs hard*8, seeds 201..400, never used for tuning): **31/200 = 15.5 % [11.1, 21.2]**, elim 0.287,
+0 failed, no swallowed errors. The Wilson lower bound is above 10 %, so the N=8 exam is sat with @g-v8 (queued).
+
+New param home_guard: when the army attacks or reinforces, units worth that much strength stay home (the ones
+nearest the armory), since at N=8 the base otherwise falls behind the attacks. Tests queued: guard20, guard40 vs
+gv8-vs8-hv (seeds 1..100).
