@@ -421,6 +421,8 @@ first and zeroes both charges). Param dodge_blast_only (dodge only when getLastM
 | dodge_blast_only=true | 16 | 0.301 | -1.17 (z +1.8) | same | 7/5 | small +; enemy blasts are only ~4 per game |
 | expansion=false | 8 | 0.250 | -1.21 | -0.10 (z -3.4) | 4/10 | no |
 | target_defense_weight=2 | 11 | 0.264 | -1.21 | | 4/7 | no |
+| target_home_weight=1 | 10 | 0.251 | -1.21 | -0.02 | 3/7 | no |
+| quarters_first=true | 10 | 0.240 | -1.20 | -0.03 | 6/10 | no |
 | (g-shep frozen, old recruitment) | 15 | 0.265 | -1.19 | | 6/5 vs base4 | |
 | (shepdecoy: decoys with shepherds, vs gshep-vs8-hv) | 12 vs 15 | | | | 6/9 | no |
 | (atk10: attack_ratio=1.0, vs gshep-vs8-hv) | 13 vs 15 | | | | 8/10 | no |
