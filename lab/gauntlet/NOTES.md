@@ -527,3 +527,18 @@ had a chieftain (so they kept waving until it died), 59 rebuilt their quarters (
 their home warriors, which drops them below their wave size and into the rebuild branch), 15 trained a new
 chieftain. The gate holds for too few copies. v2 also targets the rebuilt quarters sites (they were not candidates:
 Intel lists finished quarters only); gfv2-vs8-hv queued on the new defaults.
+
+### 2026-09-28: aggressive defaults at N=9; where the base falls
+
+aggro-vs9-hv (new defaults vs hard*9, seeds 1..100): **5/100** vs gv8-vs9-hv 2/100 (3 gained, 0 lost), elim +.069 (z
+4.3), prog +.072 (z 3.5), kd +.05. Better, still far from 10 %. gfaggro-vs8-hv (gate_freeze v1 on the aggressive
+defaults): 16 vs 19 (9/12), neutral. amax50-vs8-hv (attack_max_strength=50): 19 vs 19, inert.
+
+Logged N=9 game (play-agg9-s11, new defaults; a STAT diagnostic park=out/in man=manned/towers added, identical
+checksum with and without it): the army leaves at 4:14 and never comes home. It razes s4 (7 min), s1 (10), s8
+(14), s5 (16) and s6's and s9's bases (18-21 min), always marching to the target nearest to itself, so it drifts
+across the map (s5, s6, s9 are 340-354 cells from our start) while s3 (136 cells away) and s2 (213) are never
+attacked. From 16 min 20-60 idle enemy warriors stand within 45 cells of our buildings, almost none within reach of
+our towers, all 14 of which are manned; the waves raze the expansion armory, the towers one by one and the base by
+19-21 min, with 4-5 copies left. New param target_threat_weight (meters off a target's score per unit of strength
+its owner has in our base); tthreat5, tthreat15 and thome05 (target_home_weight=0.5) queued on N=8.

@@ -3063,6 +3063,49 @@ final class Military {
         return "mode=" + mode + " army=" + countRole(Role.ARMY) + " atk=" + countRole(
                 Role.ATTACK) + " raid=" + countRole(Role.RAID) + " twr=" + countRole(Role.TOWER) + String.format(
                         " str=%.1f thr=%d/%.1f",
-                        armyStrength(), threat_level, threat_strength);
+                        armyStrength(), threat_level, threat_strength) + parkedStatus();
+    }
+
+    /**
+     * Idle enemy warriors near our base (within 45 cells of a building of ours): out of reach of our manned towers /
+     * in reach / how many of those out of reach a tower 11+ cells from every enemy could reach (15 cells).
+     */
+    private @NonNull String parkedStatus() {
+        Intel intel = ai.intel();
+        List<Building> own = new ArrayList<>(intel.armories);
+        own.addAll(intel.quarters);
+        own.addAll(intel.towers);
+        int out = 0;
+        int in = 0;
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead() || !(e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController)
+                    || e.getCurrentController() != e.getPrimaryController())
+                continue;
+            boolean near = false;
+            for (Building b : own)
+                if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), e.getGridX(),
+                        e.getGridY()) <= 45 * 45) {
+                            near = true;
+                            break;
+                        }
+            if (!near)
+                continue;
+            boolean reach = false;
+            for (Building t : intel.towers)
+                if (Intel.isTowerActive(t)
+                        && MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) <= 15 * 15) {
+                            reach = true;
+                            break;
+                        }
+            if (reach)
+                in++;
+            else
+                out++;
+        }
+        int manned = 0;
+        for (Building t : intel.towers)
+            if (Intel.isTowerActive(t))
+                manned++;
+        return " park=" + out + "/" + in + " man=" + manned + "/" + intel.towers.size();
     }
 }
