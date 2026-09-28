@@ -106,6 +106,10 @@ class Strategy {
      * N=10 with the same weight via armory_threat_weight=37: W 6 vs 2 of 200; N=8 W 65 vs 65).
      */
     int armory_threat_cap = 5;
+    /** Tower targets out to the garrison's full reach (15.9 cells) instead of 15 (Military.towerReach2). */
+    boolean tower_full_reach = false;
+    /** Retarget towers on the tick their target dies (Military.towerReflex). */
+    boolean tower_reflex = false;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
@@ -538,6 +542,8 @@ class Strategy {
         rock_surge = params.getBoolean("rock_surge", rock_surge);
         site_shepherd = params.getBoolean("site_shepherd", site_shepherd);
         armory_threat_cap = params.getInt("armory_threat_cap", armory_threat_cap);
+        tower_full_reach = params.getBoolean("tower_full_reach", tower_full_reach);
+        tower_reflex = params.getBoolean("tower_reflex", tower_reflex);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);

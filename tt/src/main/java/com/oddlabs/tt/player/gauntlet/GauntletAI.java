@@ -103,6 +103,8 @@ public final class GauntletAI extends AI {
         time = ticks / (float) GameTime.TICKS_PER_SECOND;
         try {
             reflexes.tick();
+            if (initialized)
+                military().towerReflex();
             if (initialized && ticks % 5 == 0) {
                 shepherd().guard();
                 lures().guard();

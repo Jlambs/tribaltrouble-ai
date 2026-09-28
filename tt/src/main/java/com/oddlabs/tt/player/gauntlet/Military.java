@@ -3024,6 +3024,63 @@ final class Military {
     private static final int TOWER_CELLS = 15;
 
     /**
+     * Squared reach of a garrison in grid cells: weapon 6 + tower 8 + target size 1.9 = 15.9, compared as squared grid
+     * distance (Selectable.isCloseEnough): 252. The towers' own scan is a square of 14 (AttackScanFilter.TOWER_RANGE),
+     * so enemies 14-15.9 cells out along the axes are only hit when told.
+     */
+    private int towerReach2() {
+        return ai.strategy().tower_full_reach ? 252 : TOWER_CELLS * TOWER_CELLS;
+    }
+
+    /**
+     * Every tick: a manned tower whose target died or left its reach gets the next one at once, instead of waiting for
+     * our next round (0.5 s) or for its own rescan (1-2 s, IdleController). An order given during the throw's
+     * recovery takes effect when the 2 s cycle ends, so nothing of the cycle is lost.
+     */
+    void towerReflex() {
+        if (!ai.strategy().tower_reflex || !ai.strategy().tower_fire)
+            return;
+        Intel intel = ai.intel();
+        int r2 = towerReach2();
+        for (Building t : intel.towers) {
+            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
+                continue;
+            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
+                continue;
+            Unit current = tower_targets.get(t);
+            if (current != null && !current.isDead()
+                    && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(), current.getGridY()) <= r2)
+                continue;
+            Unit best = null;
+            float best_score = 0f;
+            for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
+                for (Unit e : group) {
+                    if (e.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) > r2)
+                        continue;
+                    // Spread over targets: each other tower already on it halves its worth.
+                    int others = 0;
+                    for (Unit o : tower_targets.values())
+                        if (o == e)
+                            others++;
+                    float score = throwValue(gunner, e) * towerHitChance(gunner, t, e) / (1 << Math.min(others, 4));
+                    if (score > best_score) {
+                        best_score = score;
+                        best = e;
+                    }
+                }
+            }
+            if (best == null) {
+                tower_targets.remove(t);
+                continue;
+            }
+            tower_targets.put(t, best);
+            ai.owner().setTarget(Selectable.newArray(t), best, Action.ATTACK, false);
+            ai.aiLog().count("tower_reflex");
+        }
+    }
+
+    /**
      * Gives each manned tower its target, as a player can order it: the enemy in range worth most times the chance
      * to hit it times the chance it survives what other towers already throw at it. Peons hacking at one of our towers
      * come first. A target is kept while it lives and stays in range.
@@ -3034,7 +3091,7 @@ final class Military {
         Intel intel = ai.intel();
         tower_targets.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead());
         Map<Unit, Float> survive = new LinkedHashMap<>();
-        int r2 = TOWER_CELLS * TOWER_CELLS;
+        int r2 = towerReach2();
         for (Building t : intel.towers) {
             if (!t.isComplete() || t.getUnitCount() == 0)
                 continue;
@@ -3084,7 +3141,7 @@ final class Military {
     @Nullable
     Unit towerTargetFor(@NonNull Building t, @NonNull Unit gunner) {
         Intel intel = ai.intel();
-        int r2 = TOWER_CELLS * TOWER_CELLS;
+        int r2 = towerReach2();
         Unit current = tower_targets.get(t);
         if (current != null && !current.isDead()
                 && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(), current.getGridY()) <= r2)
