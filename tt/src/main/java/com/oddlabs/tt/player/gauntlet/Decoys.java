@@ -55,6 +55,8 @@ final class Decoys {
         @Nullable
         Unit runner;
         final float ordered;
+        /** A site shepherd's decoy near the copy's wave origin (placeHome), not one in front of our towers. */
+        boolean home;
 
         Decoy(@NonNull Player target, int x, int y, float ordered) {
             this.target = target;
@@ -90,11 +92,13 @@ final class Decoys {
 
     void tick() {
         Strategy strategy = ai.strategy();
-        if (!strategy.decoys || ai.time() - last_tick < 1f)
+        if ((!strategy.decoys && decoys.isEmpty()) || ai.time() - last_tick < 1f)
             return;
         last_tick = ai.time();
         Intel intel = ai.intel();
         release();
+        if (!strategy.decoys)
+            return;
         if (ai.time() < strategy.decoy_time)
             return;
         List<Building> active = new ArrayList<>();
@@ -127,7 +131,7 @@ final class Decoys {
                 d.runner = null;
             if (d.site == null || (!d.site.isPlaced() && d.runner == null)) {
                 // Never placed: the runner died or dropped an illegal site.
-                if (d.runner == null || ai.time() - d.ordered > 90f) {
+                if (d.runner == null || ai.time() - d.ordered > (d.home ? 200f : 90f)) {
                     if (d.runner != null && !d.runner.isDead())
                         sendHome(d.runner);
                     it.remove();
@@ -233,6 +237,110 @@ final class Decoys {
         ai.log("decoy for " + p.getPlayerInfo().getName() + " at " + spot[0] + "," + spot[1] + " (origin " + ox + "," + oy + ")");
     }
 
+    private final java.util.Map<@NonNull Player, Float> home_tried = new java.util.LinkedHashMap<>();
+
+    /**
+     * Site shepherd (site_shepherd): when a copy's shepherd finds no spot, a peon places a 1-HP tower site 14-24 cells
+     * from the copy's wave origin instead. The Hard sends a wave at our building nearest its oldest idle warrior,
+     * placed sites included, unless a unit of ours is nearer than 0.707 of that (AdvancedAI.findTarget): a site only
+     * has to be nearer than our real buildings, and needs nobody standing there when the wave leaves. The wave razes it
+     * with one throw and idles by its own home. One per copy, at most site_max at a time, two building slots kept free.
+     */
+    void placeHome(@NonNull Player p, int ox, int oy) {
+        Strategy strategy = ai.strategy();
+        Float tried = home_tried.get(p);
+        if (tried != null && ai.time() - tried < 20f)
+            return;
+        home_tried.put(p, ai.time());
+        int homes = 0;
+        for (Decoy d : decoys) {
+            if (!d.home)
+                continue;
+            if (d.target == p)
+                return;
+            homes++;
+        }
+        if (homes >= strategy.site_max)
+            return;
+        int cap = ai.owner().getWorld().getMaxBuildingCount();
+        if (ai.owner().getBuildingCountContainer().getNumSupplies() + 2 >= cap)
+            return;
+        int real = nearestReal(ox, oy);
+        int[] spot = findHomeSpot(p, ox, oy, real);
+        if (spot == null) {
+            ai.aiLog().count("site_nospot");
+            return;
+        }
+        Unit runner = chooseRunner(spot[0], spot[1], 400);
+        if (runner == null) {
+            ai.aiLog().count("site_norunner");
+            return;
+        }
+        Decoy d = new Decoy(p, spot[0], spot[1], ai.time());
+        d.home = true;
+        d.runner = runner;
+        d.site = ai.placeSite(List.of(runner), Race.BUILDING_TOWER, spot[0], spot[1]);
+        if (d.site == null)
+            return;
+        decoys.add(d);
+        ai.intel().peon_states.put(runner, PeonState.BUILD);
+        ai.aiLog().count("site_placed");
+        ai.log("site shepherd for " + p.getPlayerInfo().getName() + " at " + spot[0] + "," + spot[1] + " (origin " + ox + "," + oy + ")");
+    }
+
+    /**
+     * A legal tower site 14-24 cells from the wave origin, nearer to it than our nearest real building by 0.8, at
+     * least 10 cells (Chebyshev) from every enemy unit, 17 from the copy's quarters and armory (their defense answers
+     * within 15), 19 from enemy towers, reachable from our start; the farthest from our start wins.
+     */
+    private int @Nullable [] findHomeSpot(@NonNull Player p, int ox, int oy, int real) {
+        BuildingTemplate template = ai.owner().getRace().getBuildingTemplate(Race.BUILDING_TOWER);
+        Intel intel = ai.intel();
+        int sx = ai.planner().getStartX();
+        int sy = ai.planner().getStartY();
+        float limit = .8f * .8f * real;
+        int[] best = null;
+        float best_score = -Float.MAX_VALUE;
+        for (int r = 14; r <= 24; r += 2) {
+            for (int a = 0; a < 24; a++) {
+                double ang = a * Math.PI / 12;
+                int x = ox + (int) Math.round(r * Math.cos(ang));
+                int y = oy + (int) Math.round(r * Math.sin(ang));
+                if (MapAnalysis.dist2(x, y, ox, oy) >= limit)
+                    continue;
+                if (!ai.map().inside(x, y) || !ai.planner().getStartField().reachable(x, y))
+                    continue;
+                boolean ok = true;
+                for (java.util.List<Unit> group : java.util.List.of(intel.enemy_warriors, intel.enemy_chieftains,
+                        intel.enemy_peons))
+                    for (Unit e : group)
+                        if (!e.isDead() && Math.abs(e.getGridX() - x) <= 10 && Math.abs(e.getGridY() - y) <= 10) {
+                            ok = false;
+                            break;
+                        }
+                if (!ok)
+                    continue;
+                for (Building b : intel.enemy_buildings) {
+                    if (b.isDead())
+                        continue;
+                    int keep = b.getTemplate().getTemplateID() == Race.BUILDING_TOWER ? 19 : b.getOwner() == p ? 17 : 0;
+                    if (keep > 0 && MapAnalysis.dist2(x, y, b.getGridX(), b.getGridY()) <= keep * keep) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (!ok || !clearOfDecoys(x, y, 6) || !ai.map().canPlace(template, x, y))
+                    continue;
+                float score = (float) Math.sqrt(MapAnalysis.dist2(x, y, sx, sy));
+                if (score > best_score) {
+                    best_score = score;
+                    best = new int[]{x, y};
+                }
+            }
+        }
+        return best;
+    }
+
     /** Squared distance from (x, y) to our nearest building that is not a decoy (placed sites included). */
     private int nearestReal(int x, int y) {
         int best = Integer.MAX_VALUE;
@@ -335,15 +443,20 @@ final class Decoys {
 
     /** The nearest peon free to walk a decoy out: idle, in transit, gathering or walking, and not near enemies. */
     private @Nullable Unit chooseRunner(int x, int y) {
+        return chooseRunner(x, y, 70);
+    }
+
+    private @Nullable Unit chooseRunner(int x, int y, int range) {
         Intel intel = ai.intel();
         Unit best = null;
-        int best_d = 70 * 70;
+        int best_d = range * range;
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
             if (s != PeonState.IDLE && s != PeonState.TRANSIT && s != PeonState.GATHER_TREE && s != PeonState.MOVE
                     && s != PeonState.GATHER_ROCK && s != PeonState.GATHER_IRON)
                 continue;
-            if (isRunner(p) || enemyNear(intel, p.getGridX(), p.getGridY(), 10))
+            if (isRunner(p) || intel.shepherds.contains(p) || intel.lures.contains(p)
+                    || enemyNear(intel, p.getGridX(), p.getGridY(), 10))
                 continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), x, y);
             if (d < best_d) {

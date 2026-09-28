@@ -196,8 +196,11 @@ final class Shepherd {
                     ai.planner().getStartY()) > range * range)
                 return;
             // Only when some spot would draw this copy's wave, counting every unit of ours as a rival target.
-            if (findSpot(f, ox, oy, null, intel) == null)
+            if (findSpot(f, ox, oy, null, intel) == null) {
+                if (ai.strategy().site_shepherd && ai.time() >= ai.strategy().shepherd_time)
+                    ai.decoys().placeHome(f.copy, ox, oy);
                 return;
+            }
             f.shepherd = recruit(ox, oy, intel);
             if (f.shepherd == null)
                 return;

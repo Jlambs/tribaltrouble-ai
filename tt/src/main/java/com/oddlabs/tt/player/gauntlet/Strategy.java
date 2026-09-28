@@ -98,6 +98,9 @@ class Strategy {
     boolean lure = false;
     /** Rock filler (Economy.computeGatherTargets) while iron starves the armory. */
     boolean rock_surge = false;
+    /** Decoy sites near a copy's wave origin when its shepherd finds no spot (Decoys.placeHome). */
+    boolean site_shepherd = false;
+    int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
     int rock_filler_stock = 20;
@@ -527,6 +530,8 @@ class Strategy {
         gather_avoid_parked = params.getBoolean("gather_avoid_parked", gather_avoid_parked);
         lure = params.getBoolean("lure", lure);
         rock_surge = params.getBoolean("rock_surge", rock_surge);
+        site_shepherd = params.getBoolean("site_shepherd", site_shepherd);
+        site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);
         rock_filler_stock = params.getInt("rock_filler_stock", rock_filler_stock);
