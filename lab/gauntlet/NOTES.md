@@ -679,3 +679,8 @@ Opening screens at N=10 (paired with cur-vs10-hv):
   armory's exposure weight is 60 x (1 + 0.75 (N-1)) = 465 at N=10 (SitePlanner): it keeps the first armory away
   from the good iron. New param armory_threat_cap caps (N-1) (cap 5 at N=10 = weight 285, like 37 x 7.75 = 287);
   cap 5 checked at N=8 and N=9 on fresh seeds (running).
+
+armory_threat_cap=5 checks (paired with the gate_owner runs on fresh seeds 201..400): N=8 W 65 vs 65 (13/13), kd
++.034 (z 2.1); N=9 **W 15 vs 11** (6/2), elim +.024 (z 2.1). Adopted as the default (it changes nothing below N=7).
+Frozen: **@g-final2** (commit 4fe8ddfd: gate_owner, endgame fix, armory_threat_cap 5, new params off). Running:
+@g-final2 at N=11 on seeds 1..400 and at N=10 on fresh seeds 201..400.
