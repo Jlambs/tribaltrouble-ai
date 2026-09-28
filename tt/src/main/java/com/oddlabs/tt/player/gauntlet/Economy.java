@@ -1256,7 +1256,8 @@ final class Economy {
         // iron weapons still take every piece of iron that comes in, since both are made side by side.
         int iron_stock = armory.getSupplyContainer(IronSupply.class).getNumSupplies();
         int armory_workers = armory.getUnitContainer().getNumSupplies();
-        if (!rock_filler && iron_stock <= 1 && armory_workers >= 14 && iron_cycle > 45f)
+        if (!rock_filler && iron_stock <= 1 && armory_workers >= ai.strategy().rock_filler_min_workers
+                && iron_cycle > 45f)
             rock_filler = true;
         else if (rock_filler && (iron_stock >= 5 || armory_workers < 8))
             rock_filler = false;
@@ -1283,8 +1284,10 @@ final class Economy {
         int rock_stock = armory.getSupplyContainer(RockSupply.class).getNumSupplies();
         int chicken_stock = armory.getSupplyContainer(RubberSupply.class).getNumSupplies();
         want_rock = (want_chicken > 0 || chicken_stock > 0) && rock_stock < 6 ? 1 + want_chicken / 4 : 0;
-        if (rock_filler && !rock_weapons && rock_stock < 20)
-            want_rock += Math.max(2, armory_workers / 10);
+        Strategy st = ai.strategy();
+        // rock_surge: the filler's gatherers come out of the armory's idle workers below, not out of the iron share.
+        if (!st.rock_surge && rock_filler && !rock_weapons && rock_stock < st.rock_filler_stock)
+            want_rock += Math.max(2, armory_workers / st.rock_filler_div);
         pool -= want_chicken + want_rock;
 
         float per_weapon = work + 2 * tree_cycle + ore_cycle;
@@ -1313,6 +1316,15 @@ final class Economy {
             want_iron = want_ore;
         }
         want_workers = Math.max(2, pool - want_tree - want_ore);
+        if (st.rock_surge && rock_filler && !rock_weapons && rock_stock < st.rock_filler_stock) {
+            // The armory's workers wait for iron: send some of them for rock, the plentiful ore (rock axes take half
+            // the work of iron ones).
+            int filler = Math.min(want_workers - 2, Math.max(2, armory_workers / st.rock_filler_div));
+            if (filler > 0) {
+                want_rock += filler;
+                want_workers -= filler;
+            }
+        }
     }
 
     private int countReachable(@NonNull List<? extends Supply> supplies, int max_meters) {

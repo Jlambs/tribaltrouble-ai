@@ -96,6 +96,11 @@ class Strategy {
     boolean gather_avoid_parked = false;
     /** Lure-kiting (Lures): up to lure_max peons pull blobs of lure_min+ idle enemies into tower reach. */
     boolean lure = false;
+    /** Rock filler (Economy.computeGatherTargets) while iron starves the armory. */
+    boolean rock_surge = false;
+    int rock_filler_div = 10;
+    int rock_filler_min_workers = 14;
+    int rock_filler_stock = 20;
     int lure_max = 2;
     int lure_min = 3;
     int lure_range = 45;
@@ -521,6 +526,10 @@ class Strategy {
         evacuate = params.getBoolean("evacuate", evacuate);
         gather_avoid_parked = params.getBoolean("gather_avoid_parked", gather_avoid_parked);
         lure = params.getBoolean("lure", lure);
+        rock_surge = params.getBoolean("rock_surge", rock_surge);
+        rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
+        rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);
+        rock_filler_stock = params.getInt("rock_filler_stock", rock_filler_stock);
         lure_max = params.getInt("lure_max", lure_max);
         lure_min = params.getInt("lure_min", lure_min);
         lure_range = params.getInt("lure_range", lure_range);
