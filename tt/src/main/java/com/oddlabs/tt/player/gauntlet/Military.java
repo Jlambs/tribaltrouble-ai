@@ -2907,6 +2907,35 @@ final class Military {
         }
     }
 
+    /**
+     * What a tower should throw at now: its current target while alive and in reach, else the enemy in reach worth
+     * most (as towerFire scores them, without the shared survival bookkeeping), or null.
+     */
+    @Nullable
+    Unit towerTargetFor(@NonNull Building t, @NonNull Unit gunner) {
+        Intel intel = ai.intel();
+        int r2 = TOWER_CELLS * TOWER_CELLS;
+        Unit current = tower_targets.get(t);
+        if (current != null && !current.isDead()
+                && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(), current.getGridY()) <= r2)
+            return current;
+        Unit best = null;
+        float best_score = 0f;
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons))
+            for (Unit e : group) {
+                if (e.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) > r2)
+                    continue;
+                float score = throwValue(gunner, e) * towerHitChance(gunner, t, e);
+                if (score > best_score) {
+                    best_score = score;
+                    best = e;
+                }
+            }
+        if (best != null)
+            tower_targets.put(t, best);
+        return best;
+    }
+
     private boolean nearOwnTower(@NonNull Unit e) {
         for (Building t : ai.intel().towers)
             if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) <= 3 * 3)

@@ -75,7 +75,7 @@ public final class GauntletAI extends AI {
         });
         random = new Random(7919L * (1 + indexOf(owner)));
         intel = new Intel(owner);
-        reflexes = new Reflexes(this, strategy.swing_restart, strategy.stun_cancel);
+        reflexes = new Reflexes(this, strategy.swing_restart, strategy.stun_cancel, strategy.tower_unstun);
     }
 
     private static int countEnemies(@NonNull Player owner) {

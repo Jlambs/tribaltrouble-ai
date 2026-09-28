@@ -68,6 +68,8 @@ class Strategy {
      * (Economy.planSniper).
      */
     boolean snipers = false;
+    /** Re-order a tower on the tick its garrison's stun comes on top, so it keeps throwing (Reflexes). */
+    boolean tower_unstun = false;
     int snipe_min = 6;
     int snipe_range = 45;
     /**
@@ -471,6 +473,7 @@ class Strategy {
         target_threat_weight = (float) params.getDouble("target_threat_weight", target_threat_weight);
         tower_mutual = params.getBoolean("tower_mutual", tower_mutual);
         snipers = params.getBoolean("snipers", snipers);
+        tower_unstun = params.getBoolean("tower_unstun", tower_unstun);
         snipe_min = params.getInt("snipe_min", snipe_min);
         snipe_range = params.getInt("snipe_range", snipe_range);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);

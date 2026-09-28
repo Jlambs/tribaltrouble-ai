@@ -47,6 +47,12 @@ import java.util.Map;
  * that has not animated yet (Selectable.forceDecide leaves the unit interruptible). An order in the same tick clears
  * the controller stack and decides at once, replacing the StunBehaviour before it ever runs: the stun is gone. Each
  * stunned unit is ordered back to what it was doing, from the controllers under the stun.
+ *
+ * <p><b>Tower stun cancel.</b> A stun also lands on a tower's garrison (Stun.animate). An order to the tower pushes an
+ * AttackController on the garrison (LandBuilding.setTarget) without clearing its stack, so ordered on the tick the
+ * StunController comes on top (the stun landed, or the attack above it just ended) it decides at once and the garrison
+ * throws on; the stun waits under it for the next time nothing is in reach. Orders on a stun that already runs are
+ * deferred by the engine, so each tower is ordered only on the tick its StunController becomes current.
  */
 final class Reflexes {
     /** Seconds a world tick lasts, as HarvestBehaviour counts them. */
@@ -55,6 +61,9 @@ final class Reflexes {
     private final @NonNull GauntletAI ai;
     private final boolean swing_restart;
     private final boolean stun_cancel;
+    private final boolean tower_unstun;
+    /** Per tower, the controller its garrison had on top in the previous tick. */
+    private final Map<@NonNull Building, @NonNull Controller> tower_last = new LinkedHashMap<>();
     /** The swing each harvesting peon is in, and the tick we first saw it. */
     private final Map<@NonNull Unit, @NonNull Swing> swings = new LinkedHashMap<>();
     /** Ticks from the start of a swing to its hit, per release time (the peons of one race share it). */
@@ -73,16 +82,19 @@ final class Reflexes {
         }
     }
 
-    Reflexes(@NonNull GauntletAI ai, boolean swing_restart, boolean stun_cancel) {
+    Reflexes(@NonNull GauntletAI ai, boolean swing_restart, boolean stun_cancel, boolean tower_unstun) {
         this.ai = ai;
         this.swing_restart = swing_restart;
         this.stun_cancel = stun_cancel;
+        this.tower_unstun = tower_unstun;
     }
 
     void tick() {
-        if (!swing_restart && !stun_cancel)
+        if (!swing_restart && !stun_cancel && !tower_unstun)
             return;
         tick++;
+        if (tower_unstun)
+            towerUnstun();
         Player me = ai.owner();
         due.clear();
         stunned.clear();
@@ -188,6 +200,28 @@ final class Reflexes {
         }
         ai.owner().setTarget(Selectable.newArray(u), target, action, aggressive);
         ai.aiLog().count("stun_cancel");
+    }
+
+    private void towerUnstun() {
+        for (Building t : ai.intel().towers) {
+            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null
+                    || t.getUnitContainer().getNumSupplies() == 0)
+                continue;
+            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            if (gunner == null || gunner.isDead())
+                continue;
+            Controller current = gunner.getCurrentController();
+            Controller previous = tower_last.put(t, current);
+            if (!(current instanceof StunController) || current == previous)
+                continue;
+            Selectable<?> target = ai.military().towerTargetFor(t, gunner);
+            if (target == null)
+                continue;
+            ai.owner().setTarget(Selectable.newArray(t), target, Action.ATTACK, false);
+            ai.aiLog().count("tower_unstun");
+        }
+        if (tick % 250 == 0)
+            tower_last.keySet().removeIf(Building::isDead);
     }
 
     /** Swings in progress, for the log. */
