@@ -142,6 +142,8 @@ class Strategy {
     boolean peon_dodge = false;
     /** Our chieftain walks away from enemies hunting him, towards our towers (Dodges). */
     boolean chief_dodge = false;
+    /** Gunners enter their tower from the threat side (Military.frontCell). */
+    boolean tower_front_entry = false;
     float rock_stream_time = 540f;
     float rock_stream_iron_s = 70f;
     int rock_stream_max = 30;
@@ -592,6 +594,7 @@ class Strategy {
         rock_stream = params.getBoolean("rock_stream", rock_stream);
         peon_dodge = params.getBoolean("peon_dodge", peon_dodge);
         chief_dodge = params.getBoolean("chief_dodge", chief_dodge);
+        tower_front_entry = params.getBoolean("tower_front_entry", tower_front_entry);
         rock_stream_time = (float) params.getDouble("rock_stream_time", rock_stream_time);
         rock_stream_iron_s = (float) params.getDouble("rock_stream_iron_s", rock_stream_iron_s);
         rock_stream_max = params.getInt("rock_stream_max", rock_stream_max);

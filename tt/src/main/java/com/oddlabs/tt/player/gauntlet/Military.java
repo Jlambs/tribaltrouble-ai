@@ -358,7 +358,7 @@ final class Military {
             Unit u = e.getKey();
             Building t = e.getValue();
             if (u.isDead() || u.isMounted() || t.isDead() || Intel.isTowerManned(t)
-                    || intel.warrior_states.get(u) != WarriorState.ENTER) {
+                    || (intel.warrior_states.get(u) != WarriorState.ENTER && !front_entry.containsKey(u))) {
                 if (!u.isDead() && !u.isMounted() && roles.get(u) == Role.TOWER)
                     roles.put(u, Role.ARMY);
                 it.remove();
@@ -1139,8 +1139,65 @@ final class Military {
     // ------------------------------------------------------------------------------------------------------------
     // Towers
 
+    /** tower_front_entry: gunners walking to the threat side of their tower before they enter, {x, y, since}. */
+    private final Map<@NonNull Unit, float @NonNull []> front_entry = new LinkedHashMap<>();
+
+    /**
+     * A garrison throws from the cell it entered by, two cells from the tower's centre, so its reach runs 17-18.4
+     * cells towards that side and 12.7-13 away from it. The gunner first walks to a cell three beyond the tower on the
+     * side of the nearest enemies (else of the nearest enemy start), then enters from there. Null when there is no
+     * safe such cell.
+     */
+    private int @Nullable [] frontCell(@NonNull Building tower) {
+        Intel intel = ai.intel();
+        int tx = tower.getGridX();
+        int ty = tower.getGridY();
+        long ex = 0;
+        long ey = 0;
+        int n = 0;
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && MapAnalysis.dist2(tx, ty, e.getGridX(), e.getGridY()) <= 45 * 45) {
+                ex += e.getGridX();
+                ey += e.getGridY();
+                n++;
+            }
+        float dx = n > 0 ? ex / (float) n - tx : ai.planner().getEnemyX() - tx;
+        float dy = n > 0 ? ey / (float) n - ty : ai.planner().getEnemyY() - ty;
+        double base = Math.atan2(dy, dx);
+        for (double turn : new double[]{0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2}) {
+            int fx = tx + (int) Math.round(3 * Math.cos(base + turn));
+            int fy = ty + (int) Math.round(3 * Math.sin(base + turn));
+            if (!ai.map().passable(fx, fy))
+                continue;
+            boolean hot = false;
+            for (Unit e : intel.enemy_warriors)
+                if (!e.isDead() && MapAnalysis.dist2(fx, fy, e.getGridX(), e.getGridY()) <= 10 * 10) {
+                    hot = true;
+                    break;
+                }
+            return hot ? null : new int[]{fx, fy};
+        }
+        return null;
+    }
+
     private void manTowers() {
         Intel intel = ai.intel();
+        // Gunners at (or long on the way to) their front cell go in now.
+        for (java.util.Iterator<Map.Entry<Unit, float[]>> it = front_entry.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Unit, float[]> e = it.next();
+            Unit u = e.getKey();
+            Building t = tower_assignments.get(u);
+            if (u.isDead() || t == null || t.isDead() || Intel.isTowerManned(t)) {
+                it.remove();
+                continue;
+            }
+            float[] f = e.getValue();
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), (int) f[0], (int) f[1]) <= 2 * 2
+                    || ai.time() - f[2] > 12f) {
+                it.remove();
+                ai.owner().setTarget(Selectable.newArray(u), t, Action.DEFAULT, false);
+            }
+        }
         for (Building tower : intel.towers) {
             if (Intel.isTowerManned(tower) || tower_assignments.containsValue(tower))
                 continue;
@@ -1170,7 +1227,13 @@ final class Military {
             if (best != null) {
                 roles.put(best, Role.TOWER);
                 tower_assignments.put(best, tower);
-                ai.owner().setTarget(Selectable.newArray(best), tower, Action.DEFAULT, false);
+                int[] front = ai.strategy().tower_front_entry ? frontCell(tower) : null;
+                if (front != null) {
+                    front_entry.put(best, new float[]{front[0], front[1], ai.time()});
+                    ai.landscapeOrder(Selectable.newArray(best), front[0], front[1], Action.MOVE, false);
+                    ai.aiLog().count("tower_front_entry");
+                } else
+                    ai.owner().setTarget(Selectable.newArray(best), tower, Action.DEFAULT, false);
             }
         }
         // Swap iron warriors in towers for chicken warriors when the base is quiet (chicken_gunners: whenever the
