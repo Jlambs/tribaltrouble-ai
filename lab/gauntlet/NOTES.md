@@ -64,8 +64,9 @@ producing (a copy's production curve does not depend on N: ~25 warriors by 7 min
 | `g-port` (commit 2630f043) | the Expert AI ported, vs viking Hards | 32 | 4 |
 | gauntlet (swing_restart on) | + harvest swing restart, vs native Hards | 76 | 52 |
 | `g-shep` (commit 540e97e6) | + stun cancel, shepherds, multi-enemy attack gate, reinforce | | N=7 34/100 vs viking, N=8 15/100 vs viking (20/200 vs native) |
+| `g-v8` (commit c002c1ae) | + safer shepherd recruitment, dodge only blasts | | N=8 31/200 vs viking on fresh seeds 201..400 |
 
-**Exams**: N=7 `@g-shep` vs hard*7 (vikings): 45/100 [35.6, 54.8], passed.
+**Exams**: N=7 `@g-shep` vs hard*7 (vikings): 45/100 [35.6, 54.8], passed. N=8 `@g-v8` vs hard*8 (vikings): 11/100 [6.3, 18.6], passed. **N* = 8.**
 
 References on the same dev seeds (1..100, slot 0, vikings everywhere): `@expert` 33 at N=5 (base-expert-vs5),
 7 at N=6 (base-expert-vs6); `@sweep-v75` 12 at N=4 (base-sweep75-vs4).
@@ -484,3 +485,14 @@ gv8-vs8-hv-b (@g-v8 vs hard*8, seeds 201..400, never used for tuning): **31/200 
 New param home_guard: when the army attacks or reinforces, units worth that much strength stay home (the ones
 nearest the armory), since at N=8 the base otherwise falls behind the attacks. Tests queued: guard20, guard40 vs
 gv8-vs8-hv (seeds 1..100).
+
+### 2026-09-28: N=8 exam with g-v8 (viking Hards): passed
+
+`./aisim.sh batch --name final-vs8-g-v8 --players "@g-v8 vs hard*8" --size large --terrain tropical --hills 0..2
+--trees 10 --supplies 10 --seeds 30001..30100 --side 0` (g-v8 = commit c002c1ae; lint @g-v8 ok): **W 11 / L 89 / D
+0**, Wilson 95 % [6.3, 18.6], all 11 wins by elimination (2 via collapse), 0 failed, no swallowed errors, 34.6 min
+mean length, 30.2 s CPU per game. Replays s30001-0, s30002-0, s30003-0: VERIFIED. Dev before: 31/200 on fresh
+seeds 201..400, 16/100 on 1..100. **N* = 8.**
+
+home_guard=20 vs gv8-vs8-hv (seeds 1..100, 16 wins): 5 wins (2 gained, 13 lost, z -2.9): keeping warriors home
+hurts; attacks need everything (wins are long all-in campaigns). home_guard=40 cancelled.
