@@ -190,6 +190,11 @@ final class Shepherd {
         }
         f.leader = leader;
         if (f.shepherd == null) {
+            // shepherd_range: far copies' shepherds walk 150-300 cells and die on the way (N=10 logs); skip them.
+            int range = ai.strategy().shepherd_range;
+            if (range < 100000 && MapAnalysis.dist2(ox, oy, ai.planner().getStartX(),
+                    ai.planner().getStartY()) > range * range)
+                return;
             // Only when some spot would draw this copy's wave, counting every unit of ours as a rival target.
             if (findSpot(f, ox, oy, null, intel) == null)
                 return;
