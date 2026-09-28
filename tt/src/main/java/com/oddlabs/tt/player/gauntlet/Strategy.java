@@ -59,6 +59,8 @@ class Strategy {
      */
     float target_defense_weight = 8f;
     float target_home_weight = 0f;
+    /** Meters taken off a target's score per unit of its owner's strength standing in our base. */
+    float target_threat_weight = 0f;
     /**
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
@@ -457,6 +459,7 @@ class Strategy {
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
+        target_threat_weight = (float) params.getDouble("target_threat_weight", target_threat_weight);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
         recall_ratio = (float) params.getDouble("recall_ratio", recall_ratio);
         home_guard = (float) params.getDouble("home_guard", home_guard);

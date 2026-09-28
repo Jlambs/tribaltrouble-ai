@@ -1326,6 +1326,13 @@ final class Military {
                         && !quartered.contains(b.getOwner()))
                     quartered.add(b.getOwner());
         boolean skip_frozen = strategy.gate_freeze && !quartered.isEmpty();
+        // target_threat_weight: the copies whose warriors stand in our base are the ones razing it; their buildings
+        // come first, by that many meters per unit of their strength there.
+        Map<com.oddlabs.tt.player.Player, Float> base_threat = new LinkedHashMap<>();
+        if (strategy.target_threat_weight > 0f)
+            for (Unit u : threats)
+                if (!u.isDead() && !u.getAbilities().hasAbilities(Abilities.BUILD))
+                    base_threat.merge(u.getOwner(), Combat.value(u), Float::sum);
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
         candidates.addAll(intel.enemy_quarters);
         candidates.addAll(intel.enemy_towers);
@@ -1352,6 +1359,7 @@ final class Military {
                         b.getGridY());
             if (focus_owner != null && b.getOwner() == focus_owner)
                 score -= strategy.focus_bonus;
+            score -= strategy.target_threat_weight * base_threat.getOrDefault(b.getOwner(), 0f);
             if (score < best_score) {
                 best_score = score;
                 best = b;
