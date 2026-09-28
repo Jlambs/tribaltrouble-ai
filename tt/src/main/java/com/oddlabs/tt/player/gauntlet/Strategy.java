@@ -347,21 +347,6 @@ class Strategy {
      */
     boolean decoys = false;
     /**
-     * The opening freeze strike (Freeze): freeze_squad peons per target walk to each of the freeze_targets nearest
-     * copies whose start is within freeze_max_eta seconds' walk, leaving at least freeze_keep for our opening; they
-     * wait up to freeze_wait s at the copy for its armory site, strike for up to freeze_strike_time s, give up below
-     * freeze_min_squad, and raze the frozen quarters when freeze_raze.
-     */
-    boolean freeze = false;
-    int freeze_targets = 1;
-    int freeze_squad = 10;
-    int freeze_keep = 8;
-    float freeze_max_eta = 90f;
-    int freeze_min_squad = 3;
-    float freeze_wait = 150f;
-    float freeze_strike_time = 100f;
-    boolean freeze_raze = true;
-    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -386,15 +371,6 @@ class Strategy {
         decoys = params.getBoolean("decoys", decoys);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
-        freeze = params.getBoolean("freeze", freeze);
-        freeze_targets = params.getInt("freeze_targets", freeze_targets);
-        freeze_squad = params.getInt("freeze_squad", freeze_squad);
-        freeze_keep = params.getInt("freeze_keep", freeze_keep);
-        freeze_max_eta = (float) params.getDouble("freeze_max_eta", freeze_max_eta);
-        freeze_min_squad = params.getInt("freeze_min_squad", freeze_min_squad);
-        freeze_wait = (float) params.getDouble("freeze_wait", freeze_wait);
-        freeze_strike_time = (float) params.getDouble("freeze_strike_time", freeze_strike_time);
-        freeze_raze = params.getBoolean("freeze_raze", freeze_raze);
         swing_restart = params.getBoolean("swing_restart", swing_restart);
         harvest_seconds = (float) params.getDouble("harvest_seconds", harvest_seconds);
         stun_cancel = params.getBoolean("stun_cancel", stun_cancel);

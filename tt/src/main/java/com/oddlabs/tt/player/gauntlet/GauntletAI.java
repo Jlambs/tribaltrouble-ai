@@ -48,7 +48,6 @@ public final class GauntletAI extends AI {
     private @Nullable Military military;
     private @Nullable Chieftain chieftain;
     private @Nullable Decoys decoys;
-    private @Nullable Freeze freeze;
 
     private int ticks;
     private float time;
@@ -132,7 +131,6 @@ public final class GauntletAI extends AI {
             next_economy = time + ECONOMY_PERIOD;
             economy().tick();
             decoys().tick();
-            freeze().tick();
         }
         if (due_plan) {
             next_plan = time + PLAN_PERIOD;
@@ -164,9 +162,6 @@ public final class GauntletAI extends AI {
         planner = new SitePlanner(map, owner, strategy, sx, sy, ex, ey, start_field, enemy_field);
         log(String.format("map %d cells, start %d,%d, nearest enemy starts %d,%d (%dm walk), %d enemies", map.getSize(),
                 sx, sy, ex, ey, start_field.get(ex, ey), countEnemies(owner)));
-        intel.update();
-        freeze = new Freeze(this);
-        freeze.plan(start_field);
         intel.update();
         economy = new Economy(this);
         military = new Military(this);
@@ -304,12 +299,6 @@ public final class GauntletAI extends AI {
     Military military() {
         assert military != null;
         return military;
-    }
-
-    @NonNull
-    Freeze freeze() {
-        assert freeze != null;
-        return freeze;
     }
 
     @NonNull

@@ -55,9 +55,7 @@ final class Intel {
         MOVE,
         STUNNED,
         /** Following the army to pull down enemy towers; the economy leaves them alone. */
-        SAPPER,
-        /** In the opening freeze strike (Freeze); the economy and the military leave them alone. */
-        STRIKE
+        SAPPER
     }
 
     enum WarriorState {
@@ -94,8 +92,6 @@ final class Intel {
     final List<@NonNull Unit> warriors = new ArrayList<>();
     /** Peons the military has taken along to pull down towers, kept by it across updates. */
     final java.util.Set<@NonNull Unit> sappers = new java.util.LinkedHashSet<>();
-    /** Peons of the freeze strike, kept by Freeze until they walk home. */
-    final java.util.Set<@NonNull Unit> strikers = new java.util.LinkedHashSet<>();
     final Map<@NonNull Unit, @NonNull PeonState> peon_states = new LinkedHashMap<>();
     final Map<@NonNull Unit, @NonNull WarriorState> warrior_states = new LinkedHashMap<>();
     /** Construction site each builder works on. */
@@ -221,8 +217,6 @@ final class Intel {
             return PeonState.STUNNED;
         if (sappers.contains(unit))
             return PeonState.SAPPER;
-        if (strikers.contains(unit))
-            return PeonState.STRIKE;
         if (controller instanceof IdleController && unit.getCurrentController() instanceof HuntController)
             return PeonState.FIGHT;
         if (controller instanceof IdleController)

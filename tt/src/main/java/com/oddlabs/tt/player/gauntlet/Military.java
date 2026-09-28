@@ -389,7 +389,7 @@ final class Military {
             if (!near_base) {
                 for (Unit p : intel.peons) {
                     PeonState s = intel.peon_states.get(p);
-                    if (s == PeonState.GATHER_CHICKEN || s == PeonState.STRIKE)
+                    if (s == PeonState.GATHER_CHICKEN)
                         continue;
                     if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), p.getGridX(), p.getGridY()) <= 12 * 12) {
                         near_peons = true;
@@ -955,7 +955,7 @@ final class Military {
         List<Unit> militia = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
-            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER || s == PeonState.STRIKE)
+            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER)
                 continue;
             if (MapAnalysis.dist2(p.getGridX(), p.getGridY(), c[0], c[1]) <= 30 * 30)
                 militia.add(p);
@@ -1065,7 +1065,7 @@ final class Military {
         List<Unit> evacuate = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
-            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER || s == PeonState.STRIKE)
+            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER)
                 continue;
             // Peons sent to fight off raiding peons stay in the fight.
             Float militia = militia_orders.get(p);
@@ -1283,7 +1283,7 @@ final class Military {
         if (candidates.isEmpty())
             candidates.addAll(intel.enemy_buildings);
         for (Building b : candidates) {
-            if (b.isDead() || ai.freeze().isFrozenSite(b))
+            if (b.isDead())
                 continue;
             float d = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
             float priority = switch (b.getTemplate().getTemplateID()) {
