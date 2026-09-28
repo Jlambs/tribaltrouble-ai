@@ -51,6 +51,8 @@ final class Shepherd {
         Unit leader;
         boolean launched;
         float last_order = -100f;
+        float nospot_since = -1f;
+        float recruited;
         int last_x;
         int last_y;
 
@@ -92,7 +94,11 @@ final class Shepherd {
         for (Flock f : flocks) {
             if (f.shepherd != null && f.shepherd.isDead()) {
                 ai.aiLog().count("shepherd_lost");
-                ai.log("shepherd of " + f.copy.getPlayerInfo().getName() + " lost at " + f.last_x + "," + f.last_y + " (spot " + f.spot_x + "," + f.spot_y + ")");
+                if (ai.logging())
+                    ai.log("shepherd of " + f.copy.getPlayerInfo().getName() + " lost at " + f.last_x + "," + f.last_y + " (spot " + f.spot_x + "," + f.spot_y + ", nearest enemy warrior " + nearestEnemy(
+                            ai.intel().enemy_warriors, f.last_x, f.last_y) + " cells, peon " + nearestEnemy(
+                                    ai.intel().enemy_peons, f.last_x, f.last_y) + ", tower " + nearestTower(f.last_x,
+                                            f.last_y) + ", recruited " + (int) (ai.time() - f.recruited) + " s ago)");
                 release(f);
             }
             if (!f.copy.isAlive()) {
@@ -180,10 +186,15 @@ final class Shepherd {
         }
         f.leader = leader;
         if (f.shepherd == null) {
+            // Only when some spot would draw this copy's wave, counting every unit of ours as a rival target.
+            if (findSpot(f, ox, oy, null, intel) == null)
+                return;
             f.shepherd = recruit(ox, oy, intel);
             if (f.shepherd == null)
                 return;
             intel.shepherds.add(f.shepherd);
+            f.recruited = ai.time();
+            f.nospot_since = -1f;
             ai.aiLog().count("shepherd_recruit");
         }
         Unit s = f.shepherd;
@@ -200,10 +211,18 @@ final class Shepherd {
         }
         int[] spot = findSpot(f, ox, oy, s, intel);
         if (spot == null) {
-            // No spot draws this copy's wave: stand back where it is safe.
+            // No spot draws this copy's wave: a shepherd left standing there only gets killed, so after a while it
+            // goes home (a new one is recruited once a spot opens up again).
             f.spot_x = -1;
+            if (f.nospot_since < 0f)
+                f.nospot_since = ai.time();
+            else if (ai.time() - f.nospot_since > ai.strategy().shepherd_patience) {
+                ai.aiLog().count("shepherd_home");
+                release(f);
+            }
             return;
         }
+        f.nospot_since = -1f;
         f.spot_x = spot[0];
         f.spot_y = spot[1];
         if (MapAnalysis.dist2(s.getGridX(), s.getGridY(), spot[0], spot[1]) > 2 * 2
@@ -245,6 +264,9 @@ final class Shepherd {
                     && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
                 continue;
             if (intel.shepherds.contains(p))
+                continue;
+            int danger = nearestEnemy(intel.enemy_warriors, p.getGridX(), p.getGridY());
+            if (danger >= 0 && danger <= 14)
                 continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), ox, oy);
             if (d < best_d) {
@@ -310,7 +332,7 @@ final class Shepherd {
      * any other unit of ours, clear of every enemy by 10 cells, of the copy's defense circles and of enemy towers,
      * reachable, and as far from our start as possible.
      */
-    private int @Nullable [] findSpot(@NonNull Flock f, int ox, int oy, @NonNull Unit s, @NonNull Intel intel) {
+    private int @Nullable [] findSpot(@NonNull Flock f, int ox, int oy, @Nullable Unit s, @NonNull Intel intel) {
         int building2 = nearestOwnBuilding2(ox, oy);
         if (building2 == Integer.MAX_VALUE)
             return null;
@@ -389,6 +411,21 @@ final class Shepherd {
         return true;
     }
 
+    private static int nearestEnemy(java.util.@NonNull List<@NonNull Unit> units, int x, int y) {
+        int best = Integer.MAX_VALUE;
+        for (Unit u : units)
+            if (!u.isDead())
+                best = Math.min(best, MapAnalysis.dist2(u.getGridX(), u.getGridY(), x, y));
+        return best == Integer.MAX_VALUE ? -1 : (int) Math.sqrt(best);
+    }
+
+    private int nearestTower(int x, int y) {
+        int best = Integer.MAX_VALUE;
+        for (Building t : ai.intel().enemy_towers)
+            best = Math.min(best, MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y));
+        return best == Integer.MAX_VALUE ? -1 : (int) Math.sqrt(best);
+    }
+
     private int nearestOwnBuilding2(int x, int y) {
         int best = Integer.MAX_VALUE;
         for (Selectable<?> sel : ai.owner().getUnits().getSet())
@@ -398,7 +435,7 @@ final class Shepherd {
         return best;
     }
 
-    private int nearestOtherUnit2(int x, int y, @NonNull Unit self) {
+    private int nearestOtherUnit2(int x, int y, @Nullable Unit self) {
         int best = Integer.MAX_VALUE;
         for (Selectable<?> sel : ai.owner().getUnits().getSet())
             if (sel instanceof Unit u && u != self && !u.isDead() && !u.isMounted())

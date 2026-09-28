@@ -333,3 +333,18 @@ gives up stuns; parked.
 
 New defaults (commit of this entry): shepherd=true; against several enemies defense_radius=60,
 project_defense=false, reinforce_multi=true. Frozen as g-shep.
+
+### 2026-09-28: g-shep at N=8 on 200 seeds; shepherd diagnostics
+
+gshep-vs8-hn (seeds 1..200): **20/200 = 10.0 % [6.6, 14.9]**, elim 0.242, lsr15 -1.37 (seeds 1..100: 12, 101..200:
+8). Not comfortably above 10 %: no N=8 exam yet. shephome-vs8-hn (shepherd_home_weight=1): 9 vs 12, no.
+
+Our chieftain at N=8 (gshep-vs8-hn): born at a median 7:22, 1.58 births and 1.49 deaths per game, 9.4 casts.
+
+Where shepherds die (play-shepdeath2-s21, loss log with context): many within 0-4 s of recruitment with an enemy
+warrior 1-5 cells away (the recruiter took our peon nearest the copy, often one already in a fight), others while
+crossing the map to a far spot, others standing with no spot at all. Fixes: recruit only peons with no enemy
+warrior within 14 cells and only when some spot exists (counting every unit of ours as a rival target); param
+shepherd_patience (send a spotless shepherd home after that many seconds). One game: shepherds lost 40 -> 14 (with
+patience 8; launches drawn 11 -> 6). A/B queued: base4-vs8-hn (new recruitment, defaults), pat8-vs8-hn,
+rockshare30-vs8-hn (rock_share=0.3: a second ore stream; we harvest 42 rock by 15 min against the Hards' 645).

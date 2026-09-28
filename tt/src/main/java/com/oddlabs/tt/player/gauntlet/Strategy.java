@@ -41,6 +41,8 @@ class Strategy {
     float focus_bonus = 0f;
     /** Against several enemies, the enemy warriors within this many cells of a target count in full as its defense. */
     int defense_radius = 150;
+    /** Share of the ore gatherers sent for rock, with rock weapons always on order (0: rock only as a fallback). */
+    float rock_share = 0f;
     /**
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
@@ -368,6 +370,8 @@ class Strategy {
     int shred_min = 8;
     int shred_min_hp = 35;
     int shred_range = 140;
+    /** The chieftain never stuns: every charge goes to shred blasts. */
+    boolean shred_strict = false;
     float shepherd_time = 200f;
     float shepherd_until = 100000f;
     /**
@@ -376,6 +380,8 @@ class Strategy {
     int shepherd_max_r = 22;
     /** Chebyshev cells a shepherd's spot keeps from every enemy unit (idle and walking units scan 8). */
     int shepherd_clear = 12;
+    /** Seconds a shepherd waits without a spot before it goes home (large: never). */
+    float shepherd_patience = 100000f;
     /** Weight of a spot's distance from the copy's own quarters and armory, beside its distance from our start. */
     float shepherd_home_weight = 0f;
     /**
@@ -406,14 +412,17 @@ class Strategy {
         shred_min = params.getInt("shred_min", shred_min);
         shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
         shred_range = params.getInt("shred_range", shred_range);
+        shred_strict = params.getBoolean("shred_strict", shred_strict);
         shepherd_time = (float) params.getDouble("shepherd_time", shepherd_time);
         shepherd_until = (float) params.getDouble("shepherd_until", shepherd_until);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
         shepherd_clear = params.getInt("shepherd_clear", shepherd_clear);
+        shepherd_patience = (float) params.getDouble("shepherd_patience", shepherd_patience);
         shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
+        rock_share = (float) params.getDouble("rock_share", rock_share);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
         focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);

@@ -929,7 +929,7 @@ final class Economy {
         if (owner.canUseRubber() && armory.getBuildSupplyContainer(RubberAxeWeapon.class).getNumSupplies() == 0)
             owner.buildRubberWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         int rock_orders = armory.getBuildSupplyContainer(RockAxeWeapon.class).getNumSupplies();
-        boolean make_rock = rock_weapons || rock_filler;
+        boolean make_rock = rock_weapons || rock_filler || ai.strategy().rock_share > 0f;
         if (make_rock && rock_orders == 0)
             owner.buildRockWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         else if (!make_rock && rock_orders > 0)
@@ -1043,9 +1043,16 @@ final class Economy {
             want_tree = Math.max(1, want_tree);
             want_ore = Math.max(1, want_ore);
         }
+        float rock_share = ai.strategy().rock_share;
         if (rock_weapons) {
             want_rock += want_ore;
             want_iron = 0;
+        } else if (rock_share > 0f && want_ore > 0) {
+            // A second stream: rock axes cost half the work of iron ones and rock is twice as plentiful (sweep's
+            // ironfrac 0.9 beat 1.0 at N=3, 56 vs 45 of 200).
+            int rock = Math.round(want_ore * rock_share);
+            want_rock += rock;
+            want_iron = want_ore - rock;
         } else {
             want_iron = want_ore;
         }

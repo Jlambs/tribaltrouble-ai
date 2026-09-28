@@ -122,7 +122,7 @@ final class Chieftain {
         }
         if (shred(chief))
             return;
-        if (stunReady() && shouldStun(chief)) {
+        if (stunReady() && shouldStun(chief) && !savingForBlast(chief)) {
             int x = chief.getGridX();
             int y = chief.getGridY();
             String rivals = "";
@@ -151,6 +151,7 @@ final class Chieftain {
 
     /** The idle blob the chieftain is walking to, to blast it, or null. */
     private int @Nullable [] shred_target;
+    private float shred_trace = -100f;
 
     /**
      * The shred mission: idle enemy blobs (waves parked by shepherds, or left idle after razing something) see 8 cells
@@ -164,6 +165,13 @@ final class Chieftain {
         if (!strategy.shred || !isViking())
             return false;
         boolean charged = chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST);
+        if (ai.logging() && ai.time() - shred_trace >= 20f) {
+            shred_trace = ai.time();
+            int[] b = findBlob(chief.getGridX(), chief.getGridY());
+            ai.log(String.format("shred: charged %b hp %d blast %.2f blob %s", charged, chief.getHitPoints(),
+                    chief.getMagicProgress(RacesResources.INDEX_MAGIC_BLAST),
+                    b == null ? "none" : b[3] + " at " + b[0] + "," + b[1] + " nearest " + b[2]));
+        }
         if (!charged || chief.getHitPoints() <= strategy.shred_min_hp) {
             shred_target = null;
             return false;
@@ -206,6 +214,20 @@ final class Chieftain {
             last_move = ai.time();
         }
         return true;
+    }
+
+    /**
+     * Stun and blast share one charge, so with a parked blob to shred and the base not seriously threatened the
+     * chieftain holds his stun until the blast (70 s) is charged.
+     */
+    private boolean savingForBlast(@NonNull Unit chief) {
+        if (!ai.strategy().shred || !isViking() || chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST))
+            return false;
+        if (ai.strategy().shred_strict)
+            return true;
+        if (ai.military().baseThreatLevel() >= 2 || chief.getHitPoints() <= ai.strategy().shred_min_hp)
+            return false;
+        return findBlob(chief.getGridX(), chief.getGridY()) != null;
     }
 
     /** An enemy warrior standing idle, not hunting: it sees 8 cells and does not react to being hit. */
