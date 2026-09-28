@@ -40,23 +40,23 @@ final class Lures {
         final @NonNull Building refuge;
         final int bait_x;
         final int bait_y;
-        final int way_x;
-        final int way_y;
+        /** The run: past the tower, through our home army, then into the refuge. */
+        final int @NonNull [][] route;
+        int leg;
         @NonNull
         Phase phase = Phase.APPROACH;
         float since;
         boolean entering;
         int hunters;
 
-        Lure(@NonNull Unit peon, @NonNull Building tower, @NonNull Building refuge, int bait_x, int bait_y, int way_x,
-                int way_y, float since) {
+        Lure(@NonNull Unit peon, @NonNull Building tower, @NonNull Building refuge, int bait_x, int bait_y,
+                int @NonNull [][] route, float since) {
             this.peon = peon;
             this.tower = tower;
             this.refuge = refuge;
             this.bait_x = bait_x;
             this.bait_y = bait_y;
-            this.way_x = way_x;
-            this.way_y = way_y;
+            this.route = route;
             this.since = since;
         }
     }
@@ -89,6 +89,8 @@ final class Lures {
                 boolean home = l.entering && MapAnalysis.dist2(l.peon.getGridX(), l.peon.getGridY(),
                         l.refuge.getGridX(), l.refuge.getGridY()) <= 6 * 6;
                 ai.aiLog().count(home ? "lure_home" : "lure_lost");
+                for (int i = 0; i < l.hunters; i++)
+                    ai.aiLog().count("lure_hunters");
                 ai.log("lure " + (home ? "home" : "lost") + " after drawing " + l.hunters + " (" + l.phase + ")");
                 ai.intel().lures.remove(l.peon);
                 it.remove();
@@ -141,9 +143,15 @@ final class Lures {
             }
             case RUN -> {
                 l.hunters = Math.max(l.hunters, hunters);
-                if (!l.entering && MapAnalysis.dist2(px, py, l.way_x, l.way_y) <= 3 * 3) {
-                    l.entering = true;
-                    ai.owner().setTarget(Selectable.newArray(p), l.refuge, Action.MOVE, false);
+                if (!l.entering && MapAnalysis.dist2(px, py, l.route[l.leg][0], l.route[l.leg][1]) <= 3 * 3) {
+                    if (l.leg + 1 < l.route.length) {
+                        l.leg++;
+                        ai.landscapeOrder(Selectable.newArray(p), l.route[l.leg][0], l.route[l.leg][1], Action.MOVE,
+                                false);
+                    } else {
+                        l.entering = true;
+                        ai.owner().setTarget(Selectable.newArray(p), l.refuge, Action.MOVE, false);
+                    }
                 }
                 if (ai.time() - l.since > 90f)
                     return false;
@@ -157,7 +165,7 @@ final class Lures {
         l.since = ai.time();
         l.hunters = hunters;
         ai.aiLog().count("lure_run");
-        ai.landscapeOrder(Selectable.newArray(l.peon), l.way_x, l.way_y, Action.MOVE, false);
+        ai.landscapeOrder(Selectable.newArray(l.peon), l.route[0][0], l.route[0][1], Action.MOVE, false);
     }
 
     /** Enemy units hunting this unit of ours. */
@@ -286,26 +294,27 @@ final class Lures {
                 blob.add(e);
         int[] bait = null;
         float bait_score = -Float.MAX_VALUE;
-        for (int r = 8; r <= 13; r++) {
+        int bait_seers = 0;
+        for (int r = 8; r <= 15; r++) {
             for (int a = 0; a < 32; a++) {
                 double ang = a * Math.PI / 16;
                 int x = sx + (int) Math.round(r * Math.cos(ang));
                 int y = sy + (int) Math.round(r * Math.sin(ang));
                 if (!ai.map().passable(x, y))
                     continue;
-                boolean seen = false;
+                int seers = 0;
                 boolean safe = true;
                 for (Unit e : blob) {
                     int dx = Math.abs(e.getGridX() - x);
                     int dy = Math.abs(e.getGridY() - y);
                     if (dx <= 8 && dy <= 8)
-                        seen = true;
+                        seers++;
                     if (dx * dx + dy * dy < 73) { // 8.5 cells: throws reach 7.9
                         safe = false;
                         break;
                     }
                 }
-                if (!seen || !safe)
+                if (seers == 0 || !safe)
                     continue;
                 for (Unit e : awake)
                     if (!e.isDead() && MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 10 * 10) {
@@ -314,14 +323,16 @@ final class Lures {
                     }
                 if (!safe)
                     continue;
-                // On the tower's side of the blob, the nearer the better.
+                // Every member that sees the bait hunts the peon: diagonal spots see a square scan's corners, 11.3
+                // cells out. Towards the tower breaks ties.
                 int d2t = MapAnalysis.dist2(x, y, tower.getGridX(), tower.getGridY());
-                if (d2t >= td2)
+                if (d2t >= td2 + 8 * 8)
                     continue;
-                float score = -(float) Math.sqrt(d2t);
+                float score = 10f * seers - .2f * (float) Math.sqrt(d2t);
                 if (score > bait_score) {
                     bait_score = score;
                     bait = new int[]{x, y};
+                    bait_seers = seers;
                 }
             }
         }
@@ -334,15 +345,24 @@ final class Lures {
             ai.aiLog().count("lure_nopeon");
             return;
         }
-        // Waypoint: just past the tower on the way to the refuge.
+        // Route: just past the tower on the way to the refuge, then through the home army at the staging point when it
+        // lies no farther from the tower than the refuge (idle warriors of ours hunt the blind column), then inside.
         int wx = tower.getGridX();
         int wy = tower.getGridY();
         float dx = refuge.getGridX() - wx;
         float dy = refuge.getGridY() - wy;
         float len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
-        int way_x = wx + Math.round(4 * dx / len);
-        int way_y = wy + Math.round(4 * dy / len);
-        Lure l = new Lure(peon, tower, refuge, bait[0], bait[1], way_x, way_y, ai.time());
+        List<int[]> route = new ArrayList<>();
+        route.add(new int[]{wx + Math.round(4 * dx / len), wy + Math.round(4 * dy / len)});
+        int gx = ai.military().stagingX();
+        int gy = ai.military().stagingY();
+        if (MapAnalysis.dist2(wx, wy, gx, gy) <= MapAnalysis.dist2(wx, wy, refuge.getGridX(),
+                refuge.getGridY()) + 15 * 15
+                && nearestEnemy(gx, gy) > 12 * 12)
+            route.add(new int[]{gx, gy});
+        Lure l = new Lure(peon, tower, refuge, bait[0], bait[1], route.toArray(new int[0][]), ai.time());
+        for (int i = 0; i < bait_seers; i++)
+            ai.aiLog().count("lure_seers");
         lures.add(l);
         intel.lures.add(peon);
         recent.add(new float[]{sx, sy, ai.time()});
