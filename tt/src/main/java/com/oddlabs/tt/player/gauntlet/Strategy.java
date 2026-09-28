@@ -599,6 +599,13 @@ class Strategy {
             strategy.defense_radius = 60;
             strategy.project_defense = false;
             strategy.reinforce_multi = true;
+            // Wins against many copies are long all-in campaigns (lab/gauntlet/campaign.py, camp40-vs8-hv): attack
+            // at even strength, keep attacking with the base under threat, and do not call the army home (vs
+            // hard*8: aggro-vs8-hv-b 43/200 vs 31/200 on fresh seeds 201..400, elim +.077 z 3.4; 19 vs 16 on 1..100).
+            strategy.attack_ratio = 1f;
+            strategy.adaptive_caution = false;
+            strategy.recall_ratio = 2f;
+            strategy.attack_threat_ratio = 1f;
         }
         return strategy;
     }

@@ -1329,6 +1329,10 @@ final class Military {
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
         candidates.addAll(intel.enemy_quarters);
         candidates.addAll(intel.enemy_towers);
+        if (strategy.gate_freeze)
+            for (Building b : intel.enemy_buildings)
+                if (!b.isComplete() && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS)
+                    candidates.add(b);
         if (candidates.isEmpty())
             candidates.addAll(intel.enemy_buildings);
         for (Building b : candidates) {

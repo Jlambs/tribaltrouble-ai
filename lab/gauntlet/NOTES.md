@@ -515,3 +515,15 @@ attacks again. New param gate_freeze: the attack target is the nearest quarters 
 still has one, the copies without quarters are skipped until none is left. First game (play-gatefreeze-s7): the
 first attack razed s5's quarters (and its armory, since the army was standing on it), then marched on to s7's
 quarters. Current source with defaults = @g-v8 (identical checksums on seeds 203..206, idcheck-gv8src).
+
+aggro-vs8-hv-b (attack_ratio=1.0, adaptive_caution=false, recall_ratio=2.0, attack_threat_ratio=1.0, fresh seeds
+201..400): **43/200 = 21.5 %** vs gv8-vs8-hv-b 31/200 (25 gained, 13 lost; win z +2.0, elim +.077 z 3.4, prog z
+3.3, kd +.10 z 5.4). With 19 vs 16 on seeds 1..100 that is 62/300 vs 47/300. Adopted as the default whenever there
+is more than one enemy (Strategy.forGame).
+
+gatefreeze-vs8-hv (gate_freeze=true on the g-v8 defaults, seeds 1..100): 12 vs 16 (6 gained, 10 lost), elim -0.02,
+kd -0.03: no gain. lab/gauntlet/quarters_gate.py on it: 142 copies lost their quarters and stayed in; 78 of them still
+had a chieftain (so they kept waving until it died), 59 rebuilt their quarters (fighting at the quarters kills
+their home warriors, which drops them below their wave size and into the rebuild branch), 15 trained a new
+chieftain. The gate holds for too few copies. v2 also targets the rebuilt quarters sites (they were not candidates:
+Intel lists finished quarters only); gfv2-vs8-hv queued on the new defaults.
