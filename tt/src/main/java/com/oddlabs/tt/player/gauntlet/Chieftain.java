@@ -146,7 +146,37 @@ final class Chieftain {
             }
             return;
         }
-        position(chief);
+        if (ai.strategy().shred && ai.strategy().shred_strict && isViking())
+            den(chief);
+        else
+            position(chief);
+    }
+
+    /**
+     * Strict shred: between blasts the chieftain keeps out of fights at the staging point, and backs off towards the
+     * armory from any awake enemy warrior within 16 cells (it never heals, and no N=10 game was won with our chieftain
+     * dead by 15 min).
+     */
+    private void den(@NonNull Unit chief) {
+        if (ai.time() - last_move < MOVE_PERIOD || ai.military().isDodging(chief))
+            return;
+        Military military = ai.military();
+        int tx = military.stagingX();
+        int ty = military.stagingY();
+        if (nearestWarriorDistance(chief.getGridX(), chief.getGridY()) <= 16) {
+            Building armory = ai.intel().armory();
+            if (armory != null) {
+                tx = armory.getGridX();
+                ty = armory.getGridY();
+            }
+            int[] away = awayFromWarriors(tx, ty, 17);
+            tx = away[0];
+            ty = away[1];
+        }
+        if (MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), tx, ty) <= 4 * 4)
+            return;
+        last_move = ai.time();
+        ai.landscapeOrder(Selectable.newArray(chief), tx, ty, Action.MOVE, false);
     }
 
     /** The idle blob the chieftain is walking to, to blast it, or null. */
@@ -182,7 +212,8 @@ final class Chieftain {
         for (Unit e : ai.intel().enemy_warriors) {
             if (e.isDead() || isParked(e))
                 continue;
-            if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= 13 * 13) {
+            int abort = strategy.shred_strict ? 9 : 13; // strict: only what can see him
+            if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= abort * abort) {
                 if (shred_target != null)
                     ai.aiLog().count("shred_abort");
                 shred_target = null;
@@ -195,6 +226,51 @@ final class Chieftain {
             return false;
         }
         shred_target = blob;
+        if (strategy.shred_strict) {
+            java.util.List<Unit> enemies = new java.util.ArrayList<>(ai.intel().enemy_warriors);
+            enemies.addAll(ai.intel().enemy_chieftains);
+            enemies.addAll(ai.intel().enemy_peons);
+            java.util.List<Unit> parked = new java.util.ArrayList<>();
+            for (Unit e : ai.intel().enemy_warriors)
+                if (!e.isDead() && isParked(e))
+                    parked.add(e);
+            java.util.List<Selectable<?>> ours = new java.util.ArrayList<>();
+            for (Selectable<?> s : ai.owner().getUnits().getSet())
+                if (!s.isDead() && s != chief)
+                    ours.add(s);
+            int here = castValue(cx, cy, enemies, parked, ours, null);
+            if (here >= strategy.shred_min) {
+                ai.log(String.format("chieftain blasts parked enemies from %d,%d (%d in reach)", cx, cy, here));
+                ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+                last_cast = ai.time();
+                last_move = ai.time();
+                ai.aiLog().count("shred_blast");
+                for (int i = 0; i < here; i++)
+                    ai.aiLog().count("shred_caught");
+                shred_target = null;
+                return true;
+            }
+            int[] at = castPoint(blob, cx, cy);
+            if (at == null) {
+                ai.aiLog().count("shred_nopoint");
+                return false;
+            }
+            if (MapAnalysis.dist2(cx, cy, at[0], at[1]) <= 1 && at[2] >= strategy.shred_min) {
+                ai.log(String.format("chieftain blasts a parked blob at %d,%d from %d,%d (%d in reach)", blob[0],
+                        blob[1], cx, cy, at[2]));
+                ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+                last_cast = ai.time();
+                last_move = ai.time();
+                ai.aiLog().count("shred_blast");
+                shred_target = null;
+                return true;
+            }
+            if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
+                ai.landscapeOrder(Selectable.newArray(chief), at[0], at[1], Action.MOVE, false);
+                last_move = ai.time();
+            }
+            return true;
+        }
         int nearest = blob[2];
         int centre2 = MapAnalysis.dist2(cx, cy, blob[0], blob[1]);
         if (nearest >= 9 && nearest <= 13 && centre2 <= 16 * 16) {
@@ -221,13 +297,109 @@ final class Chieftain {
      * chieftain holds his stun until the blast (70 s) is charged.
      */
     private boolean savingForBlast(@NonNull Unit chief) {
+        if (ai.strategy().shred && isViking() && ai.strategy().shred_strict)
+            return true; // any cast zeroes both charges (Unit.java:727): a stun would throw the blast away
         if (!ai.strategy().shred || !isViking() || chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST))
             return false;
-        if (ai.strategy().shred_strict)
-            return true;
         if (ai.military().baseThreatLevel() >= 2 || chief.getHitPoints() <= ai.strategy().shred_min_hp)
             return false;
         return findBlob(chief.getGridX(), chief.getGridY()) != null;
+    }
+
+    /**
+     * Where to blast the blob from: {x, y, parked enemies within 17 cells}. A walkable cell 10-24 cells from the blob's
+     * centre, at least 9 cells (Chebyshev: idle units scan an 8-cell square) from every enemy unit, 22 from enemy
+     * towers, with no unit or building of ours within 19 cells (the blast reaches 18 and hits friends), catching at
+     * least shred_min parked warriors; enemy chieftains in reach count 8 more (two blasts kill one, and a copy past
+     * wave
+     * size 20 cannot launch without one). Nearer to the chieftain breaks ties. Null if there is none.
+     */
+    /**
+     * Parked enemies a blast from (x, y) catches, or -1 when (x, y) is no place to blast from (see castPoint). why, if
+     * given, counts the first reason a cell fails: ground, seen, tower, friends, few.
+     */
+    private int castValue(int x, int y, java.util.@NonNull List<@NonNull Unit> enemies,
+            java.util.@NonNull List<@NonNull Unit> parked, java.util.@NonNull List<@NonNull Selectable<?>> ours,
+            int @Nullable [] why) {
+        if (!ai.map().passable(x, y)) {
+            if (why != null)
+                why[0]++;
+            return -1;
+        }
+        for (Unit e : enemies)
+            if (!e.isDead() && Math.abs(e.getGridX() - x) <= 8 && Math.abs(e.getGridY() - y) <= 8) {
+                if (why != null)
+                    why[1]++;
+                return -1;
+            }
+        for (Building t : ai.intel().enemy_towers)
+            if (MapAnalysis.dist2(x, y, t.getGridX(), t.getGridY()) <= 22 * 22) {
+                if (why != null)
+                    why[2]++;
+                return -1;
+            }
+        // Our units within the blast die; our buildings only lose ~30 of 100+ hit points at its edge.
+        for (Selectable<?> s : ours)
+            if (MapAnalysis.dist2(x, y, s.getGridX(), s.getGridY()) <= (s instanceof Building ? 10 * 10 : 19 * 19)) {
+                if (why != null)
+                    why[3]++;
+                return -1;
+            }
+        int hit = 0;
+        for (Unit e : parked)
+            if (MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 17 * 17)
+                hit++;
+        if (hit < ai.strategy().shred_min) {
+            if (why != null)
+                why[4]++;
+            return -1;
+        }
+        return hit;
+    }
+
+    private int @Nullable [] castPoint(int @NonNull [] blob, int cx, int cy) {
+        Intel intel = ai.intel();
+        java.util.List<Unit> enemies = new java.util.ArrayList<>(intel.enemy_warriors);
+        enemies.addAll(intel.enemy_chieftains);
+        enemies.addAll(intel.enemy_peons);
+        java.util.List<Unit> parked = new java.util.ArrayList<>();
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && isParked(e))
+                parked.add(e);
+        java.util.List<Selectable<?>> ours = new java.util.ArrayList<>();
+        for (Selectable<?> s : ai.owner().getUnits().getSet())
+            if (!s.isDead() && s != intel.chieftain)
+                ours.add(s);
+        int[] best = null;
+        float best_score = -Float.MAX_VALUE;
+        int[] why = new int[5];
+        for (int r = 10; r <= 24; r += 2) {
+            for (int a = 0; a < 24; a++) {
+                double ang = a * Math.PI / 12;
+                int x = blob[0] + (int) Math.round(r * Math.cos(ang));
+                int y = blob[1] + (int) Math.round(r * Math.sin(ang));
+                int hit = castValue(x, y, enemies, parked, ours, why);
+                if (hit < 0)
+                    continue;
+                int chiefs = 0;
+                for (Unit c : intel.enemy_chieftains)
+                    if (!c.isDead() && MapAnalysis.dist2(x, y, c.getGridX(), c.getGridY()) <= 17 * 17)
+                        chiefs++;
+                float score = 10f * (hit + 8 * chiefs) - (float) Math.sqrt(MapAnalysis.dist2(x, y, cx, cy));
+                if (score > best_score) {
+                    best_score = score;
+                    best = new int[]{x, y, hit};
+                }
+            }
+        }
+        if (best == null) {
+            int m = 0;
+            for (int i = 1; i < why.length; i++)
+                if (why[i] > why[m])
+                    m = i;
+            ai.aiLog().count("shred_nopoint_" + new String[]{"ground", "seen", "tower", "friends", "few"}[m]);
+        }
+        return best;
     }
 
     /** An enemy warrior standing idle, not hunting: it sees 8 cells and does not react to being hit. */
@@ -293,6 +465,14 @@ final class Chieftain {
     /** No awake enemy warrior within 16 cells, no enemy tower within 22 and none of our units within 20. */
     private boolean clearAround(int bx, int by, java.util.@NonNull List<@NonNull Unit> awake) {
         Intel intel = ai.intel();
+        if (ai.strategy().shred_strict) {
+            // castPoint keeps the chieftain out of every enemy's sight and our units out of the blast; awake enemies
+            // by the blob only add to what it kills.
+            for (Building t : intel.enemy_towers)
+                if (MapAnalysis.dist2(bx, by, t.getGridX(), t.getGridY()) <= 22 * 22)
+                    return false;
+            return true;
+        }
         for (Unit e : awake)
             if (MapAnalysis.dist2(bx, by, e.getGridX(), e.getGridY()) <= 16 * 16)
                 return false;
