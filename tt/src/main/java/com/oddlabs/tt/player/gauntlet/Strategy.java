@@ -690,6 +690,9 @@ class Strategy {
             strategy.adaptive_caution = false;
             strategy.recall_ratio = 2f;
             strategy.attack_threat_ratio = 1f;
+            // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
+            // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
+            strategy.gate_owner = true;
         }
         return strategy;
     }
