@@ -443,7 +443,8 @@ final class Economy {
         for (Project q : projects)
             if (q != p && q.isPlaced() && q.type != Race.BUILDING_ARMORY)
                 placed_incomplete++;
-        return p.type == Race.BUILDING_ARMORY || placed_incomplete < ai.strategy().sites_parallel;
+        int sites = ai.time() >= ai.strategy().tower_parallel_late_time ? ai.strategy().sites_parallel_late : ai.strategy().sites_parallel;
+        return p.type == Race.BUILDING_ARMORY || placed_incomplete < sites;
     }
 
     private void onCompleted(@NonNull Project p) {
@@ -633,7 +634,8 @@ final class Economy {
             sniper_towers.removeIf(Building::isDead);
             int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
                     false) - forward_towers.size() - countForward() - ai.military().creepTowerCount() - sniper_towers.size() - countSniper();
-            if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < ai.strategy().tower_parallel
+            int tower_parallel = time >= strategy.tower_parallel_late_time ? strategy.tower_parallel_late : strategy.tower_parallel;
+            if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < tower_parallel
                     && ai.owner().canBuild(Race.BUILDING_TOWER)) {
                 List<int[]> existing = new ArrayList<>();
                 for (Building t : intel.towers)
@@ -1633,6 +1635,8 @@ final class Economy {
                 continue;
             if (ai.military().threatNear(s.getGridX(), s.getGridY(), 14))
                 continue;
+            if (ai.strategy().gather_avoid_parked && seenByParked(s.getGridX(), s.getGridY()))
+                continue;
             Float bad = bad_supplies.get(s);
             if (bad != null && bad > ai.time())
                 continue;
@@ -1644,6 +1648,28 @@ final class Economy {
             }
         }
         return best;
+    }
+
+    private final List<int @NonNull []> parked_cells = new ArrayList<>();
+    private float parked_time = -100f;
+
+    /**
+     * Whether an idle enemy warrior stands within 10 cells (Chebyshev) of (x, y): idle units scan an 8-cell square and
+     * hunt what they see, and parked blobs 28-45 cells from our buildings are not base threats (gather_avoid_parked).
+     */
+    private boolean seenByParked(int x, int y) {
+        if (ai.time() - parked_time >= 1f) {
+            parked_time = ai.time();
+            parked_cells.clear();
+            for (Unit e : ai.intel().enemy_warriors)
+                if (!e.isDead() && e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                        && e.getCurrentController() == e.getPrimaryController())
+                    parked_cells.add(new int[]{e.getGridX(), e.getGridY()});
+        }
+        for (int[] c : parked_cells)
+            if (Math.abs(c[0] - x) <= 10 && Math.abs(c[1] - y) <= 10)
+                return true;
+        return false;
     }
 
     private int countChickens() {

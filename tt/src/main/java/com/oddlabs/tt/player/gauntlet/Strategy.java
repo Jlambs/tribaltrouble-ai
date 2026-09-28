@@ -92,6 +92,12 @@ class Strategy {
      * Empty a quarters or armory below evac_hp of its hit points with evac_min enemy warriors by it (Economy.evacuate).
      */
     boolean evacuate = false;
+    /** Gatherers skip supplies an idle enemy can see (Economy.seenByParked). */
+    boolean gather_avoid_parked = false;
+    /** From tower_parallel_late_time on: tower projects and placed sites at a time (the siege razes towers). */
+    int tower_parallel_late = 1;
+    int sites_parallel_late = 2;
+    float tower_parallel_late_time = 600f;
     float evac_hp = .6f;
     int evac_min = 3;
     int snipe_min = 6;
@@ -507,6 +513,10 @@ class Strategy {
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);
         shepherd_range = params.getInt("shepherd_range", shepherd_range);
         evacuate = params.getBoolean("evacuate", evacuate);
+        gather_avoid_parked = params.getBoolean("gather_avoid_parked", gather_avoid_parked);
+        tower_parallel_late = params.getInt("tower_parallel_late", tower_parallel_late);
+        sites_parallel_late = params.getInt("sites_parallel_late", sites_parallel_late);
+        tower_parallel_late_time = (float) params.getDouble("tower_parallel_late_time", tower_parallel_late_time);
         evac_hp = (float) params.getDouble("evac_hp", evac_hp);
         evac_min = params.getInt("evac_min", evac_min);
         snipe_min = params.getInt("snipe_min", snipe_min);
