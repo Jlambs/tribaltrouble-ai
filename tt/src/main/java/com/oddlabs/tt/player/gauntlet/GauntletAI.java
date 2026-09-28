@@ -50,6 +50,7 @@ public final class GauntletAI extends AI {
     private @Nullable Decoys decoys;
     private @Nullable Shepherd shepherd;
     private @Nullable Lures lures;
+    private @Nullable Dodges dodges;
 
     private int ticks;
     private float time;
@@ -110,6 +111,7 @@ public final class GauntletAI extends AI {
             if (initialized && ticks % 5 == 0) {
                 shepherd().guard();
                 lures().guard();
+                dodges().guard();
             }
             think();
         } catch (RuntimeException | AssertionError e) {
@@ -180,6 +182,7 @@ public final class GauntletAI extends AI {
         decoys = new Decoys(this);
         shepherd = new Shepherd(this);
         lures = new Lures(this);
+        dodges = new Dodges(this);
         intel.decoys = decoys;
     }
 
@@ -323,6 +326,11 @@ public final class GauntletAI extends AI {
     Lures lures() {
         assert lures != null;
         return lures;
+    }
+
+    Dodges dodges() {
+        assert dodges != null;
+        return dodges;
     }
 
     @NonNull

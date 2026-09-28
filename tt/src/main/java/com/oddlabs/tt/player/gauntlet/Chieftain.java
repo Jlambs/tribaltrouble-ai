@@ -146,6 +146,8 @@ final class Chieftain {
             }
             return;
         }
+        if (ai.dodges().chiefBusy())
+            return;
         if (ai.strategy().shred && ai.strategy().shred_strict && isViking())
             den(chief);
         else

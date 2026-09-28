@@ -133,6 +133,10 @@ class Strategy {
      * Rock stream from measured yields (Economy.computeGatherTargets): from rock_stream_time, above rock_stream_iron_s.
      */
     boolean rock_stream = false;
+    /** Hunted peons run for cover before the hunter is in range (Dodges). */
+    boolean peon_dodge = false;
+    /** Our chieftain walks away from enemies hunting him, towards our towers (Dodges). */
+    boolean chief_dodge = false;
     float rock_stream_time = 540f;
     float rock_stream_iron_s = 70f;
     int rock_stream_max = 30;
@@ -581,6 +585,8 @@ class Strategy {
         ore_load_penalty = (float) params.getDouble("ore_load_penalty", ore_load_penalty);
         quarters_rally = params.getBoolean("quarters_rally", quarters_rally);
         rock_stream = params.getBoolean("rock_stream", rock_stream);
+        peon_dodge = params.getBoolean("peon_dodge", peon_dodge);
+        chief_dodge = params.getBoolean("chief_dodge", chief_dodge);
         rock_stream_time = (float) params.getDouble("rock_stream_time", rock_stream_time);
         rock_stream_iron_s = (float) params.getDouble("rock_stream_iron_s", rock_stream_iron_s);
         rock_stream_max = params.getInt("rock_stream_max", rock_stream_max);
