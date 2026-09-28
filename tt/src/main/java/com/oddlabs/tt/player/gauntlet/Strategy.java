@@ -233,6 +233,11 @@ class Strategy {
      * controller, which is what takes away their chance to dodge.
      */
     boolean restore_dodge = false;
+    /**
+     * Seconds before a warrior re-ordered out of a stun may be re-ordered again: the Expert AI waited 30 s, sweep
+     * re-ordered every 5 ticks (+9 points at N=2, lab/sweep NOTES base22 vs s24-nounstun).
+     */
+    float restore_dodge_gap = 30f;
 
     /**
      * Take peons along on attacks against towers: a peon's swing always does 6 damage to a tower, eight times what an
@@ -331,11 +336,38 @@ class Strategy {
      */
     boolean chief_per_hit = true;
 
+    /**
+     * Decoy tower sites 11-14 cells in front of our manned towers, nearer to each Hard copy than any real building,
+     * steer its waves where the towers shoot them (Decoys). From decoy_time on, at most decoy_max at once, leaving
+     * decoy_free_slots of the building cap for real buildings; a spot must be within decoy_margin of the distance of
+     * the copy's nearest real target. decoy_cage leaves enemies standing in tower reach to the towers.
+     */
+    boolean decoys = false;
+    /**
+     * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
+     * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
+     */
+    boolean swing_restart = true;
+    boolean stun_cancel = false;
+    float decoy_time = 240f;
+    int decoy_max = 8;
+    int decoy_free_slots = 3;
+    float decoy_margin = .85f;
+    boolean decoy_cage = true;
+
     /** Radius, in grid cells, around own buildings within which enemies count as attacking the base. */
     int base_radius = 28;
 
     /** Sets any field from the spec's params (gauntlet:attack_ratio=1.2,...), for tuning experiments. */
     void apply(@NonNull AiParams params) {
+        decoys = params.getBoolean("decoys", decoys);
+        swing_restart = params.getBoolean("swing_restart", swing_restart);
+        stun_cancel = params.getBoolean("stun_cancel", stun_cancel);
+        decoy_time = (float) params.getDouble("decoy_time", decoy_time);
+        decoy_max = params.getInt("decoy_max", decoy_max);
+        decoy_free_slots = params.getInt("decoy_free_slots", decoy_free_slots);
+        decoy_margin = (float) params.getDouble("decoy_margin", decoy_margin);
+        decoy_cage = params.getBoolean("decoy_cage", decoy_cage);
         initial_quarters = params.getInt("initial_quarters", initial_quarters);
         max_quarters = params.getInt("max_quarters", max_quarters);
         expand_time = (float) params.getDouble("expand_time", expand_time);
@@ -422,6 +454,7 @@ class Strategy {
         peon_rush = params.getBoolean("peon_rush", peon_rush);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
+        restore_dodge_gap = (float) params.getDouble("restore_dodge_gap", restore_dodge_gap);
         sappers = params.getBoolean("sappers", sappers);
         pillage = params.getBoolean("pillage", pillage);
         siege = params.getBoolean("siege", siege);

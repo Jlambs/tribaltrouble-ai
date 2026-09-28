@@ -384,6 +384,7 @@ final class Economy {
         addBuildings(reserved, intel.quarters_sites);
         addBuildings(reserved, intel.armory_sites);
         addBuildings(reserved, intel.tower_sites);
+        addBuildings(reserved, intel.decoy_sites);
         return reserved;
     }
 

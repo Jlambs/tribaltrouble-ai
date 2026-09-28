@@ -82,6 +82,10 @@ final class Intel {
     final List<@NonNull Building> quarters_sites = new ArrayList<>();
     final List<@NonNull Building> armory_sites = new ArrayList<>();
     final List<@NonNull Building> tower_sites = new ArrayList<>();
+    /** Our decoy tower sites (Decoys), kept out of tower_sites so nothing builds, counts or garrisons them. */
+    final List<@NonNull Building> decoy_sites = new ArrayList<>();
+    @Nullable
+    Decoys decoys;
 
     // Own units
     final List<@NonNull Unit> peons = new ArrayList<>();
@@ -117,6 +121,7 @@ final class Intel {
         quarters_sites.clear();
         armory_sites.clear();
         tower_sites.clear();
+        decoy_sites.clear();
         peons.clear();
         warriors.clear();
         peon_states.clear();
@@ -181,7 +186,12 @@ final class Intel {
         switch (building.getTemplate().getTemplateID()) {
             case Race.BUILDING_QUARTERS -> (complete ? quarters : quarters_sites).add(building);
             case Race.BUILDING_ARMORY -> (complete ? armories : armory_sites).add(building);
-            case Race.BUILDING_TOWER -> (complete ? towers : tower_sites).add(building);
+            case Race.BUILDING_TOWER -> {
+                if (!complete && decoys != null && decoys.isDecoy(building))
+                    decoy_sites.add(building);
+                else
+                    (complete ? towers : tower_sites).add(building);
+            }
             default -> {
             }
         }

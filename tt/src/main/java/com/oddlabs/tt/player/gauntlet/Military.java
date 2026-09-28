@@ -376,6 +376,8 @@ final class Military {
         enemies.addAll(intel.enemy_chieftains);
         List<Unit> at_base = new ArrayList<>();
         for (Unit e : enemies) {
+            if (ai.decoys().caged(e))
+                continue;
             boolean near_base = false;
             for (Building b : own) {
                 if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), b.getGridX(), b.getGridY()) <= r2) {
@@ -2862,7 +2864,7 @@ final class Military {
             if (!Intel.isDefenseless(w))
                 continue;
             Float last = dodge_orders.get(w);
-            if (last != null && ai.time() - last < 30f)
+            if (last != null && ai.time() - last < ai.strategy().restore_dodge_gap)
                 continue;
             dodge_orders.put(w, ai.time());
             queueOrder(w, w.getGridX(), w.getGridY(), true);

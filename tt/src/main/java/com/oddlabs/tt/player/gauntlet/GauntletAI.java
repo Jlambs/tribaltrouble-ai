@@ -41,11 +41,13 @@ public final class GauntletAI extends AI {
     private final @NonNull Strategy strategy;
     private final @NonNull Random random;
     private final @NonNull Intel intel;
+    private final @NonNull Reflexes reflexes;
     private @Nullable MapAnalysis map;
     private @Nullable SitePlanner planner;
     private @Nullable Economy economy;
     private @Nullable Military military;
     private @Nullable Chieftain chieftain;
+    private @Nullable Decoys decoys;
 
     private int ticks;
     private float time;
@@ -71,6 +73,7 @@ public final class GauntletAI extends AI {
         });
         random = new Random(7919L * (1 + indexOf(owner)));
         intel = new Intel(owner);
+        reflexes = new Reflexes(this, strategy.swing_restart, strategy.stun_cancel);
     }
 
     private static int countEnemies(@NonNull Player owner) {
@@ -96,6 +99,7 @@ public final class GauntletAI extends AI {
         ticks++;
         time = ticks / (float) GameTime.TICKS_PER_SECOND;
         try {
+            reflexes.tick();
             think();
         } catch (RuntimeException | AssertionError e) {
             // Engine getters assert on units that just died: count the error (every result row shows it), log the
@@ -125,6 +129,7 @@ public final class GauntletAI extends AI {
         if (due_economy) {
             next_economy = time + ECONOMY_PERIOD;
             economy().tick();
+            decoys().tick();
         }
         if (due_plan) {
             next_plan = time + PLAN_PERIOD;
@@ -156,6 +161,8 @@ public final class GauntletAI extends AI {
         economy = new Economy(this);
         military = new Military(this);
         chieftain = new Chieftain(this);
+        decoys = new Decoys(this);
+        intel.decoys = decoys;
     }
 
     private @NonNull DistanceField enemyStarts(int nearest_x, int nearest_y) {
@@ -287,6 +294,12 @@ public final class GauntletAI extends AI {
     Military military() {
         assert military != null;
         return military;
+    }
+
+    @NonNull
+    Decoys decoys() {
+        assert decoys != null;
+        return decoys;
     }
 
     @NonNull
