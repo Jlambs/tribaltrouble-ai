@@ -591,3 +591,18 @@ tower stun cancel (N=8 up, N=9 flat). N=9 stays at ~5 % on dev, far from an exam
 Final version = aggressive campaign defaults + tower_unstun, frozen as **g-final** (commit 2f266fba; lint @g-final
 ok). Final runs: gfinal-vs9-hv-b (N=9, fresh seeds 201..400), robustness sweep robust-gfinal-*, and the N=8 exam
 of @g-final (so the delivered package is the one examined; g-v8's N=8 exam stands as the first attempt).
+
+gfinal-vs9-hv-b (@g-final vs hard*9, fresh seeds 201..400): **9/200 = 4.5 % [2.4, 8.3]**, 1 draw, 0 failed, no
+swallowed errors. No N=9 exam.
+
+Robustness of @g-final (robust-gfinal-*, random maps of every size and terrain), first half: duel vs hard 59-1 (60),
+as natives vs hard*3 51-28-1 (80), in team B vs hard 40-0 (40), allied with hard vs hard*3 63-12 (75); 0 failed games,
+no swallowed errors. Second half running; the N=8 exam of @g-final (final-vs8-g-final) running.
+
+### 2026-09-28: N=8 exam with g-final (viking Hards): passed
+
+`./aisim.sh batch --name final-vs8-g-final --players "@g-final vs hard*8" --size large --terrain tropical --hills
+0..2 --trees 10 --supplies 10 --seeds 30001..30100 --side 0 --workers 14` (g-final = commit 2f266fba; lint @g-final
+ok): **W 25 / L 75 / D 0**, Wilson 95 % [17.5, 34.3], all 25 wins by elimination (4 via collapse), 0 failed, no
+swallowed errors, 37.0 min mean length, 32.7 s CPU per game. Replays s30001-0, s30002-0, s30003-0: VERIFIED. Dev
+before: 52/200 on fresh seeds 201..400. **N* = 8** (N=9 dev 9/200).
