@@ -2297,6 +2297,10 @@ final class Military {
                     Selectable<?> next = chooseTarget(c[0], c[1]);
                     if (next != null) {
                         setTarget(next);
+                        // A new target near the old one keeps the old field: restart the clock either way, or the
+                        // next tick would ban it too.
+                        last_progress_time = ai.time();
+                        best_target_dist = Integer.MAX_VALUE;
                         ai.aiLog().count("stall_retarget");
                         return;
                     }
