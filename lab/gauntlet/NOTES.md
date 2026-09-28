@@ -65,6 +65,8 @@ producing (a copy's production curve does not depend on N: ~25 warriors by 7 min
 | gauntlet (swing_restart on) | + harvest swing restart, vs native Hards | 76 | 52 |
 | `g-shep` (commit 540e97e6) | + stun cancel, shepherds, multi-enemy attack gate, reinforce | | N=7 34/100 vs viking, N=8 15/100 vs viking (20/200 vs native) |
 | `g-v8` (commit c002c1ae) | + safer shepherd recruitment, dodge only blasts | | N=8 31/200 vs viking on fresh seeds 201..400 |
+| `g-agg` (commit 0bf70b47) | + all-in campaign against several enemies (attack at even strength, no recall) | | N=8 43/200 fresh (19/100 on 1..100); N=9 5/100 |
+| `g-final` (commit 2f266fba) | + tower stun cancel (tower_unstun) | | N=8 52/200 fresh (23/100 on 1..100); N=9 4/100 |
 
 **Exams**: N=7 `@g-shep` vs hard*7 (vikings): 45/100 [35.6, 54.8], passed. N=8 `@g-v8` vs hard*8 (vikings): 11/100 [6.3, 18.6], passed. **N* = 8.**
 
@@ -574,3 +576,18 @@ tunstun-vs8-hv (tower_unstun=true, paired with aggro-vs8-hv): **23 vs 19** (6 ga
 prog +.057 (z 2.3), lsr20 +.18 (z 2.9); 13.5 tower un-stuns per game, no errors. tmutual-vs8-hv (tower_mutual=true):
 21 vs 19 (10/8), lsr20 +.195 (z 1.6): maybe. Queued: tunstun-vs8-hv-b (fresh seeds 201..400, paired with
 aggro-vs8-hv-b), tunstun-vs9-hv, tower_unstun + tower_mutual.
+
+tmutunstun-vs8-hv (tower_mutual on top of tower_unstun, vs tunstun-vs8-hv): 23 vs 23 (11/11): nothing on top;
+tower_mutual stays off (the fresh-seed run tmutunstun-vs8-hv-b was stopped). tunstun-vs9-hv: 4 vs 5 (1/2): the
+tower stun cancel does not move N=9.
+
+### 2026-09-28: final version
+
+Since the N=8 exam (N* = 8), substantially different attempts at N=9: base defense by home guard (worse), decoys
+with front towers pushed out (no spot), the all-in campaign (N=8 up, N=9 2 -> 5 %), the quarters gate (neutral),
+target choice by threat or home distance (neutral or worse), sniper towers (worse), mutual towers (neutral), the
+tower stun cancel (N=8 up, N=9 flat). N=9 stays at ~5 % on dev, far from an exam: the stop rule holds.
+
+Final version = aggressive campaign defaults + tower_unstun, frozen as **g-final** (commit 2f266fba; lint @g-final
+ok). Final runs: gfinal-vs9-hv-b (N=9, fresh seeds 201..400), robustness sweep robust-gfinal-*, and the N=8 exam
+of @g-final (so the delivered package is the one examined; g-v8's N=8 exam stands as the first attempt).
