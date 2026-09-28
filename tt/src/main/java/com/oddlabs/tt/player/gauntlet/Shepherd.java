@@ -55,6 +55,10 @@ final class Shepherd {
         float recruited;
         int last_x;
         int last_y;
+        /** Launches seen: the copy's wave size is 10 + 5 per launch, up to 40 (AdvancedAI NUM_WARRORS). */
+        int launches;
+        /** Whether the copy's next decision (every 5-7 s) launches a wave: idle warriors >= wave size (+ chieftain). */
+        boolean imminent;
 
         Flock(@NonNull Player copy) {
             this.copy = copy;
@@ -118,7 +122,8 @@ final class Shepherd {
             Unit s = f.shepherd;
             if (s == null || s.isDead() || s.isMounted())
                 continue;
-            int[] away = threatAway(s, intel);
+            int clear = ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS;
+            int[] away = threatAway(s, intel, clear);
             if (away != null && ai.time() - f.last_order >= .3f) {
                 ai.landscapeOrder(Selectable.newArray(s), away[0], away[1], Action.MOVE, false);
                 f.last_order = ai.time();
@@ -178,6 +183,7 @@ final class Shepherd {
             int ty = walk.getTarget().getGridY();
             // An idle warrior that spots something walks back to its own cell after the hunt: not a wave.
             if (MapAnalysis.dist2(tx, ty, f.leader.getGridX(), f.leader.getGridY()) > 20 * 20) {
+                f.launches++;
                 if (f.spot_x >= 0 && MapAnalysis.dist2(tx, ty, f.spot_x, f.spot_y) <= 4 * 4) {
                     ai.aiLog().count("wave_drawn");
                     ai.log("wave of " + f.copy.getPlayerInfo().getName() + " drawn to " + tx + "," + ty);
@@ -189,6 +195,18 @@ final class Shepherd {
             }
         }
         f.leader = leader;
+        if (ai.strategy().shepherd_hold) {
+            int num = Math.min(40, 10 + 5 * f.launches);
+            int idle = 0;
+            for (Unit e : intel.enemy_warriors)
+                if (!e.isDead() && e.getOwner() == f.copy
+                        && e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController)
+                    idle++;
+            boolean was = f.imminent;
+            f.imminent = idle >= num && (num < 20 || f.copy.hasActiveChieftain());
+            if (f.imminent && !was)
+                ai.aiLog().count("shepherd_imminent");
+        }
         if (f.shepherd == null) {
             // shepherd_range: far copies' shepherds walk 150-300 cells and die on the way (N=10 logs); skip them.
             int range = ai.strategy().shepherd_range;
@@ -213,7 +231,7 @@ final class Shepherd {
         f.last_x = s.getGridX();
         f.last_y = s.getGridY();
         // Flee first: any enemy near the shepherd, or a wave walking toward where it stands.
-        int[] away = threatAway(s, intel);
+        int[] away = threatAway(s, intel, ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS);
         if (away != null) {
             if (ai.time() - f.last_order >= .3f) {
                 ai.landscapeOrder(Selectable.newArray(s), away[0], away[1], Action.MOVE, false);
@@ -290,7 +308,7 @@ final class Shepherd {
     }
 
     /** A point to run to when enemies are near the shepherd or a wave is walking at it, else null. */
-    private int @Nullable [] threatAway(@NonNull Unit s, @NonNull Intel intel) {
+    private int @Nullable [] threatAway(@NonNull Unit s, @NonNull Intel intel, int clear) {
         int sx = s.getGridX();
         int sy = s.getGridY();
         long ex = 0;
@@ -301,7 +319,7 @@ final class Shepherd {
                 continue;
             int dx = e.getGridX() - sx;
             int dy = e.getGridY() - sy;
-            boolean near = Math.abs(dx) <= CLEAR_CELLS && Math.abs(dy) <= CLEAR_CELLS;
+            boolean near = Math.abs(dx) <= clear && Math.abs(dy) <= clear;
             boolean coming = false;
             if (!near && e.getPrimaryController() instanceof WalkController w && w.isAgressive()
                     && dx * dx + dy * dy <= 40 * 40) {
@@ -318,7 +336,7 @@ final class Shepherd {
         for (Unit e : intel.enemy_peons) {
             if (e.isDead())
                 continue;
-            if (Math.abs(e.getGridX() - sx) <= CLEAR_CELLS && Math.abs(e.getGridY() - sy) <= CLEAR_CELLS) {
+            if (Math.abs(e.getGridX() - sx) <= clear && Math.abs(e.getGridY() - sy) <= clear) {
                 ex += e.getGridX();
                 ey += e.getGridY();
                 n++;
