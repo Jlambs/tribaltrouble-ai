@@ -410,7 +410,7 @@ class Strategy {
     float harvest_seconds = 10f;
     boolean stun_cancel = true;
     /** With stun_cancel, run only from an enemy sonic blast, not from the stun (which Reflexes cancels anyway). */
-    boolean dodge_blast_only = false;
+    boolean dodge_blast_only = true;
     float decoy_time = 240f;
     int decoy_max = 8;
     int decoy_free_slots = 3;
