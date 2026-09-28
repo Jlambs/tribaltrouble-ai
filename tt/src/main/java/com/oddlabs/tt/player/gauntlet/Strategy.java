@@ -88,6 +88,12 @@ class Strategy {
     int front_tower_bonus_max = 100;
     /** Shepherds only for copies whose wave origin is within this many cells of our start. */
     int shepherd_range = 100000;
+    /**
+     * Empty a quarters or armory below evac_hp of its hit points with evac_min enemy warriors by it (Economy.evacuate).
+     */
+    boolean evacuate = false;
+    float evac_hp = .6f;
+    int evac_min = 3;
     int snipe_min = 6;
     int snipe_range = 45;
     /**
@@ -500,6 +506,9 @@ class Strategy {
         tower_cap = params.getBoolean("tower_cap", tower_cap);
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);
         shepherd_range = params.getInt("shepherd_range", shepherd_range);
+        evacuate = params.getBoolean("evacuate", evacuate);
+        evac_hp = (float) params.getDouble("evac_hp", evac_hp);
+        evac_min = params.getInt("evac_min", evac_min);
         snipe_min = params.getInt("snipe_min", snipe_min);
         snipe_range = params.getInt("snipe_range", snipe_range);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);

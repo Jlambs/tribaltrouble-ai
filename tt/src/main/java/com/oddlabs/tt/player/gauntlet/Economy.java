@@ -72,6 +72,8 @@ final class Economy {
     private int project_counter;
     private final List<@NonNull Building> forward_towers = new ArrayList<>();
     private final List<@NonNull Building> sniper_towers = new ArrayList<>();
+    /** Quarters and armories being emptied because they are about to fall (evacuate), and since when. */
+    private final Map<@NonNull Building, Float> evacuating = new LinkedHashMap<>();
     private float last_sniper = -100f;
     /** Per gatherer: the load it carried and since when, to catch peons stuck walking to a supply. */
     private final Map<@NonNull Unit, float @NonNull []> gather_progress = new LinkedHashMap<>();
@@ -186,10 +188,104 @@ final class Economy {
         refreshArmoryField();
         manageProjects();
         escortForward();
+        evacuate();
         manageQuarters();
         manageArmory();
         allocatePeons();
         manageRepairs();
+    }
+
+    /** Whether the building is being emptied because it is about to fall. */
+    boolean isEvacuating(@NonNull Building b) {
+        return evacuating.containsKey(b);
+    }
+
+    /**
+     * Units inside a razed building die with it, uncounted (LandBuilding.removeDying): ~123 per game at N=10, 39 per
+     * armory. A quarters or armory below evac_hp of its hit points with at least evac_min enemy warriors within 10
+     * cells is emptied: the armory's weapons leave as warriors, everyone else as peons, towards a rally point away from
+     * the attackers (for a quarters, into our quarters farthest from them). For 60 s nothing is sent into it.
+     */
+    private void evacuate() {
+        Strategy strategy = ai.strategy();
+        evacuating.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 60f);
+        if (!strategy.evacuate)
+            return;
+        Intel intel = ai.intel();
+        List<Building> homes = new ArrayList<>(intel.quarters);
+        homes.addAll(intel.armories);
+        for (Building b : homes) {
+            if (b.isDead() || !b.isComplete() || b.getUnitContainer() == null)
+                continue;
+            int inside = b.getUnitContainer().getNumSupplies();
+            if (inside == 0 && !evacuating.containsKey(b))
+                continue;
+            if (b.getHitPoints() > strategy.evac_hp * b.getTemplate().getMaxHitPoints())
+                continue;
+            int n = 0;
+            long ex = 0;
+            long ey = 0;
+            for (Unit e : intel.enemy_warriors) {
+                if (e.isDead() || MapAnalysis.dist2(e.getGridX(), e.getGridY(), b.getGridX(), b.getGridY()) > 10 * 10)
+                    continue;
+                n++;
+                ex += e.getGridX();
+                ey += e.getGridY();
+            }
+            if (n < strategy.evac_min)
+                continue;
+            Player owner = ai.owner();
+            if (!evacuating.containsKey(b)) {
+                int cx = (int) (ex / n);
+                int cy = (int) (ey / n);
+                boolean quarters = b.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS;
+                Building refuge = null;
+                int far = -1;
+                if (quarters)
+                    for (Building q : intel.quarters) {
+                        if (q == b || q.isDead() || evacuating.containsKey(q))
+                            continue;
+                        int d = MapAnalysis.dist2(q.getGridX(), q.getGridY(), cx, cy);
+                        if (d > far && !ai.military().threatNear(q.getGridX(), q.getGridY(), 16)) {
+                            far = d;
+                            refuge = q;
+                        }
+                    }
+                if (refuge != null) {
+                    owner.setRallyPoint(b, refuge);
+                } else {
+                    float dx = b.getGridX() - cx;
+                    float dy = b.getGridY() - cy;
+                    float len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
+                    int size = ai.map().getSize();
+                    int rx = Math.max(3, Math.min(size - 4, b.getGridX() + Math.round(18 * dx / len)));
+                    int ry = Math.max(3, Math.min(size - 4, b.getGridY() + Math.round(18 * dy / len)));
+                    owner.setRallyPoint(b, rx, ry);
+                }
+                evacuating.put(b, ai.time());
+                ai.aiLog().count(quarters ? "evac_quarters" : "evac_armory");
+                ai.log("evacuating " + (quarters ? "quarters" : "armory") + " at " + b.getGridX() + "," + b.getGridY() + ": " + inside + " inside, hp " + b.getHitPoints() + ", " + n + " enemy warriors by it");
+            }
+            if (inside == 0)
+                continue;
+            int deployed = 0;
+            if (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY) {
+                int c = Math.min(b.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies(), inside);
+                if (c > 0)
+                    owner.deployUnits(b, DeployType.RUBBER_WARRIOR, c);
+                int i = Math.min(b.getSupplyContainer(IronAxeWeapon.class).getNumSupplies(), inside - c);
+                if (i > 0)
+                    owner.deployUnits(b, DeployType.IRON_WARRIOR, i);
+                int r = Math.min(b.getSupplyContainer(RockAxeWeapon.class).getNumSupplies(), inside - c - i);
+                if (r > 0)
+                    owner.deployUnits(b, DeployType.ROCK_WARRIOR, r);
+                deployed = c + i + r;
+            }
+            int pending = b.getDeployContainer(DeployType.PEON).getNumSupplies();
+            int peons = inside - deployed - pending;
+            if (peons > 0)
+                owner.deployUnits(b, DeployType.PEON, peons);
+        }
     }
 
     void plan() {
@@ -935,6 +1031,8 @@ final class Economy {
         Intel intel = ai.intel();
         boolean threatened = ai.military().baseThreatLevel() > 1;
         for (Building q : intel.quarters) {
+            if (evacuating.containsKey(q))
+                continue;
             int inside = q.getUnitContainer().getNumSupplies();
             int hold = holdFor(q);
             // Peons are safe inside while enemies roam next to the quarters.
@@ -1270,7 +1368,7 @@ final class Economy {
         // 2. Chieftain training quarters top-up.
         chieftain_topup = false;
         Building trainer = ai.chieftain().trainingQuarters();
-        if (trainer != null && ai.military().baseThreatLevel() == 0) {
+        if (trainer != null && ai.military().baseThreatLevel() == 0 && !evacuating.containsKey(trainer)) {
             int need = ai.strategy().hold_chieftain - trainer.getUnitContainer().getNumSupplies() - countHeadingTo(
                     trainer);
             if (need > 0) {
@@ -1286,7 +1384,8 @@ final class Economy {
             // Nothing to gather for yet: spare peons speed up a quarters that is below its reserve.
             for (Unit u : free) {
                 Building q = nearest(intel.quarters, u.getGridX(), u.getGridY());
-                if (q != null && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q))
+                if (q != null && !evacuating.containsKey(q)
+                        && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q))
                     order(u, q, Action.DEFAULT);
             }
             return;
@@ -1326,9 +1425,17 @@ final class Economy {
         if (deploy_for_gathering > 0 && workers > 3 && pending == 0)
             ai.owner().deployUnits(armory, DeployType.PEON, Math.min(deploy_for_gathering, workers - 3));
 
-        // 4. Everyone else works in the armory.
-        for (Unit u : free)
-            order(u, armory, Action.DEFAULT);
+        // 4. Everyone else works in the armory, unless it is being emptied: then in another armory, or they wait.
+        Building work = armory;
+        if (evacuating.containsKey(armory)) {
+            work = null;
+            for (Building a : intel.armories)
+                if (a != armory && !a.isDead() && a.isComplete() && !evacuating.containsKey(a))
+                    work = a;
+        }
+        if (work != null)
+            for (Unit u : free)
+                order(u, work, Action.DEFAULT);
     }
 
     private boolean scoutHasWork() {

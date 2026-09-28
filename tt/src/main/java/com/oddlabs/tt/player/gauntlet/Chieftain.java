@@ -182,6 +182,7 @@ final class Chieftain {
     /** The idle blob the chieftain is walking to, to blast it, or null. */
     private int @Nullable [] shred_target;
     private float shred_trace = -100f;
+    private float shred_trace2 = -100f;
 
     /**
      * The shred mission: idle enemy blobs (waves parked by shepherds, or left idle after razing something) see 8 cells
@@ -251,6 +252,31 @@ final class Chieftain {
                 return true;
             }
             int[] at = castPoint(blob, cx, cy);
+            if (at == null && ai.logging() && ai.time() - shred_trace2 >= 20f) {
+                shred_trace2 = ai.time();
+                // What sees the ring around the blob: per kind, how many ring cells each blocks.
+                int[] seen_by = new int[4];
+                int cells = 0;
+                for (int r = 10; r <= 24; r += 2)
+                    for (int a = 0; a < 24; a++) {
+                        double ang = a * Math.PI / 12;
+                        int x = blob[0] + (int) Math.round(r * Math.cos(ang));
+                        int y = blob[1] + (int) Math.round(r * Math.sin(ang));
+                        cells++;
+                        for (Unit e : enemies)
+                            if (!e.isDead() && Math.abs(e.getGridX() - x) <= 8 && Math.abs(e.getGridY() - y) <= 8) {
+                                int k = ai.intel().enemy_peons.contains(e) ? 0 : ai.intel().enemy_chieftains.contains(
+                                        e) ? 1 : isParked(e) ? 2 : 3;
+                                seen_by[k]++;
+                                break;
+                            }
+                    }
+                int fc = cells;
+                ai.log(String.format(
+                        "shred: no point around blob %d at %d,%d: of %d ring cells seen by peon %d, chief %d, " + "parked %d, awake %d",
+                        blob[3], blob[0], blob[1], fc, seen_by[0], seen_by[1], seen_by[2],
+                        seen_by[3]));
+            }
             if (at == null) {
                 ai.aiLog().count("shred_nopoint");
                 return false;
