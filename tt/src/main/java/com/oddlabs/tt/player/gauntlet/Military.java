@@ -76,6 +76,8 @@ final class Military {
 
     // Attack.
     private @Nullable Selectable<?> target;
+    /** The copy whose buildings the attacks go after first while it is alive (focus_bonus). */
+    private com.oddlabs.tt.player.@Nullable Player focus_owner;
     private int target_x;
     private int target_y;
     private @Nullable DistanceField target_field;
@@ -389,7 +391,7 @@ final class Military {
             if (!near_base) {
                 for (Unit p : intel.peons) {
                     PeonState s = intel.peon_states.get(p);
-                    if (s == PeonState.GATHER_CHICKEN)
+                    if (s == PeonState.GATHER_CHICKEN || s == PeonState.SHEPHERD)
                         continue;
                     if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), p.getGridX(), p.getGridY()) <= 12 * 12) {
                         near_peons = true;
@@ -955,7 +957,7 @@ final class Military {
         List<Unit> militia = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
-            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER)
+            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER || s == PeonState.SHEPHERD)
                 continue;
             if (MapAnalysis.dist2(p.getGridX(), p.getGridY(), c[0], c[1]) <= 30 * 30)
                 militia.add(p);
@@ -1065,7 +1067,7 @@ final class Military {
         List<Unit> evacuate = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
-            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER)
+            if (s == PeonState.TRANSIT || s == PeonState.STUNNED || s == PeonState.SAPPER || s == PeonState.SHEPHERD)
                 continue;
             // Peons sent to fight off raiding peons stay in the fight.
             Float militia = militia_orders.get(p);
@@ -1275,6 +1277,34 @@ final class Military {
 
     private @Nullable Selectable<?> chooseTarget(int from_x, int from_y) {
         Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        if (focus_owner != null && !focus_owner.isAlive())
+            focus_owner = null;
+        if (focus_owner != null && strategy.focus_finish) {
+            // A copy with no building left but some units: hunt them down before it rebuilds.
+            boolean buildings = false;
+            for (Building b : intel.enemy_buildings)
+                if (!b.isDead() && b.getOwner() == focus_owner) {
+                    buildings = true;
+                    break;
+                }
+            if (!buildings) {
+                Unit prey = null;
+                int best_d = Integer.MAX_VALUE;
+                for (List<Unit> group : List.of(intel.enemy_peons, intel.enemy_warriors, intel.enemy_chieftains))
+                    for (Unit u : group) {
+                        if (u.isDead() || u.getOwner() != focus_owner)
+                            continue;
+                        int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
+                        if (d < best_d) {
+                            best_d = d;
+                            prey = u;
+                        }
+                    }
+                if (prey != null && best_d <= 90 * 90)
+                    return prey;
+            }
+        }
         Selectable<?> best = null;
         float best_score = Float.MAX_VALUE;
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
@@ -1292,6 +1322,8 @@ final class Military {
                 default -> 120f;
             };
             float score = d + priority + 8f * defenseAt(b.getGridX(), b.getGridY());
+            if (focus_owner != null && b.getOwner() == focus_owner)
+                score -= strategy.focus_bonus;
             if (score < best_score) {
                 best_score = score;
                 best = b;
@@ -1721,6 +1753,8 @@ final class Military {
     }
 
     private void setTarget(@NonNull Selectable<?> t) {
+        if (ai.strategy().focus_bonus > 0f && t.getOwner() != ai.owner())
+            focus_owner = t.getOwner();
         target = t;
         if (target_field == null || MapAnalysis.dist2(target_x, target_y, t.getGridX(), t.getGridY()) > 8 * 8) {
             target_x = t.getGridX();

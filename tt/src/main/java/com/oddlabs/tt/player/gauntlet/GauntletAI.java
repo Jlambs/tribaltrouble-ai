@@ -48,6 +48,7 @@ public final class GauntletAI extends AI {
     private @Nullable Military military;
     private @Nullable Chieftain chieftain;
     private @Nullable Decoys decoys;
+    private @Nullable Shepherd shepherd;
 
     private int ticks;
     private float time;
@@ -126,6 +127,7 @@ public final class GauntletAI extends AI {
             next_intel = time + INTEL_PERIOD;
             military().tick();
             chieftain().tick();
+            shepherd().tick();
         }
         if (due_economy) {
             next_economy = time + ECONOMY_PERIOD;
@@ -167,6 +169,7 @@ public final class GauntletAI extends AI {
         military = new Military(this);
         chieftain = new Chieftain(this);
         decoys = new Decoys(this);
+        shepherd = new Shepherd(this);
         intel.decoys = decoys;
     }
 
@@ -299,6 +302,12 @@ public final class GauntletAI extends AI {
     Military military() {
         assert military != null;
         return military;
+    }
+
+    @NonNull
+    Shepherd shepherd() {
+        assert shepherd != null;
+        return shepherd;
     }
 
     @NonNull

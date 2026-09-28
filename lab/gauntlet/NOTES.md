@@ -187,7 +187,7 @@ stuns throughout. Next: does it make viking Hards easier than native ones?
 | quarters_before_armory=3 | 17 | 0.291 | -1.29 | 9/11 | no |
 | chieftain_min_quarters=2 | 19 | 0.300 | -1.40 | 1/1 | inert (3 quarters already stand by 240 s) |
 | reinforce_multi=true | **27** | 0.361 | -1.35 | **10/2** (win z +2.4) | **yes**: reinforce the attack against several enemies too |
-| hold_mid=6 | | | | | pending |
+| hold_mid=6 | 20 | 0.290 | -1.40 | 10/9 | no |
 
 Ladder of the same build: vs viking Hards with K1, N=7 17/100 (k1-vs7-hv); vs native Hards N=8 2/100 (k1-vs8-hn).
 
@@ -221,3 +221,47 @@ down by idle builders and by the copy's defense drafting idle peons, as sweep's 
 frozen copy is worth about one N step, but not at this price. It could pay at N>=10, where neighbours start ~90
 cells away (ETA ~35 s), but N=10 is out of reach. Not retried with smaller squads: at 6 peons the kill rate
 (0.6/s) cannot finish 20 builders inside the armory's ~58 s.
+
+### 2026-09-28: decoys v2 (margin 0.97) and parallel towers
+
+The 0.85 margin made decoys impossible for far copies: a decoy 11-14 cells in front of a tower is only ~10 % nearer
+to a copy 130 cells away. With decoy_margin=0.97, 25.8 decoys per game are placed (15.3 razed by waves), still
+~2,100 failed searches.
+
+| run (paired with swing-*) | W | elim | lsr15 | gained/lost |
+|---|---|---|---|---|
+| decoys97-vs7-hn | 12 vs 19 | 0.244 vs 0.300 | -1.43 vs -1.40 | 5/12 |
+| decoys97-vs6-hn | 47 vs 52 | 0.542 vs 0.588 | -0.87 vs -0.96 (z +1.9) | 7/12 |
+| towpar2-vs7-hn (tower_parallel=2, sites_parallel=3) | 22 vs 19 | 0.317 vs 0.300 | -1.40 vs -1.40 | 11/8 |
+
+Verdict: decoys in front of Expert's towers do not pay (mid-game strength a little up at N=6, wins down); shelved
+(decoys=false). towpar2: +3, not significant; towpar3 pending.
+
+### 2026-09-28: the expansion armory stalls the economy (Expert bug)
+
+A logged N=7 game (play-decoy97-s12) showed, after the expansion armory completed 40 cells from the first one at
+11:09, "recalling 69 gatherers of the old armory", then 60 -> 83 -> 108 -> 129 peons in TRANSIT over two minutes
+with 3-6 armory workers: the economy stopped just as the chieftain waves arrived. drainSecondary recalls every
+gatherer of the old armory into it every 10 s (recall_old_gatherers), and the allocation re-sends transit peons to
+the new one. transit-check-vs7 (seeds 1..20, logs, 20 min): peak transit 40-103 in 9 of 20 games, after recalls of
+33-49 gatherers at once. A/B of recall_old_gatherers=false and expansion=false queued.
+
+### 2026-09-28: more N=7 screens (vs native Hards, paired with swing-vs7-hn, 19 wins)
+
+| variant | W | elim | lsr15 | lsr20 | gained/lost | verdict |
+|---|---|---|---|---|---|---|
+| recall_old_gatherers=false | 18 | 0.296 | -1.38 | -2.16 | 5/6 | neutral: the transit pile-ups are mostly peons sheltering during the 11-13 min attacks, not the recall |
+| expansion=false | 18 | 0.316 | -1.35 | -1.90 (z +2.8) | 8/9 | wins unchanged, mid-game strength up; keep in mind for a combined test |
+| tower_parallel=3, sites_parallel=4 | 25 | 0.313 | -1.49 | -2.15 | 15/9 | +6, not significant (towpar2: +3) |
+| focus_bonus=100, focus_finish=true | 15 | 0.266 | -1.40 | -2.24 | 2/6 | no |
+| chief_per_hit=false (always go for chieftains) | 15 | 0.263 | -1.40 | -2.17 | 5/9 | no |
+
+### 2026-09-28: shepherds (first game)
+
+Shepherd.java: per copy, one peon stands 12-20 cells from the copy's oldest idle warrior (or its armory), nearer
+than 0.66 of our nearest building and nearer than any other unit of ours, 10+ cells clear of every enemy unit,
+17+ cells from the copy's quarters and armory, 19+ from enemy towers, on the side away from our start; it flees
+when enemies come within 10 cells or a wave walks at its spot. play-shep-s12 (N=8, 15-minute cap): no building of
+ours lost until 12:07 (the same seed at N=7 without shepherds was under attack from 5:30 and fell at ~15 min);
+12 towers by 11:30; the game reached the cap. Counters: 10 launches drawn to the spot, 24 shepherds recruited,
+16 lost.

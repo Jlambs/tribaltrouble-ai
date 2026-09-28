@@ -34,6 +34,12 @@ class Strategy {
     int tower_builders = 8;
     /** Tower projects waiting to be placed at once, and non-armory sites standing unfinished at once. */
     int tower_parallel = 1;
+    /**
+     * Attacks go after the copy they hit last: its buildings count focus_bonus meters nearer, and with focus_finish
+     * its last units are hunted down (within 90 cells) once its buildings are gone, before it can rebuild.
+     */
+    float focus_bonus = 0f;
+    boolean focus_finish = false;
     int sites_parallel = 2;
     /** Quarters completed before builders move to the armory. */
     int quarters_before_armory = 4;
@@ -346,6 +352,10 @@ class Strategy {
      * the copy's nearest real target. decoy_cage leaves enemies standing in tower reach to the towers.
      */
     boolean decoys = false;
+    /** A shepherd peon per copy draws its waves onto empty ground (Shepherd), from shepherd_time to shepherd_until. */
+    boolean shepherd = false;
+    float shepherd_time = 200f;
+    float shepherd_until = 100000f;
     /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
@@ -369,7 +379,12 @@ class Strategy {
     /** Sets any field from the spec's params (gauntlet:attack_ratio=1.2,...), for tuning experiments. */
     void apply(@NonNull AiParams params) {
         decoys = params.getBoolean("decoys", decoys);
+        shepherd = params.getBoolean("shepherd", shepherd);
+        shepherd_time = (float) params.getDouble("shepherd_time", shepherd_time);
+        shepherd_until = (float) params.getDouble("shepherd_until", shepherd_until);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
+        focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
+        focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
         swing_restart = params.getBoolean("swing_restart", swing_restart);
         harvest_seconds = (float) params.getDouble("harvest_seconds", harvest_seconds);
