@@ -586,8 +586,14 @@ final class Military {
                 towers += Combat.towerValue(t);
         Unit chief = intel.chieftain;
         // Strict shred never stuns: its charge is for the blast.
+        boolean stable = ai.strategy().defend_stable;
         boolean toot_ready = chief != null && ai.chieftain().stunReady()
                 && !(ai.strategy().shred && ai.strategy().shred_strict);
+        if (stable && toot_ready && MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), threat_x,
+                threat_y) > 30 * 30) {
+            toot_ready = false;
+            ai.aiLog().count("stun_credit_denied");
+        }
         float effective = ours + towers + (toot_ready ? .6f * threat_strength : 0f);
         // Against a single enemy the army behind his raiders is his whole army; against several the base is busy
         // enough without waiting for them.
@@ -595,9 +601,18 @@ final class Military {
                 threat_y, ai.strategy().threat_look) : 0f;
         float enemy = Math.max(threat_strength, behind) * (enemyStunReadyNear(threat_x, threat_y, 25) ? 1.5f : 1f);
         float engage_ratio = .8f - engage_state * ai.strategy().defend_hysteresis;
-        boolean engage = effective >= engage_ratio * enemy
-                || (armory != null && MapAnalysis.dist2(threat_x, threat_y, armory.getGridX(),
-                        armory.getGridY()) <= 14 * 14);
+        int armory_cells = stable && engage_state == 1 ? 17 : 14;
+        boolean at_armory = armory != null && MapAnalysis.dist2(threat_x, threat_y, armory.getGridX(),
+                armory.getGridY()) <= armory_cells * armory_cells;
+        boolean engage = effective >= engage_ratio * enemy || at_armory;
+        if (stable) {
+            if (engage && engage_state != 1)
+                engage_since = ai.time();
+            else if (!engage && engage_state == 1 && ai.time() - engage_since < 3f) {
+                engage = true;
+                ai.aiLog().count("engage_held");
+            }
+        }
         if (threat_level != last_logged_threat || engage != last_logged_engage) {
             last_logged_threat = threat_level;
             last_logged_engage = engage;
@@ -1611,6 +1626,18 @@ final class Military {
     }
 
     private @Nullable Selectable<?> chooseTarget(int from_x, int from_y) {
+        return chooseTarget(from_x, from_y, null);
+    }
+
+    /** target_path: a re-target from where the army stands, scored by walking distance. */
+    private @Nullable Selectable<?> retarget(int @NonNull [] c) {
+        if (!ai.strategy().target_path)
+            return chooseTarget(c[0], c[1]);
+        return chooseTarget(c[0], c[1], ai.map().computeField(c[0], c[1], 1400));
+    }
+
+    /** With {@code path}, candidates are scored by its walking distance (meters) and unreachable ones skipped. */
+    private @Nullable Selectable<?> chooseTarget(int from_x, int from_y, @Nullable DistanceField path) {
         Intel intel = ai.intel();
         Strategy strategy = ai.strategy();
         if (focus_owner != null && !focus_owner.isAlive())
@@ -1682,10 +1709,19 @@ final class Military {
             candidates.addAll(intel.enemy_buildings);
             candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(), b.getGridY()));
         }
+        Building best_line = null;
+        float best_line_score = Float.MAX_VALUE;
         for (Building b : candidates) {
             if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())))
                 continue;
-            float d = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
+            float line = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
+            float d = line;
+            if (path != null) {
+                int walk = path.getAround(b.getGridX(), b.getGridY(), 4);
+                if (walk == DistanceField.UNREACHABLE)
+                    continue;
+                d = walk;
+            }
             float priority = switch (b.getTemplate().getTemplateID()) {
                 case com.oddlabs.tt.model.Race.BUILDING_ARMORY -> strategy.quarters_first
                         || strategy.gate_freeze ? 60f : 0f;
@@ -1704,7 +1740,13 @@ final class Military {
                 best_score = score;
                 best = b;
             }
+            if (path != null && score - d + line < best_line_score) {
+                best_line_score = score - d + line;
+                best_line = b;
+            }
         }
+        if (path != null && best != best_line)
+            ai.aiLog().count("retarget_path_changed");
         if (best == null) {
             List<Unit> units = new ArrayList<>(intel.enemy_peons);
             units.addAll(intel.enemy_warriors);
@@ -2203,6 +2245,9 @@ final class Military {
         strike = false;
     }
 
+    /** defend_stable: when the current engage began. */
+    private float engage_since = -10f;
+
     /** The attack being ended was called home (recall_cooldown). */
     private boolean recalled;
 
@@ -2364,7 +2409,7 @@ final class Military {
                 endAttack();
                 return;
             }
-            Selectable<?> next = chooseTarget(c[0], c[1]);
+            Selectable<?> next = retarget(c);
             if (next == null) {
                 endAttack();
                 return;
@@ -2463,7 +2508,7 @@ final class Military {
                 // next one from where the army stands, instead of walking everyone home.
                 if (ai.strategy().stall_calm && (f == null || f.getAround(staging_x, staging_y,
                         2) != DistanceField.UNREACHABLE)) {
-                    Selectable<?> next = chooseTarget(c[0], c[1]);
+                    Selectable<?> next = retarget(c);
                     if (next != null) {
                         setTarget(next);
                         // A new target near the old one keeps the old field: restart the clock either way, or the

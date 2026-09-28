@@ -156,6 +156,20 @@ class Strategy {
     float recall_cooldown = 20f;
     /** On a retreat, warriors in a fight or with an enemy warrior within 9 cells finish it first (Military). */
     boolean retreat_rearguard = false;
+    /** No early-rush alarm once we have had an armory (Economy.checkRush): it fired after our last armory fell. */
+    boolean rush_opening_only = false;
+    /** Re-targets during an attack go by walking distance from the army, not straight-line distance (Military). */
+    boolean target_path = false;
+    /**
+     * Steadier defense (Military.defend): the chieftain's stun counts only when he is within 30 cells of the threat,
+     * the armory rule releases beyond 17 cells (engages at 14), and an engage holds at least 3 s.
+     */
+    boolean defend_stable = false;
+    /**
+     * No new tower within 25 cells of a building of ours razed in the last 90 s, and no new builders to a tower site
+     * with an awake enemy warrior within 12 cells (Economy): 61 % of such sites were razed, 13 % of the others.
+     */
+    boolean tower_cooldown = false;
     /** Gatherers per ore node before the next node is preferred, and the metres a gatherer already there costs. */
     int ore_load = 3;
     float ore_load_penalty = 6f;
@@ -636,6 +650,10 @@ class Strategy {
         launch_recheck = params.getBoolean("launch_recheck", launch_recheck);
         recall_cooldown = (float) params.getDouble("recall_cooldown", recall_cooldown);
         retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
+        rush_opening_only = params.getBoolean("rush_opening_only", rush_opening_only);
+        target_path = params.getBoolean("target_path", target_path);
+        defend_stable = params.getBoolean("defend_stable", defend_stable);
+        tower_cooldown = params.getBoolean("tower_cooldown", tower_cooldown);
         ore_load = params.getInt("ore_load", ore_load);
         ore_load_penalty = (float) params.getDouble("ore_load_penalty", ore_load_penalty);
         quarters_rally = params.getBoolean("quarters_rally", quarters_rally);

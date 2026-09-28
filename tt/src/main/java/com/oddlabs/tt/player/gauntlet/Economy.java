@@ -185,6 +185,8 @@ final class Economy {
         Intel intel = ai.intel();
         choosePrimaryArmory();
         refreshArmoryField();
+        if (ai.strategy().tower_cooldown)
+            trackRazings();
         manageProjects();
         escortForward();
         evacuate();
@@ -435,6 +437,10 @@ final class Economy {
         // A placer sent into a fight only dies there.
         if (ai.military().threatNear(p.site.x, p.site.y, 16))
             return false;
+        if (ai.strategy().tower_cooldown && p.type == Race.BUILDING_TOWER && recentlyRazedNear(p.site.x, p.site.y)) {
+            ai.aiLog().count("tower_cooldown_skip");
+            return false;
+        }
         // Builders only walk out once the army stands guard.
         if (p.forward)
             return ai.military().escortArrived(p.site.x, p.site.y);
@@ -445,6 +451,47 @@ final class Economy {
                 placed_incomplete++;
         int sites = ai.time() >= ai.strategy().tower_parallel_late_time ? ai.strategy().sites_parallel_late : ai.strategy().sites_parallel;
         return p.type == Race.BUILDING_ARMORY || placed_incomplete < sites;
+    }
+
+    /** tower_cooldown: our buildings (and sites) seen standing, and where and when one of them fell. */
+    private final java.util.Set<@NonNull Building> standing = new java.util.LinkedHashSet<>();
+    private final List<float @NonNull []> razings = new ArrayList<>();
+
+    private void trackRazings() {
+        Intel intel = ai.intel();
+        for (java.util.Iterator<Building> it = standing.iterator(); it.hasNext();) {
+            Building b = it.next();
+            if (b.isDead()) {
+                razings.add(new float[]{b.getGridX(), b.getGridY(), ai.time()});
+                it.remove();
+            }
+        }
+        razings.removeIf(r -> ai.time() - r[2] > 90f);
+        for (List<Building> group : List.of(intel.quarters, intel.armories, intel.towers, intel.quarters_sites,
+                intel.armory_sites, intel.tower_sites))
+            for (Building b : group)
+                if (!b.isDead())
+                    standing.add(b);
+    }
+
+    private boolean recentlyRazedNear(int x, int y) {
+        for (float[] r : razings)
+            if (MapAnalysis.dist2(x, y, (int) r[0], (int) r[1]) <= 25 * 25)
+                return true;
+        return false;
+    }
+
+    /** tower_cooldown: an enemy warrior that is not parked (idle and on its default controller) within r cells. */
+    private boolean awakeEnemyNear(int x, int y, int r) {
+        for (Unit e : ai.intel().enemy_warriors) {
+            if (e.isDead() || MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) > r * r)
+                continue;
+            boolean parked = e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                    && e.getCurrentController() == e.getPrimaryController();
+            if (!parked)
+                return true;
+        }
+        return false;
     }
 
     private void onCompleted(@NonNull Project p) {
@@ -876,7 +923,8 @@ final class Economy {
      */
     private void checkRush() {
         Intel intel = ai.intel();
-        if (rush_alert || !ai.strategy().rush_response || !intel.armories.isEmpty())
+        if (rush_alert || !ai.strategy().rush_response || !intel.armories.isEmpty()
+                || (ai.strategy().rush_opening_only && had_armory))
             return;
         int enemy_quarters = 0;
         boolean enemy_armory = false;
@@ -1468,6 +1516,11 @@ final class Economy {
             int need = buildersWanted(p) - builderCount(p.building);
             if (need <= 0)
                 continue;
+            if (ai.strategy().tower_cooldown && p.type == Race.BUILDING_TOWER && awakeEnemyNear(p.site.x, p.site.y,
+                    12)) {
+                ai.aiLog().count("tower_builders_held");
+                continue;
+            }
             List<Unit> chosen = new ArrayList<>();
             takeNearest(free, chosen, need, p.site.x, p.site.y);
             takeNearest(transit, chosen, need - chosen.size(), p.site.x, p.site.y);
