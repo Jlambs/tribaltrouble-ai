@@ -268,7 +268,7 @@ final class Lures {
                 continue;
             int bd2 = MapAnalysis.dist2(sx, sy, b.getGridX(), b.getGridY());
             int tb2 = MapAnalysis.dist2(tower.getGridX(), tower.getGridY(), b.getGridX(), b.getGridY());
-            if (bd2 <= td2 || tb2 > 35 * 35)
+            if (bd2 <= td2 || tb2 > 60 * 60)
                 continue;
             if (tb2 < rbest) {
                 rbest = tb2;
@@ -298,9 +298,9 @@ final class Lures {
                 for (Unit e : blob) {
                     int dx = Math.abs(e.getGridX() - x);
                     int dy = Math.abs(e.getGridY() - y);
-                    if (dx <= 7 && dy <= 7)
+                    if (dx <= 8 && dy <= 8)
                         seen = true;
-                    if (dx * dx + dy * dy < 9 * 9) {
+                    if (dx * dx + dy * dy < 73) { // 8.5 cells: throws reach 7.9
                         safe = false;
                         break;
                     }
@@ -308,7 +308,7 @@ final class Lures {
                 if (!seen || !safe)
                     continue;
                 for (Unit e : awake)
-                    if (!e.isDead() && MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 14 * 14) {
+                    if (!e.isDead() && MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 10 * 10) {
                         safe = false;
                         break;
                     }
