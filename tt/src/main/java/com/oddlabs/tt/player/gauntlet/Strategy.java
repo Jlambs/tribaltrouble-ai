@@ -100,6 +100,8 @@ class Strategy {
     boolean rock_surge = false;
     /** Decoy sites near a copy's wave origin when its shepherd finds no spot (Decoys.placeHome). */
     boolean site_shepherd = false;
+    /** The armory site's exposure weight grows by 0.75 per enemy beyond the first, up to this many (SitePlanner). */
+    int armory_threat_cap = 100;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
@@ -531,6 +533,7 @@ class Strategy {
         lure = params.getBoolean("lure", lure);
         rock_surge = params.getBoolean("rock_surge", rock_surge);
         site_shepherd = params.getBoolean("site_shepherd", site_shepherd);
+        armory_threat_cap = params.getInt("armory_threat_cap", armory_threat_cap);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);

@@ -54,7 +54,8 @@ final class SitePlanner {
         for (Player p : owner.getWorld().getPlayers())
             if (owner.isEnemy(p))
                 enemies++;
-        this.threat_weight = strategy.armory_threat_weight * (1f + .75f * Math.max(0, enemies - 1));
+        this.threat_weight = strategy.armory_threat_weight * (1f + .75f * Math.min(strategy.armory_threat_cap,
+                Math.max(0, enemies - 1)));
     }
 
     private @NonNull BuildingTemplate template(int type) {
