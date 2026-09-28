@@ -690,3 +690,16 @@ VERIFIED); **N=11 seeds 1..400: 2/400** (s336 at 50:17, s397 at 62:06; both repl
 out four copies by 14.1 min (s336: 8.1, 10.2, 12.7, 14.1 min; s397: 8.2, 10.2, 12.2, 14.1) with the two nearest
 copies 88-95 cells away. N=11 before: 0 of 700 (@g-final 400, current defaults without the cap 300).
 N=8 exam re-sit with @g-final2 running (final-vs8-g-final2).
+
+### 2026-09-28: N=8 exam with g-final2 (viking Hards): passed
+
+`./aisim.sh batch --name final-vs8-g-final2 --players "@g-final2 vs hard*8" --size large --terrain tropical --hills
+0..2 --trees 10 --supplies 10 --seeds 30001..30100 --side 0 --workers 14` (g-final2 = commit 4fe8ddfd; lint
+@g-final2 ok): **W 26 / L 74 / D 0**, Wilson 95 % [18.4, 35.4], all 26 wins by elimination (4 via collapse), 0
+failed, no swallowed errors, 36.6 min mean length, 29.7 s CPU per game. Replays s30001-0, s30002-0, s30003-0:
+VERIFIED. Dev before: 65/200 on fresh seeds. **N* = 8** (N=9 dev 15/200; no exam at N>=9).
+
+Robustness of @g-final2 (505 games): 0 failed, no swallowed errors; duel 59-1, natives 52-27-1, team B 40-0, allied
+64-11, free-for-all 35-4-1, mirror 8-10-2, huge 39-4-7, medium6 6-134. Replays of the listed N=10/11 wins
+(gfinal-vs10-hv s40-0, play-stall10d-s93, gf2-vs10-hv-b s316-0, gf2-vs11-hv s336-0 and s397-0): all VERIFIED.
+REPORT.md updated (exam attempt 4, "Wins against 10 and 11 Hards", the N=10 dead ends).
