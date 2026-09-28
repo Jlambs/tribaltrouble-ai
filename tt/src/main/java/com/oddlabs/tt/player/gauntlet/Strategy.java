@@ -403,6 +403,8 @@ class Strategy {
      */
     float harvest_seconds = 10f;
     boolean stun_cancel = true;
+    /** With stun_cancel, run only from an enemy sonic blast, not from the stun (which Reflexes cancels anyway). */
+    boolean dodge_blast_only = false;
     float decoy_time = 240f;
     int decoy_max = 8;
     int decoy_free_slots = 3;
@@ -440,6 +442,7 @@ class Strategy {
         swing_restart = params.getBoolean("swing_restart", swing_restart);
         harvest_seconds = (float) params.getDouble("harvest_seconds", harvest_seconds);
         stun_cancel = params.getBoolean("stun_cancel", stun_cancel);
+        dodge_blast_only = params.getBoolean("dodge_blast_only", dodge_blast_only);
         decoy_time = (float) params.getDouble("decoy_time", decoy_time);
         decoy_max = params.getInt("decoy_max", decoy_max);
         decoy_free_slots = params.getInt("decoy_free_slots", decoy_free_slots);

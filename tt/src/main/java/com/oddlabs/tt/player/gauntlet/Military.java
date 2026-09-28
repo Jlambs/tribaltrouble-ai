@@ -709,7 +709,13 @@ final class Military {
                     fogs.add(new Fog(e, e.getPositionX() + FOG_OFFSET * e.getDirectionX(),
                             e.getPositionY() + FOG_OFFSET * e.getDirectionY(), now));
             } else if (e != intel.chieftain && ai.strategy().dodge_stun) {
-                dodgeStun(e, now);
+                // With the stun cancel (Reflexes) a stun costs nothing: only the sonic blast, which hits the same
+                // 36 m, is worth running from. The spell's index is set on the tick the horn is raised.
+                boolean blast = e.getLastMagicIndex() == com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_BLAST;
+                if (blast)
+                    ai.aiLog().count("enemy_blast");
+                if (!ai.strategy().dodge_blast_only || !ai.strategy().stun_cancel || blast)
+                    dodgeStun(e, now);
             }
         }
         for (Fog f : fogs)

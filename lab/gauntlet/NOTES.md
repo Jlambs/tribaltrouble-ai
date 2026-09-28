@@ -397,3 +397,19 @@ base fell by 29 min. Between the two eliminations the army marched to a target 6
 per unit of expected defense, which pushed it past nearer copies) and spent ~5 min walking and skirmishing across
 the map. Params target_defense_weight (default 8) and target_home_weight (default 0: extra meters per meter from
 our staging point) queued for tests (tdw2-vs8-hv, thome1-vs8-hv).
+
+### 2026-09-28: CPU, and why the army melts at home against viking copies
+
+CPU (JFR on the replay of play-v8-s5, N=8, 29 min): 511 of 3,634 execution samples are in player.gauntlet (51 in
+Reflexes, 118 in Shepherd), 37 in the 8 stock AIs together, the rest in the engine. A game with our AI costs about
+1.2x an all-stock game of the same length (summary: 39.7 s CPU for a 49-minute N=7 exam game); our AI uses ~0.4 %
+of real time. Fine for real-time play.
+
+play-v8-s5 after the army's recall at 13:52: 155 warriors at home against base threats of 68-125 strength, yet the
+army fell to 96 by 17:30 and to 0 by 24 min, with the armory stock empty (wood 0-5, iron 0-4) and iron trips of
+80-128 s. Against viking copies a big clump of ours is blast bait: a Hard chieftain blasts when our units and
+buildings within 36 m outnumber its side 2:1 (7+), and the blast kills every rock warrior and peon and 60 % of the
+iron ones within 18 cells. Expert treats every viking cast as a stun (units run out, trapped ones rush the caster);
+with the stun cancel that running is wasted on stuns, while blasts are the real danger. Worse, shepherd-leashed
+chieftains idle far from our units for minutes, so they arrive with a full blast (normally their 40 s stun fires
+first and zeroes both charges). Param dodge_blast_only (dodge only when getLastMagicIndex() is the blast) queued.
