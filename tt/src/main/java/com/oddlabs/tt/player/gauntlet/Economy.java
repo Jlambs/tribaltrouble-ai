@@ -188,6 +188,7 @@ final class Economy {
         manageProjects();
         escortForward();
         evacuate();
+        measureYield();
         manageQuarters();
         manageArmory();
         allocatePeons();
@@ -1085,6 +1086,42 @@ final class Economy {
 
     private @Nullable Building rally_armory;
 
+    // rock_stream: measured gatherer-seconds per unit of iron and rock over the last 30 s.
+    private float meas_start = -1f;
+    private int meas_iron0;
+    private int meas_rock0;
+    private float meas_iron_gs;
+    private float meas_rock_gs;
+    private float iron_s = 0f;
+    private float rock_s = 0f;
+    private boolean rock_stream_on;
+
+    /** Every economy tick: gatherer-seconds on iron and rock, turned into seconds per unit every 30 s. */
+    private void measureYield() {
+        Player owner = ai.owner();
+        if (meas_start < 0f) {
+            meas_start = ai.time();
+            meas_iron0 = owner.getIronHarvested();
+            meas_rock0 = owner.getRockHarvested();
+        }
+        Intel intel = ai.intel();
+        meas_iron_gs += intel.countPeons(PeonState.GATHER_IRON);
+        meas_rock_gs += intel.countPeons(PeonState.GATHER_ROCK);
+        if (ai.time() - meas_start < 30f)
+            return;
+        int di = owner.getIronHarvested() - meas_iron0;
+        int dr = owner.getRockHarvested() - meas_rock0;
+        if (meas_iron_gs >= 60f)
+            iron_s = meas_iron_gs / Math.max(.5f, di);
+        if (meas_rock_gs >= 60f)
+            rock_s = meas_rock_gs / Math.max(.5f, dr);
+        meas_start = ai.time();
+        meas_iron0 = owner.getIronHarvested();
+        meas_rock0 = owner.getRockHarvested();
+        meas_iron_gs = 0f;
+        meas_rock_gs = 0f;
+    }
+
     /**
      * Opens a second armory next to fresh iron once the first one's surroundings are mined out, when the walk saved
      * on every future warrior is worth the forty pieces of wood. Only one expansion at a time; the old armory keeps
@@ -1199,7 +1236,7 @@ final class Economy {
         if (owner.canUseRubber() && armory.getBuildSupplyContainer(RubberAxeWeapon.class).getNumSupplies() == 0)
             owner.buildRubberWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         int rock_orders = armory.getBuildSupplyContainer(RockAxeWeapon.class).getNumSupplies();
-        boolean make_rock = rock_weapons || rock_filler || ai.strategy().rock_share > 0f;
+        boolean make_rock = rock_weapons || rock_filler || ai.strategy().rock_share > 0f || rock_stream_on;
         if (make_rock && rock_orders == 0)
             owner.buildRockWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         else if (!make_rock && rock_orders > 0)
@@ -1330,6 +1367,24 @@ final class Economy {
             want_iron = want_ore;
         }
         want_workers = Math.max(2, pool - want_tree - want_ore);
+        // rock_stream: once a unit of iron costs more gatherer-seconds than rock_stream_iron_s (measured, not
+        // modelled: the model's iron cycle is 1.5-5 times too optimistic after 10 min), the armory's waiting workers
+        // go for rock and the wood it needs (a rock axe: 2 wood, 1 rock, 40 man-s, 0.6 of an iron warrior); beyond
+        // 150 s per iron unit the iron gatherers are capped and sent for rock too.
+        rock_stream_on = st.rock_stream && ai.time() >= st.rock_stream_time && iron_s > st.rock_stream_iron_s
+                && !rock_weapons;
+        if (rock_stream_on) {
+            int add = Math.min(st.rock_stream_max, Math.max(0, Math.min(want_workers - 4, armory_workers / 2)));
+            if (iron_s > 150f && want_iron > 6) {
+                add += want_iron - 6;
+                want_iron = 6;
+            }
+            int wood = add / 3;
+            want_rock += add - wood;
+            want_tree += wood;
+            want_workers = Math.max(2, want_workers - add);
+            ai.aiLog().count("rock_stream");
+        }
         if (st.rock_surge && rock_filler && !rock_weapons && rock_stock < st.rock_filler_stock) {
             // The armory's workers wait for iron: send some of them for rock, the plentiful ore (rock axes take half
             // the work of iron ones).
@@ -1790,6 +1845,7 @@ final class Economy {
         sb.append(" A").append(intel.armories.size()).append('+').append(intel.armory_sites.size());
         sb.append(" T").append(intel.towers.size()).append('+').append(intel.tower_sites.size());
         sb.append(" proj=").append(projects.size());
+        sb.append(String.format(" Is=%.0f Rs=%.0f%s", iron_s, rock_s, rock_stream_on ? " RS" : ""));
         int held = 0;
         for (Building q : intel.quarters)
             if (!q.isDead())

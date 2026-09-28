@@ -129,6 +129,13 @@ class Strategy {
     float ore_load_penalty = 6f;
     /** Rally point of every quarters on the primary armory (Economy.choosePrimaryArmory). */
     boolean quarters_rally = false;
+    /**
+     * Rock stream from measured yields (Economy.computeGatherTargets): from rock_stream_time, above rock_stream_iron_s.
+     */
+    boolean rock_stream = false;
+    float rock_stream_time = 540f;
+    float rock_stream_iron_s = 70f;
+    int rock_stream_max = 30;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
@@ -573,6 +580,10 @@ class Strategy {
         ore_load = params.getInt("ore_load", ore_load);
         ore_load_penalty = (float) params.getDouble("ore_load_penalty", ore_load_penalty);
         quarters_rally = params.getBoolean("quarters_rally", quarters_rally);
+        rock_stream = params.getBoolean("rock_stream", rock_stream);
+        rock_stream_time = (float) params.getDouble("rock_stream_time", rock_stream_time);
+        rock_stream_iron_s = (float) params.getDouble("rock_stream_iron_s", rock_stream_iron_s);
+        rock_stream_max = params.getInt("rock_stream_max", rock_stream_max);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);
