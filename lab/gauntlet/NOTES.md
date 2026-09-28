@@ -684,3 +684,9 @@ armory_threat_cap=5 checks (paired with the gate_owner runs on fresh seeds 201..
 +.034 (z 2.1); N=9 **W 15 vs 11** (6/2), elim +.024 (z 2.1). Adopted as the default (it changes nothing below N=7).
 Frozen: **@g-final2** (commit 4fe8ddfd: gate_owner, endgame fix, armory_threat_cap 5, new params off). Running:
 @g-final2 at N=11 on seeds 1..400 and at N=10 on fresh seeds 201..400.
+
+**@g-final2 results on dev seeds**: N=10 fresh seeds 201..400 **4/200** (s290, s316, s345, s365; s316 replay
+VERIFIED); **N=11 seeds 1..400: 2/400** (s336 at 50:17, s397 at 62:06; both replays VERIFIED). Both N=11 wins put
+out four copies by 14.1 min (s336: 8.1, 10.2, 12.7, 14.1 min; s397: 8.2, 10.2, 12.2, 14.1) with the two nearest
+copies 88-95 cells away. N=11 before: 0 of 700 (@g-final 400, current defaults without the cap 300).
+N=8 exam re-sit with @g-final2 running (final-vs8-g-final2).
