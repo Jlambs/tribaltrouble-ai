@@ -317,9 +317,17 @@ final class SitePlanner {
                 float d = (float) Math.sqrt(d2);
                 float align = ((x - cx) * fx + (y - cy) * fy) / Math.max(1f, d);
                 float spread = 0f;
+                int covering = 0;
                 for (int[] t : existing_towers) {
                     int td2 = MapAnalysis.dist2(t[0], t[1], x, y);
-                    if (td2 < 10 * 10)
+                    if (strategy.tower_mutual) {
+                        // Towers 10-13 cells apart: a wave that razes one stands idle where its neighbours reach it
+                        // and its 8-cell scan does not see them.
+                        if (td2 < 9 * 9)
+                            spread -= 20f;
+                        else if (td2 <= 13 * 13 && covering++ < 2)
+                            spread += 6f;
+                    } else if (td2 < 10 * 10)
                         spread -= 20f;
                     else if (td2 < 16 * 16)
                         spread -= 6f;

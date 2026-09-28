@@ -61,6 +61,8 @@ class Strategy {
     float target_home_weight = 0f;
     /** Meters taken off a target's score per unit of its owner's strength standing in our base. */
     float target_threat_weight = 0f;
+    /** Towers 10-13 cells from their neighbours (SitePlanner.findTowerSite) instead of spread 16+ apart. */
+    boolean tower_mutual = false;
     /**
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
@@ -460,6 +462,7 @@ class Strategy {
         target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         target_threat_weight = (float) params.getDouble("target_threat_weight", target_threat_weight);
+        tower_mutual = params.getBoolean("tower_mutual", tower_mutual);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
         recall_ratio = (float) params.getDouble("recall_ratio", recall_ratio);
         home_guard = (float) params.getDouble("home_guard", home_guard);
