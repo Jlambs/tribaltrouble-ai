@@ -14,6 +14,10 @@ public final class HuntController extends Controller {
         this.target = target;
     }
 
+    public @NonNull Selectable<?> getTarget() {
+        return target;
+    }
+
     private boolean canAttack() {
         return unit.isCloseEnough(unit.getRange(target), target);
     }

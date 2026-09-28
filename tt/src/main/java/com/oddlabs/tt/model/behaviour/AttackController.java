@@ -35,6 +35,10 @@ public final class AttackController extends Controller {
                 target), target, UnitGrid.SEA);
     }
 
+    public Selectable<?> getTarget() {
+        return target;
+    }
+
     @Override
     public void decide() {
         if (target.isDead() || !canAttack()) {

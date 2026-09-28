@@ -32,6 +32,10 @@ public class BuildProductionContainer extends BuildSupplyContainer {
             super.orderSupply(amount);
     }
 
+    public final boolean isInfinite() {
+        return infinite;
+    }
+
     public final boolean hasEnoughSupplies() {
         for (int i = 0; i < cost.getSupplyTypes().length; i++) {
             if (building.getSupplyContainer(cost.getSupplyTypes()[i]).getNumSupplies() < cost.getSupplyAmounts()[i]) {

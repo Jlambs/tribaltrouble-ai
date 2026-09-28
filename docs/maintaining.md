@@ -50,6 +50,7 @@ These are the places a merge from upstream can conflict. On any conflict, take u
 |---|---|
 | `tt/src/main/java/com/oddlabs/tt/viewer/WorldViewer.java` | Three lines: the import of `com.oddlabs.tt.aikit.harness.PlayTest`; the Hard slot `case PlayerSlot.AI_HARD -> ai = PlayTest.hardAi(player, unit_info, ingame_info, world_params);` (upstream creates `new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD)`); and `PlayTest.leave(world);` as the first line of `close()`. For every game except an `./aisim.sh gui` play-test they change nothing. |
 | `tt/src/main/java/com/oddlabs/tt/landscape/HeightMap.java` | `computeInterpolatedHeight` wraps coordinates without float remainders: bit for bit the same results (the comment there proves it), games about 22% faster. A candidate for an upstream pull request; once upstream has it, this row goes away. |
+| `tt/src/main/java/com/oddlabs/tt/model/behaviour/HuntController.java`, `AttackController.java`, `GatherController.java` and `tt/src/main/java/com/oddlabs/tt/model/BuildProductionContainer.java` | Read-only getters for AIs: `getTarget()` (the unit a hunter or attacker is after), `getSupply()` (the resource a gatherer works) and `isInfinite()` (whether an armory's weapon order is endless). The frozen `@ultra` and `@fable` call them. |
 | `tt/build.gradle.kts` | The `aisim` block after `tasks.run`: the source set, `check` depending on it, and the `aisimClasspath` task. |
 | `README.md` | The "Developing Computer Players" section and its line in the contents. |
 | `.gitignore` | `/aisim/`. |

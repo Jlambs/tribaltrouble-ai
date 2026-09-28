@@ -40,6 +40,10 @@ public final class GatherController<S extends Supply> extends Controller {
         this.assigned_building = building;
     }
 
+    public @Nullable S getSupply() {
+        return supply;
+    }
+
     public @NonNull Class<S> getSupplyType() {
         return supply_type;
     }
