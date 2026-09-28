@@ -6,7 +6,8 @@ final exam (large tropical, hills 0..2, trees 10, supplies 10, slot 0, seeds 300
 every opponent; a timeout is a draw.
 
 This file is the working record: the comparison of the five earlier AIs, the current best, the plan, every
-hypothesis with its runs, and the dead ends. The next session resumes from here.
+hypothesis with its runs, and the dead ends. The next session resumes from here. The final summary is REPORT.md
+(N* = 8; exams: N=7 @g-shep 45/100, N=8 @g-v8 11/100, N=8 @g-final 25/100).
 
 ## The five earlier AIs (study of 2026-09-28)
 
