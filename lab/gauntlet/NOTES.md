@@ -667,3 +667,15 @@ More N=10 screens (paired with gateown-vs10-hv, i.e. on top of gate_owner, seeds
 
 First attack at N=10 with gate_owner: muster at 384-393 s (6.5 min) instead of 456-549 s. Running: current defaults
 (gate_owner, endgame fix) at N=10 seeds 1..200 and N=11 seeds 1..300.
+
+Current defaults (gate_owner + endgame fix, = @g-n10 frozen from HEAD) on dev seeds: **N=10 2/200** (s20 at 101 min,
+s196 at 46 min), elim +.035 (z 3.2) and lsr20 +.27 (z 2.5) vs @g-final on the same seeds; **N=11 0/300** (elim +.022,
+z 3.9 vs gfinal-vs11-hv-b). N=11 total so far: 0 wins in 700 games.
+
+Opening screens at N=10 (paired with cur-vs10-hv):
+- hold_mid_time=360: neutral.
+- **armory_threat_weight=37**: seeds 1..100 W 4 vs 1 (3/0), elim +.020, kd +.067 (z 2.0); seeds 101..200 W 2 vs 1
+  (1/0), elim +.015, kd +.100 (z 3.1). armory_threat_weight=20: seeds 1..100 W 4 vs 1 (3/0), elim +.032. The
+  armory's exposure weight is 60 x (1 + 0.75 (N-1)) = 465 at N=10 (SitePlanner): it keeps the first armory away
+  from the good iron. New param armory_threat_cap caps (N-1) (cap 5 at N=10 = weight 285, like 37 x 7.75 = 287);
+  cap 5 checked at N=8 and N=9 on fresh seeds (running).
