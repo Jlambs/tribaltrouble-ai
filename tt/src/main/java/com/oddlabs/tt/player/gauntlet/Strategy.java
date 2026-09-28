@@ -110,6 +110,8 @@ class Strategy {
     boolean tower_full_reach = false;
     /** Retarget towers on the tick their target dies (Military.towerReflex). */
     boolean tower_reflex = false;
+    /** Retarget warriors on the tick their target dies (Military.armyReflex). */
+    boolean army_reflex = false;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
@@ -544,6 +546,7 @@ class Strategy {
         armory_threat_cap = params.getInt("armory_threat_cap", armory_threat_cap);
         tower_full_reach = params.getBoolean("tower_full_reach", tower_full_reach);
         tower_reflex = params.getBoolean("tower_reflex", tower_reflex);
+        army_reflex = params.getBoolean("army_reflex", army_reflex);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);

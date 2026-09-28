@@ -2996,6 +2996,57 @@ final class Military {
         return targeted;
     }
 
+    /**
+     * Every tick: a warrior whose assigned target just died gets the best enemy within throwing reach at once, instead
+     * of idling until our next round (0.5 s) or its own rescan (1-2 s, IdleController). During the throw's recovery
+     * the order waits for the 2 s cycle to end, so the next throw follows without a gap.
+     */
+    void armyReflex() {
+        if (!ai.strategy().army_reflex || hunt_targets.isEmpty())
+            return;
+        Intel intel = ai.intel();
+        List<Unit> retarget = null;
+        for (Map.Entry<Unit, Unit> e : hunt_targets.entrySet())
+            if (!e.getKey().isDead() && e.getValue().isDead()) {
+                if (retarget == null)
+                    retarget = new ArrayList<>();
+                retarget.add(e.getKey());
+            }
+        if (retarget == null)
+            return;
+        int r2 = THROW_CELLS * THROW_CELLS;
+        for (Unit w : retarget) {
+            hunt_targets.remove(w);
+            Role role = roles.get(w);
+            // Not while the army falls back, and never a warrior on its way into a tower.
+            if (w.isMounted() || Intel.isStunned(w) || role == Role.TOWER
+                    || (mode == Mode.RETREAT && role == Role.ATTACK))
+                continue;
+            Unit best = null;
+            float best_score = 0f;
+            for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons))
+                for (Unit e : group) {
+                    if (e.isDead() || MapAnalysis.dist2(w.getGridX(), w.getGridY(), e.getGridX(), e.getGridY()) > r2)
+                        continue;
+                    int others = 0;
+                    for (Unit o : hunt_targets.values())
+                        if (o == e)
+                            others++;
+                    float score = throwValue(w, e) * hitChance(w, e) / (1 << Math.min(others, 4));
+                    if (score > best_score) {
+                        best_score = score;
+                        best = e;
+                    }
+                }
+            if (best == null)
+                continue;
+            hunt_targets.put(w, best);
+            last_order.put(w, ai.time());
+            ai.owner().setTarget(Selectable.newArray(w), best, Action.ATTACK, true);
+            ai.aiLog().count("army_reflex");
+        }
+    }
+
     /** A chieftain takes many hits; everyone else falls to one. */
     private boolean isMultiHit(@NonNull Unit e) {
         return ai.strategy().chief_per_hit && e.getAbilities().hasAbilities(Abilities.MAGIC);
