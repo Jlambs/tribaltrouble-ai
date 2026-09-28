@@ -100,8 +100,12 @@ class Strategy {
     boolean rock_surge = false;
     /** Decoy sites near a copy's wave origin when its shepherd finds no spot (Decoys.placeHome). */
     boolean site_shepherd = false;
-    /** The armory site's exposure weight grows by 0.75 per enemy beyond the first, up to this many (SitePlanner). */
-    int armory_threat_cap = 100;
+    /**
+     * The armory site's exposure weight grows by 0.75 per enemy beyond the first, up to this many (SitePlanner): past
+     * N=6 it kept the first armory from the good iron (vs hard*9 atcap5-vs9-hv-b W 15 vs 11 of 200, elim +.024 z 2.1;
+     * N=10 with the same weight via armory_threat_weight=37: W 6 vs 2 of 200; N=8 W 65 vs 65).
+     */
+    int armory_threat_cap = 5;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
