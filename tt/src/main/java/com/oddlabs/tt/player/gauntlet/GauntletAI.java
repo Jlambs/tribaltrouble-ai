@@ -102,6 +102,8 @@ public final class GauntletAI extends AI {
         time = ticks / (float) GameTime.TICKS_PER_SECOND;
         try {
             reflexes.tick();
+            if (initialized && ticks % 5 == 0)
+                shepherd().guard();
             think();
         } catch (RuntimeException | AssertionError e) {
             // Engine getters assert on units that just died: count the error (every result row shows it), log the

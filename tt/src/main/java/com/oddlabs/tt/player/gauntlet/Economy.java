@@ -1490,6 +1490,23 @@ final class Economy {
             sb.append(',').append(armory.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies());
             sb.append(String.format(" cyc=%.0f/%.0f", tree_cycle, iron_cycle));
         }
+        // Peons in transit: entering near the primary armory, more than 60 cells from it, or transferring.
+        int near = 0;
+        int far = 0;
+        int transfer = 0;
+        for (Unit p : intel.peons) {
+            if (p.isDead() || intel.peon_states.get(p) != PeonState.TRANSIT)
+                continue;
+            if (p.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.TransferUnitController)
+                transfer++;
+            else if (armory != null && MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), p.getGridX(),
+                    p.getGridY()) <= 8 * 8)
+                near++;
+            else if (armory != null && MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), p.getGridX(),
+                    p.getGridY()) > 60 * 60)
+                far++;
+        }
+        sb.append(" trx=").append(near).append('/').append(far).append('/').append(transfer);
         return sb.toString();
     }
 }

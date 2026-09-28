@@ -265,3 +265,16 @@ when enemies come within 10 cells or a wave walks at its spot. play-shep-s12 (N=
 ours lost until 12:07 (the same seed at N=7 without shepherds was under attack from 5:30 and fell at ~15 min);
 12 towers by 11:30; the game reached the cap. Counters: 10 launches drawn to the spot, 24 shepherds recruited,
 16 lost.
+
+### 2026-09-28: shepherd A/B, and two dead-unit bugs
+
+| run (paired) | W | elim | lsr15 | lsr20 | kd | gained/lost | shepherds lost/game |
+|---|---|---|---|---|---|---|---|
+| shep-vs8-hn (v1) vs k1-vs8-hn | 6 vs 2 | 0.180 vs 0.100 (z +3.2) | -1.30 vs -2.15 (z +5.9) | -1.98 vs -3.14 (z +6.4) | +0.13 | 5/1 | 45.5 (14.4 launches drawn) |
+| shep-vs7-hn (v2, with the guard bug) vs swing-vs7-hn | 22 vs 19 | 0.349 vs 0.300 | -1.00 vs -1.40 (z +3.9) | -1.52 vs -2.22 (z +4.2) | +0.24 (z +6.1) | 14/11 | 31.7 (15.5 drawn) |
+
+Bugs found in the logs of play-shep5-s12: getPrimaryController asserts on units that died since the last Intel
+snapshot. (1) The shepherd's guard pass runs every 5 ticks on Intel's enemy lists: 1,628 swallowed errors per game
+in shep-vs7-hn, each aborting that tick's animate (so think was skipped when due). (2) The STAT transit breakdown
+did the same on our peons, only when logging: logging changed decisions. Both now check isDead first; shep-vs6-hn
+(buggy build) stopped; fixed build re-run as shep3-* and shep2-vs8-hn.

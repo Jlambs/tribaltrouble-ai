@@ -317,7 +317,7 @@ final class Decoys {
      * defense leaves such enemies to the towers instead of waking them.
      */
     boolean caged(@NonNull Unit e) {
-        if (!ai.strategy().decoys || !ai.strategy().decoy_cage)
+        if (!ai.strategy().decoys || !ai.strategy().decoy_cage || e.isDead())
             return false;
         Controller current = e.getCurrentController();
         if (current instanceof HuntController || current instanceof AttackController)
