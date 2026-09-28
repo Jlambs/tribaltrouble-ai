@@ -452,3 +452,26 @@ runs below level 2. The wins are long sustained attacks (810-1,350 s in ATTACK, 
 eliminate 3-6 copies. Params recall_ratio (default 0.35: recall when the base threat beats the home defense and
 0.35 of the attack) and attack_threat_ratio queued: recall10-vs8-hv (1.0), recallatk-vs8-hv (1.0 + 1.0).
 Also pending: q5/q6 (more quarters), raid8 (raids under threat), decoync (decoys without the cage rule).
+
+### 2026-09-28: more N=8 attempts (viking Hards, paired with base4-vs8-hv, 14/100)
+
+| variant | W | notes |
+|---|---|---|
+| initial_quarters=5, max_quarters=5 | 14 | kd -0.11 (z -3.0) |
+| max_quarters=6 | 13 | kd -0.09 (z -2.7) |
+| raid_threat=2, raid_size=8 (raids on enemy peons under threat) | 9 | 4/9 |
+| recall_ratio=1.0 | 15 | 4/3 |
+| recall_ratio=1.0, attack_threat_ratio=1.0 | 15 | 5/4; logged campaign (camp40ra): ATTACK 572 s vs 437, still ~1 muster per game |
+| decoys without the cage rule (with shepherds) | 14 | 6/6; decoys active (20 placed, 11 razed per game) |
+
+What the logged games show (camp40ra s5-0): every big fight is won on trades (+9 to +161), including 132 and 40
+enemy peons killed at their bases, but while the army is out our base is razed (7 buildings in one fight, 13 in the
+next), the economy stops, and the army cannot be replaced: at N=8 we cannot both hold the base and attack. Cheap base
+defense is the missing piece, and none of the tower/decoy layouts tried so far delivers it.
+
+Consolidated: dodge_blast_only on by default (commit c002c1ae), frozen as g-v8. Fresh-seed estimate at N=8
+(seeds 201..400) running.
+
+Robustness sweep of @g-v8 (lab/gauntlet/robustness.sh, first half): random maps of every size and terrain.
+duel vs hard 59-1 (60 games), as natives vs hard*3 53-25-2 (80), in team B vs hard 40-0 (40), allied with hard vs
+hard*3 64-11 (75); 0 failed games, no swallowed errors.
