@@ -83,6 +83,22 @@ final class Military {
      */
     private final Map<@NonNull Selectable<?>, Float> stalled_targets = new LinkedHashMap<>();
     private static final float STALL_MEMORY = 600f;
+    /**
+     * Regions the army could not enter (the stalled target's distance field did not reach our staging point), and when
+     * found: every target inside one is skipped too (N=10 s93: a copy's 20 peons stuck with a site in a 252-cell pocket
+     * drew every re-target of the army). At most three are kept.
+     */
+    private final List<@NonNull DistanceField> dead_regions = new ArrayList<>();
+    private final List<@NonNull Float> dead_region_times = new ArrayList<>();
+
+    /** Whether (x, y) lies in a region the army found it cannot enter. */
+    private boolean inDeadRegion(int x, int y) {
+        for (DistanceField f : dead_regions)
+            if (f.getAround(x, y, 2) != DistanceField.UNREACHABLE)
+                return true;
+        return false;
+    }
+
     /** The copy whose buildings the attacks go after first while it is alive (focus_bonus). */
     private com.oddlabs.tt.player.@Nullable Player focus_owner;
     private int target_x;
@@ -1354,7 +1370,8 @@ final class Military {
         Selectable<?> best = null;
         float best_score = Float.MAX_VALUE;
         for (Building b : intel.enemy_buildings) {
-            if (b.isDead() || b.isComplete() || stalled_targets.containsKey(b))
+            if (b.isDead() || b.isComplete() || stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(),
+                    b.getGridY()))
                 continue;
             int id = b.getTemplate().getTemplateID();
             if (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY)
@@ -1372,7 +1389,7 @@ final class Military {
         // Units of homeless copies: chieftains count as four times nearer.
         for (List<Unit> group : List.of(intel.enemy_chieftains, intel.enemy_warriors, intel.enemy_peons))
             for (Unit u : group) {
-                if (u.isDead() || stalled_targets.containsKey(u))
+                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u.getGridX(), u.getGridY()))
                     continue;
                 int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
                 if (d > range2 || !homeless(u.getOwner()))
@@ -1442,17 +1459,21 @@ final class Military {
                 if (!u.isDead() && !u.getAbilities().hasAbilities(Abilities.BUILD))
                     base_threat.merge(u.getOwner(), Combat.value(u), Float::sum);
         stalled_targets.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > STALL_MEMORY);
+        while (!dead_region_times.isEmpty() && ai.time() - dead_region_times.getFirst() > STALL_MEMORY) {
+            dead_regions.removeFirst();
+            dead_region_times.removeFirst();
+        }
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
         candidates.addAll(intel.enemy_quarters);
         candidates.addAll(intel.enemy_towers);
-        candidates.removeIf(stalled_targets::containsKey);
+        candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(), b.getGridY()));
         if (strategy.gate_freeze)
             for (Building b : intel.enemy_buildings)
                 if (!b.isComplete() && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS)
                     candidates.add(b);
         if (candidates.isEmpty()) {
             candidates.addAll(intel.enemy_buildings);
-            candidates.removeIf(stalled_targets::containsKey);
+            candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(), b.getGridY()));
         }
         for (Building b : candidates) {
             if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())))
@@ -1483,7 +1504,7 @@ final class Military {
             units.addAll(intel.enemy_chieftains);
             int best_d = Integer.MAX_VALUE;
             for (Unit u : units) {
-                if (u.isDead() || stalled_targets.containsKey(u))
+                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u.getGridX(), u.getGridY()))
                     continue;
                 int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
                 if (d < best_d) {
@@ -2173,13 +2194,24 @@ final class Military {
                         if (cost != DistanceField.UNREACHABLE)
                             cells++;
                 int fc = cells;
-                ai.log("attack stalled (target region " + fc + " cells, staging " + (f != null && f.getAround(staging_x,
-                        staging_y, 2) != DistanceField.UNREACHABLE ? "reaches it" : "cut off") + ")");
+                ai.log("attack stalled (field from " + target_x + "," + target_y + ", target region " + fc + " cells, staging " + (f != null
+                        && f.getAround(staging_x,
+                                staging_y, 2) != DistanceField.UNREACHABLE ? "reaches it" : "cut off") + ")");
             } else
                 ai.log("attack stalled");
             if (target != null && ai.strategy().skip_stalled) {
                 stalled_targets.put(target, ai.time());
                 ai.aiLog().count("target_stalled");
+                DistanceField f = target_field;
+                if (f != null && f.getAround(staging_x, staging_y, 2) == DistanceField.UNREACHABLE) {
+                    dead_regions.add(f);
+                    dead_region_times.add(ai.time());
+                    if (dead_regions.size() > 3) {
+                        dead_regions.removeFirst();
+                        dead_region_times.removeFirst();
+                    }
+                    ai.aiLog().count("target_region_dead");
+                }
             }
             beginRetreat();
         }
