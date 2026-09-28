@@ -102,7 +102,7 @@ final class Economy {
         if (armory_site != null)
             reserved.add(armory_site.withHalf(SitePlanner.RaceSizes.ARMORY));
 
-        int first_builders = Math.max(1, intel.peons.size() - strategy.scouts);
+        int first_builders = Math.max(1, intel.peons.size() - strategy.scouts - intel.strikers.size());
         Site q1 = planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), ax, ay, first_builders,
                 .2f, .06f);
         // The score is minus the seconds until the quarters stands; when that is poor nearby, a walk to better
@@ -157,6 +157,8 @@ final class Economy {
         Unit best_scout = null;
         int best_d = Integer.MAX_VALUE;
         for (Unit peon : intel.peons) {
+            if (intel.strikers.contains(peon))
+                continue;
             int d = MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), ax, ay);
             if (d < best_d) {
                 best_d = d;
@@ -168,7 +170,7 @@ final class Economy {
         if (first != null && first.first) {
             List<Unit> builders = new ArrayList<>();
             for (Unit peon : intel.peons)
-                if (peon != scout)
+                if (peon != scout && !intel.strikers.contains(peon))
                     builders.add(peon);
             if (!builders.isEmpty())
                 place(first, builders);
@@ -341,7 +343,7 @@ final class Economy {
         for (Project q : projects)
             if (q != p && q.isPlaced() && q.type != Race.BUILDING_ARMORY)
                 placed_incomplete++;
-        return p.type == Race.BUILDING_ARMORY || placed_incomplete < 2;
+        return p.type == Race.BUILDING_ARMORY || placed_incomplete < ai.strategy().sites_parallel;
     }
 
     private void onCompleted(@NonNull Project p) {
@@ -524,7 +526,7 @@ final class Economy {
             forward_towers.removeIf(Building::isDead);
             int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
                     false) - forward_towers.size() - countForward() - ai.military().creepTowerCount();
-            if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) == 0
+            if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < ai.strategy().tower_parallel
                     && ai.owner().canBuild(Race.BUILDING_TOWER)) {
                 List<int[]> existing = new ArrayList<>();
                 for (Building t : intel.towers)
@@ -989,8 +991,9 @@ final class Economy {
             return;
         }
         MapAnalysis map = ai.map();
-        tree_cycle = SitePlanner.gatherSeconds(armory_field, map.getTrees(), 60, 10, 120);
-        iron_cycle = SitePlanner.gatherSeconds(armory_field, map.getIron(), 30, 10, 400);
+        float harvest = ai.strategy().harvest_seconds;
+        tree_cycle = SitePlanner.gatherSeconds(armory_field, map.getTrees(), 60, 10, 120, harvest);
+        iron_cycle = SitePlanner.gatherSeconds(armory_field, map.getIron(), 30, 10, 400, harvest);
         int iron_left = countReachable(map.getIron(), 400);
         // Rock warriors are a poor use of a peon; make them only once iron is out of reach.
         rock_weapons = (iron_left == 0 || iron_cycle > 200f)
@@ -1003,8 +1006,8 @@ final class Economy {
             rock_filler = true;
         else if (rock_filler && (iron_stock >= 5 || armory_workers < 8))
             rock_filler = false;
-        float ore_cycle = rock_weapons ? SitePlanner.gatherSeconds(armory_field, map.getRocks(), 30, 10,
-                240) : iron_cycle;
+        float ore_cycle = rock_weapons ? SitePlanner.gatherSeconds(armory_field, map.getRocks(), 30, 10, 240,
+                harvest) : iron_cycle;
         float work = rock_weapons ? IRON_WORK / 2 : IRON_WORK;
 
         int workers = armory.getUnitContainer().getNumSupplies();

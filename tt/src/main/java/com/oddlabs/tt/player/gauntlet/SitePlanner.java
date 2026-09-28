@@ -20,7 +20,6 @@ import java.util.List;
  */
 final class SitePlanner {
     /** Seconds a peon spends harvesting one unit: ten hits, one per second. */
-    private static final float HARVEST_SECONDS = 10f;
     /** Seconds of walking per meter of distance for a round trip: out at 5 m/s, back loaded at 4 m/s. */
     private static final float ROUND_TRIP_SECONDS_PER_METER = 1f / 5f + 1f / 4f;
     private static final int MISSING_DISTANCE = 140;
@@ -77,7 +76,7 @@ final class SitePlanner {
      * Seconds of peon time per unit gathered for the cheapest `units` units of the supplies around a site.
      */
     static float gatherSeconds(@NonNull DistanceField field, @NonNull List<? extends Supply> supplies, int units,
-            int per_node, int max_meters) {
+            int per_node, int max_meters, float harvest_seconds) {
         int sx = field.getSourceX();
         int sy = field.getSourceY();
         int limit2 = (max_meters / 2) * (max_meters / 2);
@@ -104,7 +103,7 @@ final class SitePlanner {
         // Whatever is not found within the window is further away than that, however far.
         total += remaining * (float) Math.max(MISSING_DISTANCE, max_meters + 60);
         float avg = total / units;
-        return HARVEST_SECONDS + ROUND_TRIP_SECONDS_PER_METER * avg;
+        return harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * avg;
     }
 
     /**
@@ -112,8 +111,8 @@ final class SitePlanner {
      */
     float warriorGatherCost(@NonNull DistanceField field) {
         // Look far enough ahead to feed the armory well into the middle game, not just the first warriors.
-        float tree = gatherSeconds(field, map.getTrees(), 300, 10, 120);
-        float iron = gatherSeconds(field, map.getIron(), 150, 10, 200);
+        float tree = gatherSeconds(field, map.getTrees(), 300, 10, 120, strategy.harvest_seconds);
+        float iron = gatherSeconds(field, map.getIron(), 150, 10, 200, strategy.harvest_seconds);
         return 2 * tree + iron;
     }
 
@@ -162,9 +161,9 @@ final class SitePlanner {
                     continue;
                 // A rough version of the full cost below, with distances as the crow flies, to pick which sites are
                 // worth the exact evaluation.
-                float iron_cycle = HARVEST_SECONDS + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
+                float iron_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
                         1.25f * averageDistance(iron, x, y, 15) - 5f);
-                float tree_cycle = HARVEST_SECONDS + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
+                float tree_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
                         1.25f * map.averageTreeDistance(x, y, 30, 60, 150f) - 5f);
                 float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d / 5f + strategy.armory_distance_weight * d + threat_weight * Math.max(
                         0f, exposure(x, y) - .42f);
@@ -286,7 +285,7 @@ final class SitePlanner {
         // Distances from the start expose trees behind cliffs that look close as the crow flies.
         float avg = map.averageTreeDistance(x, y, trees, 35, 90f, start_field);
         float walk = Math.max(0f, avg * 1.25f - 5f);
-        float cycle = HARVEST_SECONDS + REPAIR_SECONDS + ROUND_TRIP_SECONDS_PER_METER * walk;
+        float cycle = strategy.harvest_seconds + REPAIR_SECONDS + ROUND_TRIP_SECONDS_PER_METER * walk;
         return wood * cycle / builders;
     }
 

@@ -67,6 +67,27 @@ producing (a copy's production curve does not depend on N: ~25 warriors by 7 min
 References on the same dev seeds (1..100, slot 0, vikings everywhere): `@expert` 33 at N=5 (base-expert-vs5),
 7 at N=6 (base-expert-vs6); `@sweep-v75` 12 at N=4 (base-sweep75-vs4).
 
+## Plan (2026-09-28, after the study, the swing restart and K1)
+
+Ladder now (dev seeds 1..100, slot 0): vs native Hards N=4 78 (port), N=5 76, N=6 52, N=7 19, N=8 2; vs viking
+Hards with K1 N=6 49, N=7 17. So N*=7 is within reach on dev, N=8 is the next frontier. The three strategists of
+the study (full texts in the session scratchpad: ideate-*.md) ranked, and I added, in order of expected value at
+N>=7:
+
+1. **Freeze strike** (contrarian #1, sweep lab/sweep/model/freeze.md): at N>=6 the two ring neighbours start
+   ~130-150 cells away (peon ETA ~55-60 s). Kill every armory builder of a copy after its armory site is placed
+   (~73 s, built ~131 s): the copy never builds again (armory flag never cleared, nobody leaves the quarters), and
+   its quarters can be razed later with no response at all -> out. Worth ~one N step per frozen copy.
+2. **Per-copy elimination focus** (all three): commit to one copy until it is out (armory, quarters, peons,
+   sites); reinforce against several enemies; never touch a frozen copy's armory site.
+3. **Steering waves** (exploit-first #1/#4): the 0.707 unit rule lets one shepherd peon draw each launch to an
+   empty cell; decoys (Decoys.java) need a tower layout with room in front. Feed blobs one at a time into tower
+   reach.
+4. **Basics at high N** (basics-first): army by 6:00, parallel front towers, earlier expansion armory, peons out of
+   threatened quarters, rock as a second stream. Param screen first (below).
+5. **Our chieftain on parked blobs** (exploit-first #2): blast or stun+charge idle blobs that never react.
+6. Re-check the Hard race per N before each exam (natives ~ vikings+K1 at N=6-7 so far).
+
 ## Tools
 
 - `lab/gauntlet/dev.sh NAME "PLAYERS" SEEDS [args]`: a batch on the benchmark's maps; refuses exam seeds.
@@ -156,3 +177,47 @@ Reflexes: every tick, each own unit whose current controller is a StunController
 job (from the controllers under the stun; never a chieftain with a MagicController queued, audit A10). One game
 vs viking Hards (play-k1-s20): 47 stuns cancelled, and no `stunned` event for our slot at all, while the copies cast
 stuns throughout. Next: does it make viking Hards easier than native ones?
+
+### 2026-09-28: param screen at N=7 (vs native Hards, seeds 1..100, paired with swing-vs7-hn, 19 wins)
+
+| variant | W | elim | lsr15 | gained/lost | verdict |
+|---|---|---|---|---|---|
+| harvest_seconds=3.5 (gather model with the swing restart's chop time) | 15 | 0.267 | -1.48 | 9/13 | no (the stock-based crew corrections already cope) |
+| quarters_before_armory=2 | 16 | 0.279 | -1.37 | 8/11 | no |
+| quarters_before_armory=3 | 17 | 0.291 | -1.29 | 9/11 | no |
+| chieftain_min_quarters=2 | 19 | 0.300 | -1.40 | 1/1 | inert (3 quarters already stand by 240 s) |
+| reinforce_multi=true | **27** | 0.361 | -1.35 | **10/2** (win z +2.4) | **yes**: reinforce the attack against several enemies too |
+| hold_mid=6 | | | | | pending |
+
+Ladder of the same build: vs viking Hards with K1, N=7 17/100 (k1-vs7-hv); vs native Hards N=8 2/100 (k1-vs8-hn).
+
+What the N=7 losses look like (swing-vs7-hn s12-0): early fights are won (+2..+28 each, 5-11 min), then the
+chieftain waves of several copies converge at 11-17 min; the native chieftains cast LightningCloud 11 times in
+five minutes and the one long fight costs 180 of ours (90 peons, the chieftain) for 122 of theirs (4 chieftains),
+with quarters, armory and towers razed. Lightning (30 damage per strike, one strike per second for 22 s, homing on
+units and buildings, P = 1 - defense) is the killer against native copies.
+
+### 2026-09-28: freeze strike, first game
+
+play-freeze-s2 (N=7, freeze=true, 12-minute cap): squad of 10 sent at 0 s to s4 (eta 59 s), arrived 45 s, armory
+site placed 69 s, all outside peons dead and s4 frozen at 115 s; the squad razed the frozen quarters by 489 s and
+s4 went out at 8:09 (counters freeze_frozen 1, freeze_out 1).
+
+### 2026-09-28: freeze strike A/B (dead end at N=7-8)
+
+Freeze.java (commit of this entry, then deleted): at the start, freeze_squad=10 of the 20 peons walk to the
+nearest copy within 90 s, wait outside its 30 m circle for the armory site, kill every outside peon, then raze
+the frozen quarters.
+
+| run | W | elim | lsr10 | lsr15 | notes |
+|---|---|---|---|---|---|
+| freeze1-vs7-hn vs swing-vs7-hn | 9 vs 19 (5 gained, 15 lost) | 0.150 vs 0.300 | -1.67 vs -0.93 | -2.95 vs -1.40 | 99 sent, 35 frozen, 23 razed out, 69 squads worn below 3 peons |
+| freeze2-vs7-hn (freeze_targets=2) | 9 | 0.150 | -1.67 | -2.95 | identical: freeze_keep=8 leaves no peons for a second squad |
+| freeze1-vs8-hn vs k1-vs8-hn | 4 vs 2 | 0.094 vs 0.100 | -2.26 vs -1.27 | -3.72 vs -2.15 | |
+
+Why it fails: taking half the starting peons costs a full ~0.75 of log strength at 10 minutes (the opening
+compounds: Q1 builders and the first breeders), and only a third of the strikes freeze their copy (squads are worn
+down by idle builders and by the copy's defense drafting idle peons, as sweep's proto-strike logs showed). One
+frozen copy is worth about one N step, but not at this price. It could pay at N>=10, where neighbours start ~90
+cells away (ETA ~35 s), but N=10 is out of reach. Not retried with smaller squads: at 6 peons the kill rate
+(0.6/s) cannot finish 20 builders inside the armory's ~58 s.

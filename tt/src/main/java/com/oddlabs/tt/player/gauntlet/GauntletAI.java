@@ -48,6 +48,7 @@ public final class GauntletAI extends AI {
     private @Nullable Military military;
     private @Nullable Chieftain chieftain;
     private @Nullable Decoys decoys;
+    private @Nullable Freeze freeze;
 
     private int ticks;
     private float time;
@@ -55,6 +56,7 @@ public final class GauntletAI extends AI {
     private float next_economy = .25f;
     private float next_plan = .5f;
     private float next_scan = SCAN_PERIOD;
+    private float next_stat = 30f;
     private boolean initialized;
     /** Whether the decision log is written anywhere, so that describing decisions is worth the work. */
     private boolean logging;
@@ -130,11 +132,16 @@ public final class GauntletAI extends AI {
             next_economy = time + ECONOMY_PERIOD;
             economy().tick();
             decoys().tick();
+            freeze().tick();
         }
         if (due_plan) {
             next_plan = time + PLAN_PERIOD;
             economy().plan();
             military().plan();
+        }
+        if (logging && time >= next_stat) {
+            next_stat = time + 30f;
+            log.log("STAT", debugStatus());
         }
         if (time >= next_scan) {
             next_scan = time + SCAN_PERIOD;
@@ -157,6 +164,9 @@ public final class GauntletAI extends AI {
         planner = new SitePlanner(map, owner, strategy, sx, sy, ex, ey, start_field, enemy_field);
         log(String.format("map %d cells, start %d,%d, nearest enemy starts %d,%d (%dm walk), %d enemies", map.getSize(),
                 sx, sy, ex, ey, start_field.get(ex, ey), countEnemies(owner)));
+        intel.update();
+        freeze = new Freeze(this);
+        freeze.plan(start_field);
         intel.update();
         economy = new Economy(this);
         military = new Military(this);
@@ -294,6 +304,12 @@ public final class GauntletAI extends AI {
     Military military() {
         assert military != null;
         return military;
+    }
+
+    @NonNull
+    Freeze freeze() {
+        assert freeze != null;
+        return freeze;
     }
 
     @NonNull
