@@ -292,9 +292,49 @@ final class Military {
     // ------------------------------------------------------------------------------------------------------------
     // Tick
 
+    private float last_provoke_probe = -10f;
+
+    /**
+     * Diagnostic counters only (no orders): every 5 s in the first 15 minutes, our units standing within 15 cells of an
+     * enemy quarters or armory, by peon state or warrior role. A Hard copy scans 30 m around its first quarters and
+     * armory, and anything of ours there makes it deploy its armory stock and send its peons (AdvancedAI
+     * nodeDefendBase), which brings its next wave forward.
+     */
+    private void provokeProbe() {
+        if (ai.time() - last_provoke_probe < 5f || ai.time() > 900f)
+            return;
+        last_provoke_probe = ai.time();
+        Intel intel = ai.intel();
+        List<Building> homes = new ArrayList<>(intel.enemy_quarters);
+        homes.addAll(intel.enemy_armories);
+        if (homes.isEmpty())
+            return;
+        List<Unit> ours = new ArrayList<>(intel.peons);
+        ours.addAll(intel.warriors);
+        for (Unit u : ours) {
+            if (u.isDead() || u.isMounted())
+                continue;
+            boolean near = false;
+            for (Building b : homes)
+                if (!b.isDead() && MapAnalysis.dist2(u.getGridX(), u.getGridY(), b.getGridX(),
+                        b.getGridY()) <= 15 * 15) {
+                            near = true;
+                            break;
+                        }
+            if (!near)
+                continue;
+            PeonState state = intel.peon_states.get(u);
+            Role role = roles.get(u);
+            String what = state != null ? state.name() : role != null ? role.name() : "OTHER";
+            ai.aiLog().count("prov_" + what);
+            ai.aiLog().count(ai.time() < 480f ? "prov_early" : "prov_mid");
+        }
+    }
+
     void tick() {
         watchEnemyCasts();
         updateRoles();
+        provokeProbe();
         updateStaging();
         updateThreat();
         manTowers();

@@ -703,3 +703,60 @@ Robustness of @g-final2 (505 games): 0 failed, no swallowed errors; duel 59-1, n
 64-11, free-for-all 35-4-1, mirror 8-10-2, huge 39-4-7, medium6 6-134. Replays of the listed N=10/11 wins
 (gfinal-vs10-hv s40-0, play-stall10d-s93, gf2-vs10-hv-b s316-0, gf2-vs11-hv s336-0 and s397-0): all VERIFIED.
 REPORT.md updated (exam attempt 4, "Wins against 10 and 11 Hards", the N=10 dead ends).
+
+## Micro push for 1v11 (2026-09-28, user: micromanagement, towers, pathing, economy, luring)
+
+Reports of the analysis workflow (5 investigators, verifiers, a judge) are in the session scratchpad micro/*.md.
+Engine facts behind the tower work (verified in source): a garrison keeps the grid cell it entered from (Unit.mount
+moves only the world position), and range checks and scans use that cell, so a tower reaches 17-18.4 cells towards
+its entry side and 12.7-13 behind; range is compared in grid cells (dist^2 <= 252 for garrisons, 62 in the field);
+the throw is 2 s and uninterruptible with the release at 1.0 s, and an iron axe flies 25 m/s (rock 20, rubber 30), so
+beyond ~12.5 cells the target is still alive when the throw ends; an order given during a throw waits under it.
+
+Protocol: pair with t2-vs11-hv (the defaults after the tower bundle and stall_calm) on seeds 1..200; adopt at elim
+z >= 1.5 with lsr15/lsr20 not negative, or lsr20 z >= 2 with elim >= 0; check at N=8 on seeds 201..400.
+
+| variant (N=11, seeds 1..200) | elim diff (z) | other | verdict |
+|---|---|---|---|
+| tower bundle: tower_gunner_reach, tower_prequeue, tower_reflex, tower_self_first, chicken_gunners (vs gf2) | +.015 (1.5) | **lsr20 +.52 (4.9)**, W 4 vs 0, +3.2 min | **adopted** |
+| stall_calm (stall clock paused while fighting; ban cascade fixed) | +.004 | | adopted |
+| tower_full_reach (from the centre) + tower_reflex | -.004 | phantom targets | superseded |
+| army_reflex | +.005 | | no |
+| lure v2 (bait hunters into towers) | +.004 | lsr20 -.04 | no: only the member that sees the bait hunts |
+| peon_dodge + chief_dodge | -.001 | saves units, elim flat | no |
+| hold_chieftain=45 + chief_topup_any | **-.034 (-4.5)** | | no |
+| tower_front_entry (garrison enters from the side facing the enemy) | **+.025 (2.1)** | W 6 vs 3, kd +.061 | adopt (N=8 check running) |
+| reinforce_intercept | -.005 | | no |
+| max_armory_distance=200 | | tmin -1.3 (-2.1), W 0 vs 2 | no |
+| rock_stream | -.005 | lsr15 +.036, W 0 vs 2 | no |
+| ore_load=6, ore_load_penalty=2 | +.012 (0.8) | | no |
+| quarters_before_armory=2 | +.002 | | no |
+| **peon_militia=false** | **+.051 (4.1)** | **lsr10 +.26 (5.8)**, lsr20 +.55 (4.1), kd +.17 (4.4), W 6 vs 3 | **adopt for N>1** |
+
+Why the militia hurt so much (play-mil-on-s1 / play-mil-off-s1): with 12 players on the map, neighbouring copies'
+gatherers work near our start, and raiding() (an enemy peon near our buildings and away from its own) takes them
+for raiders. At 27 s 16 of our 20 starting peons chase one of them, and again 14 times in the first 5 minutes. With
+the militia at 4 min: 1 quarters, no armory; without: 4 quarters, an armory and 2 tower sites; at 10 min 1 quarters
+and no armory against 4 quarters, 2 armories, 11 towers and 106 peons. lsr10 better by >0.5 in 32 games, worse in 1.
+(Hard copies do not raid with peons, so the militia has nothing to answer at N>1.)
+
+A Hard copy defends only when an enemy unit stands within 30 m (15 cells) of its first quarters or armory
+(AdvancedAI.nodeDefendBase): it then deploys its armory stock and sends idle warriors and gatherers there, and the
+deployed warriors bring its next wave forward. Diagnostic counters prov_<peon state or role> (Military.provokeProbe,
+no orders) count our units within 15 cells of an enemy quarters or armory every 5 s in the first 15 minutes; in
+play-prov-11-s23 only the attacking army (1,211) and shepherds (10) were there.
+
+**Engine crash (not ours).** 1 in ~200 N=11 games crashed with ArrayIndexOutOfBoundsException in
+HeightMap.getLeafFromCoordinates from PathTracker.update (t2/tow2/armdist200 s125, dodge s168; the old s77 at N=4 is
+the same trace). Reproduced on s125 at 1294.76 s; a temporary print in PathTracker (reverted, never committed)
+named the unit: a Hard copy's (s11) warrior in a jam, whose PathTracker was SOFTBLOCKED and whose Bezier path
+parameter went negative when the deadlock solver advanced it mid-curve (solveDeadlock -> advance -> nextPoint does
+t -= 1), so the spline evaluated at a large negative t and threw it ~150 cells off the map. Nothing of ours is
+involved except that our play changes which games reach such a jam. Both N=11 crashes came when we were already
+beaten (s125: no buildings, 2 peons; s168: 1 peon), when all eleven copies' waves converge on our last units.
+An engine fix would change the simulation (not allowed here), so failed games stay counted as losses.
+
+Wins at N=11 are bimodal (militiaoff-vs11-hv): 6 wins at 62-85 min and losses with at most 5 of 11 out, mostly at
+24-38 min. By 15 min the wins have put out 2.8 copies against 1.8 in the losses that last past 25 min, with the same
+own strength (850 vs 778); iron harvested flattens after 15 min in the losses (220 -> 258 by 25 min) but keeps
+growing in the wins (235 -> 326). Levers: more copies out at 10-15 min, and iron after 15 min.
