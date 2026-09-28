@@ -71,6 +71,8 @@ final class Economy {
     private boolean chieftain_topup;
     private int project_counter;
     private final List<@NonNull Building> forward_towers = new ArrayList<>();
+    private final List<@NonNull Building> sniper_towers = new ArrayList<>();
+    private float last_sniper = -100f;
     /** Per gatherer: the load it carried and since when, to catch peons stuck walking to a supply. */
     private final Map<@NonNull Unit, float @NonNull []> gather_progress = new LinkedHashMap<>();
     /** Supplies a gatherer got stuck on, avoided until the time given. */
@@ -211,6 +213,8 @@ final class Economy {
         boolean use_scout;
         /** A tower out by the enemy's gatherers, built under the army's cover. */
         boolean forward;
+        /** A sniper tower next to idle enemies parked by our base (planSniper). */
+        boolean sniper;
         int failures;
         float placed_time = -1f;
 
@@ -230,7 +234,7 @@ final class Economy {
             String name = switch (type) {
                 case Race.BUILDING_QUARTERS -> "quarters";
                 case Race.BUILDING_ARMORY -> "armory";
-                default -> forward ? "forward tower" : "tower";
+                default -> sniper ? "sniper tower" : forward ? "forward tower" : "tower";
             };
             return name + "#" + id + " at " + site.x + "," + site.y;
         }
@@ -304,7 +308,7 @@ final class Economy {
                 // Nobody is placing it any more: the site was blocked or the placer died. Try somewhere close by.
                 p.failures++;
                 p.building = null;
-                if (p.failures > 6) {
+                if (p.failures > 6 || p.sniper) {
                     it.remove();
                     continue;
                 }
@@ -330,6 +334,8 @@ final class Economy {
     private boolean projectMayStart(@NonNull Project p) {
         if (p.use_scout)
             return true;
+        if (p.sniper)
+            return sniperSafe(p.site.x, p.site.y);
         // A placer sent into a fight only dies there.
         if (ai.military().threatNear(p.site.x, p.site.y, 16))
             return false;
@@ -349,6 +355,8 @@ final class Economy {
             expansion = p.building;
         if (p.forward && p.building != null)
             forward_towers.add(p.building);
+        if (p.sniper && p.building != null)
+            sniper_towers.add(p.building);
         if (p.type == Race.BUILDING_ARMORY && p.building != null) {
             had_armory = true;
             Building armory = p.building;
@@ -522,8 +530,9 @@ final class Economy {
             if (fronts && target_towers > 0)
                 target_towers += enemies - 1;
             forward_towers.removeIf(Building::isDead);
+            sniper_towers.removeIf(Building::isDead);
             int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
-                    false) - forward_towers.size() - countForward() - ai.military().creepTowerCount();
+                    false) - forward_towers.size() - countForward() - ai.military().creepTowerCount() - sniper_towers.size() - countSniper();
             if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < ai.strategy().tower_parallel
                     && ai.owner().canBuild(Race.BUILDING_TOWER)) {
                 List<int[]> existing = new ArrayList<>();
@@ -552,7 +561,144 @@ final class Economy {
                     addProject(Race.BUILDING_TOWER, site, 8);
             }
             planForwardTower();
+            planSniper();
         }
+    }
+
+    /** Sniper tower projects, placed or not (their sites are in intel.tower_sites until they stand). */
+    private int countSniper() {
+        int n = 0;
+        for (Project q : projects)
+            if (q.sniper)
+                n++;
+        return n;
+    }
+
+    /** An enemy warrior standing idle: it sees 8 cells and never answers being hit (IdleController). */
+    private static boolean isParked(@NonNull Unit e) {
+        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                && e.getCurrentController() == e.getPrimaryController();
+    }
+
+    /**
+     * Sniper towers: waves that razed a building of ours stand idle where it was, 16-45 cells from the rest of the
+     * base and out of our towers' reach (STAT pb/pt, play-park9b-s11). Idle units see 8 cells and never answer being
+     * hit, while a tower garrison reaches 15.9: a tower 11-15 cells from such a blob, out of every parked enemy's
+     * scan, shoots it for free until its owner sends the blob on again. One project at a time.
+     */
+    private void planSniper() {
+        Strategy strategy = ai.strategy();
+        if (!strategy.snipers || ai.time() - last_sniper < 2f || countSniper() > 0)
+            return;
+        last_sniper = ai.time();
+        Player owner = ai.owner();
+        if (!owner.canBuild(Race.BUILDING_TOWER)
+                || owner.getBuildingCountContainer().getNumSupplies() + 2 >= owner.getWorld().getMaxBuildingCount())
+            return;
+        Intel intel = ai.intel();
+        List<Building> own = new ArrayList<>(intel.armories);
+        own.addAll(intel.quarters);
+        own.addAll(intel.towers);
+        int range2 = strategy.snipe_range * strategy.snipe_range;
+        List<Unit> parked = new ArrayList<>();
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead() || !isParked(e))
+                continue;
+            for (Building b : own)
+                if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), e.getGridX(),
+                        e.getGridY()) <= range2) {
+                            parked.add(e);
+                            break;
+                        }
+        }
+        Unit seed = null;
+        int best_n = 0;
+        for (Unit s : parked) {
+            int n = 0;
+            for (Unit e : parked)
+                if (MapAnalysis.dist2(s.getGridX(), s.getGridY(), e.getGridX(), e.getGridY()) <= 8 * 8)
+                    n++;
+            if (n > best_n) {
+                best_n = n;
+                seed = s;
+            }
+        }
+        if (seed == null || best_n < strategy.snipe_min)
+            return;
+        com.oddlabs.tt.model.BuildingTemplate template = owner.getRace().getBuildingTemplate(Race.BUILDING_TOWER);
+        List<Site> reserved = reservedSites(null);
+        Building armory = intel.armory();
+        int hx = armory != null ? armory.getGridX() : ai.planner().getStartX();
+        int hy = armory != null ? armory.getGridY() : ai.planner().getStartY();
+        Site best = null;
+        float best_score = -Float.MAX_VALUE;
+        int[] rejects = new int[4];
+        for (int r = 11; r <= 15; r++) {
+            for (int a = 0; a < 24; a++) {
+                double ang = a * Math.PI / 12;
+                int x = seed.getGridX() + (int) Math.round(r * Math.cos(ang));
+                int y = seed.getGridY() + (int) Math.round(r * Math.sin(ang));
+                if (!ai.map().inside(x, y) || !ai.planner().getStartField().reachable(x, y))
+                    continue;
+                int reach = 0;
+                for (Unit e : parked)
+                    if (MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 15 * 15)
+                        reach++;
+                if (reach < strategy.snipe_min) {
+                    rejects[0]++;
+                    continue;
+                }
+                if (!sniperSafe(x, y)) {
+                    rejects[1]++;
+                    continue;
+                }
+                if (!ai.map().canPlace(template, x, y)) {
+                    rejects[2]++;
+                    continue;
+                }
+                if (SitePlanner.conflicts(reserved, x, y, SitePlanner.RaceSizes.TOWER)) {
+                    rejects[3]++;
+                    continue;
+                }
+                float score = reach * 10f - .05f * (float) Math.sqrt(MapAnalysis.dist2(x, y, hx, hy));
+                if (score > best_score) {
+                    best_score = score;
+                    best = new Site(x, y, score);
+                }
+            }
+        }
+        if (best == null) {
+            int m = 0;
+            for (int i = 1; i < 4; i++)
+                if (rejects[i] > rejects[m])
+                    m = i;
+            ai.aiLog().count("sniper_nospot_" + new String[]{"reach", "unsafe", "illegal", "taken"}[m]);
+            return;
+        }
+        Project p = addProject(Race.BUILDING_TOWER, best, 1);
+        p.sniper = true;
+        ai.aiLog().count("sniper_planned");
+        Unit s = seed;
+        int n = best_n;
+        ai.log("sniper tower for " + n + " parked enemies at " + s.getGridX() + "," + s.getGridY());
+    }
+
+    /** No parked enemy within 9 cells (their scan sees 8), no other enemy within 12, no enemy tower within 20. */
+    private boolean sniperSafe(int x, int y) {
+        Intel intel = ai.intel();
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons))
+            for (Unit e : group) {
+                if (e.isDead())
+                    continue;
+                int dx = Math.abs(e.getGridX() - x);
+                int dy = Math.abs(e.getGridY() - y);
+                if (isParked(e) ? Math.max(dx, dy) <= 9 : dx * dx + dy * dy <= 12 * 12)
+                    return false;
+            }
+        for (Building t : intel.enemy_towers)
+            if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= 20 * 20)
+                return false;
+        return true;
     }
 
     /** Keeps the army over the forward tower going up, as long as it can hold the ground. */

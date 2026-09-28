@@ -3077,6 +3077,8 @@ final class Military {
         own.addAll(intel.towers);
         int out = 0;
         int in = 0;
+        int[] by_building = new int[4];
+        int[] by_tower = new int[4];
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead() || !(e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController)
                     || e.getCurrentController() != e.getPrimaryController())
@@ -3101,11 +3103,22 @@ final class Military {
                 in++;
             else
                 out++;
+            int nb = Integer.MAX_VALUE;
+            for (Building b : own)
+                if (!b.isDead())
+                    nb = Math.min(nb, MapAnalysis.dist2(b.getGridX(), b.getGridY(), e.getGridX(), e.getGridY()));
+            int nt = Integer.MAX_VALUE;
+            for (Building t : intel.towers)
+                if (Intel.isTowerActive(t))
+                    nt = Math.min(nt, MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()));
+            by_building[nb <= 8 * 8 ? 0 : nb <= 16 * 16 ? 1 : nb <= 28 * 28 ? 2 : 3]++;
+            by_tower[nt <= 15 * 15 ? 0 : nt <= 25 * 25 ? 1 : nt <= 45 * 45 ? 2 : 3]++;
         }
         int manned = 0;
         for (Building t : intel.towers)
             if (Intel.isTowerActive(t))
                 manned++;
-        return " park=" + out + "/" + in + " man=" + manned + "/" + intel.towers.size();
+        return " park=" + out + "/" + in + " man=" + manned + "/" + intel.towers.size() + " pb=" + java.util.Arrays.toString(
+                by_building).replace(" ", "") + " pt=" + java.util.Arrays.toString(by_tower).replace(" ", "");
     }
 }

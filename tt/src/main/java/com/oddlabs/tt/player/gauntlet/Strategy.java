@@ -64,6 +64,13 @@ class Strategy {
     /** Towers 10-13 cells from their neighbours (SitePlanner.findTowerSite) instead of spread 16+ apart. */
     boolean tower_mutual = false;
     /**
+     * Sniper towers by idle enemy blobs of at least snipe_min within snipe_range cells of the base
+     * (Economy.planSniper).
+     */
+    boolean snipers = false;
+    int snipe_min = 6;
+    int snipe_range = 45;
+    /**
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
     float attack_threat_ratio = 0f;
@@ -463,6 +470,9 @@ class Strategy {
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         target_threat_weight = (float) params.getDouble("target_threat_weight", target_threat_weight);
         tower_mutual = params.getBoolean("tower_mutual", tower_mutual);
+        snipers = params.getBoolean("snipers", snipers);
+        snipe_min = params.getInt("snipe_min", snipe_min);
+        snipe_range = params.getInt("snipe_range", snipe_range);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
         recall_ratio = (float) params.getDouble("recall_ratio", recall_ratio);
         home_guard = (float) params.getDouble("home_guard", home_guard);
