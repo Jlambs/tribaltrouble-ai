@@ -63,6 +63,9 @@ producing (a copy's production curve does not depend on N: ~25 warriors by 7 min
 |---|---|---|---|
 | `g-port` (commit 2630f043) | the Expert AI ported, vs viking Hards | 32 | 4 |
 | gauntlet (swing_restart on) | + harvest swing restart, vs native Hards | 76 | 52 |
+| `g-shep` (commit 540e97e6) | + stun cancel, shepherds, multi-enemy attack gate, reinforce | | N=7 34/100 vs viking, N=8 15/100 vs viking (20/200 vs native) |
+
+**Exams**: N=7 `@g-shep` vs hard*7 (vikings): 45/100 [35.6, 54.8], passed.
 
 References on the same dev seeds (1..100, slot 0, vikings everywhere): `@expert` 33 at N=5 (base-expert-vs5),
 7 at N=6 (base-expert-vs6); `@sweep-v75` 12 at N=4 (base-sweep75-vs4).
@@ -348,3 +351,35 @@ warrior within 14 cells and only when some spot exists (counting every unit of o
 shepherd_patience (send a spotless shepherd home after that many seconds). One game: shepherds lost 40 -> 14 (with
 patience 8; launches drawn 11 -> 6). A/B queued: base4-vs8-hn (new recruitment, defaults), pat8-vs8-hn,
 rockshare30-vs8-hn (rock_share=0.3: a second ore stream; we harvest 42 rock by 15 min against the Hards' 645).
+
+### 2026-09-28: g-shep confirmation, the Hard race again, more N=8 screens
+
+| run | W | wilson95 | elim | lsr15 |
+|---|---|---|---|---|
+| gshep-vs7-hn (seeds 1..200, native Hards) | 67/200 = 33.5 % | [27.3, 40.3] | 0.464 | -0.93 |
+| gshep-vs7-hv (1..100, viking Hards) | 34/100 | [25.5, 43.7] | 0.460 | -0.98 |
+| gshep-vs8-hn (1..200, native) | 20/200 = 10.0 % | [6.6, 14.9] | 0.242 | -1.37 |
+| gshep-vs8-hv (1..100, viking) | 15/100 | [9.3, 23.3] | 0.265 | -1.19 |
+| gshep-vs9-hn (1..98, native; stopped at 98) | 3/98 | | | |
+
+Race decision: with the stun cancel and shepherds, viking copies are no harder than native ones at N=7 and easier at
+N=8 (lightning, which K1 cannot cancel, was the main killer). Exams use viking Hards from here on.
+
+N=8 screens (paired, native Hards, seeds 1..100):
+- base4-vs8-hn (safer shepherd recruitment, new defaults) vs gshep-vs8-hn: 11 vs 12, shepherds lost 28 vs 33 per
+  game; neutral, kept (sensible).
+- pat8-vs8-hn (shepherd_patience=8) vs base4: 12 vs 11, lsr20 -0.13; no.
+- rockshare30-vs8-hn (rock_share=0.3) vs base4: 8 vs 11, lsr10 -0.07 (z -3.5), lsr20 -0.31 (z -2.7): rock
+  gatherers displace iron ones (iron at 10 min 134 -> 95) and rock warriors are too weak; no.
+
+Timeline (lab/gauntlet/timeline.py, gshep-vs8-hn): wins have the first copy out at 8.8 min (losses 11.1); in losses
+our first armory falls at 15.9 min with 1.0 copy out. Early eliminations matter: attack_ratio=1.0 and
+quarters_first queued.
+
+### 2026-09-28: N=7 exam with g-shep (viking Hards): passed
+
+`./aisim.sh batch --name final-vs7-g-shep --players "@g-shep vs hard*7" --size large --terrain tropical --hills
+0..2 --trees 10 --supplies 10 --seeds 30001..30100 --side 0` (g-shep = commit 540e97e6; lint @g-shep ok):
+**W 45 / L 55 / D 0**, Wilson 95 % [35.6, 54.8], all 45 wins by elimination (3 via collapse), 0 failed, 49.3 min
+mean length, 39.7 s CPU per game. Replays s30001-0, s30002-0, s30003-0: VERIFIED. (Dev estimate before: 34/100 on
+seeds 1..100 against viking Hards, 67/200 against native ones.) Nothing from the exam games is used for tuning.
