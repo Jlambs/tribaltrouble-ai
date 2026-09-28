@@ -112,6 +112,16 @@ class Strategy {
     boolean tower_reflex = false;
     /** Retarget warriors on the tick their target dies (Military.armyReflex). */
     boolean army_reflex = false;
+    /** Tower reach measured from the garrison's entry cell, 15.9 cells (Military.towerOrigin). */
+    boolean tower_gunner_reach = false;
+    /** Queue a tower's next target when it starts a throw its target cannot survive (Military.prequeue). */
+    boolean tower_prequeue = false;
+    /** Towers shoot their own attackers first (Military.towerSelfFactor). */
+    boolean tower_self_first = false;
+    /** Swap iron gunners for chicken warriors whenever a tower is quiet, not only when the base is. */
+    boolean chicken_gunners = false;
+    /** The attack's stall clock runs only while calm; a reachable stall re-targets instead of retreating. */
+    boolean stall_calm = false;
     int site_max = 3;
     int rock_filler_div = 10;
     int rock_filler_min_workers = 14;
@@ -547,6 +557,11 @@ class Strategy {
         tower_full_reach = params.getBoolean("tower_full_reach", tower_full_reach);
         tower_reflex = params.getBoolean("tower_reflex", tower_reflex);
         army_reflex = params.getBoolean("army_reflex", army_reflex);
+        tower_gunner_reach = params.getBoolean("tower_gunner_reach", tower_gunner_reach);
+        tower_prequeue = params.getBoolean("tower_prequeue", tower_prequeue);
+        tower_self_first = params.getBoolean("tower_self_first", tower_self_first);
+        chicken_gunners = params.getBoolean("chicken_gunners", chicken_gunners);
+        stall_calm = params.getBoolean("stall_calm", stall_calm);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
         rock_filler_min_workers = params.getInt("rock_filler_min_workers", rock_filler_min_workers);

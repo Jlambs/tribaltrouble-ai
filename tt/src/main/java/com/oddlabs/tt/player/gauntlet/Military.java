@@ -1173,8 +1173,10 @@ final class Military {
                 ai.owner().setTarget(Selectable.newArray(best), tower, Action.DEFAULT, false);
             }
         }
-        // Swap iron warriors in towers for chicken warriors when the base is quiet.
-        if (threat_level > 0)
+        // Swap iron warriors in towers for chicken warriors when the base is quiet (chicken_gunners: whenever the
+        // tower itself has no enemy within 20 cells; a rubber axe bounces on to a neighbour with the same hit roll).
+        boolean chickens = ai.strategy().chicken_gunners;
+        if (threat_level > 0 && !chickens)
             return;
         for (Building tower : intel.towers) {
             if (!Intel.isTowerManned(tower))
@@ -1182,7 +1184,7 @@ final class Military {
             Unit inside = ((com.oddlabs.tt.model.MountUnitContainer) tower.getUnitContainer()).getUnit();
             if (inside == null || Intel.warriorType(inside) == WarriorType.CHICKEN)
                 continue;
-            if (enemyStrengthNear(tower.getGridX(), tower.getGridY(), 30) > 0)
+            if (enemyStrengthNear(tower.getGridX(), tower.getGridY(), chickens ? 20 : 30) > 0)
                 continue;
             for (Map.Entry<Unit, Role> e : roles.entrySet()) {
                 Unit u = e.getKey();
@@ -2017,6 +2019,10 @@ final class Military {
                 && MapAnalysis.dist2(intel.chieftain.getGridX(), intel.chieftain.getGridY(), c[0], c[1]) < 20 * 20;
         if (enemyStunReadyNear(c[0], c[1], ENGAGE_RADIUS + 4))
             local_enemy *= 1.5f;
+        // stall_calm: the stall clock runs only while the march is calm; long fights on the way are no stall
+        // (6 of 6 reachable stalls outside one corner deadlock came after ~80 s of fighting).
+        if (ai.strategy().stall_calm && (local_enemy > 0f || anyFighting(army)))
+            last_progress_time = ai.time();
         float total = 0f;
         int stunned_count = 0;
         for (Unit u : army) {
@@ -2214,6 +2220,17 @@ final class Military {
                         dead_region_times.removeFirst();
                     }
                     ai.aiLog().count("target_region_dead");
+                }
+                // stall_calm: a target the army can reach but not get to (a deadlock at a corner) is dropped for the
+                // next one from where the army stands, instead of walking everyone home.
+                if (ai.strategy().stall_calm && (f == null || f.getAround(staging_x, staging_y,
+                        2) != DistanceField.UNREACHABLE)) {
+                    Selectable<?> next = chooseTarget(c[0], c[1]);
+                    if (next != null) {
+                        setTarget(next);
+                        ai.aiLog().count("stall_retarget");
+                        return;
+                    }
                 }
             }
             beginRetreat();
@@ -3080,7 +3097,25 @@ final class Military {
      * so enemies 14-15.9 cells out along the axes are only hit when told.
      */
     private int towerReach2() {
-        return ai.strategy().tower_full_reach ? 252 : TOWER_CELLS * TOWER_CELLS;
+        return ai.strategy().tower_full_reach || ai.strategy().tower_gunner_reach ? 252 : TOWER_CELLS * TOWER_CELLS;
+    }
+
+    /**
+     * Where a garrison throws from: the grid cell it entered by, on the ring two cells around the tower (Unit.mount
+     * moves only the world position; range checks and scans use the grid cell), so the reach disc is shifted 2-2.8
+     * cells towards the entry side. With tower_gunner_reach reach is measured from there, else from the centre.
+     */
+    private int @NonNull [] towerOrigin(@NonNull Building t, @NonNull Unit gunner) {
+        return ai.strategy().tower_gunner_reach ? new int[]{gunner.getGridX(), gunner.getGridY()} : new int[]{t.getGridX(), t.getGridY()};
+    }
+
+    /** tower_self_first: enemies attacking this tower count double for it. */
+    private float towerSelfFactor(@NonNull Building t, @NonNull Unit e) {
+        if (!ai.strategy().tower_self_first)
+            return 1f;
+        com.oddlabs.tt.model.behaviour.Controller c = e.getCurrentController();
+        Selectable<?> target = c instanceof com.oddlabs.tt.model.behaviour.AttackController a ? a.getTarget() : c instanceof HuntController h ? h.getTarget() : null;
+        return target == t ? 2f : 1f;
     }
 
     /**
@@ -3089,38 +3124,29 @@ final class Military {
      * recovery takes effect when the 2 s cycle ends, so nothing of the cycle is lost.
      */
     void towerReflex() {
-        if (!ai.strategy().tower_reflex || !ai.strategy().tower_fire)
+        Strategy strategy = ai.strategy();
+        if ((!strategy.tower_reflex && !strategy.tower_prequeue) || !strategy.tower_fire)
             return;
         Intel intel = ai.intel();
         int r2 = towerReach2();
+        if (!inflight.isEmpty())
+            inflight.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 2.5f);
         for (Building t : intel.towers) {
             if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
                 continue;
             Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
             if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
+            int[] o = towerOrigin(t, gunner);
+            if (strategy.tower_prequeue && prequeue(t, gunner, o, r2))
+                continue;
+            if (!strategy.tower_reflex)
+                continue;
             Unit current = tower_targets.get(t);
             if (current != null && !current.isDead()
-                    && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(), current.getGridY()) <= r2)
+                    && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2)
                 continue;
-            Unit best = null;
-            float best_score = 0f;
-            for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
-                for (Unit e : group) {
-                    if (e.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) > r2)
-                        continue;
-                    // Spread over targets: each other tower already on it halves its worth.
-                    int others = 0;
-                    for (Unit o : tower_targets.values())
-                        if (o == e)
-                            others++;
-                    float score = throwValue(gunner, e) * towerHitChance(gunner, t, e) / (1 << Math.min(others, 4));
-                    if (score > best_score) {
-                        best_score = score;
-                        best = e;
-                    }
-                }
-            }
+            Unit best = bestTowerTarget(t, gunner, o, r2, null);
             if (best == null) {
                 tower_targets.remove(t);
                 continue;
@@ -3129,6 +3155,78 @@ final class Military {
             ai.owner().setTarget(Selectable.newArray(t), best, Action.ATTACK, false);
             ai.aiLog().count("tower_reflex");
         }
+    }
+
+    /** Throws in flight at a 1-HP enemy that will hit (p >= .99), and when thrown: other towers leave them alone. */
+    private final Map<@NonNull Unit, Float> inflight = new LinkedHashMap<>();
+    /** Per tower, the attack behaviour seen last tick, and how many targets were queued in a row. */
+    private final Map<@NonNull Building, com.oddlabs.tt.model.behaviour.Behaviour> tower_throws = new LinkedHashMap<>();
+    private final Map<@NonNull Building, Integer> tower_queued = new LinkedHashMap<>();
+
+    /**
+     * tower_prequeue: an axe flies 20-30 m/s from the tower's centre, released 1 s into the 2 s throw; beyond ~12
+     * cells (iron) the target is still alive when the throw ends, so the garrison starts another 2 s throw at a unit
+     * the axe in flight will kill. On the tick a throw starts at a 1-HP enemy it will hit, the next target is queued:
+     * the order waits under the running throw and is taken up the moment it ends. True if it queued one.
+     */
+    private boolean prequeue(@NonNull Building t, @NonNull Unit gunner, int @NonNull [] o, int r2) {
+        com.oddlabs.tt.model.behaviour.Behaviour b = gunner.getCurrentBehaviour();
+        if (!(b instanceof com.oddlabs.tt.model.behaviour.AttackBehaviour)) {
+            tower_throws.remove(t);
+            tower_queued.remove(t);
+            return false;
+        }
+        if (tower_throws.get(t) == b)
+            return false;
+        tower_throws.put(t, b);
+        if (!(gunner.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.AttackController a)
+                || !(a.getTarget() instanceof Unit x) || x.isDead() || isMultiHit(x))
+            return false;
+        if (towerHitChance(gunner, t, x) < .99f)
+            return false;
+        // Cells the axe covers in the throw's last second: iron 25 m/s, rock 20, rubber 30 (2 m per cell).
+        WarriorType type = Intel.warriorType(gunner);
+        float fly = type == WarriorType.ROCK ? 9.5f : type == WarriorType.CHICKEN ? 14.5f : 12f;
+        if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x.getGridX(), x.getGridY()) <= fly * fly)
+            return false;
+        inflight.put(x, ai.time());
+        int queued = tower_queued.getOrDefault(t, 0);
+        if (queued >= 20)
+            return false; // each queued order stays on the garrison's controller stack until the fight ends
+        Unit next = bestTowerTarget(t, gunner, o, r2, x);
+        if (next == null)
+            return false;
+        tower_queued.put(t, queued + 1);
+        tower_targets.put(t, next);
+        ai.owner().setTarget(Selectable.newArray(t), next, Action.ATTACK, false);
+        ai.aiLog().count("tower_prequeue");
+        return true;
+    }
+
+    /** The best enemy in reach for this tower, skipping one and any already doomed by an axe in flight. */
+    private @Nullable Unit bestTowerTarget(@NonNull Building t, @NonNull Unit gunner, int @NonNull [] o, int r2,
+            @Nullable Unit skip) {
+        Intel intel = ai.intel();
+        Unit best = null;
+        float best_score = 0f;
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
+            for (Unit e : group) {
+                if (e == skip || e.isDead() || inflight.containsKey(e)
+                        || MapAnalysis.dist2(o[0], o[1], e.getGridX(), e.getGridY()) > r2)
+                    continue;
+                int others = 0;
+                for (Unit other : tower_targets.values())
+                    if (other == e)
+                        others++;
+                float score = throwValue(gunner, e) * towerSelfFactor(t, e) * towerHitChance(gunner, t,
+                        e) / (1 << Math.min(others, 4));
+                if (score > best_score) {
+                    best_score = score;
+                    best = e;
+                }
+            }
+        }
+        return best;
     }
 
     /**
@@ -3149,9 +3247,9 @@ final class Military {
             Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
             if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
+            int[] o = towerOrigin(t, gunner);
             Unit current = tower_targets.get(t);
-            if (current != null && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(),
-                    current.getGridY()) <= r2) {
+            if (current != null && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2) {
                 survive.merge(current, 1f - towerHitChance(gunner, t, current), (a, b) -> a * b);
                 continue;
             }
@@ -3160,9 +3258,10 @@ final class Military {
             float best_p = 0f;
             for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
                 for (Unit e : group) {
-                    if (e.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) > r2)
+                    if (e.isDead() || MapAnalysis.dist2(o[0], o[1], e.getGridX(), e.getGridY()) > r2
+                            || inflight.containsKey(e))
                         continue;
-                    float value = throwValue(gunner, e);
+                    float value = throwValue(gunner, e) * towerSelfFactor(t, e);
                     if (group == intel.enemy_peons && nearOwnTower(e))
                         value = 1.5f;
                     float p = towerHitChance(gunner, t, e);
@@ -3193,15 +3292,16 @@ final class Military {
     Unit towerTargetFor(@NonNull Building t, @NonNull Unit gunner) {
         Intel intel = ai.intel();
         int r2 = towerReach2();
+        int[] o = towerOrigin(t, gunner);
         Unit current = tower_targets.get(t);
         if (current != null && !current.isDead()
-                && MapAnalysis.dist2(t.getGridX(), t.getGridY(), current.getGridX(), current.getGridY()) <= r2)
+                && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2)
             return current;
         Unit best = null;
         float best_score = 0f;
         for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons))
             for (Unit e : group) {
-                if (e.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(), e.getGridY()) > r2)
+                if (e.isDead() || MapAnalysis.dist2(o[0], o[1], e.getGridX(), e.getGridY()) > r2)
                     continue;
                 float score = throwValue(gunner, e) * towerHitChance(gunner, t, e);
                 if (score > best_score) {
