@@ -617,3 +617,41 @@ replay VERIFIED. The nearest copies start 91 (s1) and 100 cells (s9) away; s9 is
 rebuilding and a second armory stands from 24 min; the army campaigns almost without pause and puts out s8 (25.6),
 s5 (34.1), s4 (41.5), s7 (49.4), s10 (60.6), s2 (64.8), s3 (68.2). Logged N=10 losses (play-gfinal10-s11, -s23): the
 army attacks only at ~10 min (at N=9: ~4 min), with threat level 2 from 5 min.
+
+Baselines complete (@g-final, dev seeds): N=10 vikings 2/200 (s40, s196; 1 draw s93), natives 1/100 (s81); N=11
+0/100 vikings, 0/200 more vikings (seeds 101..300), 0/100 natives.
+
+Analysis workflow (4 analysts, 3 strategists, a judge; reports in the session scratchpad n10/*.md): at N=10 the base
+falls at ~20 min; parked blobs of 20-120 idle enemies stand 16-45 cells from our buildings, out of tower reach;
+units inside razed buildings vanish uncounted (LandBuilding.removeDying: ~123 per game at N=10, 39 per armory);
+our attack gate counted 0.3 x every other copy's army (Military.enemyFieldStrengthNear), which at N=10 alone is
+~2.7 copy armies, and a global "any enemy chieftain" malus, so the first attack came at ~10 min instead of ~4;
+the draws were endgame failures.
+
+Endgame fix (default): a target whose attack stalls is skipped for 10 min, and so is every target in the region its
+distance field covers when that region does not reach our staging point (Military.stalled_targets, dead_regions).
+The N=10 draw s93 (5 hours marching at a site in a 252-cell pocket; re-targets mid-attack kept picking the stuck
+copy's 20 peons) became a win at 130 min (play-stall10d-s93).
+
+N=10 screens (paired with gfinal-vs10-hv, seeds 1..100 unless noted; W = wins, elim = share of copies out):
+
+| variant | elim diff (z) | other | verdict |
+|---|---|---|---|
+| gate_owner (owner-aware defense, local chieftain malus) | +.031 (1.7); seeds 101..200 +.040 (3.1) | N=9 fresh +.035 (2.3), W 11 vs 9; **N=8 fresh W 65 vs 52 of 200 (30/17), elim +.086 (3.4)** | **adopted** (several enemies) |
+| reinforce_threat_ratio=1.0 | +.008 | kd +.038 | no |
+| finish_copies (sites, chieftain, units of raided copies) | +.007 | lsr15 -.021 | no |
+| tower_cap | -.015 (-1.5) | | no |
+| attack_ratio=0.85 | .000 | | no |
+| shepherd=false | **-.084 (-6.0)** | lsr15 -1.77 (z -11) | shepherds are vital at N=10 |
+| evacuate (60 % hp, 3 warriors) | -.011 | lsr15 +.055 (2.0), kd -.068 (-3.7): evacuees die outside | parked |
+| tower_parallel_late=2, sites_parallel_late=3 (from 10 min) | -.012 | kd +.057 | no |
+
+Shred v2 (strict: never stun, blast parked/near enemies): first versions never cast (the cast cell had to be
+outside every enemy's 8-cell sight, but whatever can see the caster stands inside the 18-cell blast anyway). Fixed:
+cast when >= 8 enemy warriors are within 17 cells, none within 5, no enemy tower within 22, at least 3 of theirs
+per unit of ours in the blast, at most 2 of our buildings within 18; blast from where he stands when hunted; den
+behind the armory; Military no longer counts his stun or his attack bonus. Probes (N=10 seeds 11/23/40): 2-5
+blasts per game, 37-91 enemy warriors in reach. Batch queued. Lure-kiting (Lures.java): works mechanically after
+relaxing the bait geometry (8-16 lures per 30 min, 2/3 get home), but draws only 0-4 hunters each (only the member
+that sees the peon hunts). Batch queued. Rock surge (rock gatherers from idle armory workers while iron starves)
+queued.
