@@ -26,7 +26,8 @@ import java.util.logging.Logger;
  * <p>Get the handle once, in the AI's constructor, with {@link #of(Player) AiLog.of(getOwner())}. Counters and errors
  * are always recorded and end up in every harness result row, so "this ability never fired" or "this AI swallowed 98
  * exceptions" shows up in batch summaries without reading logs. Log lines are only written when a sink is installed:
- * by the aisim harness for {@code play} and {@code replay}, and by the play-test hook (aikit.harness.PlayTest) in games
+ * by the aisim harness for {@code play}, {@code batch --logs} and {@code replay}, and by the play-test hook
+ * (aikit.harness.PlayTest) in games
  * started with {@code ./aisim.sh gui}. Without a sink a log call costs one field check and never evaluates its
  * {@link Supplier}.
  *
@@ -34,7 +35,7 @@ import java.util.logging.Logger;
  * {@code awk '$1>=600 && $1<=900'} selects a time window and {@code grep ' ARMY '} a topic.
  *
  * <p>Logging must not change decisions; the harness verifies that by replaying games with logs on against the
- * logs-off batch checksums. Nothing here throws into the simulation or touches the world's random generator.
+ * checksums of a batch without logs. Nothing here throws into the simulation or touches the world's random generator.
  *
  * <p>The static state refers to the world only weakly: a finished world must not stay reachable from here after the
  * player returns to the menu. In the game, PlayTest.leave also closes the handles when the world is closed; the

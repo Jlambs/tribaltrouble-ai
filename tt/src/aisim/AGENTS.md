@@ -10,7 +10,7 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 | Package | Files | Job |
 |---|---|---|
 | `aisim` | `Aisim`, `Options`, `UsageException` | The command line: usage text, options checked per command, the jobs of a run. Also what every part shares: the JSON mapper, the `aisim/` root, usage errors (exit 2). |
-| | `Lineup`, `Maps` | The players of a run (`--teams`, or `--a --b --vs`) and their seating by rotation; its maps (seeds and settings drawn per seed, or map codes). |
+| | `Lineup`, `Maps` | The players and teams of a run (`--players`) and their seating by rotation; its maps (seeds and settings drawn per seed, or map codes). |
 | `aisim.play` | `Batch` | A run: the job queue, one driver thread per worker, results.jsonl, progress, STOP and aborts. |
 | | `WorkerProcess`, `WorkerMain` | A worker JVM as the parent starts and talks to it; the inside of one: boots the engine, plays jobs, the hang watchdog. |
 | | `Match`, `ClientWorld`, `Job` | One game as the client simulates it, its end rules and its result row; its world, built exactly as the client builds it; its settings, as sent to workers and stored in run.json. |

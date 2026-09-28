@@ -61,8 +61,8 @@ public final class Replay {
         if (until != null) {
             job.put("minutes", until);
         }
-        String matchup = original.get("teams") + ", " + original.get("map");
-        String setup = "seed " + original.get("seed") + ", A in slot " + original.get("side");
+        String matchup = original.get("players") + ", " + original.get("map");
+        String setup = "seed " + original.get("seed") + ", first player in slot " + original.get("side");
         String game = run + " " + key + " (" + matchup + ", " + setup + ")";
         System.out.println("replaying " + game + " on snapshot " + snap + " with AI logs on ...");
         Path natives = dir.resolve("n").resolve("r");
@@ -156,7 +156,8 @@ public final class Replay {
         } else {
             System.out.println("DIFFERENT from " + difference);
         }
-        String outcome = replay.get("end") + " winner " + replay.get("winner") + " at " + Table.clock(num(replay, "t"));
+        String outcome = replay.get("end") + ", team A " + replay.get("result") + " at " + Table.clock(num(replay,
+                "t"));
         String files = "game " + Aisim.slash(replay_file) + " | " + Runs.aiLogs(replay_file);
         System.out.println("replay " + outcome + " | " + files);
         return failed ? 1 : 0;

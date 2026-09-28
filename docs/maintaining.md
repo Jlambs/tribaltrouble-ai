@@ -29,7 +29,7 @@ Resolve conflicts with the table below, then check the merge:
 ```bash
 ./gradlew spotlessCheck
 ./aisim.sh build                        # compiles the game, the harness and the example AIs, and lints AI packages
-./aisim.sh batch --a hard --b normal --seeds 1..3 --name sync-check && ./aisim.sh replay sync-check s2-1
+./aisim.sh batch --players "hard vs normal" --seeds 1..3 --name sync-check && ./aisim.sh replay sync-check s2-1
 ```
 
 The replay must print `VERIFIED`. When upstream changed the simulation, world creation or anything the recorder reads,
@@ -90,7 +90,7 @@ second working tree and freeze it from there:
 git worktree add ../tt-rival rival                                   # the other AI's branch, beside this checkout
 (cd ../tt-rival && JAVA_HOME=<JDK 26> ./gradlew -q :tt:classes)
 ./aisim.sh freeze rival-$(git rev-parse --short rival) rival --from ../tt-rival/tt/build/classes/java/main
-./aisim.sh batch --a myai --b @rival-1a2b3c
+./aisim.sh batch --players "myai vs @rival-1a2b3c"
 ```
 
 `aisim/pool/<tag>.json` records the folder a frozen AI came from, not its commit, so put the commit in the tag.
@@ -111,21 +111,21 @@ changing the harness, or merging an engine change:
 ./aisim.sh lint starter chaos                                   # both ok
 rm -rf aisim/runs/check-*                                       # the run names below are single-use
 # replays of the same build: VERIFIED, for a 1 vs 1 run, a 2 vs 2 run, a free-for-all and 32 players
-./aisim.sh batch --a hard --b normal --seeds 1..3 --name check-replay && ./aisim.sh replay check-replay s2-1
-./aisim.sh batch --teams "hard easy vs normal*2" --seeds 1..2 --size small --minutes 10 --name check-teams &&
+./aisim.sh batch --players "hard vs normal" --seeds 1..3 --name check-replay && ./aisim.sh replay check-replay s2-1
+./aisim.sh batch --players "hard easy vs normal*2" --seeds 1..2 --size small --minutes 10 --name check-teams &&
     ./aisim.sh replay check-teams s1-1
-./aisim.sh batch --teams "hard vs normal/n vs easy" --seeds 1 --minutes 20 --name check-free-for-all &&
+./aisim.sh batch --players "hard vs normal/n vs easy" --seeds 1 --minutes 20 --name check-free-for-all &&
     ./aisim.sh replay check-free-for-all s1-2
 # 32 players, beyond the skirmish menu's 12: the engine must still build and play them
-./aisim.sh batch --teams "hard*16 vs normal*16" --size large --seeds 3 --side 5 --minutes 3 --name check-32-players &&
+./aisim.sh batch --players "hard*16 vs normal*16" --size large --seeds 3 --side 5 --minutes 3 --name check-32-players &&
     ./aisim.sh replay check-32-players s3-5
 # faults: chaos:nondet=1 replays with some MISMATCH; crash rows with .err files, exit 1; a hang row; the bad param
 # aborts the run, exit 2; swallowed errors and counters in the summary
-./aisim.sh batch --a chaos:nondet=1 --b hard --seeds 1..3 --minutes 6 --name check-nondeterminism
-./aisim.sh batch --a chaos:crash=90 --b hard --seeds 1 --minutes 5 --name check-crash
-AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --a chaos:hang=30 --b hard --seeds 1 --name check-hang
-./aisim.sh batch --a chaos:bogus=1 --b hard --seeds 1..3 --name check-bad-param
-./aisim.sh batch --a chaos:err=1,count=1 --b hard --seeds 1 --minutes 5 --name check-ai-errors
+./aisim.sh batch --players "chaos:nondet=1 vs hard" --seeds 1..3 --minutes 6 --name check-nondeterminism
+./aisim.sh batch --players "chaos:crash=90 vs hard" --seeds 1 --minutes 5 --name check-crash
+AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --players "chaos:hang=30 vs hard" --seeds 1 --name check-hang
+./aisim.sh batch --players "chaos:bogus=1 vs hard" --seeds 1..3 --name check-bad-param
+./aisim.sh batch --players "chaos:err=1,count=1 vs hard" --seeds 1 --minutes 5 --name check-ai-errors
 # the analyses
 ./aisim.sh curves check-replay --split && ./aisim.sh fights check-teams && ./aisim.sh export check-teams
 ./aisim.sh compare check-replay check-nondeterminism check-ai-errors --force   # the several-variant table

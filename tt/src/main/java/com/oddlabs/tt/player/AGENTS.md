@@ -10,7 +10,7 @@ documented in `docs/aisim.md`. Paths here are relative to the repository root, w
 ./aisim.sh build                    # once: compile, lint and snapshot (the first build takes several minutes)
 ./aisim.sh new myai                 # creates tt/src/main/java/com/oddlabs/tt/player/myai/MyaiAI.java, spec "myai"
 ./aisim.sh build                    # compiles and lints your AI; breaking a fair-play rule refuses the build
-./aisim.sh play --a myai --b easy   # one game, then prints how to show and replay it
+./aisim.sh play --players "myai vs easy"   # one game, then prints how to show and replay it
 ```
 
 Then work in the loop that `docs/aisim.md` describes: batch the new version and the previous one (a param's default,
@@ -274,7 +274,7 @@ when the AI is nondeterministic.
 The design is yours: nothing in the harness depends on how your AI is organised. A few habits pay off regardless:
 
 - Read the state once per decision round into your own objects, then decide from those.
-- Put every new behaviour behind a param whose default is your current best, so `batch --a myai:k=v` measures it
+- Put every new behaviour behind a param whose default is your current best, so `batch --players "myai:k=v vs hard"` measures it
   against the default on the same games. Count it with `log.count` so summaries show whether it fired. Log its
   decisions under a topic of its own, so `grep ' TOPIC '` finds them in the decision log.
 - Split classes by concern once the AI class grows (the package can hold any number of them).

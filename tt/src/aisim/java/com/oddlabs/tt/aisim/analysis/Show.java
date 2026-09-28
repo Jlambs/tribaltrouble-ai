@@ -31,7 +31,7 @@ public final class Show {
     private static final int STUNS_SHOWN = 5;
     /** The events listed as key events, besides death windows and big stuns. */
     private static final Set<String> KEY_EVENTS = Set.of("built", "razed", "chief", "chief_died", "cast", "collapse",
-            "out", "end", "speed", "recorder_error");
+            "out", "team_out", "end", "speed", "recorder_error");
 
     private Show() {
     }
@@ -48,14 +48,18 @@ public final class Show {
         return 0;
     }
 
-    /** The game file's map line and its players, from the header. */
+    /** The game file's map line and its players, from the header, with each team's name and place. */
     private static void printPlayers(@NonNull Game game) {
         Map<String, Object> header = game.header();
         String place = header.get("map") == null ? "" : header.get("map") + " seed " + header.get("seed") + " ";
         System.out.println(Aisim.slash(game.path()) + ": " + place + "map code \"" + header.get("mapcode") + "\"");
         for (Map<String, Object> player : game.players()) {
-            System.out.printf(Locale.ROOT, "  s%s %-28s team %s %-7s start %s,%s%n", player.get("s"), player.get("ai"),
-                    player.get("team"), player.get("race"), player.get("x"), player.get("y"));
+            int team = game.teamOf((int) num(player, "s"));
+            Double team_place = game.place(team);
+            String placed = team_place == null ? "" : " place " + Table.number(team_place);
+            System.out.printf(Locale.ROOT, "  s%s %-28s team %s (%s)%s %-7s start %s,%s%n", player.get("s"),
+                    player.get("ai"), game.teamName(team), team, placed, player.get("race"), player.get("x"),
+                    player.get("y"));
         }
     }
 

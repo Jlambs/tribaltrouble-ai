@@ -20,10 +20,10 @@ import static com.oddlabs.tt.aisim.analysis.Game.num;
 
 /**
  * {@code summary RUN}: a run's results, printed at the end of every run and saved as its summary.txt. Numbers print
- * with Locale.ROOT. "A" is the team of the AI under test, "B" every player against it.
+ * with Locale.ROOT. The headline is team A's, the first team listed; then every team's record, named A, B, C, ...
  */
 public final class Summary {
-    /** How many of A's worst games and of the failed games the summary lists. */
+    /** How many of team A's worst games and of the failed games the summary lists. */
     private static final int WORST_GAMES = 5;
     private static final int FAILED_GAMES = 10;
     /** A's record from each start slot, this many slots to a line. */
@@ -39,27 +39,28 @@ public final class Summary {
     public static int run(@NonNull String run) throws IOException {
         Map<?, ?> meta = Runs.meta(run);
         List<Map<String, Object>> rows = Runs.rows(run);
-        List<Map<String, Object>> counted = where(rows, row -> row.get("winner") != null);
-        List<Map<String, Object>> failed = where(rows, row -> row.get("winner") == null);
+        List<Map<String, Object>> counted = where(rows, Runs::counts);
+        List<Map<String, Object>> failed = where(rows, row -> !Runs.counts(row));
         StringWriter text = new StringWriter();
         PrintWriter out = new PrintWriter(text);
-        out.printf(Locale.ROOT, "aisim run %s: %s | %s | snapshot %s%n", run, meta.get("teams"), meta.get("config"),
-                meta.get("snap"));
+        out.printf(Locale.ROOT, "aisim run %s: %s | %s | snapshot %s%n", run, meta.get("players"),
+                meta.get("config"), meta.get("snap"));
         out.printf(Locale.ROOT, "games %d/%s done, %d counted, %d failed%n", rows.size(), meta.get("expected"),
                 counted.size(), failed.size());
-        String result_line = "RESULT " + run + " a=" + meta.get("a") + " n=" + counted.size() + "/" + meta.get(
-                "expected");
+        String a = String.valueOf(meta.get("a"));
+        String a_field = a.contains(" ") ? "\"" + a + "\"" : a; // one token, so the line splits on spaces
+        String result_line = "RESULT " + run + " a=" + a_field + " n=" + counted.size() + "/" + meta.get("expected");
         if (!counted.isEmpty()) {
             Headline headline = Headline.of(counted);
             headline.print(out, counted);
-            printMeans(out, counted);
-            printHealth(out, counted);
             List<Game> games = Game.counted(run);
-            out.println("curves (mean over games still running; A / B):");
-            List<Curves.Series> teams = List.of(new Curves.Series("A", games, true),
-                    new Curves.Series("B", games, false));
-            Curves.table(teams, Curves.FIELDS, Curves.MINUTES).forEach(out::println);
-            out.println(milestones(games));
+            printTeams(out, counted, games.get(0));
+            printMeans(out, counted);
+            printHealth(out, counted, games.get(0));
+            List<Curves.Series> series = Curves.teamSeries(games);
+            out.println("curves (mean over games still running; " + Curves.labels(series) + "):");
+            Curves.table(series, Curves.FIELDS, Curves.MINUTES).forEach(out::println);
+            out.println(milestones(games, series));
             printWorstGames(out, run, counted);
             result_line += headline.resultFields();
         }
@@ -72,16 +73,16 @@ public final class Summary {
         return failed.isEmpty() && !counted.isEmpty() ? 0 : 1;
     }
 
-    /** A's wins, losses and draws over some games. */
+    /** team A's wins, losses and draws over some games. */
     private record WinLossDraw(int won, int lost, int drawn) {
-        /** A's record over {@code rows}, only those that ended by {@code end} unless it is null. */
+        /** team A's record over {@code rows}, only those that ended by {@code end} unless it is null. */
         static @NonNull WinLossDraw of(@NonNull List<Map<String, Object>> rows, @Nullable End end) {
             int won = 0;
             int lost = 0;
             int drawn = 0;
             for (Map<String, Object> row : rows) {
                 if (end == null || end.name().equals(row.get("end"))) {
-                    switch (Runs.resultOfA(row.get("winner"))) {
+                    switch (String.valueOf(row.get("result"))) {
                         case "win" -> won++;
                         case "loss" -> lost++;
                         default -> drawn++;
@@ -120,11 +121,12 @@ public final class Summary {
             for (int slot = 0; slot < players; slot++) {
                 int start = slot;
                 WinLossDraw record = WinLossDraw.of(where(counted, row -> num(row, "side") == start), null);
-                slots.add(String.format(Locale.ROOT, "A in slot %d: W %d L %d D %d", slot, record.won(), record.lost(),
+                slots.add(String.format(Locale.ROOT, "slot %d: W %d L %d D %d", slot, record.won(), record.lost(),
                         record.drawn()));
             }
+            out.println("  by start (the first player's slot):");
             for (int i = 0; i < slots.size(); i += SLOTS_PER_LINE) {
-                out.println("  " + String.join(" | ", slots.subList(i, Math.min(i + SLOTS_PER_LINE, slots.size()))));
+                out.println("    " + String.join(" | ", slots.subList(i, Math.min(i + SLOTS_PER_LINE, slots.size()))));
             }
             printByMap(out, counted, "size", 0);
             printByMap(out, counted, "terrain", 1);
@@ -152,7 +154,7 @@ public final class Summary {
                 records.add(String.format(Locale.ROOT, "%s W %d L %d D %d", value, record.won(), record.lost(),
                         record.drawn()));
             });
-            out.println("  A by map " + setting + ": " + String.join(" | ", records));
+            out.println("  by map " + setting + ": " + String.join(" | ", records));
         }
 
         /** The RESULT line's fields after n=. */
@@ -186,10 +188,65 @@ public final class Summary {
         }
     }
 
-    /** Swallowed AI errors and AI counters of both sides, and a warning when the recorder stopped early. */
-    private static void printHealth(@NonNull PrintWriter out, @NonNull List<Map<String, Object>> counted) {
-        out.println(swallowedErrors(counted, "A") + " | " + swallowedErrors(counted, "B"));
-        out.println(counters(counted, "A") + " | " + counters(counted, "B"));
+    /**
+     * Every team's record, from the row's team blocks: its players, mean score and place, how often it won alone,
+     * shared first place (drew) or lost, and in how many games it went out.
+     */
+    private static void printTeams(@NonNull PrintWriter out, @NonNull List<Map<String, Object>> counted,
+            @NonNull Game names) {
+        List<List<String>> rows = new ArrayList<>();
+        rows.add(List.of("team", "players", "score", "place", "won", "drew", "lost", "out"));
+        for (int team = 0; team < blocks(counted.get(0)).size(); team++) {
+            double score = 0;
+            double place = 0;
+            int won = 0;
+            int drew = 0;
+            int out_count = 0;
+            for (Map<String, Object> row : counted) {
+                Map<?, ?> block = blocks(row).get(team);
+                score += num(block, "score");
+                place += num(block, "place");
+                double best = blocks(row).stream().mapToDouble(other -> num(other, "place")).min().orElse(1);
+                won += num(block, "place") == 1 ? 1 : 0;
+                drew += num(block, "place") == best && best > 1 ? 1 : 0;
+                out_count += block.get("out") != null ? 1 : 0;
+            }
+            int n = counted.size();
+            rows.add(List.of(names.teamName(team), String.valueOf(blocks(counted.get(0)).get(team).get("players")),
+                    String.format(Locale.ROOT, "%.3f", score / n), String.format(Locale.ROOT, "%.2f", place / n),
+                    String.valueOf(won), String.valueOf(drew), String.valueOf(n - won - drew),
+                    String.valueOf(out_count)));
+        }
+        out.println("teams (place: 1 + the teams that outlasted it; won = first alone, drew = first shared):");
+        Table.align(rows, "llr").forEach(out::println);
+    }
+
+    /** A result row's team blocks, by team number. */
+    @SuppressWarnings("unchecked")
+    private static @NonNull List<Map<String, Object>> blocks(@NonNull Map<String, Object> row) {
+        return (List<Map<String, Object>>) row.get("teams");
+    }
+
+    /**
+     * Swallowed AI errors and AI counters of each team whose AIs reported any, and a warning when the recorder stopped
+     * early.
+     */
+    private static void printHealth(@NonNull PrintWriter out, @NonNull List<Map<String, Object>> counted,
+            @NonNull Game names) {
+        boolean any = false;
+        for (int team = 0; team < blocks(counted.get(0)).size(); team++) {
+            String errors = swallowedErrors(counted, team);
+            String counters = counters(counted, team);
+            if (!errors.isEmpty() || !counters.isEmpty()) {
+                any = true;
+                String what = String.join(" | ", errors.isEmpty() ? "no swallowed errors" : errors,
+                        counters.isEmpty() ? "no counters" : counters);
+                out.println(names.teamName(team) + ": " + what);
+            }
+        }
+        if (!any) {
+            out.println("swallowed errors (AiLog.error): none | counters (AiLog.count): none");
+        }
         List<Object> broken = new ArrayList<>();
         for (Map<String, Object> row : where(counted, row -> Boolean.TRUE.equals(row.get("recorderFailed")))) {
             broken.add(row.get("key"));
@@ -206,18 +263,13 @@ public final class Summary {
         return rows.stream().filter(keep).toList();
     }
 
-    /** A result row's block of team {@code team} ("A" or "B"): final census, AI counters, first AI error. */
-    private static @NonNull Map<?, ?> block(@NonNull Map<String, Object> row, @NonNull String team) {
-        return (Map<?, ?>) row.get(team);
-    }
-
-    /** How many errors a team's AIs threw and survived, in how many games, and the first one. */
-    private static @NonNull String swallowedErrors(@NonNull List<Map<String, Object>> rows, @NonNull String team) {
+    /** How many errors a team's AIs threw and survived, in how many games, and the first one; empty for none. */
+    private static @NonNull String swallowedErrors(@NonNull List<Map<String, Object>> rows, int team) {
         int errors = 0;
         int games = 0;
         Object first = null;
         for (Map<String, Object> row : rows) {
-            Map<?, ?> block = block(row, team);
+            Map<?, ?> block = blocks(row).get(team);
             int in_game = (int) num(block, "errors");
             errors += in_game;
             games += in_game > 0 ? 1 : 0;
@@ -225,28 +277,31 @@ public final class Summary {
                 first = block.get("aiError");
             }
         }
-        String text = team + " swallowed errors " + errors + " in " + games + " games";
+        if (errors == 0) {
+            return "";
+        }
+        String text = "swallowed errors " + errors + " in " + games + " games";
         return first == null ? text : text + " (first: " + first + ")";
     }
 
-    /** The mean per game of each counter a team's AIs reported (AiLog.count). */
-    private static @NonNull String counters(@NonNull List<Map<String, Object>> rows, @NonNull String team) {
+    /** The mean per game of each counter a team's AIs reported (AiLog.count); empty for none. */
+    private static @NonNull String counters(@NonNull List<Map<String, Object>> rows, int team) {
         Map<String, Double> sums = new TreeMap<>();
         for (Map<String, Object> row : rows) {
-            Map<?, ?> counters = (Map<?, ?>) block(row, team).get("counters");
+            Map<?, ?> counters = (Map<?, ?>) blocks(row).get(team).get("counters");
             for (Map.Entry<?, ?> counter : counters.entrySet()) {
                 sums.merge(String.valueOf(counter.getKey()), ((Number) counter.getValue()).doubleValue(), Double::sum);
             }
         }
         if (sums.isEmpty()) {
-            return team + " counters: none";
+            return "";
         }
-        StringBuilder text = new StringBuilder(team + " counters per game:");
+        StringBuilder text = new StringBuilder("counters per game:");
         sums.forEach((key, sum) -> text.append(String.format(Locale.ROOT, " %s %.1f", key, sum / rows.size())));
         return text.toString();
     }
 
-    /** A's worst games that were not wins (lowest score, then lowest margin), with commands to open them. */
+    /** team A's worst games that were not wins (lowest score, then lowest margin), with commands to open them. */
     private static void printWorstGames(@NonNull PrintWriter out, @NonNull String run,
             @NonNull List<Map<String, Object>> counted) {
         Comparator<Map<String, Object>> by_score = Comparator.comparingDouble(row -> num(row, "score"));
@@ -256,12 +311,12 @@ public final class Summary {
         if (worst.isEmpty()) {
             return;
         }
-        out.println("worst games for A:");
+        out.println("worst games for team A:");
         for (Map<String, Object> row : worst) {
             Object key = row.get("key");
             out.printf(Locale.ROOT,
                     "  %-9s %-4s %-7s %5.1fm margin %+.2f  ./aisim.sh show %s %s | ./aisim.sh replay %s %s%n",
-                    key, Runs.resultOfA(row.get("winner")), row.get("end"), num(row, "t") / 60, num(row, "margin"),
+                    key, row.get("result"), row.get("end"), num(row, "t") / 60, num(row, "margin"),
                     run, key, run, key);
         }
     }
@@ -294,35 +349,45 @@ public final class Summary {
         chief
     }
 
-    /** Median time of each milestone for team A and team B (a team's first player to reach it), over the games. */
-    private static @NonNull String milestones(@NonNull List<Game> games) {
-        Map<Milestone, List<Double>> a_times = new EnumMap<>(Milestone.class);
-        Map<Milestone, List<Double>> b_times = new EnumMap<>(Milestone.class);
-        for (Milestone milestone : Milestone.values()) {
-            a_times.put(milestone, new ArrayList<>());
-            b_times.put(milestone, new ArrayList<>());
+    /**
+     * Median time of each milestone for the teams of {@code series} (a team's first player to reach it), over the
+     * games.
+     */
+    private static @NonNull String milestones(@NonNull List<Game> games, @NonNull List<Curves.Series> series) {
+        List<Map<Milestone, List<Double>>> times = new ArrayList<>();
+        for (int i = 0; i < series.size(); i++) {
+            Map<Milestone, List<Double>> by_milestone = new EnumMap<>(Milestone.class);
+            for (Milestone milestone : Milestone.values()) {
+                by_milestone.put(milestone, new ArrayList<>());
+            }
+            times.add(by_milestone);
         }
         for (Game game : games) {
-            // the first time each milestone was reached in this game; events come in time order
-            Map<Milestone, Double> a_first = new EnumMap<>(Milestone.class);
-            Map<Milestone, Double> b_first = new EnumMap<>(Milestone.class);
+            // the first time each milestone was reached in this game by each series; events come in time order
+            List<Map<Milestone, Double>> first = new ArrayList<>();
+            series.forEach(s -> first.add(new EnumMap<>(Milestone.class)));
             Map<Integer, Integer> quarters_built = new TreeMap<>(); // by slot
             for (Map<String, Object> event : game.events()) {
                 int slot = Game.slot(event);
                 Milestone reached = milestoneOf(event, slot, quarters_built);
-                if (reached != null) {
-                    (game.isA(slot) ? a_first : b_first).putIfAbsent(reached, num(event, "t"));
+                for (int i = 0; reached != null && i < series.size(); i++) {
+                    if (Curves.plays(game, series.get(i).team(), slot)) {
+                        first.get(i).putIfAbsent(reached, num(event, "t"));
+                    }
                 }
             }
-            a_first.forEach((milestone, t) -> a_times.get(milestone).add(t));
-            b_first.forEach((milestone, t) -> b_times.get(milestone).add(t));
+            for (int i = 0; i < series.size(); i++) {
+                Map<Milestone, List<Double>> by_milestone = times.get(i);
+                first.get(i).forEach((milestone, t) -> by_milestone.get(milestone).add(t));
+            }
         }
-        StringBuilder line = new StringBuilder("milestones (median seconds A / B, and in how many games):");
+        String labels = Curves.labels(series);
+        StringBuilder line = new StringBuilder("milestones (median seconds " + labels + ", and in how many games):");
         for (Milestone milestone : Milestone.values()) {
-            List<Double> a = a_times.get(milestone);
-            List<Double> b = b_times.get(milestone);
-            line.append(String.format(Locale.ROOT, " %s %s/%s (%d/%d)", milestone, median(a), median(b), a.size(),
-                    b.size()));
+            List<String> medians = times.stream().map(t -> median(t.get(milestone))).toList();
+            List<String> counts = times.stream().map(t -> String.valueOf(t.get(milestone).size())).toList();
+            line.append(String.format(Locale.ROOT, " %s %s (%s)", milestone, String.join("/", medians),
+                    String.join("/", counts)));
         }
         return line.toString();
     }

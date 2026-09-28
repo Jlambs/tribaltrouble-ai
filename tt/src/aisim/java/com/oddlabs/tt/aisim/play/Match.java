@@ -37,10 +37,9 @@ import java.util.function.IntFunction;
 /**
  * Plays one game headlessly, exactly as the client simulates it: the {@link ClientWorld}, AIs created in slot order,
  * then {@code world.tick(0.02f)} ({@link AnimationManager#ANIMATION_SECONDS_PER_TICK}) in a loop, which is what the
- * client does each lockstep tick minus human commands. Then it builds the game's result row.
- *
- * <p>Everything is from A's point of view: team A is A and its allies, team B every other player, which in a game of
- * three teams or more is several teams.
+ * client does each lockstep tick minus human commands. The game goes on until one team is left (or none), until
+ * team A is out when the job says so, or to the time limit; then it builds the game's result row, with every team's
+ * place and team A's measures.
  *
  * <p>One game at a time per JVM, always on the thread that called {@link #boot()}: the simulation keeps static
  * scratch buffers and the GL context belongs to that thread.
@@ -50,12 +49,10 @@ final class Match {
     private static final int COLLAPSE_UNITS = 8;
     /** Collapsing this long in a row puts a player out, when the job allows collapse. */
     private static final int COLLAPSE_SECONDS = 60;
-    /** The tick of the w15 milestone: A's warriors at 15:00. */
+    /** The tick of the w15 milestone: team A's warriors at 15:00. */
     private static final int W15_TICK = 15 * 60 * GameTime.TICKS_PER_SECOND;
-    /** The tick of the kd30 milestone: A's kills minus B's at 30:00. */
+    /** The tick of the kd30 milestone: team A's kills minus its losses at 30:00. */
     private static final int KD30_TICK = 30 * 60 * GameTime.TICKS_PER_SECOND;
-    private static final boolean TEAM_A = true;
-    private static final boolean TEAM_B = false;
 
     /**
      * How many identity hashes boot() draws on the simulation thread before the first game (pid % 1000). The thread's
@@ -110,7 +107,7 @@ final class Match {
                 } catch (RuntimeException | Error e) {
                     outcome.fail(End.crash, "", e, job);
                 }
-                recorder.finish(endMembers(outcome));
+                recorder.finish(endMembers(job, outcome));
                 row = finalRow(job, snapshot, world, recorder, outcome); // before AiLog.end(): it reads the AI counters
             } finally {
                 AiLog.end();
@@ -168,35 +165,50 @@ final class Match {
 
     // ---------------------------------------------------------------- playing and the end rules
 
-    /** Ticks the world until one team is out or the time is up, taking the milestones on the way. */
+    /**
+     * Ticks the world until at most one team is standing or the time is up, taking the milestones on the way. A team
+     * that goes out gets a team_out event, and the others play on without it.
+     */
     private static void play(@NonNull Job job, @NonNull World world, @NonNull GameRecorder recorder,
             @NonNull Outcome outcome) {
         Player[] players = world.getPlayers();
         int[] collapse_seconds = new int[players.length];
         boolean[] is_out = new boolean[players.length];
+        boolean[] collapsed = new boolean[players.length];
         int last_tick = job.minutes() * 60 * GameTime.TICKS_PER_SECOND;
         while (true) {
             world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
             int tick = world.getTick();
             progress = tick;
             if (tick == W15_TICK) {
-                outcome.w15 = warriors(teamCensus(job, recorder, TEAM_A));
+                outcome.w15 = warriors(teamCensus(job, recorder, job.team(job.side())));
             } else if (tick == KD30_TICK) {
-                outcome.kd30 = killsOfAMinusB(job, recorder);
+                outcome.kd30 = killsMinusLosses(teamCensus(job, recorder, job.team(job.side())));
             }
             if (tick % GameTime.TICKS_PER_SECOND != 0) {
                 continue; // everything below happens once per game second
             }
-            boolean collapsed = updatePlayersOut(job, players, recorder, collapse_seconds, is_out);
-            boolean a_standing = standing(job, is_out, TEAM_A);
-            boolean b_standing = standing(job, is_out, TEAM_B);
-            if (!a_standing || !b_standing) {
-                outcome.eliminated(a_standing, b_standing, collapsed);
+            updatePlayersOut(job, players, recorder, collapse_seconds, is_out, collapsed);
+            double t = tick / (double) GameTime.TICKS_PER_SECOND;
+            int standing = 0;
+            for (int team = 0; team < job.teamCount(); team++) {
+                if (outcome.isOut(team)) {
+                    continue;
+                }
+                if (standing(job, is_out, team)) {
+                    standing++;
+                } else {
+                    String via = collapsedTeam(job, collapsed, team) ? "collapse" : "engine";
+                    outcome.teamOut(team, t, via);
+                    recorder.event("team_out", "\"team\":" + team + ",\"via\":\"" + via + "\"");
+                }
+            }
+            if (standing <= 1 || (job.stopWhenAOut() && outcome.isOut(job.team(job.side())))) {
+                outcome.end = End.elim; // with stopWhenAOut, the teams still standing share first place
                 return;
             }
             if (tick >= last_tick) {
-                double a = Field.strength.of(teamCensus(job, recorder, TEAM_A));
-                outcome.timedOut(a, strongestOpponent(job, recorder));
+                outcome.timedOut(job, recorder);
                 return;
             }
         }
@@ -205,23 +217,23 @@ final class Match {
     /**
      * One game second for every player not yet out: advances their collapse clock (the game file gets a collapse
      * event when it reaches {@value #COLLAPSE_SECONDS} s) and marks them out once the engine has them dead or, when
-     * the job allows collapse, once they have collapsed that long. Returns whether a collapse put a living player out.
+     * the job allows collapse, once they have collapsed that long. {@code collapsed} marks the living players the
+     * collapse rule put out this second.
      */
-    private static boolean updatePlayersOut(@NonNull Job job, Player @NonNull [] players,
-            @NonNull GameRecorder recorder, int @NonNull [] collapse_seconds, boolean @NonNull [] is_out) {
-        boolean collapsed = false;
+    private static void updatePlayersOut(@NonNull Job job, Player @NonNull [] players, @NonNull GameRecorder recorder,
+            int @NonNull [] collapse_seconds, boolean @NonNull [] is_out, boolean @NonNull [] collapsed) {
         for (int slot = 0; slot < players.length; slot++) {
+            collapsed[slot] = false;
             if (!is_out[slot]) {
                 collapse_seconds[slot] = collapsing(players[slot]) ? collapse_seconds[slot] + 1 : 0;
                 if (collapse_seconds[slot] == COLLAPSE_SECONDS) {
                     recorder.event("collapse", slot, "");
                 }
                 boolean gone = job.collapse() && collapse_seconds[slot] >= COLLAPSE_SECONDS;
-                collapsed |= gone && players[slot].isAlive();
+                collapsed[slot] = gone && players[slot].isAlive();
                 is_out[slot] = gone || !players[slot].isAlive();
             }
         }
-        return collapsed;
     }
 
     /**
@@ -241,86 +253,79 @@ final class Match {
         return true;
     }
 
-    /** Whether a player of the team is not out yet. */
-    private static boolean standing(@NonNull Job job, boolean @NonNull [] is_out, boolean team_a) {
+    /** Whether a player of {@code team} is not out yet. */
+    private static boolean standing(@NonNull Job job, boolean @NonNull [] is_out, int team) {
         for (int slot = 0; slot < is_out.length; slot++) {
-            if (onTeam(job, slot, team_a) && !is_out[slot]) {
+            if (job.team(slot) == team && !is_out[slot]) {
                 return true;
             }
         }
         return false;
     }
 
-    /** Whether {@code slot} plays for team A ({@code team_a}) or for team B (not {@code team_a}). */
-    private static boolean onTeam(@NonNull Job job, int slot, boolean team_a) {
-        return job.onTeamA(slot) == team_a;
-    }
-
-    /** The strength of the strongest team against A: team B's, or in a game of three teams or more, its best one's. */
-    private static double strongestOpponent(@NonNull Job job, @NonNull GameRecorder recorder) {
-        Map<Integer, Double> strength_by_team = new TreeMap<>();
-        for (int slot = 0; slot < job.slots(); slot++) {
-            if (!job.onTeamA(slot)) {
-                double strength = Field.strength.of(recorder.census(slot));
-                strength_by_team.merge(job.team(slot), strength, Double::sum);
+    /** Whether the collapse rule put a living player of {@code team} out this second. */
+    private static boolean collapsedTeam(@NonNull Job job, boolean @NonNull [] collapsed, int team) {
+        for (int slot = 0; slot < collapsed.length; slot++) {
+            if (job.team(slot) == team && collapsed[slot]) {
+                return true;
             }
         }
-        return strength_by_team.values().stream().mapToDouble(Double::doubleValue).max().orElse(0);
+        return false;
     }
 
-    /** How the game went for A's team; {@code end} is never hang (hang rows come from the worker's watchdog). */
+    /**
+     * How the game went, for every team: when each went out and how, which gives the places. A team's place is 1 plus
+     * the number of teams that outlasted it; teams that went out in the same second, or were standing at the time
+     * limit, share their places (two teams sharing first both have 1.5). {@code end} is never hang (hang rows come
+     * from the worker's watchdog).
+     */
     private static final class Outcome {
         /** Stack frames the row's problem text shows; the .err file has the full stack. */
         private static final int PROBLEM_FRAMES = 3;
 
         @Nullable
         End end;
-        /** How an elimination happened: collapse or engine; null for every other end. */
-        @Nullable
-        String via;
-        /** a, b or draw; null when the game does not count. */
-        @Nullable
-        String winner;
         /** The exception text of a crash or error row. */
         @Nullable
         String problem;
-        /** The timeout margin, or 1/-1/0 on elimination. */
-        double margin;
-        /** A's kills minus B's at 30:00; null when the game ended earlier. */
+        /** The kd30 metric at 30:00; null when the game ended earlier. */
         @Nullable
         Integer kd30;
-        /** A's warriors at 15:00; null when the game ended earlier. */
+        /** The w15 metric at 15:00; null when the game ended earlier. */
         @Nullable
         Integer w15;
+        /** The game second each team went out, by team; missing while it stands. */
+        private final @NonNull Map<Integer, Double> out_at = new TreeMap<>();
+        /** How each team that went out did: engine or collapse. */
+        private final @NonNull Map<Integer, String> out_via = new TreeMap<>();
+        /** At the time limit, team A's strength margin over its strongest standing enemy. */
+        private double timeout_margin;
 
-        /** A team has nobody standing: the other one wins, or it is a draw when neither has anyone left. */
-        void eliminated(boolean a_standing, boolean b_standing, boolean collapsed) {
-            end = End.elim;
-            via = collapsed ? "collapse" : "engine";
-            if (a_standing) {
-                winner = "a";
-                margin = 1;
-            } else if (b_standing) {
-                winner = "b";
-                margin = -1;
-            } else {
-                winner = "draw";
-                margin = 0;
-            }
+        boolean isOut(int team) {
+            return out_at.containsKey(team);
+        }
+
+        void teamOut(int team, double t, @NonNull String via) {
+            out_at.put(team, t);
+            out_via.put(team, via);
         }
 
         /**
-         * The time limit: a draw, whoever is ahead, so that only beating every opponent wins. The margin, (A - B) /
-         * (A + B) of the strength of A's team and of its strongest enemy, still records who was ahead.
+         * The time limit: every team still standing shares first place, whoever is ahead, so that only beating every
+         * opponent wins. The margin, (A - B) / (A + B) of the strength of team A and of its strongest standing
+         * enemy, still records who was ahead.
          */
-        void timedOut(double a_strength, double b_strength) {
+        void timedOut(@NonNull Job job, @NonNull GameRecorder recorder) {
             end = End.timeout;
-            winner = "draw";
-            if (a_strength + b_strength == 0) {
-                margin = 0;
-            } else {
-                margin = Math.round((a_strength - b_strength) / (a_strength + b_strength) * 1000) / 1000.0;
+            int team_a = job.team(job.side());
+            double a = Field.strength.of(teamCensus(job, recorder, team_a));
+            double b = 0;
+            for (int team = 0; team < job.teamCount(); team++) {
+                if (team != team_a && !isOut(team)) {
+                    b = Math.max(b, Field.strength.of(teamCensus(job, recorder, team)));
+                }
             }
+            timeout_margin = a + b == 0 ? 0 : Math.round((a - b) / (a + b) * 1000) / 1000.0;
         }
 
         /** A game that does not count: the exception and its top frames in the row, the full stack in .err. */
@@ -340,45 +345,104 @@ final class Match {
             }
         }
 
-        /** A's score: 1.0 for a win, 0.0 for a loss, 0.5 for a draw; null when the game does not count. */
-        @Nullable
-        Double score() {
-            if (winner == null) {
-                return null;
+        /** Whether the game played to its end (elimination or time limit), so it has places and counts. */
+        boolean counts() {
+            return end != null && end.normal();
+        }
+
+        /** When {@code team} went out, as a number that grows with how long it lasted; standing teams last forever. */
+        private double lasted(int team) {
+            return out_at.getOrDefault(team, Double.POSITIVE_INFINITY);
+        }
+
+        /** The place of {@code team} of {@code teams}: 1 plus the teams that outlasted it, shared ties averaged. */
+        double place(int team, int teams) {
+            int better = 0;
+            int same = 0;
+            for (int other = 0; other < teams; other++) {
+                if (lasted(other) > lasted(team)) {
+                    better++;
+                } else if (lasted(other) == lasted(team)) {
+                    same++; // team itself among them
+                }
             }
-            return switch (winner) {
-                case "a" -> 1.0;
-                case "b" -> 0.0;
-                default -> 0.5;
+            return better + (same + 1) / 2.0;
+        }
+
+        /** The one team that outlasted every other; null when first place is shared. */
+        @Nullable
+        Integer winnerTeam(int teams) {
+            for (int team = 0; team < teams; team++) {
+                if (place(team, teams) == 1) {
+                    return team;
+                }
+            }
+            return null;
+        }
+
+        /** A team's result: win (first place alone), draw (first place shared) or loss. */
+        @NonNull
+        String result(int team, int teams) {
+            double place = place(team, teams);
+            if (place == 1) {
+                return "win";
+            }
+            int best = 0;
+            for (int other = 0; other < teams; other++) {
+                best = lasted(other) > lasted(best) ? other : best;
+            }
+            return lasted(team) == lasted(best) ? "draw" : "loss";
+        }
+
+        /** A team's score, its place scaled so that first is 1 and last 0: 1 / 0.5 / 0 for win / draw / loss of two. */
+        double score(int team, int teams) {
+            return (teams - place(team, teams)) / (teams - 1);
+        }
+
+        /** 1 when the team won by eliminating every other, -1 when it was eliminated and lost, else 0. */
+        int elim(int team, int teams) {
+            String result = result(team, teams);
+            if (result.equals("win") && end == End.elim) {
+                return 1;
+            }
+            return result.equals("loss") && isOut(team) ? -1 : 0;
+        }
+
+        /** A team's margin: 1 for a win, -1 for a loss, 0 for a shared elimination, the strength margin at a draw. */
+        double margin(int team, int teams) {
+            return switch (result(team, teams)) {
+                case "win" -> 1;
+                case "loss" -> -1;
+                default -> end == End.timeout ? timeout_margin : 0;
             };
         }
 
-        /** 1 when A eliminated B, -1 when B eliminated A, 0 for any other game that counts; null otherwise. */
+        /** How the last teams to go out went: collapse or engine; null unless the game ended by elimination. */
         @Nullable
-        Integer elimination() {
-            if (winner == null) {
+        String via() {
+            if (end != End.elim) {
                 return null;
             }
-            if (end != End.elim || winner.equals("draw")) {
-                return 0;
-            }
-            return winner.equals("a") ? 1 : -1;
+            double last = out_at.values().stream().mapToDouble(Double::doubleValue).max().orElse(-1);
+            boolean collapse = out_at.entrySet().stream().anyMatch(e -> e.getValue() == last && "collapse".equals(
+                    out_via.get(e.getKey())));
+            return collapse ? "collapse" : "engine";
         }
     }
 
     // ---------------------------------------------------------------- the teams' census
 
     /**
-     * The census of team A or team B, summed over its slots. armyX/armyY are the warrior-weighted centre of the team's
+     * The census of {@code team}, summed over its slots. armyX/armyY are the warrior-weighted centre of the team's
      * armies (-1 without warriors), a weighted mean rather than a sum.
      */
-    private static int @NonNull [] teamCensus(@NonNull Job job, @NonNull GameRecorder recorder, boolean team_a) {
+    private static int @NonNull [] teamCensus(@NonNull Job job, @NonNull GameRecorder recorder, int team) {
         int[] sum = new int[Field.values().length];
         long sum_x = 0;
         long sum_y = 0;
         long warriors = 0;
         for (int slot = 0; slot < job.slots(); slot++) {
-            if (onTeam(job, slot, team_a)) {
+            if (job.team(slot) == team) {
                 int[] census = recorder.census(slot);
                 for (int i = 0; i < sum.length; i++) {
                     sum[i] += census[i];
@@ -394,9 +458,12 @@ final class Match {
         return sum;
     }
 
-    /** The kd30 metric's value now: A's kills minus B's. */
-    private static int killsOfAMinusB(@NonNull Job job, @NonNull GameRecorder recorder) {
-        return Field.kills.of(teamCensus(job, recorder, TEAM_A)) - Field.kills.of(teamCensus(job, recorder, TEAM_B));
+    /**
+     * The kd30 metric's value: a team's kills minus its losses. Units killed by their own side or an ally count in
+     * both, so friendly fire cancels out.
+     */
+    private static int killsMinusLosses(int @NonNull [] census) {
+        return Field.kills.of(census) - Field.lost.of(census);
     }
 
     /** The warriors of a census, tower garrisons included, as the reports count them. */
@@ -425,16 +492,15 @@ final class Match {
     }
 
     /**
-     * The game file's header members. Only run, a and teams go through GameRecorder.quote; the rest are written raw.
-     * Not
-     * built with Aisim.JSON, which escapes non-ASCII characters where GameRecorder.quote does not.
+     * The game file's header members. Only run, a and players go through GameRecorder.quote; the rest are written
+     * raw. Not built with Aisim.JSON, which escapes non-ASCII characters where GameRecorder.quote does not.
      */
     private static @NonNull String header(@NonNull Job job, @NonNull String snapshot) {
         StringBuilder text = new StringBuilder("\"source\":\"aisim\"");
         text.append(",\"run\":").append(GameRecorder.quote(job.run()));
         text.append(",\"key\":\"").append(job.key()).append('"');
-        text.append(",\"a\":").append(GameRecorder.quote(job.spec(job.side())));
-        text.append(",\"teams\":").append(GameRecorder.quote(job.teams()));
+        text.append(",\"a\":").append(GameRecorder.quote(job.teamPlayers(job.team(job.side()))));
+        text.append(",\"players\":").append(GameRecorder.quote(job.players()));
         text.append(",\"map\":\"").append(job.map()).append('"');
         text.append(",\"seed\":").append(job.seed());
         text.append(",\"mapcode\":\"").append(job.mapcode()).append('"');
@@ -445,23 +511,27 @@ final class Match {
 
     /** Each slot's AI log file, or null when the job keeps no AI logs. */
     private static @Nullable IntFunction<Path> aiLogFiles(@NonNull Job job) {
-        String logs = job.logs();
-        if (logs == null) {
-            return null;
+        return job.logs() == null ? null : job::aiLogFile;
+    }
+
+    /**
+     * The game file's end members: how the game ended, how its last elimination happened, the winning team and every
+     * team's place (null for a game that did not count).
+     */
+    private static @NonNull String endMembers(@NonNull Job job, @NonNull Outcome outcome) {
+        String end = outcome.end == null ? "null" : "\"" + outcome.end + "\"";
+        String via = outcome.via() == null ? "null" : "\"" + outcome.via() + "\"";
+        String places = "null";
+        Integer winner = null;
+        if (outcome.counts()) {
+            List<String> each = new ArrayList<>();
+            for (int team = 0; team < job.teamCount(); team++) {
+                each.add(String.valueOf(outcome.place(team, job.teamCount())));
+            }
+            places = "[" + String.join(",", each) + "]";
+            winner = outcome.winnerTeam(job.teamCount());
         }
-        return slot -> Path.of(logs + "-ai-s" + slot + ".log");
-    }
-
-    /** The game file's end members: how the game ended, how an elimination happened, and who won. */
-    private static @NonNull String endMembers(@NonNull Outcome outcome) {
-        String via = jsonOrNull(outcome.via);
-        String winner = jsonOrNull(outcome.winner);
-        return "\"end\":\"" + outcome.end + "\",\"via\":" + via + ",\"winner\":" + winner;
-    }
-
-    /** {@code s} as a JSON string, or null; only for the fixed tokens of via and winner, which need no escaping. */
-    private static @NonNull String jsonOrNull(@Nullable String s) {
-        return s == null ? "null" : "\"" + s + "\"";
+        return "\"end\":" + end + ",\"via\":" + via + ",\"winnerTeam\":" + winner + ",\"places\":" + places;
     }
 
     // ---------------------------------------------------------------- the result row
@@ -483,31 +553,36 @@ final class Match {
     }
 
     /**
-     * A played game's row: {@link #baseRow}, how the game ended, A's scores (score, elim, kd30, w15 and margin, null
-     * when the game does not count), each team's final block, then the recorder's health, the problem and the replay
-     * command.
+     * A played game's row: {@link #baseRow}, how the game ended and who won, team A's result and measures (null when
+     * the game does not count), every team's block, then the recorder's health, the problem and the replay command.
      */
     private static @NonNull Map<String, Object> row(@NonNull Job job, @NonNull String snapshot, @NonNull World world,
             @NonNull GameRecorder recorder, @NonNull Outcome outcome) {
-        boolean counts = outcome.winner != null;
-        int[] a = teamCensus(job, recorder, TEAM_A);
-        int[] b = teamCensus(job, recorder, TEAM_B);
+        boolean counts = outcome.counts();
+        int teams = job.teamCount();
+        int team_a = job.team(job.side());
+        int[] a = teamCensus(job, recorder, team_a);
         // a game that ended before a milestone takes it from the final census
-        int kd30 = outcome.kd30 != null ? outcome.kd30 : Field.kills.of(a) - Field.kills.of(b);
+        int kd30 = outcome.kd30 != null ? outcome.kd30 : killsMinusLosses(a);
         int w15 = outcome.w15 != null ? outcome.w15 : warriors(a);
         Map<String, Object> row = baseRow(job, snapshot);
         row.put("end", outcome.end == null ? null : outcome.end.name());
-        row.put("via", outcome.via);
-        row.put("winner", outcome.winner);
+        row.put("via", outcome.via());
+        row.put("winnerTeam", counts ? outcome.winnerTeam(teams) : null);
         row.put("t", gameSeconds(world));
         row.put("checksum", world.getChecksum());
-        row.put("score", outcome.score());
-        row.put("elim", outcome.elimination());
+        row.put("result", counts ? outcome.result(team_a, teams) : null);
+        row.put("place", counts ? outcome.place(team_a, teams) : null);
+        row.put("score", counts ? outcome.score(team_a, teams) : null);
+        row.put("elim", counts ? outcome.elim(team_a, teams) : null);
         row.put("kd30", counts ? kd30 : null);
         row.put("w15", counts ? w15 : null);
-        row.put("margin", counts ? outcome.margin : null);
-        row.put("A", teamBlock(job, world, a, TEAM_A));
-        row.put("B", teamBlock(job, world, b, TEAM_B));
+        row.put("margin", counts ? outcome.margin(team_a, teams) : null);
+        List<Map<String, Object>> blocks = new ArrayList<>();
+        for (int team = 0; team < teams; team++) {
+            blocks.add(teamBlock(job, world, recorder, outcome, team));
+        }
+        row.put("teams", blocks);
         row.put("recorderFailed", recorder.hasFailed());
         row.put("problem", outcome.problem);
         row.put("replay", replayCommand(job));
@@ -519,8 +594,9 @@ final class Match {
             @NonNull String problem, double t) {
         Map<String, Object> row = baseRow(job, snapshot);
         row.put("end", end.name());
-        row.put("winner", null);
+        row.put("winnerTeam", null);
         row.put("t", t);
+        row.put("result", null);
         row.put("problem", problem);
         row.put("replay", replayCommand(job));
         return row;
@@ -535,8 +611,8 @@ final class Match {
         row.put("seed", job.seed());
         row.put("side", job.side());
         row.put("slots", job.slots());
-        row.put("teams", job.teams());
-        row.put("a", job.spec(job.side()));
+        row.put("players", job.players());
+        row.put("a", job.teamPlayers(job.team(job.side())));
         row.put("map", job.map());
         row.put("mapcode", job.mapcode());
         row.put("minutes", job.minutes());
@@ -547,19 +623,35 @@ final class Match {
         return row;
     }
 
-    /** A team's final census plus its AIs' log counters summed over its slots, and its first AI error in slot order. */
+    /**
+     * A team's block: its number, players and slots; its place, when it went out and how (null when it did not, or
+     * when the game does not count); its final census, summed over its slots; its AIs' log counters, summed, and its
+     * first AI error in slot order.
+     */
     private static @NonNull Map<String, Object> teamBlock(@NonNull Job job, @NonNull World world,
-            int @NonNull [] census, boolean team_a) {
+            @NonNull GameRecorder recorder, @NonNull Outcome outcome, int team) {
+        boolean counts = outcome.counts();
         Map<String, Object> block = new LinkedHashMap<>();
+        block.put("team", team);
+        block.put("players", job.teamPlayers(team));
+        List<Integer> slots = new ArrayList<>();
+        for (int slot = 0; slot < job.slots(); slot++) {
+            if (job.team(slot) == team) {
+                slots.add(slot);
+            }
+        }
+        block.put("slots", slots);
+        block.put("place", counts ? outcome.place(team, job.teamCount()) : null);
+        block.put("score", counts ? outcome.score(team, job.teamCount()) : null);
+        block.put("out", outcome.out_at.get(team));
+        block.put("via", outcome.out_via.get(team));
+        int[] census = teamCensus(job, recorder, team);
         for (Field field : Field.values()) {
             block.put(field.name(), field.of(census));
         }
         SortedMap<String, Integer> counters = new TreeMap<>();
         String first_error = null;
-        for (int slot = 0; slot < job.slots(); slot++) {
-            if (!onTeam(job, slot, team_a)) {
-                continue;
-            }
+        for (int slot : slots) {
             AiLog log = AiLog.peek(world, slot);
             if (log != null) {
                 log.counters().forEach((key, n) -> counters.merge(key, n, Integer::sum));

@@ -21,7 +21,7 @@ import java.util.Set;
 /**
  * {@code export RUN}: a run's counted games as two CSV tables for spreadsheets and scripts, next to its results:
  * census.csv (one line per census sample) and events.csv (one line per event). Each line starts with its game's run,
- * key, seed, side (A's slot) and A's result, so the tables of several runs can be concatenated.
+ * key, seed, side (A's slot) and team A's result, so the tables of several runs can be concatenated.
  */
 public final class Export {
     /** The columns every line starts with. */
@@ -44,8 +44,8 @@ public final class Export {
     }
 
     /**
-     * census.csv: the game columns, the game's end, then per sample its slot, role (A or B), t and every census field
-     * in docs/aisim.md order. A field an older game file lacks is empty.
+     * census.csv: the game columns, the game's end, then per sample its slot, team (A, B, ... as the reports name
+     * them), t and every census field in docs/aisim.md order. A field an older game file lacks is empty.
      */
     private static int writeCensus(@NonNull List<Game> games, @NonNull Path file) throws IOException {
         List<String> fields = new ArrayList<>();
@@ -55,7 +55,7 @@ public final class Export {
         int lines = 0;
         try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(file, StandardCharsets.UTF_8))) {
             List<String> header = new ArrayList<>(GAME_COLUMNS);
-            header.addAll(List.of("end", "slot", "role", "t"));
+            header.addAll(List.of("end", "slot", "team", "t"));
             header.addAll(fields);
             out.println(String.join(",", header));
             for (Game game : games) {
@@ -76,7 +76,7 @@ public final class Export {
     }
 
     /**
-     * events.csv: the game columns, then per event its t, slot and role (empty for events of no player), ev, and every
+     * events.csv: the game columns, then per event its t, slot and team (empty for events of no player), ev, and every
      * other member any event of the run has, in the order they first appear. The header and census lines are left out.
      */
     private static int writeEvents(@NonNull List<Game> games, @NonNull Path file) throws IOException {
@@ -90,7 +90,7 @@ public final class Export {
         int lines = 0;
         try (PrintWriter out = new PrintWriter(Files.newBufferedWriter(file, StandardCharsets.UTF_8))) {
             List<String> header = new ArrayList<>(GAME_COLUMNS);
-            header.addAll(List.of("t", "slot", "role", "ev"));
+            header.addAll(List.of("t", "slot", "team", "ev"));
             header.addAll(members);
             out.println(String.join(",", header));
             for (Game game : games) {
@@ -126,10 +126,10 @@ public final class Export {
         return cells;
     }
 
-    /** The slot of an event or sample, and its role: A, or B for every player not on A's team. */
+    /** The slot of an event or sample, and its team's name (A for team A, then B, C, ...). */
     private static @NonNull List<String> slotCells(@NonNull Game game, @NonNull Map<String, Object> event) {
         int slot = Game.slot(event);
-        return List.of(String.valueOf(slot), game.isA(slot) ? "A" : "B");
+        return List.of(String.valueOf(slot), game.teamName(game.teamOf(slot)));
     }
 
     /**

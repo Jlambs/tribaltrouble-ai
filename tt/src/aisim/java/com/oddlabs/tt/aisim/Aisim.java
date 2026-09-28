@@ -69,24 +69,27 @@ public final class Aisim {
               build                              compile (JDK 26), lint and snapshot the build; the rest runs from it
               new     NAME                       start AI NAME from the template: tt/src/main/java/.../player/NAME/
               lint    [NAME|CLASS|@TAG...]       check AIs against the fair-play and determinism rules (build does it)
-              play    [PLAYERS] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
+              play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
                                                  one game with AI logs on -> aisim/runs/NAME/
-              batch   PLAYERS [--seeds LIST] [--side S] [--workers W] [--name NAME] [MAP] [GAME]
-                                                 every map, A from every start -> aisim/runs/NAME/
+              batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--workers W] [--logs [lost]] [--name NAME]
+                      [MAP] [GAME]               every map, A from every start -> aisim/runs/NAME/; --logs keeps the
+                                                 AI logs of every game (lost: of the games team A did not win)
               summary RUN                        results of a (running) run
               compare BASE VARIANT [VARIANT...] [--force]
                                                  paired comparison over the same games; several variants: one table
               show    RUN KEY | FILE.jsonl       one game as a table plus key events (harness or GUI game file)
               replay  RUN KEY [--snap latest|ID] [--until MIN]   rerun one game with AI logs; verify it
               curves  RUN [RUN...] [--fields F,F] [--at MIN,MIN] [--split]
-                                                 census means per minute: A / B, A won / lost, or A of each run
+                                                 census means per minute: each team, A won / lost, A of each run
               fights  RUN [KEY] | FILE.jsonl [--min N]   fights of one game, or of a run by where they were
               export  RUN [RUN...]               a run's games as census.csv and events.csv, for scripts
               lab     FILE.java [args]           run your own tool (lab/NAME/) on the last build's class path
               freeze  TAG NAME|CLASS [--from DIR|JAR]   freeze an AI package as opponent @TAG
               gui     [--stale-ok] SPEC [game args]     play the game yourself; SPEC plays the skirmish Hard slots
-            PLAYERS: --a P [--b P] [--vs N]            A against N allied copies of B
-                  or --teams "P P.. vs P P.. [vs ..]"  any teams, 2..32 players; A is the first player
+            --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
+              A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
+              is left, or to the time limit.
+              e.g. "myai vs hard", "myai vs hard*3", "myai hard vs normal*2 easy", "myai vs hard vs normal"
               P: SPEC[/RACE][*COUNT]: RACE v or n (vikings, natives), COUNT copies in a row, e.g. hard/n*2
               SPEC: easy|normal|hard | NAME (com.oddlabs.tt.player.NAME.NameAI) | CLASS | @TAG, then optional :k=v,k=v
             MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0..10 --trees 0..10 --supplies 0..10
@@ -95,17 +98,18 @@ public final class Aisim {
                  Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
             LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
             GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
+                  --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.
-            defaults: --b hard --vs 1, vikings, every map setting random, 360 minutes (up to 600), seeds tune from
-                      every start, 4 workers (1..16); play: --a hard --seed 1 --side 0
+            defaults: vikings, every map setting random, 360 minutes (up to 600), seeds tune from every start,
+                      4 workers (1..16); play: --players "hard vs hard" --seed 1 --side 0
             writing an AI (rules, orders, recipes): tt/src/main/java/com/oddlabs/tt/player/AGENTS.md
             """;
     /** Options that shape a map. */
     private static final Set<String> MAP_OPTIONS = Set.of("size", "terrain", "hills", "trees", "supplies", "map");
     /** Options that play and batch share: the players, the map's, how the game runs, and --stale-ok. */
-    private static final Set<String> GAME_OPTIONS = union(MAP_OPTIONS, "a", "b", "vs", "teams", "minutes", "rng",
-            "no-collapse", "stale-ok");
+    private static final Set<String> GAME_OPTIONS = union(MAP_OPTIONS, "players", "minutes", "rng", "no-collapse",
+            "stop-when-a-out", "stale-ok");
     /**
      * The time limit in game minutes. A game that reaches it is a draw, so only beating every opponent wins; the
      * default leaves room for slow wins (docs/aisim.md, --minutes).
@@ -222,16 +226,16 @@ public final class Aisim {
         }
     }
 
-    /** play [PLAYERS] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME] */
+    /** play [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME] */
     private static int play(@NonNull Options options) throws IOException {
-        Lineup lineup = lineup(options, "hard");
+        Lineup lineup = lineup(options, "hard vs hard");
         options.check(union(GAME_OPTIONS, "seed", "side", "name"), 0);
         Snapshot.requireFresh(options.flag("stale-ok"));
         String name = runName(options, "play-", lineup);
         Maps maps = Maps.of(options, false);
         int side = options.integer("side", 0, 0, lineup.size() - 1);
         printRandomSeeds(maps, "--seed");
-        Run run = run(name, options, lineup, maps, side, true);
+        Run run = run(name, options, lineup, maps, side, Batch.LOGS_ALL);
         int status = Batch.run(name, run.setup(), run.jobs(), 1);
         Job job = run.jobs().get(0);
         System.out.println("game " + job.game() + " | " + Runs.aiLogs(Path.of(job.game())));
@@ -239,45 +243,45 @@ public final class Aisim {
         return status;
     }
 
-    /** batch PLAYERS [--seeds LIST] [--side S] [--workers W] [--name NAME] [MAP] [GAME] */
+    /** batch --players "P.. vs P.." [--seeds LIST] [--side S] [--workers W] [--name NAME] [MAP] [GAME] */
     private static int batch(@NonNull Options options) throws IOException {
-        if (options.get("a") == null && options.get("teams") == null) {
-            throw new UsageException("batch needs its players: --a SPEC [--b SPEC --vs N] or --teams \"...\"");
+        if (options.get("players") == null) {
+            throw new UsageException("batch needs its players, such as --players \"myai vs hard\"");
         }
-        Lineup lineup = lineup(options, "hard");
-        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "name"), 0);
+        Lineup lineup = lineup(options, "hard vs hard");
+        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "logs", "name"), 0);
         Snapshot.requireFresh(options.flag("stale-ok"));
         String name = runName(options, "", lineup);
         int workers = options.integer("workers", DEFAULT_WORKERS, 1, MAX_WORKERS);
         Integer side = options.optionalInteger("side", 0, lineup.size() - 1);
         Maps maps = Maps.of(options, true);
         printRandomSeeds(maps, "--seeds");
-        Run run = run(name, options, lineup, maps, side, false);
+        Run run = run(name, options, lineup, maps, side, logs(options.get("logs")));
         return Batch.run(name, run.setup(), run.jobs(), workers);
     }
 
-    /**
-     * The players of play and batch: --teams, or --a (default {@code default_a}), --b (default hard) and --vs. Read
-     * before the other options are checked, so that an unquoted lineup gets an error of its own.
-     */
-    private static @NonNull Lineup lineup(@NonNull Options options, @NonNull String default_a) {
-        String teams = options.get("teams");
-        Lineup lineup;
-        if (teams == null) {
-            int vs = options.integer("vs", 1, 1, Lineup.MAX_PLAYERS - 1);
-            lineup = Lineup.oneVersus(options.get("a", default_a), options.get("b", "hard"), vs);
-        } else {
-            if (!options.args.isEmpty()) {
-                throw new UsageException(
-                        "quote the lineup, as in --teams \"myai vs hard\"; unexpected " + options.args);
-            }
-            for (String part : List.of("a", "b", "vs")) {
-                if (options.flag(part)) {
-                    throw new UsageException("--teams names every player; drop --" + part);
-                }
-            }
-            lineup = Lineup.parse(teams);
+    /** batch --logs: null without it, all for --logs, lost for --logs lost. */
+    private static @Nullable String logs(@Nullable String option) {
+        if (option == null) {
+            return null;
         }
+        return switch (option) {
+            case "true" -> Batch.LOGS_ALL; // --logs without a value
+            case "lost" -> Batch.LOGS_LOST;
+            default -> throw new UsageException(
+                    "--logs keeps every game's AI logs, --logs lost those of the games " + "team A did not win; not '" + option + "'");
+        };
+    }
+
+    /**
+     * The players of play and batch, --players or {@code fallback}. Read before the other options are checked, so that
+     * an unquoted lineup gets an error of its own.
+     */
+    private static @NonNull Lineup lineup(@NonNull Options options, @NonNull String fallback) {
+        if (options.get("players") != null && !options.args.isEmpty()) {
+            throw new UsageException("quote the players, as in --players \"myai vs hard\"; unexpected " + options.args);
+        }
+        Lineup lineup = Lineup.parse(options.get("players", fallback));
         lineup.specs().forEach(Aisim::checkSpec);
         return lineup;
     }
@@ -312,11 +316,11 @@ public final class Aisim {
 
     /**
      * The jobs of a run: every map in every rotation of the lineup (A in every start slot), unless {@code only_side}
-     * picks A's slot, interleaved so that a run cut short still has every start of most maps. {@code logs}: the games
-     * write AI logs.
+     * picks A's slot, interleaved so that a run cut short still has every start of most maps. {@code logs}: which
+     * games keep their AI logs ({@link Batch#LOGS_ALL}, {@link Batch#LOGS_LOST}), or null for none.
      */
     private static @NonNull Run run(@NonNull String run, @NonNull Options options, @NonNull Lineup lineup,
-            @NonNull Maps maps, @Nullable Integer only_side, boolean logs) {
+            @NonNull Maps maps, @Nullable Integer only_side, @Nullable String logs) {
         Integer rng_option = options.optionalInteger("rng", 0, Integer.MAX_VALUE);
         Long rng = rng_option == null ? null : rng_option.longValue();
         List<Integer> sides = only_side != null ? List.of(only_side) : IntStream.range(0,
@@ -330,6 +334,7 @@ public final class Aisim {
         }
         int minutes = options.integer("minutes", DEFAULT_MINUTES, 1, MAX_MINUTES);
         boolean collapse = !options.flag("no-collapse");
+        boolean stop_when_a_out = options.flag("stop-when-a-out");
         List<Job> jobs = new ArrayList<>();
         for (Job.MapCode map : maps.maps()) {
             for (int side : sides) {
@@ -337,12 +342,13 @@ public final class Aisim {
                 String files = Aisim.slash(Runs.RUNS.resolve(run).resolve("g").resolve(key));
                 jobs.add(new Job(run, key, map.seed(), side, lineup.text(), lineup.seats(side), map.size(),
                         map.terrain(), map.hills(), map.trees(), map.supplies(), minutes, rng, collapse,
-                        files + ".jsonl", logs ? files : null));
+                        stop_when_a_out,
+                        files + ".jsonl", logs != null ? files : null));
             }
         }
         noteCrowding(lineup, maps);
-        String config = maps.description() + " | " + minutes + " min" + (rng == null ? "" : " | rng " + rng) + (collapse ? "" : " | no collapse");
-        return new Run(new Batch.Setup(lineup.text(), lineup.masked(), config), jobs);
+        String config = maps.description() + " | " + minutes + " min" + (rng == null ? "" : " | rng " + rng) + (collapse ? "" : " | no collapse") + (stop_when_a_out ? " | stop when A is out" : "");
+        return new Run(new Batch.Setup(lineup.text(), lineup.masked(), config, logs), jobs);
     }
 
     /**

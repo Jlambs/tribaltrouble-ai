@@ -178,6 +178,11 @@ public final class GameRecorder implements Animated {
         writeLine(lineStart(ev) + ",\"s\":" + slot + extra + "}");
     }
 
+    /** Writes an event line of no single player (such as {@code team_out}); {@code members} are its JSON members. */
+    public void event(@NonNull String ev, @NonNull String members) {
+        writeLine(lineStart(ev) + "," + members + "}");
+    }
+
     /**
      * Writes the final census of every player and the end line (extra JSON members), then stops recording and closes
      * the file. After a failure it writes nothing more but still closes the file.

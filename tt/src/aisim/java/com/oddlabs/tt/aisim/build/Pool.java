@@ -108,7 +108,7 @@ public record Pool(@NonNull String tag, @NonNull String entry, @NonNull String p
         pool.requireAiClass(source);
         pool.writeMeta(source, count);
         String frozen = count + " files of " + package_name + " as @" + tag;
-        System.out.println("froze " + frozen + " (sha " + pool.sha() + "); play it with --b @" + tag);
+        System.out.println("froze " + frozen + " (sha " + pool.sha() + "); play it as @" + tag + " in --players");
         return 0;
     }
 

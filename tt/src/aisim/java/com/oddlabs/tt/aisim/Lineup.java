@@ -15,11 +15,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The players of a run and their teams: {@code --teams "myai hard vs normal*2 easy/n"}, or {@code --a}, {@code --b}
- * and {@code --vs} (A against N allied copies of B). A is the first player given, and team A its team.
+ * The players of a run and their teams, as {@code --players} gives them: {@code "myai hard vs normal*2 vs easy/n"}.
+ * Teams are numbered 0, 1, ... in the order given, and named A, B, ... in reports; team A (0) is the one the
+ * summary's headline and compare report.
  *
- * <p>The games of one map rotate the seating: in rotation r, player i sits in slot (i + r) mod players, so A sits in
- * slot r and every player plays from every start. Which start a slot gets is the map's own (Landscape shuffles its
+ * <p>The games of one map rotate the seating: in rotation r, player i sits in slot (i + r) mod players, so the first
+ * player sits in slot r and every player plays from every start. Which start a slot gets is the map's own (Landscape
+ * shuffles its
  * starts per seed), so players listed next to each other need not start next to each other.
  */
 final class Lineup {
@@ -33,17 +35,17 @@ final class Lineup {
     /** One player: SPEC[/RACE][*COUNT], the race and count read from the end, so SPEC may hold anything else. */
     private static final Pattern PLAYER = Pattern.compile(
             "(?<spec>\\S+?)(?:/(?<race>v|n|vikings|natives))?(?:\\*(?<count>[0-9]+))?");
-    /** Written for A's spec in {@link #masked}. */
+    /** Written for each player of team A in {@link #masked}. */
     private static final String A = "A";
 
-    /** Every player in the order given, A first, each with its team (0 for A's, then 1, 2, ... in order). */
+    /** Every player in the order given, each with its team: 0 for team A, the first, then 1, 2, ... in order. */
     private final @NonNull List<Seat> players;
 
     private Lineup(@NonNull List<Seat> players) {
         this.players = players;
     }
 
-    /** The lineup of --teams: teams separated by "vs", each one or more players. */
+    /** The lineup of --players: teams separated by "vs", each one or more players. */
     static @NonNull Lineup parse(@NonNull String text) {
         List<Seat> players = new ArrayList<>();
         int team = 0;
@@ -57,27 +59,11 @@ final class Lineup {
                 team_empty = true;
                 continue;
             }
-            addPlayer(players, word, team, "--teams");
+            addPlayer(players, word, team, "--players");
             team_empty = false;
         }
         if (team_empty || team == 0) {
             throw teamsUsage(team == 0 ? "give two teams or more" : "every team needs a player");
-        }
-        return checked(players);
-    }
-
-    /** The lineup of --a, --b and --vs: A against {@code vs} allied copies of B. */
-    static @NonNull Lineup oneVersus(@NonNull String a, @NonNull String b, int vs) {
-        List<Seat> players = new ArrayList<>();
-        addPlayer(players, a, 0, "--a");
-        if (players.size() > 1) {
-            throw new UsageException("--a is one player: SPEC or SPEC/RACE");
-        }
-        for (int i = 0; i < vs; i++) {
-            addPlayer(players, b, 1, "--b");
-        }
-        if (players.size() > 1 + vs) {
-            throw new UsageException("--b is one player, SPEC or SPEC/RACE; --vs N gives the copies");
         }
         return checked(players);
     }
@@ -113,17 +99,11 @@ final class Lineup {
     }
 
     private static @NonNull UsageException teamsUsage(@NonNull String problem) {
-        return new UsageException("--teams: " + problem + ", like \"myai vs hard\" or \"myai hard vs normal*2\"");
+        return new UsageException("--players: " + problem + ", like \"myai vs hard\" or \"myai hard vs normal*2\"");
     }
 
     int size() {
         return players.size();
-    }
-
-    /** A's spec. */
-    @NonNull
-    String a() {
-        return players.get(0).spec();
     }
 
     /** Every spec of the lineup, each once. */
@@ -137,32 +117,43 @@ final class Lineup {
     /** The lineup as text, like "myai hard vs normal*2 easy/n": natives marked /n, copies in a row as *COUNT. */
     @NonNull
     String text() {
-        return text(players.get(0).spec());
+        return text(false);
     }
 
-    /** {@link #text} with A's spec written as A: what runs must share to be compared game by game. */
+    /**
+     * {@link #text} with each player of team A written as A, such as "A*2 vs normal*2 easy/n": what runs must share to
+     * be compared game by game, which may differ only in team A's AIs and races.
+     */
     @NonNull
     String masked() {
-        return text(A);
+        return text(true);
     }
 
-    private @NonNull String text(@NonNull String a_spec) {
+    private @NonNull String text(boolean mask_a) {
         List<String> words = new ArrayList<>();
         for (int i = 0; i < players.size();) {
             Seat player = players.get(i);
             if (i > 0 && player.team() != players.get(i - 1).team()) {
                 words.add(VERSUS);
             }
-            String word = (i == 0 ? a_spec : player.spec()) + (player.race().equals(Job.NATIVES) ? "/n" : "");
+            String word = word(player, mask_a);
             int count = 1;
-            // A's word is its own, so it never joins its neighbours (in masked(), A and a copy of it differ)
-            while (i > 0 && i + count < players.size() && players.get(i + count).equals(player)) {
+            while (i + count < players.size() && players.get(i + count).team() == player.team()
+                    && word(players.get(i + count), mask_a).equals(word)) {
                 count++;
             }
             words.add(count == 1 ? word : word + "*" + count);
             i += count;
         }
         return String.join(" ", words);
+    }
+
+    /** A player as text: its spec, /n for natives; A for any player of team A when {@code mask_a}. */
+    private static @NonNull String word(@NonNull Seat player, boolean mask_a) {
+        if (mask_a && player.team() == 0) {
+            return A;
+        }
+        return player.spec() + (player.race().equals(Job.NATIVES) ? "/n" : "");
     }
 
     /** The seats by slot in rotation {@code rotation}: player i sits in slot (i + rotation) mod players. */

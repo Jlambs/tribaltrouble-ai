@@ -6,6 +6,7 @@ import com.oddlabs.tt.aisim.analysis.End;
 import com.oddlabs.tt.aisim.analysis.Game;
 import com.oddlabs.tt.aisim.analysis.Runs;
 import com.oddlabs.tt.aisim.analysis.Summary;
+import com.oddlabs.tt.aisim.analysis.Table;
 import com.oddlabs.tt.aisim.build.Pool;
 import com.oddlabs.tt.aisim.build.Snapshot;
 import org.jspecify.annotations.NonNull;
@@ -44,6 +45,10 @@ public final class Batch {
      * game to game stays bounded.
      */
     private static final int GAMES_PER_WORKER = 25;
+    /** Setup.logs: every game keeps its AI logs. */
+    public static final String LOGS_ALL = "all";
+    /** Setup.logs: only the games team A did not win keep their AI logs; the others' are deleted once recorded. */
+    public static final String LOGS_LOST = "lost";
     /** A run is aborted once this many games in a row, from its first game on, ended with {@link End#error}. */
     private static final int ERRORS_TO_ABORT = 3;
 
@@ -51,11 +56,14 @@ public final class Batch {
     }
 
     /**
-     * What a run shares besides its jobs, as run.json and the summary show it. {@code lineup} is the teams with A's
-     * spec written as A, and {@code config} the maps and how the games run: runs that share both (and the frozen AIs
-     * besides A) play the same games, and compare pairs them game by game.
+     * What a run shares besides its jobs, as run.json and the summary show it. {@code players} is the lineup as given,
+     * {@code lineup} the same with each player of team A written as A, and {@code config} the maps and how the games
+     * run: runs that
+     * share lineup and config (and the frozen AIs besides A) play the same games, and compare pairs them game by game.
+     * {@code logs} is which games keep their AI logs: {@link #LOGS_ALL}, {@link #LOGS_LOST} or null for none.
      */
-    public record Setup(@NonNull String teams, @NonNull String lineup, @NonNull String config) {
+    public record Setup(@NonNull String players, @NonNull String lineup, @NonNull String config,
+                        @Nullable String logs) {
     }
 
     /**
@@ -69,10 +77,14 @@ public final class Batch {
         Files.createDirectories(dir.resolve("log"));
         writeRunJson(dir, name, setup, jobs, workers, snap);
         String counts = jobs.size() + " games | " + workers + " workers";
+        if (setup.logs() != null) {
+            counts += setup.logs().equals(LOGS_LOST) ? " | AI logs of the games team A did not win" : " | AI logs";
+        }
         System.out.println(
-                "aisim " + name + ": " + setup.teams() + " | " + setup.config() + " | " + counts + " | snapshot " + snap);
+                "aisim " + name + ": " + setup.players() + " | " + setup.config() + " | " + counts + " | snapshot " + snap);
         String heap = WorkerProcess.heap(jobs);
-        boolean completed = new RunInProgress(dir, snap, jobs, workers, heap).playAll();
+        boolean lost_only = LOGS_LOST.equals(setup.logs());
+        boolean completed = new RunInProgress(dir, snap, jobs, workers, heap, lost_only).playAll();
         int status = Summary.run(name);
         return completed ? status : 2;
     }
@@ -84,7 +96,6 @@ public final class Batch {
     private static void writeRunJson(@NonNull Path dir, @NonNull String name, @NonNull Setup setup,
             @NonNull List<Job> jobs, int workers, @NonNull String snap) throws IOException {
         Job first = jobs.get(0);
-        String a = first.spec(first.side());
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("v", 1);
         meta.put("name", name);
@@ -92,30 +103,25 @@ public final class Batch {
         meta.put("java", System.getProperty("java.version"));
         meta.put("created", Instant.now().toString());
         meta.put("workers", workers);
-        meta.put("teams", setup.teams());
-        meta.put("a", a);
+        meta.put("players", setup.players());
+        meta.put("a", first.teamPlayers(first.team(first.side())));
         meta.put("lineup", setup.lineup());
         meta.put("config", setup.config());
-        meta.put("aPool", poolSha(a));
-        meta.put("pools", otherPools(first));
+        meta.put("logs", setup.logs());
+        meta.put("aPools", pools(first, true));
+        meta.put("pools", pools(first, false));
         meta.put("expected", jobs.size());
         meta.put("jobs", jobs);
         Aisim.JSON.writerWithDefaultPrettyPrinter().writeValue(dir.resolve("run.json").toFile(), meta);
     }
 
-    /** The frozen AI's jar hash for run.json, or null for a live AI. */
-    private static @Nullable String poolSha(@NonNull String spec) {
-        String name = AiSpec.nameOf(spec);
-        return name.startsWith("@") ? Pool.of(name.substring(1)).sha() : null;
-    }
-
-    /** The jar hash of every frozen AI in a seat other than A's, by its name (@TAG). */
-    private static @NonNull Map<String, String> otherPools(@NonNull Job job) {
+    /** The jar hash of every frozen AI (@TAG) on team A ({@code team_a}) or on the other teams, by its name. */
+    private static @NonNull Map<String, String> pools(@NonNull Job job, boolean team_a) {
         Map<String, String> pools = new TreeMap<>();
         for (int slot = 0; slot < job.slots(); slot++) {
-            String sha = slot == job.side() ? null : poolSha(job.spec(slot));
-            if (sha != null) {
-                pools.put(AiSpec.nameOf(job.spec(slot)), sha);
+            String name = AiSpec.nameOf(job.spec(slot));
+            if (job.onTeamA(slot) == team_a && name.startsWith("@")) {
+                pools.put(name, Pool.of(name.substring(1)).sha());
             }
         }
         return pools;
@@ -131,6 +137,8 @@ public final class Batch {
         private final @NonNull String heap;
         private final int expected;
         private final int workers;
+        /** Delete the AI logs of every game team A won (--logs lost). */
+        private final boolean lost_only;
         private final long start_nanos = System.nanoTime();
 
         // shared by the driver threads
@@ -154,7 +162,8 @@ public final class Batch {
         private int draws;
 
         RunInProgress(@NonNull Path dir, @NonNull String snap, @NonNull List<Job> jobs, int workers,
-                @NonNull String heap) {
+                @NonNull String heap, boolean lost_only) {
+            this.lost_only = lost_only;
             this.dir = dir;
             this.snap = snap;
             this.heap = heap;
@@ -230,6 +239,9 @@ public final class Batch {
                         row = deadWorkerRow(job, worker, index);
                     }
                     record(row, results);
+                    if (lost_only && "win".equals(row.get("result"))) {
+                        deleteAiLogs(job);
+                    }
                     worker.games++;
                     if (!End.endedNormally(row) || worker.games >= GAMES_PER_WORKER) {
                         worker.close();
@@ -242,6 +254,16 @@ public final class Batch {
             } finally {
                 if (worker != null) {
                     worker.close();
+                }
+            }
+        }
+
+        /** Deletes the AI logs a game wrote. */
+        private static void deleteAiLogs(@NonNull Job job) throws IOException {
+            for (int slot = 0; slot < job.slots(); slot++) {
+                Path log = job.aiLogFile(slot);
+                if (log != null) {
+                    Files.deleteIfExists(log);
                 }
             }
         }
@@ -276,17 +298,17 @@ public final class Batch {
             results.write(Aisim.JSON.writeValueAsString(row) + "\n");
             results.flush();
             done++;
-            Object winner = row.get("winner");
-            if (winner == null) {
+            Object result = row.get("result");
+            if (result == null) {
                 countFailure(row);
             } else {
-                switch (Runs.resultOfA(winner)) {
+                switch (String.valueOf(result)) {
                     case "win" -> wins++;
                     case "loss" -> losses++;
                     default -> draws++;
                 }
             }
-            printProgress(row, winner);
+            printProgress(row, result);
         }
 
         /** Counts a failed game (under record's lock); aborts once the run's first games all ended with an error. */
@@ -300,18 +322,21 @@ public final class Batch {
             }
         }
 
-        /** Prints the progress line after {@code row} (under record's lock). */
-        private void printProgress(@NonNull Map<String, Object> row, @Nullable Object winner) {
+        /** Prints the progress line after {@code row} (under record's lock); with 3 teams or more, team A's place. */
+        private void printProgress(@NonNull Map<String, Object> row, @Nullable Object result) {
             double minutes = (System.nanoTime() - start_nanos) / 60e9;
             double rate = done / minutes;
             double eta = (expected - done) / Math.max(rate, 1e-9);
             double game_minutes = Game.num(row, "t") / 60;
             String kd30 = formatOrDash(row.get("kd30"), "%+.0f");
             String margin = formatOrDash(row.get("margin"), "%+.2f");
-            String result = winner == null ? "-" : Runs.resultOfA(winner);
+            String outcome = result == null ? "-" : String.valueOf(result);
+            if (result != null && row.get("teams") instanceof List<?> teams && teams.size() > 2) {
+                outcome += " " + Table.number(Game.num(row, "place")) + "/" + teams.size();
+            }
             System.out.printf(Locale.ROOT,
                     "[%3d/%d] %-9s %-4s %-7s %5.1fm kd30 %5s margin %6s | A %d-%d-%d | fail %d | %.1f games/min eta %.0fm%n",
-                    done, expected, row.get("key"), result, row.get("end"), game_minutes, kd30, margin, wins, losses,
+                    done, expected, row.get("key"), outcome, row.get("end"), game_minutes, kd30, margin, wins, losses,
                     draws, failed, rate, eta);
         }
 

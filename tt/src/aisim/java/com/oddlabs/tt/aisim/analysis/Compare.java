@@ -14,8 +14,8 @@ import java.util.Set;
 
 /**
  * {@code compare BASE VARIANT [VARIANT...]}: runs compared over the same games (same key = same map, start position and
- * world seed), one variant with its base in detail, or several variants as one table. The runs may differ only in A's
- * spec: every other player, the maps and how the games run must be the same.
+ * world seed), one variant with its base in detail, or several variants as one table. The runs may differ only in
+ * team A: the other teams, the maps and how the games run must be the same.
  */
 public final class Compare {
     /** The paired metrics, all from the result rows. */
@@ -60,7 +60,7 @@ public final class Compare {
         int variant_failed = variant_rows.size() - variant_counted.size();
         List<String> keys = commonKeys(base_counted, variant_counted);
         int identical = identicalGames(base_counted, variant_counted, keys);
-        System.out.printf(Locale.ROOT, "compare %s (A=%s) -> %s (A=%s) | %s | %s%n", base, base_meta.get("a"),
+        System.out.printf(Locale.ROOT, "compare %s (A: %s) -> %s (A: %s) | %s | %s%n", base, base_meta.get("a"),
                 variant, variant_meta.get("a"), variant_meta.get("lineup"), variant_meta.get("config"));
         System.out.printf(Locale.ROOT,
                 "pairs %d (base %d/%s, variant %d/%s counted) | identical games %d | failed %d -> %d | snapshot %s -> %s%n",
@@ -83,9 +83,9 @@ public final class Compare {
             System.out.println("!! failed games differ; failed games are not counted and can flatter a run");
         }
         printPairedMetrics(base_counted, variant_counted, keys);
-        System.out.println("A's curves over the paired games (base / variant):");
-        Curves.Series base_series = new Curves.Series(base, gamesOf(base, keys), true);
-        Curves.Series variant_series = new Curves.Series(variant, gamesOf(variant, keys), true);
+        System.out.println("team A's curves over the paired games (base / variant):");
+        Curves.Series base_series = new Curves.Series(base, gamesOf(base, keys), Curves.A_TEAM);
+        Curves.Series variant_series = new Curves.Series(variant, gamesOf(variant, keys), Curves.A_TEAM);
         Curves.table(List.of(base_series, variant_series), Curves.FIELDS, Curves.MINUTES).forEach(System.out::println);
         return 0;
     }
@@ -115,13 +115,13 @@ public final class Compare {
     private static int compareMany(@NonNull String base, @NonNull Map<?, ?> base_meta, @NonNull List<String> variants,
             @NonNull String forced) throws IOException {
         Map<String, Map<String, Object>> base_counted = countedByKey(Runs.rows(base));
-        System.out.printf(Locale.ROOT, "compare %s (A=%s) with %d variants | %s | %s%n", base, base_meta.get("a"),
+        System.out.printf(Locale.ROOT, "compare %s (A: %s) with %d variants | %s | %s%n", base, base_meta.get("a"),
                 variants.size(), base_meta.get("lineup"), base_meta.get("config"));
         if (!forced.isEmpty()) {
             System.out.println("!! forced: " + forced);
         }
         List<List<String>> rows = new ArrayList<>();
-        List<String> header = new ArrayList<>(List.of("run", "A", "pairs", "identical"));
+        List<String> header = new ArrayList<>(List.of("run", "team A", "pairs", "identical"));
         header.addAll(METRICS);
         rows.add(header);
         List<String> base_row = new ArrayList<>(List.of(base, String.valueOf(base_meta.get("a")),
@@ -208,7 +208,7 @@ public final class Compare {
     private static @NonNull Map<String, Map<String, Object>> countedByKey(@NonNull List<Map<String, Object>> rows) {
         Map<String, Map<String, Object>> counted = new LinkedHashMap<>();
         for (Map<String, Object> row : rows) {
-            if (row.get("winner") != null) {
+            if (Runs.counts(row)) {
                 counted.put((String) row.get("key"), row);
             }
         }

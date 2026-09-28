@@ -16,7 +16,7 @@ AI itself is in **[the AI guide](../tt/src/main/java/com/oddlabs/tt/player/AGENT
 is in [maintaining.md](./maintaining.md).
 
 Contents: [Words used here](#words-used-here) · [Requirements](#requirements) · [Quick start](#quick-start) ·
-[The development loop](#the-development-loop) · [Opponents](#opponents) · [Teams](#teams) · [Maps](#maps) ·
+[The development loop](#the-development-loop) · [Opponents](#opponents) · [Players](#players) · [Maps](#maps) ·
 [Reading results](#reading-results) ·
 [Why did it lose?](#why-did-it-lose-show-and-replay) · [Across a run](#across-a-run-curves-fights-and-export) ·
 [Your own tools](#your-own-tools) · [Play-tests](#play-tests) · [Troubleshooting](#troubleshooting) · Reference:
@@ -24,16 +24,17 @@ Contents: [Words used here](#words-used-here) · [Requirements](#requirements) �
 
 ## Words used here
 
-- **A** is the AI under test: the first player of a game's [teams](#teams). **Team A** is A and its allies, **B**
-  every player against it, one team or several. Results are team A's: its numbers are its players' totals, and so
-  are B's. In the usual game, A against one opponent or `--vs N` copies of it, team A is A alone.
+- **Team A** is the first team of `--players` ([Players](#players)); list your AI first to put it there. The other
+  teams are **B**, **C**, ... in the order given. A team's numbers are its players' totals. The summary's headline,
+  `compare` and a few other reports are team A's; the summary also lists every team's record.
 - **Spec**: how a command names an AI: `easy`, `normal` or `hard` (the game's stock AI), `myai` (your AI
   `com.oddlabs.tt.player.myai.MyaiAI`), a class name, or `@TAG` (a frozen AI), optionally with params:
   `myai:rush=1,wave=12`.
 - **Run**: one `play` or `batch`, stored in `aisim/runs/<run>/`.
 - **Seed**: a map, as the skirmish menu's map seed (0..39999), with the menu's settings (size, terrain and the
   hills, trees and supplies sliders) drawn for it or given ([Maps](#maps)). **Slot** (or side): a player's start
-  position; A plays every start of every map. A game's **key** is `s<seed>-<slot of A>`, such as `s19-1`.
+  position; every player plays every start of every map. A game's **key** is `s<seed>-<the first player's slot>`,
+  such as `s19-1`.
 - **Snapshot**: an immutable copy of a build. `build` makes one, and every other command runs from the latest one,
   so you can keep editing while batches run.
 - **Frozen AI**: a copy of one AI package from a build, played as `@TAG` by any later build (`freeze`).
@@ -59,8 +60,8 @@ Contents: [Words used here](#words-used-here) · [Requirements](#requirements) �
 
 ```bash
 ./aisim.sh build                                   # compile, lint, snapshot
-./aisim.sh play --a hard --b normal --seed 3       # one game -> aisim/runs/play-<time>/, then prints a show command
-./aisim.sh play --teams "hard easy vs normal*2"    # a 2 vs 2 game
+./aisim.sh play --players "hard vs normal" --seed 3   # one game -> aisim/runs/play-.../, then prints a show command
+./aisim.sh play --players "hard easy vs normal*2"     # a 2 vs 2 game
 ./aisim.sh help                                    # every command and option
 ```
 
@@ -69,7 +70,7 @@ Contents: [Words used here](#words-used-here) · [Requirements](#requirements) �
 ```bash
 ./aisim.sh new myai                     # tt/src/main/java/com/oddlabs/tt/player/myai/MyaiAI.java, spec "myai"
 ./aisim.sh build                        # compiles and lints it; a fair-play error refuses the build
-./aisim.sh play --a myai --b easy       # smoke test: it loads, plays and writes its decision log
+./aisim.sh play --players "myai vs easy"   # smoke test: it loads, plays and writes its decision log
 ```
 
 Then measure every change on the same games as the version before it. There are two ways to have "the version
@@ -79,8 +80,8 @@ before":
   build.
 
   ```bash
-  ./aisim.sh batch --name base  --a myai        --b hard    # 120 games: 60 maps, A from both starts
-  ./aisim.sh batch --name rush  --a myai:rush=1  --b hard   # the variant, on the same 120 games
+  ./aisim.sh batch --name base --players "myai vs hard"          # 120 games: 60 maps, each player from both starts
+  ./aisim.sh batch --name rush --players "myai:rush=1 vs hard"   # the variant, on the same 120 games
   ./aisim.sh compare base rush                              # paired, game by game
   ```
 
@@ -89,8 +90,8 @@ before":
   ```bash
   ./aisim.sh freeze v1 myai                                 # this build of myai, as opponent @v1
   # ... edit, then ./aisim.sh build ...
-  ./aisim.sh batch --name v1  --a @v1  --b hard
-  ./aisim.sh batch --name new --a myai --b hard
+  ./aisim.sh batch --name v1  --players "@v1 vs hard"
+  ./aisim.sh batch --name new --players "myai vs hard"
   ./aisim.sh compare v1 new
   ```
 
@@ -107,7 +108,7 @@ and keep working: they run from their snapshot, so rebuilding cannot disturb the
 
 - **The stock AI**: `easy`, `normal`, `hard`. Hard is the first opponent to beat.
 - **Your own earlier versions**: `./aisim.sh freeze TAG myai` copies the compiled package of `myai` (subpackages
-  included) from the last build into `aisim/pool/TAG.jar`; `--b @TAG` or `--a @TAG` plays it. Each game loads it
+  included) from the last build into `aisim/pool/TAG.jar`; `@TAG` in `--players` plays it. Each game loads it
   through a class loader of its own (only that package; the engine comes from the running build), so frozen AIs keep
   no state between games and several versions of one package can play each other. A tag is never overwritten: pick a
   new tag for a new version.
@@ -125,32 +126,42 @@ A frozen AI plays on the engine of whichever build runs it. One compiled against
 fails with a `link error` row naming the method. `run.json` records the hash of each frozen opponent, and `compare`
 refuses runs against different versions.
 
-## Teams
+## Players
 
-`--a`, `--b` and `--vs` play A against one opponent, or against N allied copies of it. `--teams` sets up any game
-instead, of 2 to 32 players in two teams or more:
+`--players` names every player and the teams they form: teams separated by `vs`, players by spaces, 2 to 32
+players in all. Quote it.
 
 ```bash
-./aisim.sh batch --a myai --b hard --vs 2                        # 1 vs 2: the same as --teams "myai vs hard*2"
-./aisim.sh batch --teams "myai hard vs normal*2 easy"            # 2 vs 3, myai allied with the stock hard AI
-./aisim.sh batch --teams "myai vs hard vs normal" --rng 1        # free-for-all: three teams
-./aisim.sh batch --teams "myai/n vs hard/n"                      # races: both natives
+./aisim.sh batch --players "myai vs hard"                        # 1 vs 1
+./aisim.sh batch --players "myai vs hard*3"                      # 1 vs 3: three allied copies of hard
+./aisim.sh batch --players "myai hard vs normal*2 easy"          # 2 vs 3, myai allied with the stock hard AI
+./aisim.sh batch --players "myai vs hard vs normal" --rng 1      # free-for-all: three teams
+./aisim.sh batch --players "myai/n vs hard/n"                    # races: both natives
 ```
 
-- Teams are separated by `vs`, players by spaces; quote the whole lineup. A player is `SPEC[/RACE][*COUNT]`: RACE is
-  `v` or `n` (`vikings`, `natives`; vikings when not given), and `*COUNT` puts COUNT copies in a row. `--a` and `--b`
-  take a player as well, without a count.
-- **A is the first player**, and everything is measured from its team's side: a game is a win when every player
-  against team A is out, a loss when team A is.
-- **Seating**: the games of one map rotate the players through the slots, one slot further each game, so every
-  player plays from every start: with 4 players, A plays from slot 0, 1, 2 and 3, and a map is 4 games. `--side S`
-  plays only the rotation with A in slot S. Which start each slot gets is up to the map (it shuffles its starts per
-  seed, as in the game), so players listed next to each other do not necessarily start next to each other.
+- A player is `SPEC[/RACE][*COUNT]`: RACE is `v` or `n` (`vikings`, `natives`; vikings when not given), and
+  `*COUNT` puts COUNT copies in a row.
+- **Team A is the first team**, the one the summary's headline, `compare`, `fights RUN` and `--logs lost` are
+  about: list your AI first to put it there. The teams are named A, B, C, ... in the order given (T26, T27, ... past
+  Z).
+- **Every game is played to the end**: until one team is left, or to the time limit. A team is out when all its
+  players are ([How a game ends](#how-a-game-ends)); the others play on without it. `--stop-when-a-out` ends a game
+  as soon as team A is out instead, which saves the time of playing the other teams to the end: team A's place and
+  measures are the same either way, but the teams still standing then share first place.
+- **Places**: a team's place is 1 plus the number of teams that outlasted it. Teams that went out in the same second,
+  or were standing at the time limit, share their places (two teams sharing first both have 1.5). A team **wins** when
+  it is first alone, **draws** when it shares first, and **loses** otherwise. Its **score** is its place scaled from
+  1 (first) to 0 (last): with two teams, 1 / 0.5 / 0 for a win, draw and loss.
+- **Seating**: the games of one map rotate the players through the slots, one slot further each game, so every player
+  plays from every start: with 4 players, the first player plays from slot 0, 1, 2 and 3, and a map is 4 games.
+  `--side S` plays only the rotation with the first player in slot S. Which start each slot gets is up to the map (it
+  shuffles its starts per seed, as in the game), so players listed next to each other do not necessarily start next to
+  each other.
 - When two rotations seat the same AIs in the same places (`"hard vs hard"`, or `"myai easy vs myai easy"`), they
   would play the very same game, and the harness refuses the run: add `--rng N` (the world's random seed then differs
   per start), or `--side S`.
-- To compare versions of A, change only A and keep every other player: `compare` refuses runs whose other players
-  differ.
+- To compare versions of your AI, change only team A (its AIs, params or races, not how many players it has) and
+  keep the other teams: `compare` refuses runs whose other teams differ.
 - **More than 12 players** goes beyond the skirmish menu, which stops at 12; the engine plays them the same way, starts
   close together on smaller maps included. A run notes (`!!`) when its maps are more crowded than any menu game (12
   players on a small map, as crowded as 24 on a medium one), and plays them as they are. Such games take more: a map
@@ -174,12 +185,12 @@ version of the harness, so random maps are still the same games from run to run 
 narrowing one setting does not change the draws of the others.
 
 ```bash
-./aisim.sh batch --a myai                                          # 60 maps, every setting random
-./aisim.sh batch --a myai --size small --terrain northern          # sliders random, small northern maps
-./aisim.sh batch --a myai --size large --terrain tropical --hills 2 --trees 10 --supplies 10    # every setting fixed
-./aisim.sh batch --a myai --seeds random:20                        # 20 new random maps
-./aisim.sh play --a myai --seed random                             # one new random map
-./aisim.sh play --a myai --map "PIZZA HABIT HISTORY"               # the map of a skirmish map code
+./aisim.sh batch --players "myai vs hard"                                     # 60 maps, every setting random
+./aisim.sh batch --players "myai vs hard" --size small --terrain northern     # sliders random, small northern maps
+./aisim.sh batch --players "myai vs hard" --size large --terrain tropical --hills 2 --trees 10 --supplies 10
+./aisim.sh batch --players "myai vs hard" --seeds random:20                   # 20 new random maps
+./aisim.sh play --players "myai vs hard" --seed random                        # one new random map
+./aisim.sh play --players "myai vs hard" --map "PIZZA HABIT HISTORY"          # the map of a skirmish map code
 ```
 
 - **Seeds**: `play --seed N` plays one (default 1); `batch --seeds` takes seeds and ranges (`1..20,31`), `tune`
@@ -194,46 +205,53 @@ narrowing one setting does not change the draws of the others.
 
 ## Reading results
 
-`summary RUN` is printed at the end of every run and saved as `summary.txt`. From a batch of `hard` against
-`normal`, shortened:
+`summary RUN` is printed at the end of every run and saved as `summary.txt`. From a batch of
+`--players "hard vs normal vs easy"`, shortened:
 
 ```
-games 20/20 done, 20 counted, 0 failed
-score 0.900 [0.699, 0.972]   W 18  L 2  D 0                              A's score, Wilson 95% interval
-  by elimination W 18 L 2 (by collapse W 1 L 0) | by timeout W 0 L 0 D 0 (0% of games)
-  A in slot 0: W 10 L 0 D 0 | A in slot 1: W 8 L 2 D 0
-  A by map size: small W 5 L 0 D 0 | medium W 4 L 0 D 0 | large W 5 L 1 D 0 | huge W 4 L 1 D 0
-  A by map terrain: tropical W 10 L 1 D 0 | northern W 8 L 1 D 0
-means: kd30 +198.8 | w15 48.4 | margin +0.800 | length 22.4 min | cost 1.7 s CPU (1.7 s wall) per game
-A swallowed errors 0 in 0 games | B swallowed errors 0 in 0 games     exceptions the AIs caught (AiLog.error)
-A counters: none | B counters: none                                    AiLog.count counters, per game
-curves (mean over games still running; A / B):
-  min games  units warriors workers quarters armories towers kills strength
-    5    20  65/62  5.1/9.7   59/52      1/1      1/1    0/0 0/0.1   94/103
-   10    19 86/139    16/14  69/124    1/0.9    1/0.9  0.6/0 23/17  225/191
-milestones (median seconds A / B, and in how many games): Q1 66/66 (19/19) Q4 -/- (0/0) A1 158/158 (19/19) ...
-worst games for A:
+games 12/12 done, 12 counted, 0 failed
+score 0.917 [0.646, 0.985]   W 11  L 1  D 0                             team A's score, Wilson 95% interval
+  by elimination W 11 L 1 (by collapse W 0 L 0) | by timeout W 0 L 0 D 0 (0% of games)
+  by start (the first player's slot):
+    slot 0: W 4 L 0 D 0 | slot 1: W 3 L 1 D 0 | slot 2: W 4 L 0 D 0
+  by map size: small W 6 L 0 D 0 | medium W 5 L 1 D 0
+teams (place: 1 + the teams that outlasted it; won = first alone, drew = first shared):
+  team players score place won drew lost out                                every team's record
+  A    hard    0.917  1.17  11    0    1   1
+  B    normal  0.417  2.17   1    0   11  11
+  C    easy    0.167  2.67   0    0   12  12
+means: kd30 +198.8 | w15 48.4 | margin +0.833 | length 22.4 min | cost 1.7 s CPU (1.7 s wall) per game
+swallowed errors (AiLog.error): none | counters (AiLog.count): none
+curves (mean over games still running; A / B / C):
+  min games     units warriors   workers quarters armories towers  kills   strength
+    5    12  71/65/54    1/0/0  70/55/54    1/1/1    1/1/1  0/0/0  7/0/3   93/64/67
+milestones (median seconds A / B / C, and in how many games): Q1 57/78/77 (12/12/12) Q4 -/-/- (0/0/0) ...
+worst games for team A:
   s2-1      loss elim     31.4m margin -1.00  ./aisim.sh show example s2-1 | ./aisim.sh replay example s2-1
-RESULT example a=hard n=20/20 score=0.900 [0.699,0.972] W18 L2 D0 elim=18-2 ... fail=0
+RESULT example a=hard n=12/12 score=0.917 [0.646,0.985] W11 L1 D0 elim=11-1 ... fail=0
 ```
 
 Warriors include tower garrisons, and workers are peons outside and inside buildings (`curves` explains the table).
 The milestones are the first quarters (Q1), a player's fourth (Q4), the first armory (A1), tower (T1) and
-chieftain, each the first on its team. The by-map lines show only settings that varied in the run.
+chieftain, each the first on its team. The by-map lines show only settings that varied in the run. A team's AIs
+appear under swallowed errors and counters only when they reported any. With more than 4 teams, curves and
+milestones show team A and the other teams' mean per team ("others"). In the RESULT line, a value with spaces, such
+as `a="myai hard"`, is quoted.
 
-`compare BASE VARIANT` pairs the two runs game by game (same key = same map, start and world seed). Per metric it
-prints both runs' means and the paired difference with its standard error (SE), weighting maps equally, since a
-map's starts are not independent. `*` marks a difference larger than 2 SE. It counts identical games (same final
-checksum): when almost all are identical, the variant is inert or never triggers. It refuses runs that differ in
-anything but A's spec: the other players or their races (`lineup` in run.json), the frozen version of any of them,
-the map options, the maps of the paired games, minutes, `--rng` or `--no-collapse` (`--force` compares anyway). It
-prints A's curves for both runs.
+`compare BASE VARIANT` pairs the two runs game by game (same key = same map, start and world seed). Per metric it prints
+both runs' means and the paired difference with its standard error (SE), weighting maps equally, since a map's starts
+are not independent. `*` marks a difference larger than 2 SE. It counts identical games (same final checksum): when
+almost all are identical, the variant is inert or never triggers. It refuses runs that differ in anything but team A's
+AIs and races: the other teams (`lineup` in run.json), how many players team A has, the frozen version of any player
+outside team A, the map options, the maps of the paired games, minutes, `--rng`, `--no-collapse` or `--stop-when-a-out`
+(`--force` compares anyway). It prints team A's curves for both runs. The metrics are team A's ([How a game
+ends](#how-a-game-ends)).
 
 `compare BASE V1 V2 ...` compares several variants with one base as a table, a line per variant with the paired
 difference of each metric. That is the table of a param sweep:
 
 ```bash
-for wave in 8 12 16; do ./aisim.sh batch --name wave$wave --a myai:wave=$wave; done
+for wave in 8 12 16; do ./aisim.sh batch --name wave$wave --players "myai:wave=$wave vs hard"; done
 ./aisim.sh compare base wave8 wave12 wave16
 ```
 
@@ -251,10 +269,17 @@ How to decide:
 chieftains, casts, stuns of 5 units or more, 10-second windows with 10 deaths or more). It reads any game file, so it
 works on play-test files too.
 
-`replay RUN KEY` plays that game again in a fresh JVM from the run's snapshot, with AI logs on, and compares every
-census and the final checksum with the original game. Only AIs that use `AiLog` write a log; the stock AI does not.
+**AI logs.** `play` writes every AI's decision log (`g/<key>-ai-s<slot>.log`; only AIs that use `AiLog` write one,
+the stock AI does not). `batch` writes none unless asked, since logging costs time and an AI that logs a lot writes
+megabytes per game: `--logs` keeps the logs of every game, `--logs lost` only those of the games team A did not
+win, usually the ones you want to read. Without them, `replay` gets the log of any one game.
 
-- `VERIFIED`: the replay is the same game, so the logs explain what happened in the batch.
+`replay RUN KEY` plays that game again in a fresh JVM from the run's snapshot, with AI logs on, and compares every
+census and the final checksum with the original game.
+
+- `VERIFIED`: the replay is the same game, so the logs explain what happened in the batch. Replaying a game of a batch
+  without `--logs` also checks that logging does not change the AI's decisions; after `batch --logs`, both games
+  logged, so it checks determinism only.
 - `MISMATCH: first difference at t=...`: the AI is not deterministic (see the AI guide). Each JVM draws a different
   number of identity hashes before its first game (`perturb` in the row), so hash-order bugs show up as mismatches,
   though not in every game: replay a few games after changing collections or iteration.
@@ -269,41 +294,50 @@ Three more commands look across all counted games of a run. Like `show`, they re
 work for every AI, the stock AI included.
 
 **`curves RUN`** is the summary's curve table with the fields, minutes and games you choose: census means at each
-minute over the games still running then, for A / B. `--split` shows A in the games it won / lost, which shows where
-the two part; several runs show A in each, over the games all of them counted. `--fields` takes census fields (see
+minute over the games still running then, for every team (A / B / ...; with more than 4 teams, team A and the
+others' mean per team). A team that is out counts as zero while the game goes on. `--split` shows team A in the
+games it won / lost, which shows where the two part; several runs show team A in each, over the games all of them
+counted. `--fields` takes census fields (see
 [Files](#files)), the sums `warriors` (tower garrisons included), `workers` (peons outside and inside), `harvested`
 (all four harvested fields) and `stock` (all three stock fields), and any of them with `/min` for the gain over the
 minute before; `--at` takes the minutes:
 
 ```
 $ ./aisim.sh curves example --split --fields warriors,harvestedIron/min,stockIron --at 5,10
-curves of example: mean over the games still running (A in the games it won / lost)
+curves of example: mean over the games still running (team A in the games it won / lost)
   min games warriors harvestedIron/min stockIron
     5  18/2  5.1/5.5             7.7/3     2.1/0
    10  18/1    16/17             6.5/3     6.9/7
 ```
 
 **`fights RUN KEY`** splits one game into fights: deaths and razed buildings under 20 s apart and within 40 cells of
-each other. For each fight it prints when, where (A's base, the middle or B's base, by the fight's share of the way from
-team A's nearest start to B's nearest: below 0.35, above 0.65, else the middle), each side's losses by kind and the
-buildings lost. **`fights RUN`** sums a whole run by place, also in the games A won and lost, and lists A's worst
-fights:
+each other. For each fight it prints when; where, by the two teams whose starts are nearest (a team's base when the
+fight's share of the way from the nearest team's start to the next team's is below 0.35, else between the two, such as
+`A-C 0.40`); every team's losses by kind (one column per team, or with more than 4 teams one column of the teams that
+lost any); the net, the enemies' losses minus team A's (`-` for a fight team A had no part in); and the buildings
+lost. **`fights RUN`** sums a whole run from team A's side, by where the fights were, also in the games it won and
+lost, and lists its worst fights:
 
 ```
 $ ./aisim.sh fights example
-fights of example: 146 with 8+ deaths in 20 games, per game:
-  where    fights A lost B lost    net net when A won (18) net when A lost (2)
-  A's base    1.5   24.6   15.0   -9.7                +2.8              -122.0
-  middle      2.2   15.6   20.4   +4.9                +5.1                +2.5
-  B's base    3.6   38.9  240.6 +201.7              +218.5               +50.5
-A's worst fights:
-  game time        where                      A lost       B lost net
-  s2-1 26:34-29:05 A's base 0.16            98 (98p)            0 -98
+fights of example: 77 of team A with 8+ deaths in 12 games, per game:
+  where         fights A lost enemies lost    net net when A won (10) net when A lost (2)
+  A's base         2.3   40.6         23.4  -17.2               -13.9               -33.5
+  between          1.5   21.8         37.4  +15.7               +20.0                -6.0
+  an enemy base    2.7   26.1        242.8 +216.7              +260.0                +0.0
+  (13 fights left out: team A lost nothing in them and they were not at its base, so they were most likely among other teams)
+team A's worst fights:
+  game time       where                     A lost enemies lost net
+  s4-2 8:39-13:51 A's base 0.22    83 (14r 6i 63p)           24 -59
 ```
 
+With three teams or more, the run table counts only the fights team A took part in, as far as the recording tells:
+it lost units or buildings there, or the fight was at its base. The recording has no killer per death, so a fight
+among other teams that team A won cleanly, far from its base, is left out too.
+
 Losses are counted by kind: `r`, `i` and `c` rock, iron and chicken (rubber) warriors, `p` peons, `C` the chieftain.
-`--min N` (default 8) leaves out fights with fewer deaths. `fights FILE.jsonl` reads any game file; in a play-test, A
-is the first player that is not human.
+`--min N` (default 8) leaves out fights with fewer deaths. `fights FILE.jsonl` reads any game file; in a play-test,
+team A is the team of the first player that is not human.
 
 **`export RUN`** writes the counted games as CSV next to the results: `census.csv`, a line per census sample, and
 `events.csv`, a line per event (both in [Files](#files)). Spreadsheets, `awk` and pandas read them as they are.
@@ -330,10 +364,12 @@ A Java tool is one source file that `./aisim.sh lab` runs straight from source o
 
 - **`com.oddlabs.tt.aisim.analysis.Game`**, one recorded game: `Game.counted(RUN)` (the counted games of a run),
   `Game.of(RUN, KEY)` and `Game.file(PATH)` (any game file). Per game: `row()` (the result row), `header()`,
-  `players()`, `events()` or `events("deaths")`, `census(slot)` and `census(slot, seconds)`, A's slot `aSlot()`, team
-  A's slots `aSlots()`, B's slots `bSlots()`, `isA(slot)` (on team A) and `result()` (win, loss or draw). `Game.num(map,
-  key)` reads a number and `Game.value(census, field)` a census field or one of the sums `curves` knows. The class
-  comment and method comments say the rest.
+  `players()`, `events()` or `events("deaths")`, `census(slot)` and `census(slot, seconds)`, the first player's slot
+  `aSlot()`, team A's slots `aSlots()`, every other player's slots `bSlots()`, `isA(slot)` (on team A) and `result()`
+  (team A's win, loss or draw). Teams: `teams()` (team numbers, team A's first), `aTeam()`, `teamOf(slot)`,
+  `slotsOf(team)`, `teamName(team)` (A, B, C, ...) and `place(team)`. `Game.num(map, key)` reads a number and
+  `Game.value(census, field)` a census field or one of the sums `curves` knows. The class comment and method comments
+  say the rest.
 - **`Table`** and **`Stats`** from the same package: `Table.align(rows)` prints rows as an aligned table, as the
   harness's commands do; `Stats.wilson` and `Stats.paired` are the statistics of `summary` and `compare`.
 - helper classes in other `.java` files of the same folder;
@@ -360,12 +396,12 @@ macOS and `~/.local/state/tribaltrouble/logs/<start millis>/` on Linux):
 
 - `game-<n>.jsonl`: the same format as harness games, with every player including you (`ai: "human"`), and in the
   header the map code, the advanced settings (`units maxUnits maxBuildings ships`) and the snapshot id. Its `end` line
-  differs: `winnerTeam` is the winning team number; `end` is `quit` when you left the game before it ended; a game
-  you quit by closing the program has no `end` line.
+  has no `places` and ends when one team is left: `winnerTeam` is the winning team number; `end` is `quit` when you
+  left the game before it ended; a game you quit by closing the program has no `end` line.
 - `game-<n>-ai-s<slot>.log`: the AI's decision log.
 - `t` counts world ticks / 50, which is game time at normal speed only; `speed` events mark speed changes.
 
-Read them with `./aisim.sh show "<folder>/game-1.jsonl"`. `./aisim.sh play --map "WORDS" --teams "..."`, with as
+Read them with `./aisim.sh show "<folder>/game-1.jsonl"`. `./aisim.sh play --map "WORDS" --players "..."`, with as
 many players as the game had, recreates the map in the harness, with the default advanced settings and without
 ships.
 `gui hard` records games against the stock Hard AI for comparison. The Hard-slot swap only works in developer mode,
@@ -429,8 +465,9 @@ The same list as `./aisim.sh help`:
 ./aisim.sh build                      compile (JDK 26), lint every AI package and snapshot the build
 ./aisim.sh new     NAME               start AI NAME from the template
 ./aisim.sh lint    [NAME|CLASS|@TAG...]
-./aisim.sh play    [PLAYERS] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
-./aisim.sh batch   PLAYERS [--seeds LIST] [--side S] [--workers W] [--name NAME] [MAP] [GAME]
+./aisim.sh play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
+./aisim.sh batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--workers W] [--logs [lost]] [--name NAME]
+                   [MAP] [GAME]
 ./aisim.sh summary RUN
 ./aisim.sh compare BASE VARIANT [VARIANT...] [--force]
 ./aisim.sh show    RUN KEY | FILE.jsonl
@@ -441,26 +478,33 @@ The same list as `./aisim.sh help`:
 ./aisim.sh lab     FILE.java [args]
 ./aisim.sh freeze  TAG NAME|CLASS [--from DIR|JAR]
 ./aisim.sh gui     [--stale-ok] SPEC [game args]
-PLAYERS: --a P [--b P] [--vs N]            A against N allied copies of B
-      or --teams "P P.. vs P P.. [vs ..]"  any teams, 2..32 players; A is the first player
+--players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
+  A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
+  is left, or to the time limit.
+  e.g. "myai vs hard", "myai vs hard*3", "myai hard vs normal*2 easy", "myai vs hard vs normal"
   P: SPEC[/RACE][*COUNT]: RACE v or n (vikings, natives), COUNT copies in a row, e.g. hard/n*2
+  SPEC: easy|normal|hard | NAME (com.oddlabs.tt.player.NAME.NameAI) | CLASS | @TAG, then optional :k=v,k=v
 MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0..10 --trees 0..10 --supplies 0..10
      each a value, a list (2,5), a range (0..4) or random. A setting not given, or given several values, is drawn
      per seed, the same for a seed in every run.
      Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
 LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
 GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
+      --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
 ```
 
-- **Defaults**: `--b hard --vs 1`, vikings, every map setting random, 360 minutes, `--seeds tune` from every start,
-  4 workers (`--workers` 1..16). `play` also defaults to `--a hard --seed 1 --side 0`; `batch` needs `--a` or
-  `--teams`. [Teams](#teams) and [Maps](#maps) explain the players and the map options.
+- **Defaults**: vikings, every map setting random, 360 minutes, `--seeds tune` from every start, 4 workers
+  (`--workers` 1..16). `play` also defaults to `--players "hard vs hard" --seed 1 --side 0`; `batch` needs
+  `--players`. [Players](#players) and [Maps](#maps) explain the players and the map options.
 - **`--minutes`** (1..600, default 360) is the time limit. A game that reaches it is a draw, however far ahead
-  either side is: only beating every opponent wins. A limit far below the natural length of a game turns late-game
+  anyone is: only beating every opponent wins. A limit far below the natural length of a game turns late-game
   play into draws. Games that run to the limit cost the most CPU, so shorten it for quick opening experiments.
 - **Start positions**: maps are rarely fair (resources can lie much farther from one start than from another), so a
-  batch plays every map once from each start of A, rotating the seating ([Teams](#teams)). `--side S` plays only the
-  games where A starts in slot S.
+  batch plays every map once from each start of every player, rotating the seating ([Players](#players)). `--side S`
+  plays only the games where the first player starts in slot S.
+- **`--logs`** (batch) keeps every game's AI logs, `--logs lost` those of the games team A did not win (the others'
+  are deleted as their rows come in); `play` always keeps them ([AI logs](#why-did-it-lose-show-and-replay)).
+- **`--stop-when-a-out`** ends a game as soon as team A is out ([Players](#players)).
 - **`--rng N`** reseeds the world's random generator (per start). It is needed when two starts would seat the same
   players in the same places, which the harness otherwise refuses, because they would replay the same game.
 - **`--name`**: 1..40 characters of `A-Z a-z 0-9 . _ -`, and the run must not exist yet; delete `aisim/runs/NAME` to
@@ -480,23 +524,36 @@ GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --n
 
 ## How a game ends
 
-Checked every game second, first match wins:
+Every game second, each player is checked: a player is out by the game's own rule (no units, active chieftain or
+quarters left), or by the harness's collapse rule. A team is out when all its players are; it gets a `team_out` event
+and the others play on. The game ends at the first match:
 
 | End | Rule |
 |---|---|
-| `elim`, via `engine` | Team A, or every player against it, has no living player by the game's own rule (units, an active chieftain or quarters left). |
-| `elim`, via `collapse` | A player had at most 8 units, no chieftain and no quarters or armory (built or started) for 60 s. The engine's rule would let one surviving peon drag a lost game to the time limit. `--no-collapse` turns it off (the `collapse` event is still recorded). |
-| `timeout` | At `--minutes`: a draw, whoever is ahead. The row still records the margin `m = (sA - sB) / (sA + sB)` of the strength of team A and of the strongest team against it (`Player.getStatus()` plus tower garrisons, which that engine score leaves out, summed over a team), as a measure of who was ahead; it decides nothing. |
+| `elim`, via `engine` | At most one team is left standing (none when the last teams went out in the same second), or with `--stop-when-a-out` team A is out. `via` tells how the last teams went out. |
+| `elim`, via `collapse` | As above, where a player went out by the collapse rule: at most 8 units, no chieftain and no quarters or armory (built or started) for 60 s. The engine's rule would let one surviving peon drag a lost game to the time limit. `--no-collapse` turns it off (the `collapse` event is still recorded). |
+| `timeout` | At `--minutes`: every team still standing shares first place, whoever is ahead, so only beating every opponent wins. The row still records the margin of team A over the strongest standing team against it, as a measure of who was ahead; it decides nothing. |
 | `crash` | An exception escaped an AI or the engine. |
 | `hang` | No simulation tick for 120 s of CPU or 600 s of wall time (an endless loop). |
 | `error` | The game could not be played: an AI could not be created (`ai_init`), an AI was compiled against an engine with other methods (`link error`), or the worker died. A run stops early when its first 3 games all end this way. |
 
 `crash`, `hang` and `error` games **are not counted**; the summary lists them and the command exits 1.
 
-Per game, from team A's point of view: `score` (1 / 0.5 / 0), `elim` (+1 team A eliminated B, -1 B eliminated team
-A, else 0), `kd30` (team A's kills minus B's at 30:00, or at the end), `w15` (team A's warriors, tower garrisons
-included, at 15:00 or at the end) and `margin` (the timeout margin, or +-1 on elimination). With three teams or more,
-B's kills include those of A's enemies among themselves, so kd30 there says less.
+Every team gets a **place**: 1 plus the number of teams that outlasted it, where teams that went out in the same
+second, or were standing at the time limit, share their places (two teams sharing first both have 1.5). A team
+**wins** when it is first alone, **draws** when it shares first and **loses** otherwise.
+
+Per game, team A's measures, the ones `summary` and `compare` use:
+
+- `score`: its place scaled from 1 (first) to 0 (last), `(teams - place) / (teams - 1)`; with two teams, 1 / 0.5 / 0
+  for a win, draw and loss.
+- `elim`: +1 when it won by eliminating every other team, -1 when it was eliminated and lost, else 0.
+- `kd30`: its kills minus its losses at 30:00, or at the end. Units killed by their own side or an ally count in both,
+  so friendly fire cancels out.
+- `w15`: its warriors, tower garrisons included, at 15:00 or at the end.
+- `margin`: +1 for a win, -1 for a loss, 0 for a shared elimination, and at the time limit `(sA - sB) / (sA + sB)` of
+  the strength of team A and of the strongest standing team against it (`Player.getStatus()` plus tower garrisons,
+  which that engine score leaves out, summed over a team).
 
 ## Files
 
@@ -505,12 +562,12 @@ aisim/                                  (in the repository root, git-ignored)
   snap/<id>/cp.args, meta.json          a build snapshot (its jars are in snap/blobs/, the newest id in snap/latest)
   pool/<tag>.jar, <tag>.json            frozen AIs
   runs/<name>/
-    run.json                            the run: teams, config, snapshot, every job
+    run.json                            the run: players, config, snapshot, every job
     results.jsonl                       one row per game, in completion order
     summary.txt
     census.csv, events.csv              from `export`
     g/<key>.jsonl                       per game: header, a census of every player every 30 s, events, end
-    g/<key>-ai-s<slot>.log              AI decision logs (play only; only AIs that use AiLog write one)
+    g/<key>-ai-s<slot>.log              AI decision logs (play, and batch --logs; only AIs that use AiLog write one)
     g/<key>.err                         the full stack of a crash, hang or error
     replay/<key>.jsonl, <key>-ai-s<slot>.log, <key>.row.json, <key>.worker.log      from `replay`
     replay-<snap>/...                   from `replay --snap latest|ID` (another build)
@@ -520,30 +577,39 @@ aisim/                                  (in the repository root, git-ignored)
   natives/gui                           native libraries unpacked for `gui` (ignore)
 ```
 
-**run.json**: `v name snap java created workers teams a lineup config aPool pools expected jobs`. `teams` is the
-lineup as given (like `hard easy vs normal*2`), `a` A's spec, `lineup` the teams with A's spec written as `A` and
-`config` the map options and game settings (compare checks both), `aPool` the jar hash of a frozen A and `pools` those
-of the other frozen players. Each job has `run key seed side teams seats size terrain hills trees supplies minutes
-rng collapse game logs`, where `seats` is each slot's `spec race team`, and `size` and `terrain` index
-`small medium large huge` and `tropical northern`.
+**run.json**: `v name snap java created workers players a lineup config logs aPools pools expected jobs`. `players` is
+`--players` as given (like `hard easy vs normal*2`), `a` team A's part of it, `lineup` the same with each player of team
+A written as `A` (like `A*2 vs normal*2`) and `config` the map options and game settings (compare checks both), `logs`
+which games keep AI logs (`all`, `lost` or null), and `aPools` and `pools` the jar hashes of the frozen AIs on team A
+and on the other teams (compare checks `pools`). Each job has `run key seed side players seats size terrain hills trees
+supplies minutes rng collapse stopWhenAOut game logs`, where `seats` is each slot's `spec race team`, and `size` and
+`terrain` index `small medium large huge` and `tropical northern`.
 
-**Result row** (`results.jsonl`): `v run key seed side slots teams a map mapcode minutes rng collapse snap perturb end
-via winner t checksum score elim kd30 w15 margin A B recorderFailed problem replay wall cpu`. `side` is A's slot,
-`slots` the number of players, `map` the settings in short (`large tropical h2 t10 s10`). `winner` is `a` (team A), `b`,
-`draw`, or null for a game that does not count; a `timeout` row is always a `draw` (rows written before this rule, when
-the default limit was 120 minutes, gave a timeout to the team with a margin of 0.10 or more, and keep that winner). Crash, `ai_init` and `link error` rows have every field, with `score`,
-`elim`, `kd30`, `w15` and `margin` null. Hang, dead-worker and harness-error rows have only the fields up to `perturb`
-plus `end winner t problem replay`. `t` is the game length, `wall` the wall-clock time and `cpu` the simulation thread's
-CPU time (unlike `wall`, not slowed by other load), all in seconds. `A` and `B` are the final census of team A and of B,
-summed over their players, plus `aiError` (the first swallowed error) and `counters`. In Python:
-`pandas.read_json("aisim/runs/<run>/results.jsonl", lines=True)`.
+**Result row** (`results.jsonl`): `v run key seed side slots players a map mapcode minutes rng collapse snap perturb
+end via winnerTeam t checksum result place score elim kd30 w15 margin teams recorderFailed problem replay wall cpu`.
+
+- `side` is the first player's slot, `slots` the number of players, `map` the settings in short (`large tropical h2 t10
+  s10`).
+- `winnerTeam` is the number of the team first alone, or null when first place is shared or the game does not count.
+- `result` (`win`, `draw` or `loss`), `place`, `score`, `elim`, `kd30`, `w15` and `margin` are team A's
+  ([How a game ends](#how-a-game-ends)); `result` is null for a game that does not count.
+- `teams` has a block per team, by team number: `team players slots place score out via`, where `players` is its part
+  of `--players`, `out` the game second it went out and `via` how (both null while it stood), then its final census
+  summed over its players, `aiError` (its first swallowed error) and `counters`.
+- Crash, `ai_init` and `link error` rows have every field, with the results, places and scores null. Hang,
+  dead-worker and harness-error rows have only the fields up to `perturb` plus `end winnerTeam t result problem
+  replay`.
+- `t` is the game length, `wall` the wall-clock time and `cpu` the simulation thread's CPU time (unlike `wall`, not
+  slowed by other load), all in seconds.
+
+In Python: `pandas.read_json("aisim/runs/<run>/results.jsonl", lines=True)`.
 
 **Game file** (`g/<key>.jsonl`, and `game-<n>.jsonl` from play-tests): one JSON object per line, `t` in game seconds
 (world ticks / 50) and `s` the player slot.
 
 | `ev` | Meaning |
 |---|---|
-| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (A's spec), `teams`, map, seed, map code, snapshot, and per player `s name team race ai x y` (start). |
+| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (team A's players), `players`, map, seed, map code, snapshot, and per player `s name team race ai x y` (start). |
 | `census` | Census of player `s` every 30 s and at the end (fields below), plus `checksum` (the world's). |
 | `placed`, `built`, `razed` | A building (`b` quarters/armory/tower, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). |
 | `chief`, `chief_died` | The player gained or lost an active chieftain. |
@@ -551,9 +617,10 @@ summed over their players, plus `aiError` (the first swallowed error) and `count
 | `stunned` | `n` of the player's units in the field became stunned, around `x`, `y` (tower garrisons are not seen). |
 | `deaths` | `n` of the player's units in the field were killed in the last second (by kind), around `x`, `y`. |
 | `collapse`, `out` | The collapse rule fired for the player / the player is out by the game's rule. |
+| `team_out` | Every player of `team` is out (`via` `engine` or `collapse`); no `s`. |
 | `speed` | The game speed changed (`secondsPerTick`; play-tests only). |
 | `recorder_error` | The recorder stopped; later data is missing (the row has `recorderFailed: true`). |
-| `end` | `end via winner checksum`. |
+| `end` | `end via winnerTeam places checksum`: `places` by team number (harness games only). |
 
 The census fields, in order: `alive units peons rock iron rubber inside garrison quarters armories towers sites kills
 lost razed buildingsLost harvestedTree harvestedRock harvestedIron harvestedRubber stockRock stockIron stockRubber
@@ -572,13 +639,14 @@ chief casts stunned armyX armyY status strength errors`.
 Units inside a razed building (tower garrisons, quarters and armory occupants) vanish from `units`, `inside` and
 `garrison` without dying: they are in neither `deaths` nor `lost`, and the attacker gets no `kills` for them.
 
-**CSV tables** (`export`): every line of both starts with its game's `run key seed side result` (`side` is A's slot,
-`result` team A's win, loss or draw), so the tables of several runs can be joined into one.
+**CSV tables** (`export`): every line of both starts with its game's `run key seed side result` (`side` is the first
+player's slot, `result` team A's win, loss or draw), so the tables of several runs can be joined into one.
 
-- `census.csv`: then `end slot role t` and the census fields in the order above. `role` is `A` for team A's
-  players, `B` for every other player.
-- `events.csv`: then `t slot role ev` (slot and role empty for events of no player, such as `end`), then every other
-  member that any event of the run has, empty where an event lacks it. The header and the census lines are left out.
+- `census.csv`: then `end slot team t` and the census fields in the order above. `team` is the player's team as the
+  reports name it: `A` for team A, then `B`, `C`, ...
+- `events.csv`: then `t slot team ev` (slot and team empty for events of no player, such as `end` and `team_out`),
+  then every other member that any event of the run has, empty where an event lacks it. The header and the census
+  lines are left out.
 
 **AI log** (`<key>-ai-s<slot>.log`): a `# ai-log` header line (slot, player name, key, snapshot), then
 `<seconds> s<slot> <TOPIC> <message>`, e.g. `   30.00 s0 STAT  units 20`.

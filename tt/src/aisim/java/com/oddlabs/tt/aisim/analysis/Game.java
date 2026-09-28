@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.TreeMap;
+import java.util.TreeSet;
 
 /**
  * One recorded game: its result row and its game file, as docs/aisim.md (Files) describes them. The analysis commands
@@ -22,8 +23,10 @@ import java.util.TreeMap;
  * methods are public.
  *
  * <p>Rows, headers, census samples and events are JSON objects as read: numbers, strings, lists and maps; {@link #num}
- * reads a number. A is the AI under test, team A its team (A and its allies), B every player not on A's team.
- * Nothing here throws a checked exception: an unreadable file throws {@link UncheckedIOException}.
+ * reads a number. Team A is the first team listed, the one the reports focus on; the other teams are named B, C, ...
+ * in the order of their team numbers ({@link #teamName}), and "B's slots" are every player not on team A. A's slot is
+ * the first player's. Nothing
+ * here throws a checked exception: an unreadable file throws {@link UncheckedIOException}.
  */
 public final class Game {
     /** The sums {@link #value} knows besides the census fields, and the fields each adds up. */
@@ -53,7 +56,7 @@ public final class Game {
         Path dir = Runs.dir(run);
         List<Game> games = new ArrayList<>();
         for (Map<String, Object> row : read(() -> Runs.rows(run))) {
-            if (row.get("winner") != null) {
+            if (Runs.counts(row)) {
                 games.add(new Game(run, row, Runs.gameFile(dir, row.get("key"))));
             }
         }
@@ -134,7 +137,7 @@ public final class Game {
         return slots;
     }
 
-    /** B's slots: every player not on A's team. */
+    /** B's slots: every player not on team A. */
     public @NonNull List<Integer> bSlots() {
         List<Integer> slots = new ArrayList<>();
         for (int slot = 0; slot < players().size(); slot++) {
@@ -145,28 +148,107 @@ public final class Game {
         return slots;
     }
 
-    /** True when {@code slot} plays on A's team. */
+    /** True when {@code slot} plays on team A. */
     public boolean isA(int slot) {
         int a = aSlot();
-        Object team = teamOf(slot);
-        return slot == a || (team != null && team.equals(teamOf(a)));
+        return slot == a || (teamOf(slot) >= 0 && teamOf(slot) == teamOf(a));
     }
 
-    /** A's result: win, loss or draw; unknown for a play-test that has no winner. */
+    /** The team number of player {@code slot}, as the header lists it; -1 when it does not. */
+    public int teamOf(int slot) {
+        List<Map<String, Object>> players = players();
+        if (slot < 0 || slot >= players.size() || !(players.get(slot).get("team") instanceof Number team)) {
+            return -1;
+        }
+        return team.intValue();
+    }
+
+    /** team A's number; -1 when the header does not list it. */
+    public int aTeam() {
+        return teamOf(aSlot());
+    }
+
+    /** The team numbers of the game, team A first, then the others in rising order. */
+    public @NonNull List<Integer> teams() {
+        TreeSet<Integer> others = new TreeSet<>();
+        for (int slot = 0; slot < players().size(); slot++) {
+            others.add(teamOf(slot));
+        }
+        others.remove(aTeam());
+        List<Integer> teams = new ArrayList<>(List.of(aTeam()));
+        teams.addAll(others);
+        return teams;
+    }
+
+    /**
+     * The name of {@code team} in reports: A for team A, then B, C, ... for the others in the order of
+     * {@link #teams}, and T26, T27, ... past Z. In a harness game, teams are numbered in the order they were given, so
+     * B
+     * is team 1 and so on; in a play-test, team A need not be team 0.
+     */
+    public @NonNull String teamName(int team) {
+        int index = teams().indexOf(team);
+        if (index < 0) {
+            return "T" + team;
+        }
+        return index < 26 ? String.valueOf((char) ('A' + index)) : "T" + index;
+    }
+
+    /** The slots of {@code team}, in slot order. */
+    public @NonNull List<Integer> slotsOf(int team) {
+        List<Integer> slots = new ArrayList<>();
+        for (int slot = 0; slot < players().size(); slot++) {
+            if (teamOf(slot) == team) {
+                slots.add(slot);
+            }
+        }
+        return slots;
+    }
+
+    /**
+     * team A's result: win (first place alone), draw (first place shared) or loss; unknown for a play-test that has
+     * no winner.
+     */
     public @NonNull String result() {
         if (!row.isEmpty()) {
-            return Runs.resultOfA(row.get("winner"));
+            Object result = row.get("result");
+            return result == null ? "unknown" : String.valueOf(result);
         }
         List<Map<String, Object>> end = events("end");
-        Object winner = end.isEmpty() ? null : end.get(0).get("winner");
-        Object winner_team = end.isEmpty() ? null : end.get(0).get("winnerTeam");
-        if (winner != null) {
-            return Runs.resultOfA(winner);
+        if (end.isEmpty()) {
+            return "unknown";
         }
-        if (winner_team != null) {
-            return winner_team.equals(teamOf(aSlot())) ? "win" : "loss";
+        if (end.get(0).get("places") instanceof List<?> places && aTeam() >= 0 && aTeam() < places.size()) {
+            double a = ((Number) places.get(aTeam())).doubleValue();
+            double best = places.stream().mapToDouble(place -> ((Number) place).doubleValue()).min().orElse(a);
+            return a == 1 ? "win" : a == best ? "draw" : "loss";
+        }
+        if (end.get(0).get("winnerTeam") instanceof Number winner) {
+            return winner.intValue() == aTeam() ? "win" : "loss";
         }
         return "unknown";
+    }
+
+    /**
+     * The place of {@code team}: 1 plus the number of teams that outlasted it, shared places averaged (two teams
+     * sharing
+     * first both have 1.5); null when the game has none (it did not count, or is a play-test).
+     */
+    public @Nullable Double place(int team) {
+        if (row.get("teams") instanceof List<?> blocks) {
+            for (Object block : blocks) {
+                if (block instanceof Map<?, ?> map && num(map, "team") == team && map.get("place") != null) {
+                    return num(map, "place");
+                }
+            }
+            return null;
+        }
+        List<Map<String, Object>> end = events("end");
+        if (!end.isEmpty() && end.get(0).get("places") instanceof List<?> places && team >= 0
+                && team < places.size() && places.get(team) instanceof Number place) {
+            return place.doubleValue();
+        }
+        return null;
     }
 
     /** Every line of the game file in order, the header first; empty when the game never started. */
@@ -269,12 +351,6 @@ public final class Game {
             }
         }
         return false;
-    }
-
-    /** The team of player {@code slot}, or null when the header does not list it. */
-    private @Nullable Object teamOf(int slot) {
-        List<Map<String, Object>> players = players();
-        return slot >= 0 && slot < players.size() ? players.get(slot).get("team") : null;
     }
 
     /** A read that may throw IOException. */

@@ -3,7 +3,6 @@ package com.oddlabs.tt.aisim.analysis;
 import com.oddlabs.tt.aisim.Aisim;
 import com.oddlabs.tt.aisim.UsageException;
 import org.jspecify.annotations.NonNull;
-import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -101,14 +100,8 @@ public final class Runs {
         return "AI logs " + String.join(" ", logs);
     }
 
-    /** A's result for a row's winner: win, loss or draw ("a", "b" or "draw"). */
-    public static @NonNull String resultOfA(@Nullable Object winner) {
-        if ("a".equals(winner)) {
-            return "win";
-        }
-        if ("b".equals(winner)) {
-            return "loss";
-        }
-        return "draw";
+    /** Whether a result row's game counts: it ended by elimination or at the time limit, so it has a result. */
+    public static boolean counts(@NonNull Map<String, Object> row) {
+        return row.get("result") != null;
     }
 }

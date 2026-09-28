@@ -7,21 +7,25 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.math.BigInteger;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
  * The complete identity of one game, plus where its output goes: who sits in each start slot ({@code seats}), which
- * slot is A's ({@code side}), the map and how the game runs. {@code teams} is the run's lineup as text, such as
- * "myai hard vs normal*2 easy/n" (the players in the order they were given, A first), which only labels the game.
+ * slot is the first player's ({@code side}), the map and how the game runs. {@code players} is the run's lineup as
+ * text, such as
+ * "myai hard vs normal*2 vs easy/n" (the players in the order they were given, A first, teams separated by vs), which
+ * only labels the game.
  *
  * <p>Jobs travel as JSON: to worker JVMs, into run.json, and from there to a worker of the run's own snapshot when a
  * game is replayed, which may be older or newer than this harness. So a field may be added, but never renamed, and
  * only a nullable field may be removed (an older worker then reads null). Helper methods must not start with get or
  * is: Jackson would write them as fields.
  */
-public record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNull String teams,
+public record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNull String players,
                   @NonNull List<Seat> seats, int size, int terrain, int hills, int trees, int supplies, int minutes,
-                  @Nullable Long rng, boolean collapse, @NonNull String game, @Nullable String logs) {
+                  @Nullable Long rng, boolean collapse, boolean stopWhenAOut, @NonNull String game,
+                  @Nullable String logs) {
 
     /** Map sizes by {@link #size}, as in the skirmish menu (huge is the menu's "Enormous"). */
     public static final List<String> SIZES = List.of("small", "medium", "large", "huge");
@@ -60,9 +64,20 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
         return seats.get(slot).team();
     }
 
-    /** Whether {@code slot} plays on A's team (A's own slot included). */
+    /** Whether {@code slot} plays on team A, the first team. */
     boolean onTeamA(int slot) {
         return team(slot) == team(side);
+    }
+
+    /** How many teams play: they are numbered 0.. in the order given, team A (0) first. */
+    int teamCount() {
+        return seats.stream().mapToInt(Seat::team).max().orElse(0) + 1;
+    }
+
+    /** Team {@code team}'s part of {@link #players}, such as "normal*2". */
+    @NonNull
+    String teamPlayers(int team) {
+        return players.split(" vs ")[team];
     }
 
     int meters() {
@@ -77,6 +92,12 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
     @NonNull
     String map() {
         return SIZES.get(size) + " " + TERRAINS.get(terrain) + " h" + hills + " t" + trees + " s" + supplies;
+    }
+
+    /** The AI log file of {@code slot}, next to the game file; null when the job keeps no AI logs. */
+    @Nullable
+    Path aiLogFile(int slot) {
+        return logs == null ? null : Path.of(logs + "-ai-s" + slot + ".log");
     }
 
     /** The file that gets the full stack trace of a crash, error or hang: the game file with .err for .jsonl. */
