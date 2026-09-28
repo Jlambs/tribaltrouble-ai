@@ -1044,6 +1044,10 @@ final class Economy {
             // Peons are safe inside while enemies roam next to the quarters.
             if (threatened && ai.military().threatNear(q.getGridX(), q.getGridY(), gatherUnderThreat() ? 12 : 20))
                 continue;
+            if (danger_idle && inside > hold && !needsBuilders()) {
+                ai.aiLog().count("hold_danger");
+                continue;
+            }
             if (inside > hold)
                 ai.owner().deployUnits(q, DeployType.PEON, inside - hold);
         }
@@ -1133,7 +1137,10 @@ final class Economy {
         if (armory == null || armory_field == null || ai.time() < 300f || ai.time() - last_expansion_check < 30f
                 || !ai.strategy().expansion)
             return;
-        if (ai.military().baseThreatLevel() > 0 || countProjects(Race.BUILDING_ARMORY, false) > 0)
+        boolean under_threat = ai.strategy().expand_under_threat;
+        if (under_threat)
+            last_expansion_check = ai.time();
+        if ((!under_threat && ai.military().baseThreatLevel() > 0) || countProjects(Race.BUILDING_ARMORY, false) > 0)
             return;
         if (!ai.owner().canBuild(Race.BUILDING_ARMORY))
             return;
@@ -1160,8 +1167,34 @@ final class Economy {
         float gain = iron_cycle >= ai.strategy().desperate_iron_cycle ? ai.strategy().desperate_expansion : .75f;
         if (better > gain * current)
             return;
+        if (under_threat && ai.military().baseThreatLevel() > 0) {
+            if (!quietSite(armory, site.x, site.y)) {
+                ai.aiLog().count("exp_blocked_site");
+                return;
+            }
+            ai.aiLog().count("exp_under_threat");
+        }
         Project p = addProject(Race.BUILDING_ARMORY, site, 1);
         expansion_project = p;
+    }
+
+    /** expand_under_threat: no threat or enemy warrior within 30 cells of the site, none within 12 of the way there. */
+    private boolean quietSite(@NonNull Building armory, int x, int y) {
+        Military military = ai.military();
+        if (military.threatNear(x, y, 30) || military.enemyStrengthNear(x, y, 30) > 0f)
+            return false;
+        int ax = armory.getGridX();
+        int ay = armory.getGridY();
+        float len = (float) Math.sqrt(MapAnalysis.dist2(ax, ay, x, y));
+        int steps = Math.max(1, (int) (len / 6f));
+        for (int i = 0; i <= steps; i++) {
+            int px = ax + Math.round((x - ax) * i / (float) steps);
+            int py = ay + Math.round((y - ay) * i / (float) steps);
+            for (Unit e : ai.intel().enemy_warriors)
+                if (!e.isDead() && MapAnalysis.dist2(px, py, e.getGridX(), e.getGridY()) <= 12 * 12)
+                    return false;
+        }
+        return true;
     }
 
     @Nullable
@@ -1225,7 +1258,8 @@ final class Economy {
                         || ((rock_weapons || rock_filler)
                                 && armory.getSupplyContainer(RockSupply.class).getNumSupplies() >= 1));
         int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
-        if (!can_make && left > 0 && pending == 0)
+        boolean refuge = armory == refuge_armory && ai.time() < refuge_until;
+        if (!can_make && left > 0 && pending == 0 && !refuge)
             owner.deployUnits(armory, DeployType.PEON, left);
     }
 
@@ -1439,6 +1473,16 @@ final class Economy {
             takeNearest(transit, chosen, need - chosen.size(), p.site.x, p.site.y);
             if (chosen.size() < need && (p.type == Race.BUILDING_ARMORY || p.first))
                 takeGatherers(chosen, need - chosen.size(), p.site.x, p.site.y);
+            if (ai.strategy().expand_under_threat && p == expansion_project && chosen.size() < need && armory != null
+                    && armory.isComplete() && armory != p.building) {
+                int workers = armory.getUnitContainer().getNumSupplies();
+                int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
+                if (workers > want_workers + 5 && pending == 0) {
+                    ai.owner().deployUnits(armory, DeployType.PEON, Math.min(need - chosen.size(),
+                            workers - want_workers));
+                    ai.aiLog().count("exp_builders_deployed");
+                }
+            }
             for (Unit u : chosen) {
                 if (u == scout && scoutHasWork())
                     continue;
@@ -1454,13 +1498,29 @@ final class Economy {
         boolean topup_ok = ai.military().baseThreatLevel() == 0 || (ai.strategy().chief_topup_any && trainer != null
                 && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
         if (trainer != null && topup_ok && !evacuating.containsKey(trainer)) {
-            int need = ai.strategy().hold_chieftain - trainer.getUnitContainer().getNumSupplies() - countHeadingTo(
-                    trainer);
+            boolean near = ai.strategy().chief_trainer_near;
+            int heading = near ? countSentTo(trainer) : countHeadingTo(trainer);
+            int need = ai.strategy().hold_chieftain - trainer.getUnitContainer().getNumSupplies() - heading;
             if (need > 0) {
                 List<Unit> chosen = new ArrayList<>();
                 takeNearest(free, chosen, need, trainer.getGridX(), trainer.getGridY());
-                takeNearest(transit, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
+                List<Unit> walkers = transit;
+                if (near) {
+                    walkers = new ArrayList<>();
+                    for (Unit u : transit)
+                        if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), trainer.getGridX(),
+                                trainer.getGridY()) <= 40 * 40)
+                            walkers.add(u);
+                }
+                takeNearest(walkers, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
+                if (walkers != transit)
+                    transit.removeAll(chosen);
                 order(chosen, trainer, Action.DEFAULT);
+                if (near)
+                    for (Unit u : chosen) {
+                        topup_sent.put(u, trainer);
+                        ai.aiLog().count("topup_sent");
+                    }
                 chieftain_topup = true;
             }
         }
@@ -1479,6 +1539,9 @@ final class Economy {
         // 3. Gatherers.
         boolean danger = ai.military().baseThreatLevel() > 1 && (!gatherUnderThreat()
                 || ai.military().threatNear(armory.getGridX(), armory.getGridY(), 16));
+        danger_idle = ai.strategy().danger_refuge && danger
+                && armory.getSupplyContainer(IronSupply.class).getNumSupplies() + armory.getSupplyContainer(
+                        RockSupply.class).getNumSupplies() < 2;
         int[] have = {intel.countGatherers(PeonState.GATHER_TREE, armory), intel.countGatherers(PeonState.GATHER_IRON,
                 armory), intel.countGatherers(PeonState.GATHER_ROCK, armory), intel.countGatherers(
                         PeonState.GATHER_CHICKEN, armory)};
@@ -1512,6 +1575,10 @@ final class Economy {
 
         // 4. Everyone else works in the armory, unless it is being emptied: then in another armory, or they wait.
         Building work = armory;
+        if (danger_idle && !free.isEmpty()) {
+            refuge(free, armory);
+            return;
+        }
         if (evacuating.containsKey(armory)) {
             work = null;
             for (Building a : intel.armories)
@@ -1521,6 +1588,60 @@ final class Economy {
         if (work != null)
             for (Unit u : free)
                 order(u, work, Action.DEFAULT);
+    }
+
+    /** danger_refuge: the main armory is threatened and has no ore to forge (set each economy tick). */
+    private boolean danger_idle;
+    private @Nullable Building refuge_armory;
+    private float refuge_until = -1f;
+
+    /**
+     * danger_refuge: spare peons go to the complete armory farthest from the threat with no threat within 25 cells,
+     * else each to its nearest quarters with no threat within 16 cells, else they stay where they are.
+     */
+    private void refuge(@NonNull List<@NonNull Unit> free, @NonNull Building armory) {
+        Intel intel = ai.intel();
+        Military military = ai.military();
+        int tx = military.threatX();
+        int ty = military.threatY();
+        Building work = null;
+        int best = -1;
+        for (Building a : intel.armories) {
+            if (a == armory || a.isDead() || !a.isComplete() || evacuating.containsKey(a)
+                    || military.threatNear(a.getGridX(), a.getGridY(), 25))
+                continue;
+            int d = MapAnalysis.dist2(a.getGridX(), a.getGridY(), tx, ty);
+            if (d > best) {
+                best = d;
+                work = a;
+            }
+        }
+        if (work != null) {
+            refuge_armory = work;
+            refuge_until = ai.time() + 30f;
+            for (Unit u : free) {
+                order(u, work, Action.DEFAULT);
+                ai.aiLog().count("refuge_armory");
+            }
+            return;
+        }
+        for (Unit u : free) {
+            Building shelter = null;
+            int best_d = Integer.MAX_VALUE;
+            for (Building q : intel.quarters) {
+                if (q.isDead() || evacuating.containsKey(q) || military.threatNear(q.getGridX(), q.getGridY(), 16))
+                    continue;
+                int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(), q.getGridY());
+                if (d < best_d) {
+                    best_d = d;
+                    shelter = q;
+                }
+            }
+            if (shelter != null) {
+                order(u, shelter, Action.DEFAULT);
+                ai.aiLog().count("refuge_quarters");
+            }
+        }
     }
 
     private boolean scoutHasWork() {
@@ -1533,6 +1654,16 @@ final class Economy {
     @SuppressWarnings("unchecked")
     private static @NonNull Class<? extends Supply> supplyClass(@NonNull Class<?> c) {
         return (Class<? extends Supply>) c;
+    }
+
+    /** chief_trainer_near: peons ordered into the chieftain's training quarters, and which one. */
+    private final Map<@NonNull Unit, @NonNull Building> topup_sent = new LinkedHashMap<>();
+
+    /** chief_trainer_near: peons we sent to this trainer that are still walking there. */
+    private int countSentTo(@NonNull Building trainer) {
+        topup_sent.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue() != trainer
+                || ai.intel().peon_states.get(e.getKey()) != PeonState.TRANSIT);
+        return topup_sent.size();
     }
 
     private int countHeadingTo(@NonNull Building building) {

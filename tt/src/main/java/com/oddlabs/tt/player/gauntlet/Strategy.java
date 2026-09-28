@@ -129,6 +129,33 @@ class Strategy {
     boolean stall_calm = true;
     /** Top up the chieftain's training quarters under threat too, and keep it full at the unit cap. */
     boolean chief_topup_any = false;
+    /**
+     * Train the chieftain in a quarters near the armory that no enemy warrior stands within 30 cells of (Chieftain),
+     * and top it up only with peons sent to it and walkers within 40 cells (Economy): the start quarters, 57 cells from
+     * the armory in a median game, pulled armory-bound newborns across the base (lab/gauntlet audit, camp-mf-vs11-hv).
+     */
+    boolean chief_trainer_near = false;
+    /**
+     * While the base threat is at the main armory and it has no ore to forge, spare peons go to a quiet armory or
+     * quarters instead of into it, and quarters keep theirs (Economy): peons piled into an armory that is about to be
+     * razed vanish with it (LandBuilding.removeDying; ~52 units per razing in camp-mf-vs11-hv).
+     */
+    boolean danger_refuge = false;
+    /**
+     * Look for an expansion armory under threat too, at a site with no enemy within 30 cells nor along the way
+     * (Economy.considerExpansion): from 10 minutes parked blobs keep the threat above 0, so after the expansion falls
+     * no new armory was ever placed (camp-mf-vs11-hv: 0 in 32 windows of a median 358 s).
+     */
+    boolean expand_under_threat = false;
+    /**
+     * With the base under heavy threat, a muster that timed out without gathering launches only if the army at the
+     * staging point outweighs the threat; the small-threat attack test counts only the army near staging (Military).
+     */
+    boolean launch_recheck = false;
+    /** Seconds before the next attack after the army was called home (20 after any other attack end). */
+    float recall_cooldown = 20f;
+    /** On a retreat, warriors in a fight or with an enemy warrior within 9 cells finish it first (Military). */
+    boolean retreat_rearguard = false;
     /** Gatherers per ore node before the next node is preferred, and the metres a gatherer already there costs. */
     int ore_load = 3;
     float ore_load_penalty = 6f;
@@ -603,6 +630,12 @@ class Strategy {
         chicken_gunners = params.getBoolean("chicken_gunners", chicken_gunners);
         stall_calm = params.getBoolean("stall_calm", stall_calm);
         chief_topup_any = params.getBoolean("chief_topup_any", chief_topup_any);
+        chief_trainer_near = params.getBoolean("chief_trainer_near", chief_trainer_near);
+        danger_refuge = params.getBoolean("danger_refuge", danger_refuge);
+        expand_under_threat = params.getBoolean("expand_under_threat", expand_under_threat);
+        launch_recheck = params.getBoolean("launch_recheck", launch_recheck);
+        recall_cooldown = (float) params.getDouble("recall_cooldown", recall_cooldown);
+        retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
         ore_load = params.getInt("ore_load", ore_load);
         ore_load_penalty = (float) params.getDouble("ore_load_penalty", ore_load_penalty);
         quarters_rally = params.getBoolean("quarters_rally", quarters_rally);

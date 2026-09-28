@@ -367,7 +367,8 @@ final class Military {
             considerStrike();
         // Against many copies the base is rarely quiet: a small raid (next to the whole army) does not hold it back.
         boolean small_threat = threat_level >= 2
-                && base_threat_strength < ai.strategy().attack_threat_ratio * armyStrength();
+                && base_threat_strength < ai.strategy().attack_threat_ratio * (ai.strategy().launch_recheck ? stagingStrength(
+                        40) : armyStrength());
         if (mode == Mode.HOME && (threat_level < 2 || small_threat))
             considerAttack();
         // reinforce_threat_ratio: reinforce the attack with the base under threat too, while what stands in the base is
@@ -552,6 +553,7 @@ final class Military {
         if ((mode == Mode.ATTACK || mode == Mode.MUSTER) && base_threat_strength > home
                 && base_threat_strength > ai.strategy().recall_ratio * attackStrength()) {
             ai.log(String.format("calling the army home: %.1f in the base against %.1f", base_threat_strength, home));
+            recalled = true;
             endAttack();
         }
         List<Unit> defenders = new ArrayList<>();
@@ -1889,6 +1891,14 @@ final class Military {
         }
         boolean gathered = total > 0 && near >= total * 8 / 10;
         boolean timeout = ai.time() - muster_start > 45f;
+        if (ai.strategy().launch_recheck && timeout && !gathered && threat_level >= 2
+                && base_threat_strength > ai.strategy().attack_threat_ratio * (stagingStrength(30) + stockStrength())) {
+            mode = Mode.HOME;
+            next_wave_time = ai.time() + 60f;
+            ai.log(String.format("muster dropped: %.1f in the base", base_threat_strength));
+            ai.aiLog().count("muster_dropped");
+            return;
+        }
         if ((!stock_left && pending == 0 && gathered) || timeout)
             launchAttack();
     }
@@ -2188,8 +2198,29 @@ final class Military {
                 e.setValue(Role.ARMY);
         mode = Mode.HOME;
         target = null;
-        next_wave_time = ai.time() + 20f;
+        next_wave_time = ai.time() + (recalled ? ai.strategy().recall_cooldown : 20f);
+        recalled = false;
         strike = false;
+    }
+
+    /** The attack being ended was called home (recall_cooldown). */
+    private boolean recalled;
+
+    /** launch_recheck: the fighting value of home army units within {@code radius} cells of the staging point. */
+    private float stagingStrength(int radius) {
+        float s = 0f;
+        int r2 = radius * radius;
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            if (e.getValue() != Role.ARMY)
+                continue;
+            Unit u = e.getKey();
+            WarriorState st = ai.intel().warrior_states.get(u);
+            if (u.isDead() || st == WarriorState.STUNNED || st == WarriorState.ENTER)
+                continue;
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) <= r2)
+                s += Combat.value(u);
+        }
+        return s;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -2875,9 +2906,23 @@ final class Military {
                 e.setValue(Role.ARMY);
                 move(e.getKey(), staging_x, staging_y);
             } else if (e.getValue() == Role.ATTACK) {
+                if (ai.strategy().retreat_rearguard && inFight(e.getKey())) {
+                    ai.aiLog().count("rearguard_units");
+                    continue;
+                }
                 move(e.getKey(), staging_x, staging_y);
             }
         }
+    }
+
+    /** retreat_rearguard: fighting, or an awake enemy warrior within 9 cells. */
+    private boolean inFight(@NonNull Unit u) {
+        if (ai.intel().warrior_states.get(u) == WarriorState.FIGHT)
+            return true;
+        for (Unit e : ai.intel().enemy_warriors)
+            if (!e.isDead() && MapAnalysis.dist2(u.getGridX(), u.getGridY(), e.getGridX(), e.getGridY()) <= 9 * 9)
+                return true;
+        return false;
     }
 
     /**
@@ -3027,9 +3072,11 @@ final class Military {
                 continue;
             Unit u = e.getKey();
             n++;
+            WarriorState st = ai.intel().warrior_states.get(u);
             if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) <= 14 * 14)
                 home++;
-            else if (ai.intel().warrior_states.get(u) == WarriorState.IDLE)
+            else if (st == WarriorState.IDLE || (ai.strategy().retreat_rearguard && st != WarriorState.MOVE
+                    && st != WarriorState.FIGHT && st != WarriorState.STUNNED))
                 move(u, staging_x, staging_y);
         }
         if (n == 0 || home >= n * 7 / 10)

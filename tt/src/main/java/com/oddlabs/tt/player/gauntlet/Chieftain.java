@@ -589,6 +589,55 @@ final class Chieftain {
         return ai.strategy().stun_learn && catch_rate < ai.strategy().dodge_catch;
     }
 
+    /** chief_trainer_near: when training first became possible. */
+    private float train_possible = -1f;
+
+    /**
+     * chief_trainer_near: the fullest quarters near the armory with no enemy warrior within 30 cells and full hit
+     * points;
+     * when none qualifies for 60 s, the quarters farthest from the nearest enemy warrior.
+     */
+    private @Nullable Building nearTrainer(@NonNull Intel intel) {
+        Building armory = intel.armory();
+        Building best = null;
+        float best_score = -Float.MAX_VALUE;
+        for (Building q : intel.quarters) {
+            if (!q.canBuildChieftain() || ai.military().enemyStrengthNear(q.getGridX(), q.getGridY(), 30) > 0f
+                    || q.getHitPoints() < q.getTemplate().getMaxHitPoints())
+                continue;
+            float d = armory == null ? 0f : (float) Math.sqrt(MapAnalysis.dist2(q.getGridX(), q.getGridY(),
+                    armory.getGridX(), armory.getGridY()));
+            float score = q.getUnitContainer().getNumSupplies() - .25f * d;
+            if (score > best_score) {
+                best_score = score;
+                best = q;
+            }
+        }
+        if (best != null) {
+            ai.aiLog().count("chief_train");
+            return best;
+        }
+        if (ai.time() - train_possible <= 60f)
+            return null;
+        int best_d = -1;
+        for (Building q : intel.quarters) {
+            if (!q.canBuildChieftain())
+                continue;
+            int nearest = Integer.MAX_VALUE;
+            for (Unit e : intel.enemy_warriors)
+                if (!e.isDead())
+                    nearest = Math.min(nearest, MapAnalysis.dist2(q.getGridX(), q.getGridY(), e.getGridX(),
+                            e.getGridY()));
+            if (nearest > best_d) {
+                best_d = nearest;
+                best = q;
+            }
+        }
+        if (best != null)
+            ai.aiLog().count("chief_train_fallback");
+        return best;
+    }
+
     private void considerTraining() {
         Strategy strategy = ai.strategy();
         Intel intel = ai.intel();
@@ -600,16 +649,23 @@ final class Chieftain {
             return;
         Building best = null;
         float best_score = -Float.MAX_VALUE;
-        for (Building q : intel.quarters) {
-            if (!q.canBuildChieftain())
-                continue;
-            float score = q.getUnitContainer().getNumSupplies() - 20f * ai.planner().exposure(q.getGridX(),
-                    q.getGridY());
-            if (score > best_score) {
-                best_score = score;
-                best = q;
+        if (strategy.chief_trainer_near) {
+            if (train_possible < 0f)
+                train_possible = ai.time();
+            best = nearTrainer(intel);
+            if (best == null && ai.time() - train_possible <= 60f)
+                return;
+        } else
+            for (Building q : intel.quarters) {
+                if (!q.canBuildChieftain())
+                    continue;
+                float score = q.getUnitContainer().getNumSupplies() - 20f * ai.planner().exposure(q.getGridX(),
+                        q.getGridY());
+                if (score > best_score) {
+                    best_score = score;
+                    best = q;
+                }
             }
-        }
         if (best != null) {
             ai.log("training chieftain in quarters at " + best.getGridX() + "," + best.getGridY());
             ai.owner().trainChieftain(best, true);
