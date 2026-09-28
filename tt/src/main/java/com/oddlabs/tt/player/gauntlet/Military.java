@@ -1321,11 +1321,14 @@ final class Military {
                 continue;
             float d = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
             float priority = switch (b.getTemplate().getTemplateID()) {
-                case com.oddlabs.tt.model.Race.BUILDING_ARMORY -> 0f;
-                case com.oddlabs.tt.model.Race.BUILDING_QUARTERS -> 60f;
+                case com.oddlabs.tt.model.Race.BUILDING_ARMORY -> strategy.quarters_first ? 60f : 0f;
+                case com.oddlabs.tt.model.Race.BUILDING_QUARTERS -> strategy.quarters_first ? 0f : 60f;
                 default -> 120f;
             };
-            float score = d + priority + 8f * defenseAt(b.getGridX(), b.getGridY());
+            float score = d + priority + strategy.target_defense_weight * defenseAt(b.getGridX(), b.getGridY());
+            if (strategy.target_home_weight > 0f)
+                score += strategy.target_home_weight * MapAnalysis.meters(staging_x, staging_y, b.getGridX(),
+                        b.getGridY());
             if (focus_owner != null && b.getOwner() == focus_owner)
                 score -= strategy.focus_bonus;
             if (score < best_score) {

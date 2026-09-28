@@ -383,3 +383,17 @@ quarters_first queued.
 **W 45 / L 55 / D 0**, Wilson 95 % [35.6, 54.8], all 45 wins by elimination (3 via collapse), 0 failed, 49.3 min
 mean length, 39.7 s CPU per game. Replays s30001-0, s30002-0, s30003-0: VERIFIED. (Dev estimate before: 34/100 on
 seeds 1..100 against viking Hards, 67/200 against native ones.) Nothing from the exam games is used for tuning.
+
+### 2026-09-28: N=8 after the exam: small tweaks, and a far-target march
+
+Paired with base4-vs8-hn (native Hards, seeds 1..100, 11 wins):
+- atk10-vs8-hn (attack_ratio=1.0): 13 (3 gained, 1 lost), lsr10 +0.017 (z +2.9); few games differ.
+- noexp-vs8-hn (expansion=false): 9 (3/5), kd -0.08 (z -3.1); no.
+- keepout14-vs8-hn (chief_keep_out=14): 13 (4/2); marginal.
+
+play-v8-s5 (N=8, viking Hards, logged): attack at 7:25 with 59, s8 out at 9:02, reinforcements of 12-16 every
+30-40 s, s2 out at 14:39, army recalled at 13:52 (62 in the base vs 61 at home), then no more attacks and the
+base fell by 29 min. Between the two eliminations the army marched to a target 612 m away (chooseTarget adds 8 m
+per unit of expected defense, which pushed it past nearer copies) and spent ~5 min walking and skirmishing across
+the map. Params target_defense_weight (default 8) and target_home_weight (default 0: extra meters per meter from
+our staging point) queued for tests (tdw2-vs8-hv, thome1-vs8-hv).

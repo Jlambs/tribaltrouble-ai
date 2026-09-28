@@ -43,6 +43,14 @@ class Strategy {
     int defense_radius = 150;
     /** Share of the ore gatherers sent for rock, with rock weapons always on order (0: rock only as a fallback). */
     float rock_share = 0f;
+    /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
+    boolean quarters_first = false;
+    /**
+     * Attack targets score meters from the army, plus target_defense_weight meters per unit of the defense expected
+     * there, plus target_home_weight times the meters from our staging point (keeps the campaign near home).
+     */
+    float target_defense_weight = 8f;
+    float target_home_weight = 0f;
     /**
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
@@ -423,6 +431,9 @@ class Strategy {
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
         rock_share = (float) params.getDouble("rock_share", rock_share);
+        quarters_first = params.getBoolean("quarters_first", quarters_first);
+        target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
+        target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
         focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
