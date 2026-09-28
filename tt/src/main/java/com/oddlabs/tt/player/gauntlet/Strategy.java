@@ -55,6 +55,8 @@ class Strategy {
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
     float attack_threat_ratio = 0f;
+    /** An attack is called home when the enemies in the base beat the home defense and this share of the attack. */
+    float recall_ratio = .35f;
     boolean focus_finish = false;
     int sites_parallel = 2;
     /** Quarters completed before builders move to the armory. */
@@ -443,6 +445,7 @@ class Strategy {
         target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
+        recall_ratio = (float) params.getDouble("recall_ratio", recall_ratio);
         focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
         swing_restart = params.getBoolean("swing_restart", swing_restart);

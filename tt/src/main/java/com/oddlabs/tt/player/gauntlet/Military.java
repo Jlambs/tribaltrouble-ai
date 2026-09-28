@@ -483,7 +483,7 @@ final class Military {
         // A real attack on the base beats anything the army could achieve abroad; harassment of far gatherers does not.
         float home = armyStrength() + towersStrength();
         if ((mode == Mode.ATTACK || mode == Mode.MUSTER) && base_threat_strength > home
-                && base_threat_strength > .35f * attackStrength()) {
+                && base_threat_strength > ai.strategy().recall_ratio * attackStrength()) {
             ai.log(String.format("calling the army home: %.1f in the base against %.1f", base_threat_strength, home));
             endAttack();
         }

@@ -441,3 +441,14 @@ eliminations must come faster then.
 
 Map geometry does not explain N=8 wins (500 games of gshep/base4/blastonly): win rate 9-14 % whether the nearest
 copy starts 90-100, 100-120 or 120-140 cells away.
+
+### 2026-09-28: the campaign at N=8 (camp40-vs8-hv, 40 logged games, lab/gauntlet/campaign.py)
+
+Per game in the first 30 minutes: HOME 1,106 s, ATTACK 437 s, MUSTER 47 s, RETREAT 20 s; 1.25 musters, 1.23
+attacks, 0.85 "calling the army home", 5.45 reinforcements, 1.55 copies out. Most losses make exactly one attack
+(59-94 strong at 7-10 min), it is called home when the base is hit, and the army never attacks again: after that
+the base threat never drops below level 2 (blobs idle within 28 cells of our buildings), and considerAttack only
+runs below level 2. The wins are long sustained attacks (810-1,350 s in ATTACK, 11-20 reinforcements) that
+eliminate 3-6 copies. Params recall_ratio (default 0.35: recall when the base threat beats the home defense and
+0.35 of the attack) and attack_threat_ratio queued: recall10-vs8-hv (1.0), recallatk-vs8-hv (1.0 + 1.0).
+Also pending: q5/q6 (more quarters), raid8 (raids under threat), decoync (decoys without the cage rule).
