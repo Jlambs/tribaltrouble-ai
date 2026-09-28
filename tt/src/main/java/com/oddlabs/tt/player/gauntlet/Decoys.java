@@ -44,6 +44,7 @@ final class Decoys {
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Decoy> decoys = new ArrayList<>();
     private float last_tick = -10f;
+    private float nospot_trace = -100f;
 
     private static final class Decoy {
         final @NonNull Player target;
@@ -118,6 +119,7 @@ final class Decoys {
             Decoy d = it.next();
             if (d.site != null && d.site.isDead()) {
                 ai.aiLog().count("decoy_razed");
+                ai.log("decoy razed at " + d.x + "," + d.y + " (for " + d.target.getPlayerInfo().getName() + ")");
                 it.remove();
                 continue;
             }
@@ -192,6 +194,29 @@ final class Decoys {
         int[] spot = findSpot(ox, oy, real, active);
         if (spot == null) {
             ai.aiLog().count("decoy_nospot");
+            if (ai.logging() && ai.time() - nospot_trace >= 15f) {
+                nospot_trace = ai.time();
+                Building nb = null;
+                int nd = Integer.MAX_VALUE;
+                for (Selectable<?> sel : ai.owner().getUnits().getSet())
+                    if (sel instanceof Building b && !b.isDead() && !isDecoy(b)
+                            && b.getTemplate().getType() == BuildingTemplate.TYPE_BUILDING) {
+                                int d2 = MapAnalysis.dist2(b.getGridX(), b.getGridY(), ox, oy);
+                                if (d2 < nd) {
+                                    nd = d2;
+                                    nb = b;
+                                }
+                            }
+                int td = Integer.MAX_VALUE;
+                for (Building t : active)
+                    if (nb != null)
+                        td = Math.min(td, MapAnalysis.dist2(t.getGridX(), t.getGridY(), nb.getGridX(), nb.getGridY()));
+                Building fb = nb;
+                int fnd = nd;
+                int ftd = td;
+                ai.log("decoy: no spot for " + p.getPlayerInfo().getName() + " origin " + ox + "," + oy + ", nearest " + (fb == null ? "none" : fb.getTemplate().getTemplateID() + (fb.isComplete() ? "" : " site") + " at " + fb.getGridX() + "," + fb.getGridY() + " (" + (int) Math.sqrt(
+                        fnd) + " cells), nearest active tower to it " + (int) Math.sqrt(ftd) + " cells"));
+            }
             return;
         }
         Unit runner = chooseRunner(spot[0], spot[1]);
@@ -236,6 +261,10 @@ final class Decoys {
         float limit = ai.strategy().decoy_margin * ai.strategy().decoy_margin * real;
         int[] best = null;
         float best_score = -Float.MAX_VALUE;
+        int far = 0;
+        int crowded = 0;
+        int hot = 0;
+        int illegal = 0;
         for (Building t : active) {
             for (int r = MIN_TOWER_CELLS; r <= MAX_TOWER_CELLS; r++) {
                 for (int a = 0; a < 24; a++) {
@@ -243,14 +272,22 @@ final class Decoys {
                     int x = t.getGridX() + (int) Math.round(r * Math.cos(ang));
                     int y = t.getGridY() + (int) Math.round(r * Math.sin(ang));
                     int d2 = MapAnalysis.dist2(x, y, ox, oy);
-                    if (d2 >= limit)
+                    if (d2 >= limit) {
+                        far++;
                         continue;
-                    if (!clearOf(own, x, y, 10) || !clearOfDecoys(x, y, 4))
+                    }
+                    if (!clearOf(own, x, y, 10) || !clearOfDecoys(x, y, 4)) {
+                        crowded++;
                         continue;
-                    if (enemyNear(intel, x, y, 12))
+                    }
+                    if (enemyNear(intel, x, y, 12)) {
+                        hot++;
                         continue;
-                    if (!ai.map().canPlace(template, x, y))
+                    }
+                    if (!ai.map().canPlace(template, x, y)) {
+                        illegal++;
                         continue;
+                    }
                     int reach = 0;
                     for (Building o : active)
                         if (MapAnalysis.dist2(o.getGridX(), o.getGridY(), x, y) <= TOWER_REACH * TOWER_REACH)
@@ -262,6 +299,12 @@ final class Decoys {
                     }
                 }
             }
+        }
+        if (best == null) {
+            // Why no spot: the reason that removed most candidates.
+            int m = Math.max(Math.max(far, crowded), Math.max(hot, illegal));
+            ai.aiLog().count(
+                    m == far ? "decoy_nospot_far" : m == crowded ? "decoy_nospot_crowded" : m == hot ? "decoy_nospot_hot" : "decoy_nospot_illegal");
         }
         return best;
     }

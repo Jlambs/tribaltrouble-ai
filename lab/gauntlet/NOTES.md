@@ -496,3 +496,22 @@ seeds 201..400, 16/100 on 1..100. **N* = 8.**
 
 home_guard=20 vs gv8-vs8-hv (seeds 1..100, 16 wins): 5 wins (2 gained, 13 lost, z -2.9): keeping warriors home
 hurts; attacks need everything (wins are long all-in campaigns). home_guard=40 cancelled.
+
+### 2026-09-28: N=9, decoys at N=8, the Hard's quarters gate
+
+gv8-vs9-hv (@g-v8 vs hard*9, seeds 1..100): **2/100** [0.6, 7.0], elim 0.162. N=9 needs something new.
+
+Why decoys rarely fire at N=8 (decoy_nospot_far): a logged game (play-decoycheck4-s7, decoys on, front towers
+pushed out with the new params front_tower_min/max) traced each failure. The nearest of our buildings to a copy's
+wave origin is usually an unfinished tower site 19-53 cells from any manned tower, so no spot 11-14 cells from a
+manned tower can be nearer to the origin, and waves go to the site instead (outside tower reach). Decoys can only
+pull waves in front of a finished tower line, which at N=8 we never have towards most copies. Parked.
+
+**The quarters gate** (AdvancedAI.nodeAttackWithWarriorsAndChieftain, source-read): from wave size 20 on (Hard's
+third wave) a wave leaves only with an active chieftain, and the chieftain trains only at a finished quarters. A
+copy that loses its quarters while its idle warriors are at least its wave size never rebuilds them (the rebuild
+sits in nodeTransferUnits, which runs only when warriors are missing), so once its chieftain is dead it never
+attacks again. New param gate_freeze: the attack target is the nearest quarters (finished or site) of a copy that
+still has one, the copies without quarters are skipped until none is left. First game (play-gatefreeze-s7): the
+first attack razed s5's quarters (and its armory, since the army was standing on it), then marched on to s7's
+quarters. Current source with defaults = @g-v8 (identical checksums on seeds 203..206, idcheck-gv8src).

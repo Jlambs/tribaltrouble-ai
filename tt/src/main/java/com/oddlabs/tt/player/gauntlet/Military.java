@@ -1317,18 +1317,29 @@ final class Military {
         }
         Selectable<?> best = null;
         float best_score = Float.MAX_VALUE;
+        // gate_freeze: a copy without quarters (finished or placed) cannot train the chieftain its waves need from
+        // 20 on, and does not rebuild while its idle warriors outnumber its wave size: leave it until last.
+        java.util.List<com.oddlabs.tt.player.Player> quartered = new ArrayList<>();
+        if (strategy.gate_freeze)
+            for (Building b : intel.enemy_buildings)
+                if (!b.isDead() && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                        && !quartered.contains(b.getOwner()))
+                    quartered.add(b.getOwner());
+        boolean skip_frozen = strategy.gate_freeze && !quartered.isEmpty();
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
         candidates.addAll(intel.enemy_quarters);
         candidates.addAll(intel.enemy_towers);
         if (candidates.isEmpty())
             candidates.addAll(intel.enemy_buildings);
         for (Building b : candidates) {
-            if (b.isDead())
+            if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())))
                 continue;
             float d = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
             float priority = switch (b.getTemplate().getTemplateID()) {
-                case com.oddlabs.tt.model.Race.BUILDING_ARMORY -> strategy.quarters_first ? 60f : 0f;
-                case com.oddlabs.tt.model.Race.BUILDING_QUARTERS -> strategy.quarters_first ? 0f : 60f;
+                case com.oddlabs.tt.model.Race.BUILDING_ARMORY -> strategy.quarters_first
+                        || strategy.gate_freeze ? 60f : 0f;
+                case com.oddlabs.tt.model.Race.BUILDING_QUARTERS -> strategy.quarters_first
+                        || strategy.gate_freeze ? 0f : 60f;
                 default -> 120f;
             };
             float score = d + priority + strategy.target_defense_weight * defenseAt(b.getGridX(), b.getGridY());

@@ -34,6 +34,9 @@ class Strategy {
     int tower_builders = 8;
     /** Tower projects waiting to be placed at once, and non-armory sites standing unfinished at once. */
     int tower_parallel = 1;
+    /** Cells from the building it covers that a front tower (one facing each enemy) stands. */
+    int front_tower_min = 7;
+    int front_tower_max = 15;
     /**
      * Attacks go after the copy they hit last: its buildings count focus_bonus meters nearer, and with focus_finish
      * its last units are hunted down (within 90 cells) once its buildings are gone, before it can rebuild.
@@ -45,6 +48,11 @@ class Strategy {
     float rock_share = 0f;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
     boolean quarters_first = false;
+    /**
+     * Raze each copy's quarters and move on: without quarters it can train no chieftain, and from wave size 20 no
+     * wave leaves without one (AdvancedAI); its armory, army and peons are left until every copy is quarterless.
+     */
+    boolean gate_freeze = false;
     /**
      * Attack targets score meters from the army, plus target_defense_weight meters per unit of the defense expected
      * there, plus target_home_weight times the meters from our staging point (keeps the campaign near home).
@@ -440,10 +448,13 @@ class Strategy {
         shepherd_patience = (float) params.getDouble("shepherd_patience", shepherd_patience);
         shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
+        front_tower_min = params.getInt("front_tower_min", front_tower_min);
+        front_tower_max = params.getInt("front_tower_max", front_tower_max);
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
         rock_share = (float) params.getDouble("rock_share", rock_share);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
+        gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);

@@ -533,14 +533,20 @@ final class Economy {
                     existing.add(new int[]{t.getGridX(), t.getGridY()});
                 int[] center = towerAnchor(tower_count);
                 int[] face = {ai.planner().getEnemyX(), ai.planner().getEnemyY()};
+                int min_cells = 7;
+                int max_cells = 15;
                 if (fronts && tower_count % 2 == 1) {
                     int[][] front = enemyFront(tower_count / 2);
                     if (front != null) {
                         center = front[0];
                         face = front[1];
+                        // Front towers further out leave room for decoys in front of them (Decoys).
+                        min_cells = ai.strategy().front_tower_min;
+                        max_cells = ai.strategy().front_tower_max;
                     }
                 }
-                Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], 7, 15, existing,
+                Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
+                        existing,
                         face[0], face[1]);
                 if (site != null)
                     addProject(Race.BUILDING_TOWER, site, 8);

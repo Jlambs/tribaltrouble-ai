@@ -176,12 +176,16 @@ final class Shepherd {
                 && f.leader.getPrimaryController() instanceof WalkController walk && walk.isAgressive()) {
             int tx = walk.getTarget().getGridX();
             int ty = walk.getTarget().getGridY();
-            if (f.spot_x >= 0 && MapAnalysis.dist2(tx, ty, f.spot_x, f.spot_y) <= 4 * 4) {
-                ai.aiLog().count("shepherd_launch");
-                ai.log("wave of " + f.copy.getPlayerInfo().getName() + " drawn to " + tx + "," + ty);
-            } else {
-                ai.aiLog().count("shepherd_wild");
-                ai.log("leader of " + f.copy.getPlayerInfo().getName() + " walks to " + tx + "," + ty + " (spot " + f.spot_x + "," + f.spot_y + ")");
+            // An idle warrior that spots something walks back to its own cell after the hunt: not a wave.
+            if (MapAnalysis.dist2(tx, ty, f.leader.getGridX(), f.leader.getGridY()) > 20 * 20) {
+                if (f.spot_x >= 0 && MapAnalysis.dist2(tx, ty, f.spot_x, f.spot_y) <= 4 * 4) {
+                    ai.aiLog().count("wave_drawn");
+                    ai.log("wave of " + f.copy.getPlayerInfo().getName() + " drawn to " + tx + "," + ty);
+                } else {
+                    boolean base = nearestOwnBuilding2(tx, ty) <= 20 * 20;
+                    ai.aiLog().count(base ? "wave_to_base" : "wave_elsewhere");
+                    ai.log("wave of " + f.copy.getPlayerInfo().getName() + " goes to " + tx + "," + ty + (base ? " (our base)" : "") + " (spot " + f.spot_x + "," + f.spot_y + ")");
+                }
             }
         }
         f.leader = leader;
