@@ -120,6 +120,8 @@ final class Chieftain {
             last_cast = ai.time();
             return;
         }
+        if (shred(chief))
+            return;
         if (stunReady() && shouldStun(chief)) {
             int x = chief.getGridX();
             int y = chief.getGridY();
@@ -145,6 +147,143 @@ final class Chieftain {
             return;
         }
         position(chief);
+    }
+
+    /** The idle blob the chieftain is walking to, to blast it, or null. */
+    private int @Nullable [] shred_target;
+
+    /**
+     * The shred mission: idle enemy blobs (waves parked by shepherds, or left idle after razing something) see 8 cells
+     * and never react to being hit, and a lone chieftain sets off no chieftain spell of theirs (lightning wants 2 of
+     * our units within 30 m, stun and poison 5). So with the blast charged he walks up to 9-12 cells from the blob's
+     * nearest member and blows it: every rock warrior within 36 m dies, iron ones with P = 0.6 (SonicBlast: hit chance
+     * never below 2, times 1 - defense). Returns whether the mission took charge of him this round.
+     */
+    private boolean shred(@NonNull Unit chief) {
+        Strategy strategy = ai.strategy();
+        if (!strategy.shred || !isViking())
+            return false;
+        boolean charged = chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST);
+        if (!charged || chief.getHitPoints() <= strategy.shred_min_hp) {
+            shred_target = null;
+            return false;
+        }
+        int cx = chief.getGridX();
+        int cy = chief.getGridY();
+        // Anything awake coming at him ends the mission.
+        for (Unit e : ai.intel().enemy_warriors) {
+            if (e.isDead() || isParked(e))
+                continue;
+            if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= 13 * 13) {
+                if (shred_target != null)
+                    ai.aiLog().count("shred_abort");
+                shred_target = null;
+                return false;
+            }
+        }
+        int[] blob = findBlob(cx, cy);
+        if (blob == null) {
+            shred_target = null;
+            return false;
+        }
+        shred_target = blob;
+        int nearest = blob[2];
+        int centre2 = MapAnalysis.dist2(cx, cy, blob[0], blob[1]);
+        if (nearest >= 9 && nearest <= 13 && centre2 <= 16 * 16) {
+            ai.log(String.format("chieftain blasts a parked blob of %d at %d,%d (nearest %d cells)", blob[3], blob[0],
+                    blob[1], nearest));
+            ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+            last_cast = ai.time();
+            last_move = ai.time();
+            ai.aiLog().count("shred_blast");
+            shred_target = null;
+            return true;
+        }
+        if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
+            int[] stop = nearest > 11 ? towards(cx, cy, blob[0], blob[1], Math.max(2, nearest - 10)) : towards(blob[0],
+                    blob[1], cx, cy, 12);
+            ai.landscapeOrder(Selectable.newArray(chief), stop[0], stop[1], Action.MOVE, false);
+            last_move = ai.time();
+        }
+        return true;
+    }
+
+    /** An enemy warrior standing idle, not hunting: it sees 8 cells and does not react to being hit. */
+    private static boolean isParked(@NonNull Unit e) {
+        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                && e.getCurrentController() == e.getPrimaryController();
+    }
+
+    /**
+     * The best blob of parked enemy warriors within shred_range cells of our armory: {x, y, nearest member's distance
+     * from (cx, cy) in cells, members}, with at least shred_min members within 10 cells of its centre, no awake enemy
+     * warrior within 16 cells, no enemy tower within 22, and none of our units within 20 (the blast hits friends too).
+     */
+    private int @Nullable [] findBlob(int cx, int cy) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        Building armory = intel.armory();
+        int hx = armory != null ? armory.getGridX() : ai.planner().getStartX();
+        int hy = armory != null ? armory.getGridY() : ai.planner().getStartY();
+        java.util.List<Unit> parked = new java.util.ArrayList<>();
+        java.util.List<Unit> awake = new java.util.ArrayList<>();
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead())
+                continue;
+            (isParked(e) ? parked : awake).add(e);
+        }
+        int[] best = null;
+        float best_score = 0f;
+        int range2 = strategy.shred_range * strategy.shred_range;
+        for (Unit seed : parked) {
+            int sx = seed.getGridX();
+            int sy = seed.getGridY();
+            if (MapAnalysis.dist2(sx, sy, hx, hy) > range2)
+                continue;
+            long x = 0;
+            long y = 0;
+            int n = 0;
+            for (Unit e : parked)
+                if (MapAnalysis.dist2(sx, sy, e.getGridX(), e.getGridY()) <= 10 * 10) {
+                    x += e.getGridX();
+                    y += e.getGridY();
+                    n++;
+                }
+            if (n < strategy.shred_min)
+                continue;
+            int bx = (int) (x / n);
+            int by = (int) (y / n);
+            if (!clearAround(bx, by, awake))
+                continue;
+            float d = (float) Math.sqrt(MapAnalysis.dist2(cx, cy, bx, by));
+            float score = n / (30f + d);
+            if (score > best_score) {
+                int nearest = Integer.MAX_VALUE;
+                for (Unit e : parked)
+                    nearest = Math.min(nearest, MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()));
+                best_score = score;
+                best = new int[]{bx, by, (int) Math.sqrt(nearest), n};
+            }
+        }
+        return best;
+    }
+
+    /** No awake enemy warrior within 16 cells, no enemy tower within 22 and none of our units within 20. */
+    private boolean clearAround(int bx, int by, java.util.@NonNull List<@NonNull Unit> awake) {
+        Intel intel = ai.intel();
+        for (Unit e : awake)
+            if (MapAnalysis.dist2(bx, by, e.getGridX(), e.getGridY()) <= 16 * 16)
+                return false;
+        for (Building t : intel.enemy_towers)
+            if (MapAnalysis.dist2(bx, by, t.getGridX(), t.getGridY()) <= 22 * 22)
+                return false;
+        for (Unit u : intel.warriors)
+            if (!u.isMounted() && MapAnalysis.dist2(bx, by, u.getGridX(), u.getGridY()) <= 20 * 20)
+                return false;
+        for (Unit u : intel.peons)
+            if (MapAnalysis.dist2(bx, by, u.getGridX(), u.getGridY()) <= 20 * 20)
+                return false;
+        return true;
     }
 
     /** While our stun goes off, counts how many of the enemies in reach it caught, at best. */

@@ -302,7 +302,10 @@ final class Military {
         easeCaution();
         if (mode == Mode.HOME && threat_level < 2 && ai.strategy().strikes)
             considerStrike();
-        if (mode == Mode.HOME && threat_level < 2)
+        // Against many copies the base is rarely quiet: a small raid (next to the whole army) does not hold it back.
+        boolean small_threat = threat_level >= 2
+                && base_threat_strength < ai.strategy().attack_threat_ratio * armyStrength();
+        if (mode == Mode.HOME && (threat_level < 2 || small_threat))
             considerAttack();
         if (mode == Mode.ATTACK && threat_level < 2 && ai.strategy().reinforce)
             considerReinforcing();

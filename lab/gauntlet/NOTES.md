@@ -307,3 +307,29 @@ project_defense=false (no longer add every copy's growth times the march time):
 
 Shepherd no-spot counters (shepatk-vs8-hn, per game, counted per 0.5 s per copy): no legal ground 2,323, another
 unit of ours nearer 1,092, our building within ~21 cells 979. Replay of shep2-vs8-hn s3-0: VERIFIED.
+
+### 2026-09-28: the army never attacked at N=8 (threat level 2 all the time)
+
+play-atk-s12 (N=8, shepherd + defense_radius=60 + project_defense=false, 40 min): not a single muster; the army
+grew to 92 at 12:30 while threat_level stayed 2 from 9 minutes on (small groups at the base: 3-20 strength).
+Military.plan only considers attacking at threat level < 2. New param attack_threat_ratio: also attack when the
+enemies in the base are worth less than that share of the army. With 0.3 (play-atk2-s12): muster at 9:21, attack
+at 10:06, copy s7 out at 14:00, army recalled at 13:02 (47 in the base vs 43 at home); still lost at 17:12.
+A/B queued (atkthr-*). combo1-vs8-hn (shepherd + reinforce_multi) vs shep2-vs8-hn: 7 vs 6, identical otherwise:
+reinforcing is moot while the army never attacks.
+
+### 2026-09-28: more shepherd-era screens; new defaults
+
+| run (paired) | W | elim | lsr15 | lsr20 | gained/lost | verdict |
+|---|---|---|---|---|---|---|
+| combo1-vs7-hn (shepherd + reinforce_multi) vs shep3-vs7-hn | 24 vs 23 | 0.370 vs 0.347 | -0.92 vs -0.95 | -1.29 vs -1.34 | 5/4 | neutral |
+| combo2-vs7-hn (+ tower_parallel=3, sites_parallel=4) vs combo1 | 20 vs 24 | 0.312 vs 0.367 | -1.04 vs -0.92 (z -3.2) | -1.62 vs -1.29 (z -3.5) | 9/13 | no: parallel towers hurt once shepherds hold the waves |
+| shepwide-vs8-hn (shepherd_max_r=30, shepherd_clear=10) vs shepatk-vs8-hn | 8 vs 12 | 0.220 vs 0.259 | -1.21 vs -1.25 | | 3/7 | no: more shepherds lost (38 vs 33), fewer launches drawn (10 vs 13) |
+| atkthr-vs8-hn (attack_threat_ratio=0.3) vs shepatk-vs8-hn | 11 vs 12 | 0.250 vs 0.259 | same | same | 0/1 | inert in the batch (one game differs) |
+
+Shred mission (Chieftain.shred, shred=true): no blast in a test game: stun and blast share one charge (any cast
+zeroes both) and the chieftain stuns in fights every ~40 s, so the 70 s blast never charges. Needs a policy that
+gives up stuns; parked.
+
+New defaults (commit of this entry): shepherd=true; against several enemies defense_radius=60,
+project_defense=false, reinforce_multi=true. Frozen as g-shep.

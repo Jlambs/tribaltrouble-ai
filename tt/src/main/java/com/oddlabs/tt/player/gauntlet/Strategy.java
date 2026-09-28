@@ -41,6 +41,10 @@ class Strategy {
     float focus_bonus = 0f;
     /** Against several enemies, the enemy warriors within this many cells of a target count in full as its defense. */
     int defense_radius = 150;
+    /**
+     * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
+     */
+    float attack_threat_ratio = 0f;
     boolean focus_finish = false;
     int sites_parallel = 2;
     /** Quarters completed before builders move to the armory. */
@@ -355,7 +359,15 @@ class Strategy {
      */
     boolean decoys = false;
     /** A shepherd peon per copy draws its waves onto empty ground (Shepherd), from shepherd_time to shepherd_until. */
-    boolean shepherd = false;
+    boolean shepherd = true;
+    /**
+     * The chieftain's shred mission (Chieftain.shred): with the blast charged and more than shred_min_hp, he blasts
+     * blobs of at least shred_min parked enemy warriors within shred_range cells of our armory.
+     */
+    boolean shred = false;
+    int shred_min = 8;
+    int shred_min_hp = 35;
+    int shred_range = 140;
     float shepherd_time = 200f;
     float shepherd_until = 100000f;
     /**
@@ -390,6 +402,10 @@ class Strategy {
     void apply(@NonNull AiParams params) {
         decoys = params.getBoolean("decoys", decoys);
         shepherd = params.getBoolean("shepherd", shepherd);
+        shred = params.getBoolean("shred", shred);
+        shred_min = params.getInt("shred_min", shred_min);
+        shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
+        shred_range = params.getInt("shred_range", shred_range);
         shepherd_time = (float) params.getDouble("shepherd_time", shepherd_time);
         shepherd_until = (float) params.getDouble("shepherd_until", shepherd_until);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
@@ -398,6 +414,7 @@ class Strategy {
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
+        attack_threat_ratio = (float) params.getDouble("attack_threat_ratio", attack_threat_ratio);
         focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
         swing_restart = params.getBoolean("swing_restart", swing_restart);
@@ -530,6 +547,12 @@ class Strategy {
             strategy.towers_late = 14;
             strategy.towers_late_time = 600f;
             strategy.chieftain_time = Math.min(strategy.chieftain_time, 240f);
+            // Against many Hard copies (lab/gauntlet/NOTES.md, 2026-09-28): shepherds leash their waves, so a target's
+            // defense is what stands near it (shepatk-vs7-hn 35 vs 23, shepatk-vs8-hn 12 vs 6), and attacks are
+            // reinforced (rmulti-vs7-hn 27 vs 19).
+            strategy.defense_radius = 60;
+            strategy.project_defense = false;
+            strategy.reinforce_multi = true;
         }
         return strategy;
     }
