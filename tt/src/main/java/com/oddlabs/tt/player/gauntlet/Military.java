@@ -2244,6 +2244,12 @@ final class Military {
         int lead = 22 + 3 * (int) Math.sqrt(army.size());
         if (pivot != null && dist >= 30)
             waypoint = field.stepTowardsSource(pivot.getGridX(), pivot.getGridY(), lead);
+        march_wp = waypoint;
+        march_calm_time = ai.time();
+        // reinforce_intercept: a reinforcement group worth 40 % of the army within 80 cells is waited for (20 s at
+        // most per target) instead of being left to chase the army across the field at the same speed.
+        if (ai.strategy().reinforce_intercept && waitForReinforcements(c, total))
+            return;
         for (Unit u : army) {
             int d = field != null ? field.getAround(u.getGridX(), u.getGridY(), 1) : DistanceField.UNREACHABLE;
             // Units well ahead of the pivot wait for the rest instead of walking on alone.
@@ -2795,6 +2801,8 @@ final class Military {
     /** Marches reinforcements to the attacking army; they join it once close. */
     private void reinforce() {
         int[] front = null;
+        boolean intercept = ai.strategy().reinforce_intercept;
+        List<Unit> attackers = null;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             if (e.getValue() != Role.REINFORCE)
                 continue;
@@ -2805,13 +2813,68 @@ final class Military {
                 e.setValue(Role.ARMY);
                 continue;
             }
-            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), front[0], front[1]) <= 20 * 20) {
+            boolean joined = MapAnalysis.dist2(u.getGridX(), u.getGridY(), front[0], front[1]) <= 20 * 20;
+            if (!joined && intercept) {
+                // Joined as soon as it is near any attacker, not only near the army's centre.
+                if (attackers == null) {
+                    attackers = new ArrayList<>();
+                    for (Map.Entry<Unit, Role> a : roles.entrySet())
+                        if (a.getValue() == Role.ATTACK)
+                            attackers.add(a.getKey());
+                }
+                for (Unit a : attackers)
+                    if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), a.getGridX(), a.getGridY()) <= 12 * 12) {
+                        joined = true;
+                        break;
+                    }
+            }
+            if (joined) {
                 e.setValue(Role.ATTACK);
                 attack_initial_strength += Combat.value(u);
+                ai.aiLog().count("reinforce_joined");
                 continue;
             }
-            attackGround(u, front[0], front[1], false);
+            // While the army marches calmly, head for where it is going (its march waypoint), which it has just
+            // cleared, instead of chasing its centre.
+            int[] goal = intercept && march_wp != null && ai.time() - march_calm_time < 2f ? march_wp : front;
+            attackGround(u, goal[0], goal[1], false);
         }
+    }
+
+    /** The army's current march waypoint, and when it was set (only while marching calmly). */
+    private int @Nullable [] march_wp;
+    private float march_calm_time = -100f;
+    private @Nullable Selectable<?> hold_target;
+    private float hold_since;
+
+    /** True while the army should stand and wait for a big reinforcement group that is on its way. */
+    private boolean waitForReinforcements(int @NonNull [] c, float army_strength) {
+        float s = 0f;
+        long x = 0;
+        long y = 0;
+        int n = 0;
+        for (Map.Entry<Unit, Role> e : roles.entrySet())
+            if (e.getValue() == Role.REINFORCE) {
+                Unit u = e.getKey();
+                s += Combat.value(u);
+                x += u.getGridX();
+                y += u.getGridY();
+                n++;
+            }
+        if (n == 0 || s < .4f * army_strength)
+            return false;
+        int gx = (int) (x / n);
+        int gy = (int) (y / n);
+        if (MapAnalysis.dist2(gx, gy, c[0], c[1]) > 80 * 80)
+            return false;
+        if (hold_target != target) {
+            hold_target = target;
+            hold_since = ai.time();
+        }
+        if (ai.time() - hold_since > 20f)
+            return false;
+        ai.aiLog().count("reinforce_hold");
+        return true;
     }
 
     private void retreat() {
