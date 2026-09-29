@@ -847,6 +847,37 @@ class Strategy {
     /** Weight of a spot's distance from the copy's own quarters and armory, beside its distance from our start. */
     float shepherd_home_weight = 0f;
     /**
+     * shepherd_sticky (score cells, 0 = off): a shepherd's current spot, and ring cells within 4 cells of it, score
+     * this much more, so the spot no longer flips between ring cells of about equal score (Shepherd.findSpot); the
+     * current spot also stays a candidate while enemies have blocked it for less than shepherd_grace seconds.
+     * shepherd_travel: each cell from the shepherd to a candidate costs this much score.
+     */
+    float shepherd_sticky = 0f;
+    float shepherd_grace = 0f;
+    float shepherd_travel = 0f;
+    /**
+     * shepherd_safe_walk: a shepherd takes the best of the 12 best spots whose straight walk, over its first
+     * shepherd_safe_look cells, keeps shepherd_safe_clear cells from every enemy warrior and chieftain, and a flee runs
+     * 3 s before it heads back (Shepherd.findSpot, tend).
+     */
+    boolean shepherd_safe_walk = false;
+    /**
+     * shepherd_follow: while a copy's oldest idle warrior stands at home (40 cells from its armory) and its last wave
+     * is still out, its shepherd's spot is picked around that wave's target (where its survivors go idle and lead the
+     * next launch), not at home. shepherd_home_pair (cells, 0 = off): copies starting at least this far from us get a
+     * second, home shepherd, whose spot is picked around the copy's oldest idle warrior at home, else its armory;
+     * the copy's own shepherd then follows its wave as with shepherd_follow (Shepherd.tend).
+     */
+    boolean shepherd_follow = false;
+    /**
+     * shepherd_gap (seconds, 0 = off): after a copy's shepherd is lost, the next is recruited only this much later
+     * (nine shepherds of ten die, most on the way: Shepherd.tend).
+     */
+    float shepherd_gap = 0f;
+    int shepherd_home_pair = 0;
+    int shepherd_safe_look = 40;
+    int shepherd_safe_clear = 10;
+    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -894,6 +925,15 @@ class Strategy {
         tower_min_quarters = params.getInt("tower_min_quarters", tower_min_quarters);
         shepherd_patience = (float) params.getDouble("shepherd_patience", shepherd_patience);
         shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
+        shepherd_sticky = (float) params.getDouble("shepherd_sticky", shepherd_sticky);
+        shepherd_grace = (float) params.getDouble("shepherd_grace", shepherd_grace);
+        shepherd_travel = (float) params.getDouble("shepherd_travel", shepherd_travel);
+        shepherd_safe_walk = params.getBoolean("shepherd_safe_walk", shepherd_safe_walk);
+        shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
+        shepherd_gap = (float) params.getDouble("shepherd_gap", shepherd_gap);
+        shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
+        shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
+        shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
         front_tower_max = params.getInt("front_tower_max", front_tower_max);
