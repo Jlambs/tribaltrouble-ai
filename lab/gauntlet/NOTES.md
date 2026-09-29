@@ -1244,3 +1244,13 @@ retreat through the same pass (only the attack role is watched).
   +4.5 pp (z 2.3), surv60 +0.48 (z 1.3), towers20 +0.31 (z 1.3), wp +0.3 pp (z 1.5); tower_parallel=2 from the start
   surv60 +0.42, wp +0.6 pp (z 1.7); tower_builders=12 no (elim -.012, towers20 -0.45). Confirmations queued (fresh N=13,
   N=12 both halves, N=14).
+- **Method: one base shared by many arms carries its own draw into every comparison.** Any change re-rolls the games it
+  touches (chaotic divergence), so the base's realized outcomes are one draw that all arms are compared with. Over the
+  32 N=13 sweep arms that change play, the median difference against freeze-squad6-c3-vs13-hv is elim +.002, surv60
+  -0.06, alive40 +0.75 pp, towers20 -0.31, wp +0.12 pp (~z 0.5): arms should be read against the median arm, and a
+  first-block z of 1.5 is worth about 1.0 (which is why reinforce_ratio 0.8 and target_home_weight 2.5 failed to
+  confirm). Against the median arm no legacy param stands out at N=13; chieftain_time=300 (W 0 -> 3, elim +.013, surv60
+  +0.7) and defense_radius=40 (wp +0.7 pp) are the best, both within noise.
+- tower_parallel_late=2 on N=12 s201..400: towers20 +0.53 (z 2.5), W 6 -> 5, wp -0.3 pp. Towers rise in every block
+  (+0.31 / +0.34 / +0.57 / +0.53 / +0.82 at N=13 / 13 / 12 / 12 / 14), survival only at N=14 (surv60 +0.8, z 2.4), wins
+  fall at N=12 (15 -> 10 of 400). A second N=14 block with its own base is running.
