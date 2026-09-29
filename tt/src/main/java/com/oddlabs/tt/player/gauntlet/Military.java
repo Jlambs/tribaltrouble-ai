@@ -1448,14 +1448,13 @@ final class Military {
         if (idle.isEmpty())
             return;
         for (Building t : intel.towers) {
-            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0
-                    || tower_assignments.containsValue(t))
+            if (tower_assignments.containsValue(t))
+                continue;
+            Unit gunner = readyGunner(t);
+            if (gunner == null)
                 continue;
             Float last = reaimed.get(t);
             if (last != null && ai.time() - last < 30f)
-                continue;
-            Unit gunner = Intel.gunner(t);
-            if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
             int tx = t.getGridX();
             int ty = t.getGridY();
@@ -1471,7 +1470,7 @@ final class Military {
             int gy = gunner.getGridY();
             int now = 0;
             for (Unit e : idle)
-                if (MapAnalysis.dist2(gx, gy, e.getGridX(), e.getGridY()) <= 252)
+                if (MapAnalysis.dist2(gx, gy, e.getGridX(), e.getGridY()) <= GARRISON_REACH2)
                     now++;
             if (now > 0)
                 continue; // it has something to throw at already
@@ -1487,7 +1486,7 @@ final class Military {
                         continue;
                     int n = 0;
                     for (Unit e : idle)
-                        if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= 252)
+                        if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= GARRISON_REACH2)
                             n++;
                     if (n > best_n) {
                         best_n = n;
@@ -4007,14 +4006,32 @@ final class Military {
 
     /** Cells within which a tower's garrison throws. */
     private static final int TOWER_CELLS = 15;
-
     /**
      * Squared reach of a garrison in grid cells: weapon 6 + tower 8 + target size 1.9 = 15.9, compared as squared grid
      * distance (Selectable.isCloseEnough): 252. The towers' own scan is a square of 14 (AttackScanFilter.TOWER_RANGE),
      * so enemies 14-15.9 cells out along the axes are only hit when told.
      */
+    private static final int GARRISON_REACH2 = 252;
+
+    /** The squared reach tower targets are chosen within: the garrison's full reach, or 15 cells. */
     private int towerReach2() {
-        return ai.strategy().tower_full_reach || ai.strategy().tower_gunner_reach ? 252 : TOWER_CELLS * TOWER_CELLS;
+        return ai.strategy().tower_full_reach || ai.strategy().tower_gunner_reach ? GARRISON_REACH2
+                : TOWER_CELLS * TOWER_CELLS;
+    }
+
+    /** A tower's garrison when it can throw now: the tower finished and standing, the garrison alive and awake. */
+    private static @Nullable Unit readyGunner(@NonNull Building t) {
+        if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
+            return null;
+        Unit gunner = Intel.gunner(t);
+        return gunner == null || gunner.isDead() || Intel.isStunned(gunner) ? null : gunner;
+    }
+
+    /** The tower's current target while it lives and stands within r2 of the garrison's origin o, else null. */
+    private @Nullable Unit liveTarget(@NonNull Building t, int @NonNull [] o, int r2) {
+        Unit current = tower_targets.get(t);
+        return current != null && !current.isDead()
+                && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2 ? current : null;
     }
 
     /**
@@ -4049,19 +4066,13 @@ final class Military {
         if (!inflight.isEmpty())
             inflight.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 2.5f);
         for (Building t : intel.towers) {
-            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
-                continue;
-            Unit gunner = Intel.gunner(t);
-            if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
+            Unit gunner = readyGunner(t);
+            if (gunner == null)
                 continue;
             int[] o = towerOrigin(t, gunner);
             if (strategy.tower_prequeue && prequeue(t, gunner, o, r2))
                 continue;
-            if (!strategy.tower_reflex)
-                continue;
-            Unit current = tower_targets.get(t);
-            if (current != null && !current.isDead()
-                    && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2)
+            if (!strategy.tower_reflex || liveTarget(t, o, r2) != null)
                 continue;
             Unit best = bestTowerTarget(t, gunner, o, r2, null);
             if (best == null) {
@@ -4210,12 +4221,10 @@ final class Military {
      */
     @Nullable
     Unit towerTargetFor(@NonNull Building t, @NonNull Unit gunner) {
-        Intel intel = ai.intel();
         int r2 = towerReach2();
         int[] o = towerOrigin(t, gunner);
-        Unit current = tower_targets.get(t);
-        if (current != null && !current.isDead()
-                && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2)
+        Unit current = liveTarget(t, o, r2);
+        if (current != null)
             return current;
         Unit best = null;
         float best_score = 0f;
