@@ -296,6 +296,19 @@ final class SitePlanner {
     @Nullable
     Site findTowerSite(@NonNull List<@NonNull Site> reserved, int cx, int cy, int min_r, int max_r,
             @NonNull List<int @NonNull []> existing_towers, int face_x, int face_y) {
+        return findTowerSite(reserved, cx, cy, min_r, max_r, existing_towers, face_x, face_y, null);
+    }
+
+    /** A test a candidate cell must also pass (veto_resite: no threat near it). */
+    @FunctionalInterface
+    interface CellOk {
+        boolean test(int x, int y);
+    }
+
+    /** findTowerSite over the cells that also pass ok (all of them when ok is null). */
+    @Nullable
+    Site findTowerSite(@NonNull List<@NonNull Site> reserved, int cx, int cy, int min_r, int max_r,
+            @NonNull List<int @NonNull []> existing_towers, int face_x, int face_y, @Nullable CellOk ok) {
         BuildingTemplate tower = template(Race.BUILDING_TOWER);
         float fx = face_x - cx;
         float fy = face_y - cy;
@@ -314,6 +327,8 @@ final class SitePlanner {
                 if (!map.inside(x, y) || (!start_field.reachable(x, y) && !reachableNear(x, y)))
                     continue;
                 if (!map.canPlace(tower, x, y) || conflicts(reserved, x, y, RaceSizes.TOWER))
+                    continue;
+                if (ok != null && !ok.test(x, y))
                     continue;
                 float d = (float) Math.sqrt(d2);
                 float align = ((x - cx) * fx + (y - cy) * fy) / Math.max(1f, d);
@@ -349,6 +364,13 @@ final class SitePlanner {
      */
     @Nullable
     Site findQuartersSiteLike(@NonNull List<@NonNull Site> reserved, int cx, int cy, int radius, int type) {
+        return findQuartersSiteLike(reserved, cx, cy, radius, type, null);
+    }
+
+    /** findQuartersSiteLike over the cells that also pass ok (all of them when ok is null). */
+    @Nullable
+    Site findQuartersSiteLike(@NonNull List<@NonNull Site> reserved, int cx, int cy, int radius, int type,
+            @Nullable CellOk ok) {
         BuildingTemplate t = template(type);
         int half = RaceSizes.of(type);
         Site best = null;
@@ -357,6 +379,8 @@ final class SitePlanner {
                 if (!map.inside(x, y) || !reachableNear(x, y))
                     continue;
                 if (!map.canPlace(t, x, y) || conflicts(reserved, x, y, half))
+                    continue;
+                if (ok != null && !ok.test(x, y))
                     continue;
                 float score = .5f * Math.min(map.treesAround(x, y, 6), 12) - (float) Math.sqrt(
                         MapAnalysis.dist2(cx, cy, x, y));
