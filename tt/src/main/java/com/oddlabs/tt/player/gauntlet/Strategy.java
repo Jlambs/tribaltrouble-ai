@@ -353,7 +353,9 @@ class Strategy {
      * or is dropped and tower planning pauses for veto_resite s (Economy.manageProjects): one vetoed project stopped
      * all tower planning for 225-794 s in 14 of 16 logged N=12 games while the standing towers fell.
      */
-    float veto_resite = 0f;
+    // Adopted 20 s (2026-09-29): survival up at every N (surv60 +1.0 to +1.9 min, z 2.2-4.4; towers at 20 min +1.3 to
+    // +1.8, z 6-8; N=11 W 15 -> 19; veto-resite-vs11/12/13-hv, -vs12-hv-b).
+    float veto_resite = 20f;
     float veto_resite_time = 600f;
     int veto_resite_clear = 20;
     /** The same for quarters projects (the second arm of veto_resite). */
@@ -1078,6 +1080,12 @@ class Strategy {
             // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
             // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
             strategy.gate_owner = true;
+        }
+        if (enemies >= 12) {
+            // The freeze opening puts the nearest copy out in about a minute; it pays from N=12, where survival under
+            // pressure decides (N=12 W 4 -> 13 over 600 seeds, elim +.02 to +.04 on each half; N=13 W 2 -> 4 over 400),
+            // but not at N=11, where the delayed opening costs the early campaign (W 26 -> 23 over 400).
+            strategy.freeze_open = true;
         }
         return strategy;
     }
