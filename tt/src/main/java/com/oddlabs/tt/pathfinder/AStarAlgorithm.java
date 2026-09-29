@@ -31,7 +31,8 @@ abstract class AStarAlgorithm implements PathFinderAlgorithm {
         return node.estimateCost(dst_x, dst_y);
     }
 
-    protected abstract boolean isPathComplete(int dist_squared, Node node);
+    /** Whether the search ends at {@code node}, which lies in {@code region}. */
+    protected abstract boolean isPathComplete(int dist_squared, Node node, Region region);
 
     private @Nullable NodeResult defaultTouchNode() {
         nodes_visited++;
@@ -56,7 +57,7 @@ abstract class AStarAlgorithm implements PathFinderAlgorithm {
             second_best_node = node;
             best_dist_squared = dist_squared;
         }
-        if (isPathComplete(dist_squared, node)) {
+        if (isPathComplete(dist_squared, node, region)) {
             assert node != null : this + " " + dist_squared + " " + dx + " " + dy;
             return new NodeResult(node);
         }

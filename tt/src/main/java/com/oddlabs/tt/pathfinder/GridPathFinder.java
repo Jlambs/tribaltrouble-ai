@@ -14,9 +14,7 @@ abstract class GridPathFinder extends AStarAlgorithm {
     }
 
     @Override
-    protected boolean isPathComplete(int dist_squared, Node node) {
-        GridNode grid_node = (GridNode) node;
-        Region region = getUnitGrid().getRegion(grid_node.getGridX(), grid_node.getGridY());
+    protected boolean isPathComplete(int dist_squared, Node node, Region region) {
         return region == dst_region || region == dst_region2;
     }
 }

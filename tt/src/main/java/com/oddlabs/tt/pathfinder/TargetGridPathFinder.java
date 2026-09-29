@@ -20,7 +20,7 @@ final class TargetGridPathFinder extends GridPathFinder {
     }
 
     @Override
-    protected boolean isPathComplete(int dist_squared, Node node) {
-        return dist_squared <= max_dist_squared || super.isPathComplete(dist_squared, node);
+    protected boolean isPathComplete(int dist_squared, Node node, Region region) {
+        return dist_squared <= max_dist_squared || super.isPathComplete(dist_squared, node, region);
     }
 }

@@ -10,7 +10,10 @@ final class GridNode extends Node {
     private static final GridNode @NonNull [] @NonNull [] pathfinder_grid;
     private final int local_grid_x;
     private final int local_grid_y;
-    private Offset offset;
+    // Every search uses the same node objects, placed by the offset of its window; one search runs at a time, so the
+    // offset is kept here once rather than written into every node the search touches.
+    private static int offset_x;
+    private static int offset_y;
 
     static {
         pathfinder_grid = new GridNode[RegionBuilder.GRID_SIZE][RegionBuilder.GRID_SIZE];
@@ -59,12 +62,12 @@ final class GridNode extends Node {
 
     @Override
     public int getGridX() {
-        return local_grid_x + offset.offset_x;
+        return local_grid_x + offset_x;
     }
 
     @Override
     public int getGridY() {
-        return local_grid_y + offset.offset_y;
+        return local_grid_y + offset_y;
     }
 
     public static @Nullable Offset setupPathFinding(int src_grid_x, int src_grid_y, int dst_grid_x, int dst_grid_y) {
@@ -76,11 +79,11 @@ final class GridNode extends Node {
         return new Offset(path_offset_x, path_offset_y);
     }
 
+    /** The node of (x, y) in the window of {@code offset}, which the search starting here uses from now on. */
     public static @Nullable GridNode getPathfinderNode(@NonNull Offset offset, int x, int y) {
-        GridNode node = getPathfinderNodeOffset(x - offset.offset_x, y - offset.offset_y);
-        if (node != null)
-            node.offset = offset;
-        return node;
+        offset_x = offset.offset_x;
+        offset_y = offset.offset_y;
+        return getPathfinderNodeOffset(x - offset_x, y - offset_y);
     }
 
     private static @Nullable GridNode getPathfinderNodeOffset(int local_x, int local_y) {
@@ -93,7 +96,7 @@ final class GridNode extends Node {
 
     private boolean addNeighbour(@NonNull PathFinderAlgorithm finder, @NonNull UnitGrid unit_grid, int x, int y,
             int cost) {
-        GridNode node = getPathfinderNode(offset, x, y);
+        GridNode node = getPathfinderNodeOffset(x - offset_x, y - offset_y);
         if (node == null || node.isVisited())
             return false;
         Occupant occupant = unit_grid.getOccupant(node.getGridX(), node.getGridY());
