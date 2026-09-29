@@ -1162,3 +1162,9 @@ retreat through the same pass (only the attack role is watched).
   as the audit warned).
 - chief_safe=10 on N=12 s201..400: W 6 -> 7, surv60 -0.4, alive40 -2.5 pp, wp 0 (pooled 400: W 15 -> 18, surv60 +0.2,
   wp +0.45 pp): not confirmed yet; N=13 and safe 7/14 pending.
+- **Why path-(c) cuts fail** (40 logged N=12 cur5 games on seeds with a fallback, 6-min runs logs-pathc-vs12; script
+  cuts.py in the session): the armory site stands 8-10 cells from the copy's quarters in 37 of 40 (inside its 15-cell
+  defense circle; a site is not an armory to AdvancedAI, so only the quarters counts). The outcome follows the copy's
+  peons outside when the cut starts: 9 or fewer -> 24 of 25 froze; 10 or more -> 5 of 15 froze, 10 failed (the copy's
+  defense sends its idle peons and gatherers at our 6). An abort at >= 10 outside would trade ~10 failures for ~5 lost
+  frozen copies: about even, not built. chief_safe=10 at N=13: neutral (W 0 -> 1, elim -.004, towers20 -0.5 z -2.2).
