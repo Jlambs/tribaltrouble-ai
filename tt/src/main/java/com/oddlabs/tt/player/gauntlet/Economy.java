@@ -349,6 +349,8 @@ final class Economy {
         float placed_time = -1f;
         /** veto_resite: since when projectMayStart has vetoed it for a threat near its site (-1: not vetoed). */
         float veto_since = -1f;
+        /** tower_wood_drop: pieces of wood ordered out of an armory for this site. */
+        int wood_sent;
 
         Project(int type, int id, @NonNull Site site, int priority) {
             this.type = type;
@@ -430,6 +432,11 @@ final class Economy {
                 if (p.building.isComplete()) {
                     it.remove();
                     ai.log("completed " + p.describe() + " after " + (int) (ai.time() - p.placed_time) + "s");
+                    if (p.wood_sent > 0) {
+                        Project q = p;
+                        ai.aiLog().log("WOOD",
+                                () -> "completed " + q.describe() + " after " + (int) (ai.time() - q.placed_time) + "s with " + q.wood_sent + " wood sent");
+                    }
                     onCompleted(p);
                 }
                 continue;
@@ -497,9 +504,30 @@ final class Economy {
                 placed_incomplete++;
         int sites = ai.time() >= ai.strategy().tower_parallel_late_time ? ai.strategy().sites_parallel_late : ai.strategy().sites_parallel;
         boolean may = p.type == Race.BUILDING_ARMORY || placed_incomplete < sites;
+        if (may && ai.strategy().site_towers_first && p.type == Race.BUILDING_QUARTERS
+                && placed_incomplete == sites - 1 && ai.time() >= ai.strategy().tower_parallel_late_time) {
+            Project tower = waitingTower();
+            if (tower != null) {
+                may = false;
+                ai.aiLog().count("site_towers_first_used"); // economy ticks (1 s)
+                ai.aiLog().log("SITES", () -> p.describe() + " leaves the last site slot to " + tower.describe());
+            }
+        }
         if (!may)
             last_veto = VETO_SITES;
         return may;
+    }
+
+    /**
+     * site_towers_first: an unplaced tower project that could start now (not forward, sniper or scout-placed, and no
+     * threat by its site), or null.
+     */
+    private @Nullable Project waitingTower() {
+        for (Project q : projects)
+            if (q.type == Race.BUILDING_TOWER && !q.isPlaced() && !q.forward && !q.sniper && !q.use_scout
+                    && !ai.military().threatNearEcon(q.site.x, q.site.y, 16))
+                return q;
+        return null;
     }
 
     /** Why projectMayStart last said no (bookkeeping for veto_resite): none, threat, cooldown, escort, sites. */
@@ -2583,9 +2611,23 @@ final class Economy {
             scout = scout.isDead() ? null : scout;
 
         // 1. Construction.
+        boolean wood_drop = ai.strategy().tower_wood_drop && ai.time() >= ai.strategy().tower_wood_time;
+        List<Unit> carriers = new ArrayList<>();
+        if (wood_drop)
+            // tower_wood_drop: idle peons carrying wood are kept for tower sites with no trees by them (the quarters
+            // projects come first in the loop below)
+            for (Iterator<Unit> it = free.iterator(); it.hasNext();) {
+                Unit u = it.next();
+                if (carriesWood(u)) {
+                    it.remove();
+                    carriers.add(u);
+                }
+            }
         for (Project p : projects) {
             if (!p.isPlaced())
                 continue;
+            if (wood_drop)
+                dropWood(p, carriers);
             int need = buildersWanted(p) - builderCount(p.building);
             if (need <= 0)
                 continue;
@@ -2617,6 +2659,7 @@ final class Economy {
                 intel.builder_sites.put(u, p.building);
             }
         }
+        free.addAll(carriers);
 
         // 2. Chieftain training quarters top-up.
         Building trainer = ai.chieftain().trainingQuarters();
@@ -2737,6 +2780,115 @@ final class Economy {
         if (work != null)
             for (Unit u : free)
                 order(u, work, Action.DEFAULT);
+    }
+
+    /** Whether the peon carries wood: a transporter out of an armory, or a builder whose site stands or fell. */
+    private static boolean carriesWood(@NonNull Unit u) {
+        UnitSupplyContainer c = u.getSupplyContainer();
+        return c != null && c.getSupplyType() == TreeSupply.class && c.getNumSupplies() > 0;
+    }
+
+    /**
+     * tower_wood_drop: a placed tower site with at most tower_wood_trees trees within 7 cells gets the idle peons
+     * carrying wood nearest it, one per missing piece (5 HP each) its builders do not carry yet. When none is left and
+     * no threat is within 16 cells of the site, the nearest complete armory within tower_wood_reach cells that can
+     * spare wood now sends it with its transport-wood deploy: DeployContainer.orderSupply takes the wood and workers
+     * when ordered, createTransporters gives each peon one piece, they come out idle by the armory (no rally point) and
+     * the next round sends them to the site, where RepairController builds with the carried piece before it walks for
+     * more. An armory keeps tower_wood_reserve wood and half its workers (at least 4) and orders nothing while a peon
+     * deploy of its own is pending; a project gets at most tower_wood_max pieces.
+     */
+    private void dropWood(@NonNull Project p, @NonNull List<@NonNull Unit> carriers) {
+        Building site = p.building;
+        if (site == null || p.type != Race.BUILDING_TOWER || p.forward || p.sniper)
+            return;
+        Strategy st = ai.strategy();
+        if (ai.map().treesAround(p.site.x, p.site.y, 7) > st.tower_wood_trees)
+            return;
+        Intel intel = ai.intel();
+        int carried = 0;
+        for (Map.Entry<Unit, Building> e : intel.builder_sites.entrySet())
+            if (e.getValue() == site && carriesWood(e.getKey()))
+                carried++;
+        int missing = (site.getTemplate().getMaxHitPoints() - site.getHitPoints() + 4) / 5 - carried;
+        if (missing <= 0)
+            return;
+        List<Unit> chosen = new ArrayList<>();
+        takeNearest(carriers, chosen, missing, p.site.x, p.site.y);
+        for (Unit u : chosen) {
+            order(u, site, Action.DEFAULT);
+            intel.peon_states.put(u, PeonState.BUILD);
+            intel.builder_sites.put(u, site);
+            ai.aiLog().count("tower_wood_taken");
+        }
+        missing -= chosen.size();
+        if (!chosen.isEmpty()) {
+            int n = chosen.size();
+            int left = missing;
+            ai.aiLog().log("WOOD", () -> n + " carriers to " + p.describe() + ", " + left + " pieces still missing");
+        }
+        if (missing <= 0 || !carriers.isEmpty() || p.wood_sent >= st.tower_wood_max
+                || ai.military().threatNearEcon(p.site.x, p.site.y, 16))
+            return;
+        // The nearest armory within reach that can spare wood and workers now: the nearest one may be an old armory
+        // the economy has moved its workers out of, with a primary one close behind (smoke-wood s2001).
+        Building armory = null;
+        int reach2 = st.tower_wood_reach * st.tower_wood_reach;
+        int best = Integer.MAX_VALUE;
+        int k = 0;
+        int wood = 0;
+        int workers = 0;
+        String why = "tower_wood_noarmory";
+        int why_d = Integer.MAX_VALUE;
+        for (Building a : intel.armories) {
+            if (a.isDead() || !a.isComplete() || evacuating.containsKey(a))
+                continue;
+            int d = MapAnalysis.dist2(a.getGridX(), a.getGridY(), p.site.x, p.site.y);
+            if (d > reach2 || d >= best)
+                continue;
+            String no = null;
+            int a_workers = a.getUnitContainer().getNumSupplies();
+            int a_wood = a.getSupplyContainer(TreeSupply.class).getNumSupplies();
+            int n = Math.min(Math.min(missing, st.tower_wood_max - p.wood_sent), Math.min(
+                    a_wood - st.tower_wood_reserve,
+                    a_workers - Math.max(4, a_workers / 2)));
+            if (a.getDeployContainer(DeployType.PEON).getNumSupplies() + a.getDeployContainer(
+                    DeployType.PEON_TRANSPORT_TREE).getNumSupplies() > 0)
+                no = "tower_wood_pending"; // its queue runs: the carriers it sends change what is missing
+            else if (a_wood <= st.tower_wood_reserve)
+                no = "tower_wood_short_wood";
+            else if (n <= 0)
+                no = "tower_wood_short_workers";
+            if (no != null) {
+                if (d < why_d) {
+                    why_d = d;
+                    why = no;
+                }
+                continue;
+            }
+            best = d;
+            armory = a;
+            k = n;
+            wood = a_wood;
+            workers = a_workers;
+        }
+        if (armory == null) {
+            ai.aiLog().count(why); // economy ticks (1 s)
+            return;
+        }
+        ai.owner().deployUnits(armory, DeployType.PEON_TRANSPORT_TREE, k);
+        p.wood_sent += k;
+        ai.aiLog().count("tower_wood_drop");
+        for (int i = 0; i < k; i++)
+            ai.aiLog().count("tower_wood_units");
+        int d = (int) Math.sqrt(best);
+        int m = missing;
+        Building from = armory;
+        int out = k;
+        int had_wood = wood;
+        int had_workers = workers;
+        ai.aiLog().log("WOOD",
+                () -> out + " wood out of the armory at " + from.getGridX() + "," + from.getGridY() + " (" + d + " cells, " + had_wood + " wood, " + had_workers + " workers) for " + p.describe() + ", " + m + " missing, " + p.wood_sent + " sent");
     }
 
     /** danger_refuge: the main armory is threatened and has no ore to forge (set each economy tick). */

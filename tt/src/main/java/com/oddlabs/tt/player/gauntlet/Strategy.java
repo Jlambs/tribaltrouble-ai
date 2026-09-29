@@ -33,6 +33,23 @@ class Strategy {
     /** Most builders on a quarters once the armory stands, and on a tower. */
     int quarters_builders = 12;
     int tower_builders = 8;
+    /**
+     * tower_wood_drop: a placed tower site with at most tower_wood_trees trees within 7 cells gets its wood carried
+     * from the nearest complete armory within tower_wood_reach cells that can spare it (the armory's transport-wood
+     * deploy, 1 piece of 5 HP per peon), at most tower_wood_max pieces per project, while the armory keeps
+     * tower_wood_reserve wood and half its workers (at least 4). Idle peons carrying wood are kept for such sites. From
+     * tower_wood_time (game seconds) on. Treeless sites take a median 116 s against 45-69 s for sites with trees: their
+     * builders walk for wood (tower13 audit, 53 % of the 10-25-min sites at N=13). Smoke N=13 s2001-2012 (smoke-wood2
+     * against logs-cur5-vs13): treeless sites placed at 10-25 min finish in a median 61 s instead of 127 s, and those
+     * placed before 10 min in 46 s instead of 89 s; 44 % of the wood leaves before 10 min, when the armory needs it
+     * for weapons (w15 68 -> 54 over the 12 games, noisy): tower_wood_time=600 keeps it to the audited window.
+     */
+    boolean tower_wood_drop = false;
+    int tower_wood_trees = 0;
+    int tower_wood_reach = 40;
+    int tower_wood_reserve = 8;
+    int tower_wood_max = 20;
+    float tower_wood_time = 0f;
     /** Tower projects waiting to be placed at once, and non-armory sites standing unfinished at once. */
     int tower_parallel = 1;
     /** Cells from the building it covers that a front tower (one facing each enemy) stands. */
@@ -293,6 +310,12 @@ class Strategy {
     int tower_parallel_late = 1;
     int sites_parallel_late = 2;
     float tower_parallel_late_time = 600f;
+    /**
+     * From tower_parallel_late_time on, a quarters project may not take the last free construction-site slot while a
+     * tower project that could start waits to be placed (tower13 audit: a quarters site holds a slot while a tower
+     * waits in 9.3 % of the 12-25-min samples at N=13, and quarters, priority 5, claim a freed slot before towers, 8).
+     */
+    boolean site_towers_first = false;
     float evac_hp = .6f;
     int evac_min = 3;
     int snipe_min = 6;
@@ -1037,6 +1060,7 @@ class Strategy {
         tower_parallel_late = params.getInt("tower_parallel_late", tower_parallel_late);
         sites_parallel_late = params.getInt("sites_parallel_late", sites_parallel_late);
         tower_parallel_late_time = (float) params.getDouble("tower_parallel_late_time", tower_parallel_late_time);
+        site_towers_first = params.getBoolean("site_towers_first", site_towers_first);
         evac_hp = (float) params.getDouble("evac_hp", evac_hp);
         evac_min = params.getInt("evac_min", evac_min);
         snipe_min = params.getInt("snipe_min", snipe_min);
@@ -1066,6 +1090,12 @@ class Strategy {
         armory_builders = params.getInt("armory_builders", armory_builders);
         quarters_builders = params.getInt("quarters_builders", quarters_builders);
         tower_builders = params.getInt("tower_builders", tower_builders);
+        tower_wood_drop = params.getBoolean("tower_wood_drop", tower_wood_drop);
+        tower_wood_trees = params.getInt("tower_wood_trees", tower_wood_trees);
+        tower_wood_reach = params.getInt("tower_wood_reach", tower_wood_reach);
+        tower_wood_reserve = params.getInt("tower_wood_reserve", tower_wood_reserve);
+        tower_wood_max = params.getInt("tower_wood_max", tower_wood_max);
+        tower_wood_time = (float) params.getDouble("tower_wood_time", tower_wood_time);
         quarters_before_armory = params.getInt("quarters_before_armory", quarters_before_armory);
         opening_near_start = params.getBoolean("opening_near_start", opening_near_start);
         rush_response = params.getBoolean("rush_response", rush_response);
