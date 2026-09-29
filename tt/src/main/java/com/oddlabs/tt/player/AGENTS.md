@@ -264,7 +264,9 @@ when the AI is nondeterministic.
 ### Speed and robustness
 
 - Think every second or few seconds, not every tick. `summary` prints each run's CPU cost per game; compare it with a
-  run of the stock AI to see what your AI adds.
+  run of the stock AI to see what your AI adds. `--profile` and `profile RUN --focus player.myai` show where it goes,
+  and `compare` measures a speed change: it must keep every game identical, and its `cpu` line gives the saving
+  (`docs/aisim.md`, Speed).
 - Catch exceptions around your decisions and pass them to `log.error` (the template does). An exception that
   escapes `animate` crashes the game, which is then not counted, and the run exits 1.
 - Check what you act on first (see How orders reach the game): the engine asserts, and the harness runs with `-ea`.

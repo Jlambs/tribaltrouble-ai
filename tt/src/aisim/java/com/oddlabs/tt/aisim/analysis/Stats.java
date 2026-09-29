@@ -1,6 +1,7 @@
 package com.oddlabs.tt.aisim.analysis;
 
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.Collection;
 import java.util.List;
@@ -71,6 +72,59 @@ public final class Stats {
             se = Math.sqrt(squares / (maps.size() - 1) / maps.size());
         }
         return new Paired(base_mean, variant_mean, delta, se, better, worse);
+    }
+
+    /**
+     * A paired ratio of a cost such as cpu: the base and variant means, the geometric mean of variant / base over the
+     * games, and the standard error of its logarithm, over {@code games} games.
+     */
+    public record Ratio(double base, double variant, double ratio, double se, int games) {
+        /** The change in percent (negative: the variant costs less). */
+        public double percent() {
+            return (ratio - 1) * 100;
+        }
+
+        /** The standard error in percent (of the log ratio, which is close for small changes). */
+        public double sePercent() {
+            return se * 100;
+        }
+
+        /** The change lies beyond two standard errors (a NaN standard error is never significant). */
+        public boolean significant() {
+            return Math.abs(Math.log(ratio)) > 2 * se;
+        }
+    }
+
+    /**
+     * The paired ratio of {@code metric} over the games {@code keys} that have it above 0 in both runs; null when fewer
+     * than two do. Every game counts alike: a cost belongs to the game, not the map.
+     */
+    public static @Nullable Ratio pairedRatio(@NonNull Map<String, Map<String, Object>> base,
+            @NonNull Map<String, Map<String, Object>> variant, @NonNull List<String> keys, @NonNull String metric) {
+        double base_sum = 0;
+        double variant_sum = 0;
+        double log_sum = 0;
+        double log_squares = 0;
+        int games = 0;
+        for (String key : keys) {
+            double before = Game.num(base.get(key), metric);
+            double after = Game.num(variant.get(key), metric);
+            if (!(before > 0) || !(after > 0)) {
+                continue;
+            }
+            double log = Math.log(after / before);
+            base_sum += before;
+            variant_sum += after;
+            log_sum += log;
+            log_squares += log * log;
+            games++;
+        }
+        if (games < 2) {
+            return null;
+        }
+        double mean = log_sum / games;
+        double variance = Math.max(0, (log_squares - games * mean * mean) / (games - 1));
+        return new Ratio(base_sum / games, variant_sum / games, Math.exp(mean), Math.sqrt(variance / games), games);
     }
 
     /** One map's sums of a metric over its games in both runs. */

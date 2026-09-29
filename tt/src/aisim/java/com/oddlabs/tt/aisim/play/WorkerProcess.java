@@ -39,12 +39,17 @@ final class WorkerProcess {
     /**
      * Starts a worker JVM from snapshot {@code snap}, with a heap of {@code heap} and its stderr appended to
      * {@code log}. LWJGL unpacks its native libraries into {@code natives}: JVMs starting at the same time must not
-     * share one, and Windows keeps the files of a running JVM locked.
+     * share one, and Windows keeps the files of a running JVM locked. With a {@code profile} file (%p stands for the
+     * worker's pid), Flight Recorder profiles the worker and writes the file when it exits.
      */
-    WorkerProcess(@NonNull Path log, @NonNull Path natives, @NonNull String snap,
-            @NonNull String heap) throws IOException {
+    WorkerProcess(@NonNull Path log, @NonNull Path natives, @NonNull String snap, @NonNull String heap,
+            @Nullable Path profile) throws IOException {
         Files.createDirectories(log.getParent());
-        ProcessBuilder builder = new ProcessBuilder(command(natives, snap, heap));
+        List<String> command = command(natives, snap, heap, profile);
+        if (profile != null) {
+            Files.createDirectories(profile.toAbsolutePath().getParent());
+        }
+        ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectError(Redirect.appendTo(log.toFile()));
         process = builder.start();
         stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
@@ -87,7 +92,8 @@ final class WorkerProcess {
      * The command line: the options every worker shares (aisim.sh gives the parent the same, keep them in sync), then
      * {@code AISIM_JAVA_OPTS}, split at spaces (so an option cannot contain one), then the snapshot's class path.
      */
-    private static @NonNull List<String> command(@NonNull Path natives, @NonNull String snap, @NonNull String heap) {
+    private static @NonNull List<String> command(@NonNull Path natives, @NonNull String snap, @NonNull String heap,
+            @Nullable Path profile) {
         String java = ProcessHandle.current().info().command().orElse("java");
         List<String> command = new ArrayList<>(List.of(java, "-ea", "--enable-native-access=ALL-UNNAMED",
                 "-Xmx" + heap, "-XX:+UseSerialGC", "-Djava.awt.headless=true", "-Dcom.oddlabs.tt.headless=true"));
@@ -95,6 +101,10 @@ final class WorkerProcess {
             command.add("-XstartOnFirstThread"); // GLFW must own the first thread on macOS
         }
         command.add("-Dorg.lwjgl.system.SharedLibraryExtractPath=" + natives.toAbsolutePath());
+        if (profile != null) {
+            command.add(
+                    "-XX:StartFlightRecording=filename=" + profile.toAbsolutePath() + ",settings=profile," + "dumponexit=true");
+        }
         String extra = System.getenv("AISIM_JAVA_OPTS");
         if (extra != null && !extra.isBlank()) {
             command.addAll(List.of(extra.trim().split("\\s+")));

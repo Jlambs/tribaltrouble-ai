@@ -4,6 +4,9 @@ import com.oddlabs.tt.aisim.UsageException;
 import org.jspecify.annotations.NonNull;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -76,13 +79,14 @@ public final class Compare {
         }
         if (identical >= INERT_SHARE * keys.size()) {
             System.out.printf(Locale.ROOT, """
-                    !! %d of %d games are identical: the variant changes almost nothing (inert, or the change never \
-                    triggers)%n""", identical, keys.size());
+                    !! %d of %d games are identical: the variant plays the same games (inert, a change that never \
+                    triggers, or a pure speed change: see cpu)%n""", identical, keys.size());
         }
         if (base_failed != variant_failed) {
             System.out.println("!! failed games differ; failed games are not counted and can flatter a run");
         }
         printPairedMetrics(base_counted, variant_counted, keys);
+        printCpu(base_meta, variant_meta, base_counted, variant_counted, keys);
         System.out.println("team A's curves over the paired games (base / variant):");
         Curves.Series base_series = new Curves.Series(base, gamesOf(base, keys), Curves.A_TEAM);
         Curves.Series variant_series = new Curves.Series(variant, gamesOf(variant, keys), Curves.A_TEAM);
@@ -109,6 +113,44 @@ public final class Compare {
     }
 
     /**
+     * The cost line: the simulation thread's CPU per game in both runs and the paired ratio, with a warning when the
+     * runs did not play at the same time or only one was profiled, since the machine's load moves CPU time too.
+     */
+    private static void printCpu(@NonNull Map<?, ?> base_meta, @NonNull Map<?, ?> variant_meta,
+            @NonNull Map<String, Map<String, Object>> base_counted,
+            @NonNull Map<String, Map<String, Object>> variant_counted, @NonNull List<String> keys) {
+        Stats.Ratio cpu = Stats.pairedRatio(base_counted, variant_counted, keys, "cpu");
+        if (cpu == null) {
+            return;
+        }
+        System.out.printf(Locale.ROOT, "cpu per game %.1f s -> %.1f s: %+.1f%% +- %.1f%% %s over %d games%n",
+                cpu.base(),
+                cpu.variant(), cpu.percent(), cpu.sePercent(), cpu.significant() ? "*" : "", cpu.games());
+        for (String warning : cpuWarnings(base_meta, variant_meta)) {
+            System.out.println("!! " + warning);
+        }
+    }
+
+    /** Why the runs' CPU times may not compare: they started far apart, or only one was profiled. */
+    private static @NonNull List<String> cpuWarnings(@NonNull Map<?, ?> base_meta, @NonNull Map<?, ?> variant_meta) {
+        List<String> warnings = new ArrayList<>();
+        try {
+            long minutes = Math.abs(Duration.between(Instant.parse(String.valueOf(base_meta.get("created"))),
+                    Instant.parse(String.valueOf(variant_meta.get("created")))).toMinutes());
+            if (minutes > 10) {
+                warnings.add(
+                        "the runs started " + minutes + " min apart: CPU per game moves with the machine's load; " + "judge speed on runs played at the same time");
+            }
+        } catch (DateTimeParseException e) {
+            // an older run.json: no warning
+        }
+        if (Boolean.TRUE.equals(base_meta.get("profile")) != Boolean.TRUE.equals(variant_meta.get("profile"))) {
+            warnings.add("only one run was profiled, which costs it about 2% CPU");
+        }
+        return warnings;
+    }
+
+    /**
      * Several variants against one base, a line each: the paired difference of every metric over the games both
      * counted. The base's line holds its means over all its counted games.
      */
@@ -123,12 +165,14 @@ public final class Compare {
         List<List<String>> rows = new ArrayList<>();
         List<String> header = new ArrayList<>(List.of("run", "team A", "pairs", "identical"));
         header.addAll(METRICS);
+        header.add("cpu");
         rows.add(header);
         List<String> base_row = new ArrayList<>(List.of(base, String.valueOf(base_meta.get("a")),
                 String.valueOf(base_counted.size()), ""));
         for (String metric : METRICS) {
             base_row.add(String.format(Locale.ROOT, "%.3f", Stats.mean(base_counted.values(), metric)));
         }
+        base_row.add(String.format(Locale.ROOT, "%.1fs", Stats.mean(base_counted.values(), "cpu")));
         rows.add(base_row);
         int status = 0;
         for (String variant : variants) {
@@ -146,6 +190,9 @@ public final class Compare {
                 String star = paired.significant() ? "*" : " ";
                 row.add(String.format(Locale.ROOT, "%+.3f+-%.3f%s", paired.delta(), paired.se(), star));
             }
+            Stats.Ratio cpu = keys.isEmpty() ? null : Stats.pairedRatio(base_counted, variant_counted, keys, "cpu");
+            row.add(cpu == null ? "-" : String.format(Locale.ROOT, "%+.1f%%+-%.1f%s", cpu.percent(), cpu.sePercent(),
+                    cpu.significant() ? "*" : " "));
             rows.add(row);
             if (keys.isEmpty()) {
                 status = 1;
@@ -154,7 +201,7 @@ public final class Compare {
         Table.align(rows, "llr").forEach(System.out::println);
         System.out.println("""
                 (base: means over its counted games; variants: delta +- SE over the games both runs counted, paired, \
-                maps weighted equally; * = |delta| > 2 SE)""");
+                maps weighted equally; cpu: the change of CPU per game, over games; * = |delta| > 2 SE)""");
         String all = base + " " + String.join(" ", variants);
         System.out.println("next: ./aisim.sh compare " + base + " VARIANT (in detail) | ./aisim.sh curves " + all);
         return status;

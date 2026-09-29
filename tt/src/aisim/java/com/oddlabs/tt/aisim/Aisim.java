@@ -12,6 +12,7 @@ import com.oddlabs.tt.aisim.analysis.Compare;
 import com.oddlabs.tt.aisim.analysis.Curves;
 import com.oddlabs.tt.aisim.analysis.Export;
 import com.oddlabs.tt.aisim.analysis.Fights;
+import com.oddlabs.tt.aisim.analysis.Profile;
 import com.oddlabs.tt.aisim.analysis.Runs;
 import com.oddlabs.tt.aisim.analysis.Show;
 import com.oddlabs.tt.aisim.analysis.Summary;
@@ -70,16 +71,20 @@ public final class Aisim {
               build                              compile (JDK 26), lint and snapshot the build; the rest runs from it
               new     NAME                       start AI NAME from the template: tt/src/main/java/.../player/NAME/
               lint    [NAME|CLASS|@TAG...]       check AIs against the fair-play and determinism rules (build does it)
-              play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
+              play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [--profile] [MAP] [GAME]
                                                  one game with AI logs on -> aisim/runs/NAME/
-              batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--logs [lost]] [--name NAME] [WORKERS]
-                      [MAP] [GAME]               every map, A from every start -> aisim/runs/NAME/; --logs keeps the
-                                                 AI logs of every game (lost: of the games team A did not win)
+              batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--logs [lost]] [--name NAME] [--profile]
+                      [WORKERS] [MAP] [GAME]     every map, A from every start -> aisim/runs/NAME/; --logs keeps the
+                                                 AI logs of every game (lost: of the games team A did not win);
+                                                 --profile records where the CPU goes, for profile
               summary RUN                        results of a (running) run
               compare BASE VARIANT [VARIANT...] [--force]
                                                  paired comparison over the same games; several variants: one table
               show    RUN KEY | FILE.jsonl       one game as a table plus key events (harness or GUI game file)
-              replay  RUN KEY [--snap latest|ID] [--until MIN]   rerun one game with AI logs; verify it
+              replay  RUN KEY [--snap latest|ID] [--until MIN] [--profile]   rerun one game with AI logs; verify it
+              profile RUN | FILE.jfr [--focus TEXT] [--callers TEXT] [--top N]
+                                                 where the CPU of a --profile run or replay went: engine, AIs, map
+                                                 generation; methods by inclusive and own share; JIT and GC time
               curves  RUN [RUN...] [--fields F,F] [--at MIN,MIN] [--split]
                                                  census means per minute: each team, A won / lost, A of each run
               fights  RUN [KEY] | FILE.jsonl [--min N]   fights of one game, or of a run by where they were
@@ -197,9 +202,15 @@ public final class Aisim {
                 return Export.run(args);
             }
             case "replay" -> {
-                options.check(Set.of("snap", "until", "stale-ok"), 2);
+                options.check(Set.of("snap", "until", "stale-ok", "profile"), 2);
                 Integer until = options.optionalInteger("until", 1, MAX_MINUTES);
-                return Replay.run(args.get(0), args.get(1), options.get("snap"), until, options.flag("stale-ok"));
+                return Replay.run(args.get(0), args.get(1), options.get("snap"), until, options.flag("stale-ok"),
+                        options.flag("profile"));
+            }
+            case "profile" -> {
+                options.check(Set.of("focus", "callers", "top"), 1);
+                return Profile.run(args.get(0), options.get("focus"), options.get("callers"),
+                        options.integer("top", 40, 1, 10000));
             }
             case "freeze" -> {
                 options.check(Set.of("from", "stale-ok"), 2);
@@ -228,30 +239,31 @@ public final class Aisim {
         }
     }
 
-    /** play [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME] */
+    /** play [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [--profile] [MAP] [GAME] */
     private static int play(@NonNull Options options) throws IOException {
         Lineup lineup = lineup(options, "hard vs hard");
-        options.check(union(GAME_OPTIONS, "seed", "side", "name"), 0);
+        options.check(union(GAME_OPTIONS, "seed", "side", "name", "profile"), 0);
         Snapshot.requireFresh(options.flag("stale-ok"));
         String name = runName(options, "play-", lineup);
         Maps maps = Maps.of(options, false);
         int side = options.integer("side", 0, 0, lineup.size() - 1);
         printRandomSeeds(maps, "--seed");
         Run run = run(name, options, lineup, maps, side, Batch.LOGS_ALL);
-        int status = Batch.run(name, run.setup(), run.jobs(), Pace.Limits.fixed(1));
+        int status = Batch.run(name, run.setup(), run.jobs(), Pace.Limits.fixed(1), options.flag("profile"));
         Job job = run.jobs().get(0);
         System.out.println("game " + job.game() + " | " + Runs.aiLogs(Path.of(job.game())));
         System.out.println("next: ./aisim.sh show " + name + " " + job.key());
         return status;
     }
 
-    /** batch --players "P.. vs P.." [--seeds LIST] [--side S] [--name NAME] [WORKERS] [MAP] [GAME] */
+    /** batch --players "P.. vs P.." [--seeds LIST] [--side S] [--name NAME] [--profile] [WORKERS] [MAP] [GAME] */
     private static int batch(@NonNull Options options) throws IOException {
         if (options.get("players") == null) {
             throw new UsageException("batch needs its players, such as --players \"myai vs hard\"");
         }
         Lineup lineup = lineup(options, "hard vs hard");
-        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "cpus", "memory", "logs", "name"), 0);
+        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "cpus", "memory", "logs", "name", "profile"),
+                0);
         Snapshot.requireFresh(options.flag("stale-ok"));
         String name = runName(options, "", lineup);
         Pace.Limits workers = Pace.Limits.parse(options.get("workers"), options.get("cpus"), options.get("memory"));
@@ -259,7 +271,7 @@ public final class Aisim {
         Maps maps = Maps.of(options, true);
         printRandomSeeds(maps, "--seeds");
         Run run = run(name, options, lineup, maps, side, logs(options.get("logs")));
-        return Batch.run(name, run.setup(), run.jobs(), workers);
+        return Batch.run(name, run.setup(), run.jobs(), workers, options.flag("profile"));
     }
 
     /** batch --logs: null without it, all for --logs, lost for --logs lost. */
