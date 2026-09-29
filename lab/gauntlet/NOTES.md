@@ -1174,3 +1174,6 @@ retreat through the same pass (only the attack role is watched).
   idle peons are sent to finish it). But in 200 N=13 games (freeze-squad6-c3-vs13-hv census) 532 first armories of
   copies were razed, 303 of those copies went out within 2 min, 91 re-placed an armory and 48 finished it (mean 5.8
   min after the razing): 0.24 rebuilt armories per game, ~10 enemy warriors of production. Not built.
+- ore_scan (refresh the iron/rock lists from the start's ore cells every 5 s instead of the 30-s full scan; tried and
+  reverted, not committed): N=13 s1..10 iron harvested at 10/15/20 min identical in 8 of 10 games, results identical
+  in 8. Respawned nodes near us are found anyway (or are too few to matter); the 30-s scan is not what starves us.
