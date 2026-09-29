@@ -1300,3 +1300,26 @@ retreat through the same pass (only the attack role is watched).
   N=12 half are queued before adopting.
 - tower_site_fallback N=12 s201..400: towers20 +0.55 (z 2.1), surv60 -0.2, W 6 -> 4 (pooled N=12 400: W 15 -> 8): not
   adopted alone.
+
+
+### tower_wood_drop and site_towers_first built (off; commit 4ce4e277)
+
+- **tower_wood_drop** (tower_wood_trees 0, _reach 40, _reserve 8, _max 20, _time 0), as the judge specified, with one
+  change: the armory is the nearest one within reach that can spare wood now, not just the nearest (smoke-wood s2001:
+  the nearest was an old armory the economy had emptied). Engine chain read and confirmed: `DeployContainer.orderSupply`
+  takes the wood and the workers at the order, `createTransporters` gives each peon 1 piece (MAX_UNIT_RESOURCES 1), the
+  armory has no rally point (only `evacuate` sets one) so they stand idle by it, and `RepairController` builds with a
+  carried piece first (`RepairBehaviour`: 5 HP per piece), then pushes a `HarvestController` like any builder.
+- **Smoke N=13 s2001-2012** (`smoke-wood2` against `logs-cur5-vs13`, `lab/gauntlet/tower_wood.py`): treeless sites
+  placed at 10-25 min finish in a median 61 s instead of 127 s (31 of 41 finish vs 22 of 36); before 10 min 46 s
+  instead of 89 s; sites with trees unchanged (46 s). A fully fed site finishes in 23-45 s. Per game tower_wood_units
+  23-141 (mean 69), tower_wood_taken 45-158 (taken >= units: builders left holding wood are used too). Deploys are
+  mostly limited by armory wood at the reserve (short_wood), then no armory within 40 cells. Quarters build no slower
+  (median 112 -> 94 s). 40 % of deploys leave 5 or fewer workers inside (armories that had 5-10: the keep rule halves
+  per deploy, not overall). w15 68 -> 54 (9 of 12 lower, noisy), W 1 -> 0 (s2007).
+- **tower_wood_time=600** (`smoke-wood-t600`): 44 % of the wood left before 10 min, when the armory forges; with the
+  window only, play before 600 s is identical, treeless window sites 127 -> 74 s (38 of 48 finish), w15 57.5, kd30 671
+  vs 661. Screen both arms.
+- **site_towers_first** (`smoke-sites`, no logs): site_towers_first_used 0/45/17/0/0/3/0/6/29/60/69/0 (economy ticks)
+  in s2001-2012; the 5 games where it never fires play identically; W 1 (s2007), w15 69.3 vs 68.0.
+- Default build: freeze-squad6-c3-vs13-hv s1-0..s3-0 and logs-cur5-vs13 s2017-0 checksums reproduced.
