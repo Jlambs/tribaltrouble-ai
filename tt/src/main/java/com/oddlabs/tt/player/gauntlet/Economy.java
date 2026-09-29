@@ -435,7 +435,7 @@ final class Economy {
         if (p.sniper)
             return sniperSafe(p.site.x, p.site.y);
         // A placer sent into a fight only dies there.
-        if (ai.military().threatNear(p.site.x, p.site.y, 16))
+        if (ai.military().threatNearEcon(p.site.x, p.site.y, 16))
             return false;
         if (ai.strategy().tower_cooldown && p.type == Race.BUILDING_TOWER && recentlyRazedNear(p.site.x, p.site.y)) {
             ai.aiLog().count("tower_cooldown_skip");
@@ -1103,7 +1103,7 @@ final class Economy {
             int inside = q.getUnitContainer().getNumSupplies();
             int hold = holdFor(q);
             // Peons are safe inside while enemies roam next to the quarters.
-            if (threatened && ai.military().threatNear(q.getGridX(), q.getGridY(), gatherUnderThreat() ? 12 : 20))
+            if (threatened && ai.military().threatNearEcon(q.getGridX(), q.getGridY(), gatherUnderThreat() ? 12 : 20))
                 continue;
             if (danger_idle && inside > hold && !needsBuilders()) {
                 ai.aiLog().count("hold_danger");
@@ -1619,7 +1619,7 @@ final class Economy {
 
         // 3. Gatherers.
         boolean danger = ai.military().baseThreatLevel() > 1 && (!gatherUnderThreat()
-                || ai.military().threatNear(armory.getGridX(), armory.getGridY(), 16));
+                || ai.military().threatNearEcon(armory.getGridX(), armory.getGridY(), 16));
         danger_idle = ai.strategy().danger_refuge && danger
                 && armory.getSupplyContainer(IronSupply.class).getNumSupplies() + armory.getSupplyContainer(
                         RockSupply.class).getNumSupplies() < 2;
@@ -1710,7 +1710,7 @@ final class Economy {
             Building shelter = null;
             int best_d = Integer.MAX_VALUE;
             for (Building q : intel.quarters) {
-                if (q.isDead() || evacuating.containsKey(q) || military.threatNear(q.getGridX(), q.getGridY(), 16))
+                if (q.isDead() || evacuating.containsKey(q) || military.threatNearEcon(q.getGridX(), q.getGridY(), 16))
                     continue;
                 int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(), q.getGridY());
                 if (d < best_d) {
@@ -1928,7 +1928,7 @@ final class Economy {
             int d = field != null ? field.getAround(s.getGridX(), s.getGridY(), 1) : (int) (Math.sqrt(d2) * 2);
             if (d == DistanceField.UNREACHABLE)
                 continue;
-            if (ai.military().threatNear(s.getGridX(), s.getGridY(), 14))
+            if (ai.military().threatNearEcon(s.getGridX(), s.getGridY(), 14))
                 continue;
             if (ai.strategy().gather_avoid_parked && seenByParked(s.getGridX(), s.getGridY()))
                 continue;
@@ -2029,7 +2029,7 @@ final class Economy {
             if (b.isDamaged())
                 damaged.add(b);
         for (Building b : damaged) {
-            if (ai.military().threatNear(b.getGridX(), b.getGridY(), 12))
+            if (ai.military().threatNearEcon(b.getGridX(), b.getGridY(), 12))
                 continue;
             int missing = b.getTemplate().getMaxHitPoints() - b.getHitPoints();
             int want = Math.min(4, 1 + missing / 40);

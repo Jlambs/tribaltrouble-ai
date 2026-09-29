@@ -177,6 +177,43 @@ class Strategy {
     /** Seconds before the next attack after the army was called home (20 after any other attack end). */
     float recall_cooldown = 20f;
     /**
+     * The worn retreat (Military.attack): the army turns back once it is worth less than worn_ratio of worn_basis and
+     * the enemy around it more than the army. 0: the launch strength plus every reinforcement that ever joined (1.31 x
+     * the army's own peak in a median attack); 1: the peak of the army's strength since the launch; 2: its peak over
+     * the last worn_window seconds.
+     */
+    int worn_basis = 0;
+    float worn_window = 120f;
+    float worn_ratio = .2f;
+    /**
+     * Enemy stun fear (Military.enemyThreatReady): an enemy chieftain counts as ready to stun enemy_spell_recharge s
+     * after he was seen casting, and with enemy_first_seen only that long after he was first seen (newborns start with
+     * no charge); ready ones near a fight multiply its enemy by enemy_stun_mult, and at 1 or less no longer veto a
+     * charge on stunned enemies. Our own stun timing keeps the 40 s (Chieftain.shouldStun).
+     */
+    float enemy_stun_mult = 1.5f;
+    float enemy_spell_recharge = 40f;
+    boolean enemy_first_seen = false;
+    /**
+     * The outmatched retreat weighs the whole attacking army, not only the part within 18 cells of its centre, when
+     * that part is less than half of it (a split army).
+     */
+    boolean retreat_split_guard = false;
+    /**
+     * Parked enemies (idle, scanning an 8-cell square) count as threats only within this many cells (Chebyshev):
+     * parked_scan_econ in the economy's threat tests (Military.threatNearEcon), parked_scan_threat around our
+     * buildings, sites and peons in the base threat itself (Military.updateThreat). 0: they count like awake ones.
+     */
+    int parked_scan_econ = 0;
+    int parked_scan_threat = 0;
+    /**
+     * The attack holds on high ground for an enemy group only when (1) the group itself came 2 cells nearer over the
+     * last 2 s and fewer than half of it is parked; 0: whenever the distance to it shrinks, our own march included.
+     */
+    int hold_closing = 0;
+    /** hold_ratio's posts against several enemies too (Military.holdAtPost). */
+    boolean hold_multi = false;
+    /**
      * On a retreat, warriors in a fight or with an enemy warrior within 9 cells finish it first (Military). Vs hard*11
      * elim +.004 (z 2.0), kd +.018 (rearg-vs11-hv); in the base2 stack.
      */
@@ -705,6 +742,17 @@ class Strategy {
         expand_under_threat = params.getBoolean("expand_under_threat", expand_under_threat);
         launch_recheck = params.getBoolean("launch_recheck", launch_recheck);
         recall_cooldown = (float) params.getDouble("recall_cooldown", recall_cooldown);
+        worn_basis = params.getInt("worn_basis", worn_basis);
+        worn_window = (float) params.getDouble("worn_window", worn_window);
+        worn_ratio = (float) params.getDouble("worn_ratio", worn_ratio);
+        enemy_stun_mult = (float) params.getDouble("enemy_stun_mult", enemy_stun_mult);
+        enemy_spell_recharge = (float) params.getDouble("enemy_spell_recharge", enemy_spell_recharge);
+        enemy_first_seen = params.getBoolean("enemy_first_seen", enemy_first_seen);
+        retreat_split_guard = params.getBoolean("retreat_split_guard", retreat_split_guard);
+        parked_scan_econ = params.getInt("parked_scan_econ", parked_scan_econ);
+        parked_scan_threat = params.getInt("parked_scan_threat", parked_scan_threat);
+        hold_closing = params.getInt("hold_closing", hold_closing);
+        hold_multi = params.getBoolean("hold_multi", hold_multi);
         retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
         rush_opening_only = params.getBoolean("rush_opening_only", rush_opening_only);
         target_path = params.getBoolean("target_path", target_path);

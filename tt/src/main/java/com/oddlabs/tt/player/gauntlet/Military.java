@@ -108,6 +108,16 @@ final class Military {
     private @Nullable DistanceField target_field;
     private float attack_start;
     private float attack_initial_strength;
+    /** worn_basis 1: the attacking army's peak strength since the launch. */
+    private float worn_peak;
+    /**
+     * worn_basis 2: (time, strength) of the attacking army, each strength lower than every one before it, so the first
+     * is the peak of the last worn_window seconds.
+     */
+    private final java.util.ArrayDeque<float @NonNull []> worn_history = new java.util.ArrayDeque<>();
+    /** worn_skipped and split_guard_kept are counted once per attack. */
+    private boolean worn_skip_counted;
+    private boolean split_guard_counted;
     private float muster_start;
     private float next_wave_time;
     private float last_trace;
@@ -116,6 +126,9 @@ final class Military {
     private int best_target_dist = Integer.MAX_VALUE;
     private int @NonNull [] hold_spot = new int[2];
     private int last_enemy_d2 = Integer.MAX_VALUE;
+    /** hold_closing 1: (time, x, y) of the enemy group the attack last weighed a hold for, over the last 4 s. */
+    private final java.util.ArrayDeque<float @NonNull []> hold_groups = new java.util.ArrayDeque<>();
+    private float last_hold_skip = -100f;
     private float last_charge_log = -100f;
     /** The enemy each warrior was last sent after with a direct attack order. */
     private final Map<@NonNull Unit, @NonNull Unit> hunt_targets = new LinkedHashMap<>();
@@ -125,6 +138,8 @@ final class Military {
     private float last_pillage_log = -100f;
     /** When each enemy chieftain was last seen casting, judged by our units getting stunned around him. */
     private final Map<@NonNull Unit, Float> enemy_casts = new LinkedHashMap<>();
+    /** enemy_first_seen: when each enemy chieftain was first seen on the field. */
+    private final Map<@NonNull Unit, Float> enemy_chief_seen = new LinkedHashMap<>();
     private int own_stunned_before;
     /** Seconds an enemy chieftain's spell takes to recharge, as far as the AI assumes. */
     private static final float SPELL_RECHARGE = 40f;
@@ -231,6 +246,38 @@ final class Military {
             if (!u.isDead() && MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) <= r2)
                 return true;
         return false;
+    }
+
+    /**
+     * threatNear for the economy's gathering, deploy, shelter, repair and project tests: with parked_scan_econ, a
+     * parked threat counts only within that many cells (Chebyshev, at most radius) of (x, y), as it scans only an
+     * 8-cell square and never answers what it does not see.
+     */
+    boolean threatNearEcon(int x, int y, int radius) {
+        int scan = ai.strategy().parked_scan_econ;
+        if (scan <= 0)
+            return threatNear(x, y, radius);
+        int r2 = radius * radius;
+        int box = Math.min(radius, scan);
+        boolean exempt = false;
+        for (Unit u : threats) {
+            if (u.isDead() || MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) > r2)
+                continue;
+            if (isParked(u) && Math.max(Math.abs(u.getGridX() - x), Math.abs(u.getGridY() - y)) > box) {
+                exempt = true;
+                continue;
+            }
+            return true;
+        }
+        if (exempt)
+            ai.aiLog().count("parked_exempt_econ");
+        return false;
+    }
+
+    /** An enemy standing idle: it sees 8 cells and never answers being hit (IdleController). Check isDead first. */
+    private static boolean isParked(@NonNull Unit e) {
+        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                && e.getCurrentController() == e.getPrimaryController();
     }
 
     float enemyStrengthNear(int x, int y, int radius) {
@@ -455,12 +502,21 @@ final class Military {
         List<Unit> enemies = new ArrayList<>(intel.enemy_warriors);
         enemies.addAll(intel.enemy_chieftains);
         List<Unit> at_base = new ArrayList<>();
+        // parked_scan_threat: a parked enemy is a threat only within its scan of something of ours (Chebyshev).
+        int parked_scan = ai.strategy().parked_scan_threat;
         for (Unit e : enemies) {
             if (ai.decoys().caged(e))
                 continue;
+            int box = parked_scan > 0 && !e.isDead() && isParked(e) ? parked_scan : Integer.MAX_VALUE;
+            boolean exempt = false;
             boolean near_base = false;
             for (Building b : own) {
                 if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), b.getGridX(), b.getGridY()) <= r2) {
+                    if (box != Integer.MAX_VALUE && Math.max(Math.abs(e.getGridX() - b.getGridX()), Math.abs(
+                            e.getGridY() - b.getGridY())) > box) {
+                        exempt = true;
+                        continue;
+                    }
                     near_base = true;
                     break;
                 }
@@ -472,6 +528,11 @@ final class Military {
                     if (s == PeonState.GATHER_CHICKEN || s == PeonState.SHEPHERD)
                         continue;
                     if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), p.getGridX(), p.getGridY()) <= 12 * 12) {
+                        if (box != Integer.MAX_VALUE && Math.max(Math.abs(e.getGridX() - p.getGridX()), Math.abs(
+                                e.getGridY() - p.getGridY())) > box) {
+                            exempt = true;
+                            continue;
+                        }
                         near_peons = true;
                         break;
                     }
@@ -482,6 +543,8 @@ final class Military {
                 at_base.add(e);
             } else if (near_peons) {
                 threats.add(e);
+            } else if (exempt) {
+                ai.aiLog().count("parked_exempt");
             }
         }
         // Enemy peons tearing down towers count too, and so do peons raiding the base far from any building of
@@ -606,7 +669,8 @@ final class Military {
         // enough without waiting for them.
         float behind = ai.strategy().threat_look > 0 && ai.enemiesAlive() == 1 ? enemyStrengthNear(threat_x,
                 threat_y, ai.strategy().threat_look) : 0f;
-        float enemy = Math.max(threat_strength, behind) * (enemyStunReadyNear(threat_x, threat_y, 25) ? 1.5f : 1f);
+        float enemy_raw = Math.max(threat_strength, behind);
+        float enemy = enemy_raw * (enemyStunReadyNear(threat_x, threat_y, 25) ? ai.strategy().enemy_stun_mult : 1f);
         float engage_ratio = .8f - engage_state * ai.strategy().defend_hysteresis;
         int armory_cells = stable && engage_state == 1 ? 17 : 14;
         boolean at_armory = armory != null && MapAnalysis.dist2(threat_x, threat_y, armory.getGridX(),
@@ -620,6 +684,9 @@ final class Military {
                 ai.aiLog().count("engage_held");
             }
         }
+        // Counter only: the defenders fall back where, without the stun fear, they would have engaged.
+        if (!engage && engage_state != -1 && effective >= engage_ratio * enemy_raw)
+            ai.aiLog().count("stun_fear_fallback");
         if (threat_level != last_logged_threat || engage != last_logged_engage) {
             last_logged_threat = threat_level;
             last_logged_engage = engage;
@@ -637,8 +704,11 @@ final class Military {
         }
         float hold = ai.strategy().hold_ratio;
         // Against several enemies attacks come from every side, and a post would leave the rest of the base open.
-        if (engage && hold > 0f && ai.enemiesAlive() == 1 && enemy >= hold * Math.max(1f, ours)
+        if (engage && hold > 0f && (ai.enemiesAlive() == 1 || ai.strategy().hold_multi)
+                && enemy >= hold * Math.max(1f, ours)
                 && holdAtPost(defenders)) {
+            if (ai.enemiesAlive() != 1)
+                ai.aiLog().count("hold_post_multi");
             evacuatePeons();
             return;
         }
@@ -708,17 +778,34 @@ final class Military {
         return s;
     }
 
-    /** Whether an enemy chieftain with his spell ready stands within radius cells. */
+    /** Whether an enemy chieftain with his spell ready stands within radius cells (enemyThreatReady). */
     boolean enemyStunReadyNear(int x, int y, int radius) {
         for (Unit c : ai.intel().enemy_chieftains) {
             if (c.isDead() || Intel.isStunned(c))
                 continue;
             if (MapAnalysis.dist2(x, y, c.getGridX(), c.getGridY()) > radius * radius)
                 continue;
-            if (enemySpellReady(c))
+            if (enemyThreatReady(c))
                 return true;
         }
         return false;
+    }
+
+    /**
+     * Whether an enemy chieftain counts as ready to stun in the army's fear of his spell: enemy_spell_recharge s after
+     * he was seen casting, and with enemy_first_seen, never seen casting, that long after he was first seen (a newborn
+     * chieftain has no charge). Our own stun timing keeps enemySpellReady.
+     */
+    private boolean enemyThreatReady(@NonNull Unit chief) {
+        if (ai.strategy().hidden_info)
+            return enemySpellReady(chief);
+        Float cast = enemy_casts.get(chief);
+        if (cast != null)
+            return ai.time() - cast >= ai.strategy().enemy_spell_recharge;
+        if (!ai.strategy().enemy_first_seen)
+            return true;
+        Float seen = enemy_chief_seen.get(chief);
+        return seen == null || ai.time() - seen >= ai.strategy().enemy_spell_recharge;
     }
 
     /**
@@ -739,6 +826,12 @@ final class Military {
     private void watchEnemyCasts() {
         Intel intel = ai.intel();
         enemy_casts.keySet().removeIf(Unit::isDead);
+        if (ai.strategy().enemy_first_seen) {
+            enemy_chief_seen.keySet().removeIf(Unit::isDead);
+            for (Unit e : intel.enemy_chieftains)
+                if (!e.isDead())
+                    enemy_chief_seen.putIfAbsent(e, ai.time());
+        }
         // Casting is plain to see: the chieftain stops and blows his horn.
         for (Unit e : intel.enemy_chieftains)
             if (!e.isDead() && e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)
@@ -2022,6 +2115,10 @@ final class Military {
             s += Combat.value(u);
         }
         attack_initial_strength = s;
+        worn_peak = s;
+        worn_history.clear();
+        worn_skip_counted = false;
+        split_guard_counted = false;
         attack_kills_start = ai.owner().getUnitsKilled();
         attack_losses_start = ai.owner().getUnitsLost();
         attack_running = true;
@@ -2354,8 +2451,10 @@ final class Military {
         ours *= terrainFactor(army, intel.enemy_warriors, c[0], c[1], ENGAGE_RADIUS);
         boolean toot = ai.chieftain().stunReady() && intel.chieftain != null
                 && MapAnalysis.dist2(intel.chieftain.getGridX(), intel.chieftain.getGridY(), c[0], c[1]) < 20 * 20;
+        // Counters compare what the stun fear decides with what the enemy alone would have (local_raw).
+        float local_raw = local_enemy;
         if (enemyStunReadyNear(c[0], c[1], ENGAGE_RADIUS + 4))
-            local_enemy *= 1.5f;
+            local_enemy *= ai.strategy().enemy_stun_mult;
         // stall_calm: the stall clock runs only while the march is calm; long fights on the way are no stall
         // (6 of 6 reachable stalls outside one corner deadlock came after ~80 s of fighting).
         if (ai.strategy().stall_calm && (local_enemy > 0f || anyFighting(army)))
@@ -2369,6 +2468,7 @@ final class Military {
         }
         // A stunned army cannot walk away; decide once it can move again.
         boolean pinned = stunned_count * 10 > army.size() * 3;
+        float worn_base = wornBasis(total);
         if (ai.logging() && ai.time() - last_trace >= 4f) {
             last_trace = ai.time();
             int far = 0;
@@ -2413,8 +2513,9 @@ final class Military {
             for (Building t : intel.enemy_towers)
                 if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) <= 36 * 36)
                     awake += enemyTowerValue(t);
-            // An enemy chieftain with his spell ready would stun the charge in turn.
-            if (asleep >= 3f && total >= .8f * awake && !enemyStunReadyNear(c[0], c[1], 45)) {
+            // An enemy chieftain with his spell ready would stun the charge in turn (unless his stun is not feared).
+            if (asleep >= 3f && total >= .8f * awake && !(ai.strategy().enemy_stun_mult > 1f && enemyStunReadyNear(
+                    c[0], c[1], 45))) {
                 if (ai.time() - last_charge_log > 10f) {
                     last_charge_log = ai.time();
                     ai.log(String.format("charging %d stunned enemies (%.1f asleep, %.1f awake, army %.1f)",
@@ -2449,20 +2550,39 @@ final class Military {
                 return;
             }
         }
-        boolean outmatched = local_enemy > ai.strategy().retreat_ratio * Math.max(ours, 1f);
-        boolean worn = total < .2f * attack_initial_strength && local_enemy > total;
+        Strategy strategy = ai.strategy();
+        // retreat_split_guard: with most of the army away from its centre, weigh all of it.
+        float weighed = strategy.retreat_split_guard && ours < .5f * total ? total : ours;
+        boolean outmatched = local_enemy > strategy.retreat_ratio * Math.max(weighed, 1f);
+        boolean worn = total < strategy.worn_ratio * worn_base && local_enemy > total;
         if (!toot && !pinned && (outmatched || worn) && pillage(army, c, total))
             return;
+        if (!toot && !pinned && !outmatched && !split_guard_counted
+                && local_enemy > strategy.retreat_ratio * Math.max(ours, 1f)) {
+            split_guard_counted = true;
+            ai.aiLog().count("split_guard_kept");
+        }
         if (!toot && !pinned && outmatched) {
+            if (local_raw <= strategy.retreat_ratio * Math.max(weighed, 1f))
+                ai.aiLog().count("stun_fear_retreat");
             ai.log(String.format("retreat: local %.1f vs enemy %.1f (army %.1f of %.1f)", ours, local_enemy, total,
                     attack_initial_strength));
             beginRetreat();
             return;
         }
-        if (!pinned && total < .2f * attack_initial_strength && local_enemy > total) {
-            ai.log(String.format("retreat: worn down to %.1f of %.1f", total, attack_initial_strength));
+        if (!pinned && worn) {
+            ai.aiLog().count("worn_fired");
+            if (local_raw <= total)
+                ai.aiLog().count("stun_fear_worn");
+            ai.log(String.format("retreat: worn down to %.1f of %.1f", total, worn_base));
             beginRetreat();
             return;
+        }
+        // worn_basis: an attack that the cumulative basis would have called worn goes on.
+        if (!pinned && !worn_skip_counted && strategy.worn_basis != 0
+                && total < strategy.worn_ratio * attack_initial_strength && local_enemy > total) {
+            worn_skip_counted = true;
+            ai.aiLog().count("worn_skipped");
         }
         if (target == null || target.isDead()) {
             if (strike) {
@@ -2585,6 +2705,29 @@ final class Military {
     }
 
     /**
+     * The strength the worn retreat measures the attacking army (now worth total) against, by worn_basis: the launch
+     * strength plus every reinforcement that joined, the peak since the launch, or the peak of the last worn_window
+     * seconds.
+     */
+    private float wornBasis(float total) {
+        Strategy strategy = ai.strategy();
+        if (strategy.worn_basis == 1) {
+            worn_peak = Math.max(worn_peak, total);
+            return worn_peak;
+        }
+        if (strategy.worn_basis == 2) {
+            float now = ai.time();
+            while (!worn_history.isEmpty() && worn_history.getLast()[1] <= total)
+                worn_history.removeLast();
+            worn_history.addLast(new float[]{now, total});
+            while (worn_history.size() > 1 && worn_history.getFirst()[0] < now - strategy.worn_window)
+                worn_history.removeFirst();
+            return worn_history.getFirst()[1];
+        }
+        return attack_initial_strength;
+    }
+
+    /**
      * How much better our warriors fight than theirs around (x, y) because of height, as a factor on our strength.
      * Throws gain 1/80 hit chance per meter above the target, up to a quarter; in Lanchester terms the strength ratio
      * moves with the square root of the hit chance ratio.
@@ -2641,9 +2784,21 @@ final class Military {
         int d = MapAnalysis.dist2(c[0], c[1], enemy[0], enemy[1]);
         boolean closing = d < last_enemy_d2 - 4;
         last_enemy_d2 = d;
+        // hold_closing 1: only the group's own motion towards us counts, not our march towards it.
+        boolean motion = ai.strategy().hold_closing == 1;
+        if (motion) {
+            boolean coming = groupComing(intel.enemy_warriors, enemy, c);
+            if (hold_until < 0f && closing && !coming && ai.time() - last_hold_skip >= 12f) {
+                last_hold_skip = ai.time();
+                ai.aiLog().count("hold_skipped_static");
+            }
+            closing = coming;
+        }
         if (hold_until < 0f) {
             if (!closing)
                 return false;
+            if (motion)
+                ai.aiLog().count("hold_coming");
             hold_until = ai.time() + 12f;
             hold_spot = ai.map().highGround(c[0], c[1], 6);
             ai.log(String.format("holding at %d,%d (%.0fm up) for enemy army at %d,%d", hold_spot[0], hold_spot[1],
@@ -2654,6 +2809,56 @@ final class Military {
         for (Unit u : army)
             attackGround(u, hold_spot[0], hold_spot[1], false);
         return true;
+    }
+
+    /**
+     * hold_closing 1: whether the enemy group centred at {@code enemy} came at least 2 cells nearer to our army's
+     * centre
+     * {@code c} by its own motion since its centre of 2-4 s ago, with fewer than half of its units parked.
+     */
+    private boolean groupComing(@NonNull List<@NonNull Unit> units, int @NonNull [] enemy, int @NonNull [] c) {
+        float now = ai.time();
+        hold_groups.removeIf(g -> g[0] < now - 4f);
+        float[] then = null;
+        for (float[] g : hold_groups)
+            if (g[0] <= now - 2f)
+                then = g;
+        hold_groups.addLast(new float[]{now, enemy[0], enemy[1]});
+        if (then == null)
+            return false;
+        float tx = c[0] - then[1];
+        float ty = c[1] - then[2];
+        float len = (float) Math.sqrt(tx * tx + ty * ty);
+        if (len < 1f)
+            return false;
+        float toward = ((enemy[0] - then[1]) * tx + (enemy[1] - then[2]) * ty) / len;
+        if (toward < 2f)
+            return false;
+        // The group as nearestGroup takes it: everything within 8 cells of its unit nearest to the army.
+        Unit nearest = null;
+        int best = 26 * 26;
+        for (Unit u : units) {
+            if (u.isDead())
+                continue;
+            int dd = MapAnalysis.dist2(c[0], c[1], u.getGridX(), u.getGridY());
+            if (dd <= best) {
+                best = dd;
+                nearest = u;
+            }
+        }
+        if (nearest == null)
+            return false;
+        int n = 0;
+        int parked = 0;
+        for (Unit u : units) {
+            if (u.isDead() || MapAnalysis.dist2(nearest.getGridX(), nearest.getGridY(), u.getGridX(),
+                    u.getGridY()) > 8 * 8)
+                continue;
+            n++;
+            if (isParked(u))
+                parked++;
+        }
+        return parked * 2 < n;
     }
 
     /**
@@ -2705,7 +2910,7 @@ final class Military {
         for (Unit u : units)
             ours += Combat.lastingValue(u);
         float awake = enemyFightersNear(x, y, 30);
-        if (asleep < 3f || ours < .8f * awake || enemyStunReadyNear(x, y, 40))
+        if (asleep < 3f || ours < .8f * awake || (ai.strategy().enemy_stun_mult > 1f && enemyStunReadyNear(x, y, 40)))
             return false;
         int[] sc = centroid(stunned);
         engageSpread(units, stunned, sc[0], sc[1], true);
