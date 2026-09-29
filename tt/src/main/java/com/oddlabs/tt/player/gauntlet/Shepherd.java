@@ -606,11 +606,15 @@ final class Shepherd {
         int unit2 = nearestOtherUnit2(ox, oy, s, f.partner == null ? null : f.partner.shepherd);
         float limit = (float) Math.sqrt(Math.min(building2 * .44f, unit2 * .8f));
         int max_r = (int) Math.min(ai.strategy().shepherd_max_r, limit);
-        // Candidate cells the leash cuts off (counter only).
-        for (int r = 14; r <= ai.strategy().shepherd_max_r; r += r < 22 ? 2 : 4)
-            if (r > max_r)
-                for (int a = 0; a < 24; a++)
-                    ai.aiLog().count("shepherd_rej_leash");
+        // The per-candidate rejection counters (shepherd_rej_*) only in logged games: counted in every game they took
+        // 2.2 % of the simulation's CPU (prof-cur4-vs14, AiLog.count under findSpot), the most of any one AI method.
+        boolean rejections = ai.logging();
+        if (rejections)
+            // Candidate cells the leash cuts off.
+            for (int r = 14; r <= ai.strategy().shepherd_max_r; r += r < 22 ? 2 : 4)
+                if (r > max_r)
+                    for (int a = 0; a < 24; a++)
+                        ai.aiLog().count("shepherd_rej_leash");
         if (max_r < 14) {
             ai.aiLog().count(building2 * .44f < unit2 * .8f ? "shepherd_nospot_building" : "shepherd_nospot_unit");
             return null;
@@ -657,12 +661,14 @@ final class Shepherd {
                 int x = ox + (int) Math.round(r * Math.cos(ang));
                 int y = oy + (int) Math.round(r * Math.sin(ang));
                 if (!reach.reachable(x, y)) {
-                    ai.aiLog().count("shepherd_rej_reach");
+                    if (rejections)
+                        ai.aiLog().count("shepherd_rej_reach");
                     continue;
                 }
                 String enemy = enemyNear(intel, x, y);
                 if (enemy != null) {
-                    ai.aiLog().count(enemy);
+                    if (rejections)
+                        ai.aiLog().count(enemy);
                     continue;
                 }
                 boolean ok = true;
@@ -672,7 +678,8 @@ final class Shepherd {
                         break;
                     }
                 if (!ok) {
-                    ai.aiLog().count("shepherd_rej_defense17");
+                    if (rejections)
+                        ai.aiLog().count("shepherd_rej_defense17");
                     continue;
                 }
                 for (Building t : intel.enemy_towers)
@@ -681,7 +688,8 @@ final class Shepherd {
                         break;
                     }
                 if (!ok) {
-                    ai.aiLog().count("shepherd_rej_tower19");
+                    if (rejections)
+                        ai.aiLog().count("shepherd_rej_tower19");
                     continue;
                 }
                 float score = spotScore(x, y, r, bx, by, guarded);
