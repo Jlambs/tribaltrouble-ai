@@ -1168,3 +1168,9 @@ retreat through the same pass (only the attack role is watched).
   peons outside when the cut starts: 9 or fewer -> 24 of 25 froze; 10 or more -> 5 of 15 froze, 10 failed (the copy's
   defense sends its idle peons and gatherers at our 6). An abort at >= 10 outside would trade ~10 failures for ~5 lost
   frozen copies: about even, not built. chief_safe=10 at N=13: neutral (W 0 -> 1, elim -.004, towers20 -0.5 z -2.2).
+- **A mid-game armory freeze would be small.** AdvancedAI clears its "under construction" flags only on seeing a
+  finished building of that type or when it has no site and no placing peon, so a copy whose replacement armory site
+  stands without builders would never forge again (path c's trick, later in the game; a quarters site is not stable:
+  idle peons are sent to finish it). But in 200 N=13 games (freeze-squad6-c3-vs13-hv census) 532 first armories of
+  copies were razed, 303 of those copies went out within 2 min, 91 re-placed an armory and 48 finished it (mean 5.8
+  min after the razing): 0.24 rebuilt armories per game, ~10 enemy warriors of production. Not built.
