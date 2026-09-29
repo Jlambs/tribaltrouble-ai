@@ -1,7 +1,9 @@
 package com.oddlabs.tt.player.gauntlet;
 
+import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.landscape.TreeSupply;
 import com.oddlabs.tt.model.Action;
+import com.oddlabs.tt.model.BuildProductionContainer;
 import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
@@ -11,6 +13,7 @@ import com.oddlabs.tt.model.RubberSupply;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.UnitSupplyContainer;
 import com.oddlabs.tt.model.weapon.IronAxeWeapon;
 import com.oddlabs.tt.model.weapon.RockAxeWeapon;
 import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
@@ -24,6 +27,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -1330,16 +1334,24 @@ final class Economy {
 
     private void orderWeapons(@NonNull Building armory) {
         Player owner = ai.owner();
-        if (armory.getBuildSupplyContainer(IronAxeWeapon.class).getNumSupplies() == 0)
+        // weapon_sync holds a queue by cancelling its orders: leave those to it
+        boolean synced = armory == sync_armory;
+        if (!(synced && sync_paused[SYNC_IRON])
+                && armory.getBuildSupplyContainer(IronAxeWeapon.class).getNumSupplies() == 0)
             owner.buildIronWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
-        if (owner.canUseRubber() && armory.getBuildSupplyContainer(RubberAxeWeapon.class).getNumSupplies() == 0)
+        if (!(synced && sync_paused[SYNC_RUBBER]) && owner.canUseRubber()
+                && armory.getBuildSupplyContainer(RubberAxeWeapon.class).getNumSupplies() == 0)
             owner.buildRubberWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         int rock_orders = armory.getBuildSupplyContainer(RockAxeWeapon.class).getNumSupplies();
-        boolean make_rock = rock_weapons || rock_filler || ai.strategy().rock_share > 0f || rock_stream_on;
-        if (make_rock && rock_orders == 0)
+        boolean make_rock = wantsRockWeapons();
+        if (make_rock && rock_orders == 0 && !(synced && sync_paused[SYNC_ROCK]))
             owner.buildRockWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
-        else if (!make_rock && rock_orders > 0)
+        else if (!make_rock && rock_orders > 0 && !(synced && (sync_helping & 1 << SYNC_ROCK) != 0))
             owner.buildRockWeapons(armory, -rock_orders, false);
+    }
+
+    private boolean wantsRockWeapons() {
+        return rock_weapons || rock_filler || ai.strategy().rock_share > 0f || rock_stream_on;
     }
 
     private void deployFromPrimary(@NonNull Building armory) {
@@ -1385,6 +1397,616 @@ final class Economy {
         int r = Math.min(rock, deploy - c - i);
         if (r > 0)
             owner.deployUnits(armory, DeployType.ROCK_WARRIOR, r);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // weapon_sync
+    //
+    // Every tick, WeaponsProducer.animate gives each weapon queue that has orders and the resources for one weapon an
+    // equal share of the armory's man-seconds (peons inside x tick / queues). A queue takes its weapon's cost only on
+    // the tick the weapon is done (BuildProductionContainer.build), clamped at zero, and keeps its progress while it
+    // has no orders. So weapons done on the same tick share the resources they have in common: an iron axe and a
+    // rubber axe one iron, a rock axe and a rubber axe one rock, all three one iron, one rock and two wood (when the
+    // stock holds just that). While the main armory can forge a rubber axe and the iron (or rock, weapon_sync_three)
+    // it shares with the iron (rock) axe is short, the queues that would finish first are paused by cancelling their
+    // orders until the rubber axe catches up, and ordered again so that all finish on the same tick. The world ticks
+    // buildings before the AI (World.tick: game-time pass, then the real-time pass the AI is on), so an order given
+    // in tick T counts from the producer's tick T+1; weaponSync plans after all our other orders of the tick, from the
+    // queues' man-seconds added up exactly as the engine does in floats.
+
+    /** The armory's weapon queues in the order WeaponsProducer builds them (LandBuilding): rock, iron, rubber axes. */
+    private static final int SYNC_ROCK = 0;
+    private static final int SYNC_IRON = 1;
+    private static final int SYNC_RUBBER = 2;
+    private static final String[] SYNC_NAMES = {"rock", "iron", "rubber"};
+    private static final Class<?>[] SYNC_WEAPONS = {RockAxeWeapon.class, IronAxeWeapon.class, RubberAxeWeapon.class};
+    /** Man-seconds per weapon of each queue (LandBuilding). */
+    private static final float[] SYNC_WORK = {40f, 80f, 120f};
+    /** The resources, and what a weapon of each queue costs in them (LandBuilding.COST_*_WEAPON). */
+    private static final Class<?>[] SYNC_SUPPLIES = {TreeSupply.class, RockSupply.class, IronSupply.class, RubberSupply.class};
+    private static final String[] SYNC_SUPPLY_NAMES = {"tree", "rock", "iron", "rubber"};
+    private static final int[][] SYNC_COST = {{2, 1, 0, 0}, {2, 0, 1, 0}, {2, 1, 1, 1}};
+    /** Ticks ahead within which the queues' finishing ticks are worked out exactly (and a plan searched for). */
+    private static final int SYNC_HORIZON = 250;
+    /** Most ticks of pauses a plan may take before all the queues run together. */
+    private static final int SYNC_DEPTH = 5;
+    /** Cells around the armory within which a carried load could reach its stock in one tick. */
+    private static final int SYNC_REACH = 12;
+
+    /** The armory whose queues weapon_sync runs, and the queues it holds by having cancelled their orders. */
+    private @Nullable Building sync_armory;
+    private final boolean[] sync_paused = new boolean[3];
+    /** What the armory held after our last orders of tick sync_tick. */
+    private int sync_tick = -100;
+    private final float[] sync_progress = new float[3];
+    private final float[] sync_ms = new float[3];
+    private final int[] sync_weapons = new int[3];
+    private final int[] sync_stock = new int[4];
+    /** Each queue's man-seconds after the next tick, if the world does what the orders mean. */
+    private final float[] sync_expect = new float[3];
+    /** Loads carried next to the armory at the snapshot ({supply, amount}): they may reach its stock next tick. */
+    private final Map<@NonNull Unit, int @NonNull []> sync_carried = new LinkedHashMap<>();
+    /** The alignment under way: its queues (a bit each, 0 = none), its number, and the tick due (0 = not aligned). */
+    private int sync_targets;
+    /** A queue the alignment under way holds back because the rubber axe meets only its partner (a bit, 0 = none). */
+    private int sync_held;
+    /**
+     * The rock queue ordered for a tick or two although the weapon policy wants no rock axes, only to change the
+     * others' shares (a bit, 0 = none): with the iron and rubber axes alone every tick moves them by one or two
+     * half-shares, which cannot line up remainders an odd number of half-shares apart.
+     */
+    private int sync_helping;
+    private int sync_attempts;
+    private int sync_due;
+    /** The planner's inputs when a search last found nothing while every queue ran: not searched again meanwhile. */
+    private long sync_failed = -1;
+    /** Queue ticks whose man-seconds came out as the orders meant, and those that did not (the order latency). */
+    private int sync_expect_ok;
+    private int sync_expect_off;
+    private int sync_rubber;
+
+    /**
+     * weapon_sync, first thing in a tick: what the world's tick did in the main armory, against the snapshot taken
+     * after our last orders. A queue whose progress went back to zero while its weapon stock grew finished a weapon.
+     * Weapons finished together duplicated a shared resource when its stock fell by less than their costs and could
+     * not have paid them even with every load that could have come in during the tick.
+     */
+    void weaponSyncObserve() {
+        Building armory = sync_armory;
+        if (armory == null || armory.isDead() || sync_tick != ai.ticks() - 1)
+            return;
+        int done = 0;
+        for (int c = 0; c < 3; c++) {
+            float progress = syncQueue(armory, c).getBuildProgress();
+            int weapons = armory.getSupplyContainer(SYNC_WEAPONS[c]).getNumSupplies();
+            if (sync_progress[c] > 0f && progress == 0f && weapons > sync_weapons[c])
+                done |= 1 << c;
+        }
+        if (done == 0)
+            return;
+        int[] stock = syncStock(armory);
+        int[] delivered = new int[4];
+        for (Map.Entry<Unit, int[]> e : sync_carried.entrySet()) {
+            UnitSupplyContainer load = e.getKey().getSupplyContainer();
+            int[] was = e.getValue();
+            int now = load != null && syncSupplyIndex(load.getSupplyType()) == was[0] ? load.getNumSupplies() : 0;
+            delivered[was[0]] += Math.max(0, was[1] - now);
+        }
+        boolean dup = false;
+        if (Integer.bitCount(done) >= 2) {
+            for (int s = 0; s < 4; s++) {
+                int users = 0;
+                int cost = 0;
+                for (int c = 0; c < 3; c++) {
+                    if ((done & 1 << c) != 0 && SYNC_COST[c][s] > 0) {
+                        users++;
+                        cost += SYNC_COST[c][s];
+                    }
+                }
+                if (users >= 2 && sync_stock[s] - stock[s] < cost && sync_stock[s] + delivered[s] < cost)
+                    dup = true;
+            }
+        }
+        if ((done & 1 << SYNC_RUBBER) != 0)
+            sync_rubber++;
+        if (dup)
+            ai.aiLog().count("weapon_sync_dup");
+        int targets = sync_targets;
+        String outcome = "";
+        if (targets != 0 && (done & targets) != 0) {
+            boolean hit = (done & targets) == targets;
+            if (!hit)
+                ai.aiLog().count("weapon_sync_missed");
+            outcome = String.format("#%d %s (%s, due %s)", sync_attempts, hit ? "hit" : "missed",
+                    syncNames(targets), sync_due > 0 ? Integer.toString(sync_due - ai.ticks()) : "-");
+            sync_targets = 0;
+            sync_due = 0;
+            sync_held = 0;
+        }
+        if (targets != 0 || dup || Integer.bitCount(done) >= 2 || (done & 1 << SYNC_RUBBER) != 0) {
+            String what = outcome;
+            boolean duplicated = dup;
+            int finished = done;
+            ai.aiLog().log("WSYNC", () -> {
+                StringBuilder sb = new StringBuilder();
+                sb.append(what.isEmpty() ? "done" : what).append(": ").append(syncNames(finished));
+                if ((finished & 1 << SYNC_RUBBER) != 0)
+                    sb.append(" (rubber axe ").append(sync_rubber).append(')');
+                sb.append(duplicated ? ", dup" : "").append(", stock");
+                for (int s = 0; s < 4; s++) {
+                    sb.append(' ').append(SYNC_SUPPLY_NAMES[s]).append(' ').append(sync_stock[s]).append("->").append(
+                            stock[s]);
+                    if (delivered[s] > 0)
+                        sb.append(" (<=").append(delivered[s]).append(" in)");
+                }
+                sb.append(", predicted ").append(sync_expect_ok).append('/').append(sync_expect_ok + sync_expect_off);
+                return sb.toString();
+            });
+        }
+    }
+
+    /**
+     * weapon_sync, last thing in a tick, after all our other orders: chooses the main armory's queues that run in the
+     * next tick and takes the snapshot the next tick's weaponSyncObserve compares with.
+     */
+    void weaponSync(float t) {
+        Player owner = ai.owner();
+        Building armory = ai.intel().armory();
+        if (armory != null && (armory.isDead() || !armory.isComplete()))
+            armory = null;
+        if (armory != sync_armory) {
+            syncRelease("main armory changed");
+            sync_armory = armory;
+            sync_tick = -100;
+        }
+        if (armory == null || !owner.isAlive())
+            return;
+        boolean checked = sync_tick == ai.ticks() - 1;
+        BuildProductionContainer[] queues = new BuildProductionContainer[3];
+        float[] ms = new float[3];
+        for (int c = 0; c < 3; c++) {
+            queues[c] = syncQueue(armory, c);
+            ms[c] = syncManSeconds(queues[c].getBuildProgress(), SYNC_WORK[c], checked ? sync_expect[c] : Float.NaN,
+                    checked ? sync_ms[c] : Float.NaN);
+            if (checked && ms[c] == sync_expect[c])
+                sync_expect_ok++;
+            else if (checked)
+                sync_expect_off++;
+        }
+        int workers = armory.getUnitContainer().getNumSupplies();
+        int[] stock = syncStock(armory);
+        // the game-time step, as World.tick gives it to the buildings
+        float step = owner.getWorld().getSecondsPerTick() * t / AnimationManager.ANIMATION_SECONDS_PER_TICK;
+        boolean three = ai.strategy().weapon_sync_three;
+        boolean[] wanted = {wantsRockWeapons(), true, owner.canUseRubber()};
+        // avail: the queues that can run next tick; forced: those among them we leave as the weapon policy has them;
+        // helpers: the rock queue when the policy wants no rock axes, which a plan may run for a tick or two
+        int avail = 0;
+        int forced = 0;
+        int helpers = 0;
+        for (int c = 0; c < 3; c++) {
+            boolean pausable = c != SYNC_ROCK || three;
+            if (wanted[c] || !pausable)
+                sync_helping &= ~(1 << c);
+            if (!syncAffordable(stock, c))
+                continue;
+            if (wanted[c] && pausable)
+                avail |= 1 << c;
+            else if ((sync_helping & 1 << c) != 0 || (pausable && queues[c].getNumSupplies() == 0))
+                helpers |= 1 << c;
+            else if (queues[c].getNumSupplies() > 0) {
+                avail |= 1 << c;
+                forced |= 1 << c;
+            }
+        }
+        int free = avail & ~forced;
+        int targets = 0;
+        if ((free & 1 << SYNC_RUBBER) != 0) {
+            for (int c = SYNC_ROCK; c <= SYNC_IRON; c++)
+                if ((free & 1 << c) != 0 && syncShortShared(stock, c))
+                    targets |= 1 << c;
+            if (targets != 0)
+                targets |= 1 << SYNC_RUBBER;
+        }
+        if (targets == 0) {
+            if (sync_targets != 0)
+                syncRelease((free & 1 << SYNC_RUBBER) == 0 ? "no rubber axe to forge" : "nothing short");
+            else
+                syncRelease("");
+            syncSnapshot(armory, queues, ms, stock, workers, step);
+            return;
+        }
+        // an alignment narrowed to a pair holds the third queue while that one is still short
+        int held = sync_held;
+        if (sync_targets != 0 && held != 0 && (targets & held) == held
+                && Integer.bitCount(targets & ~held) >= 2) {
+            targets &= ~held;
+            avail &= ~held;
+        } else
+            sync_held = 0;
+        if (sync_targets == 0) {
+            sync_attempts++;
+            sync_failed = -1;
+            int shown = targets;
+            ai.aiLog().log("WSYNC", () -> String.format("#%d start %s: %s, %d peons", sync_attempts,
+                    syncNames(shown), syncState(ms, stock), workers));
+        }
+        sync_targets = targets;
+        if (workers > 0) {
+            int run = syncPlan(ms, avail, forced, helpers, workers, step);
+            for (int c = 0; c < 3; c++) {
+                if ((forced & 1 << c) != 0 || (c == SYNC_ROCK && !three))
+                    continue;
+                int orders = queues[c].getNumSupplies();
+                boolean helper = (helpers & 1 << c) != 0;
+                int queue = c;
+                if ((run & 1 << c) != 0 && orders == 0) {
+                    syncOrder(armory, c, BuildSpinner.INFINITE_LIMIT, true);
+                    sync_paused[c] = false;
+                    if (helper)
+                        sync_helping |= 1 << c;
+                    ai.aiLog().log("WSYNC", () -> String.format("#%d %s %s: %s", sync_attempts,
+                            helper ? "helper on" : "resume", SYNC_NAMES[queue], syncState(ms, stock)));
+                } else if ((run & 1 << c) == 0 && ((avail | sync_held | helpers) & 1 << c) != 0 && orders > 0) {
+                    syncOrder(armory, c, -orders, false);
+                    if (helper) {
+                        sync_helping &= ~(1 << c);
+                        ai.aiLog().log("WSYNC", () -> String.format("#%d helper off %s: %s", sync_attempts,
+                                SYNC_NAMES[queue], syncState(ms, stock)));
+                    } else {
+                        sync_paused[c] = true;
+                        ai.aiLog().count("weapon_sync_pause");
+                        ai.aiLog().log("WSYNC", () -> String.format("#%d pause %s: %s", sync_attempts,
+                                SYNC_NAMES[queue], syncState(ms, stock)));
+                    }
+                }
+            }
+        }
+        syncSnapshot(armory, queues, ms, stock, workers, step);
+    }
+
+    /**
+     * The queues to run in the next tick: all of avail once the targets would finish on the same tick that way; else,
+     * once they are within SYNC_DEPTH ticks of each other, the first tick of the shortest plan of pauses (which may
+     * run the helpers) after which they would; else the targets furthest behind catch up while the others wait. When
+     * three have caught up and cannot meet, the rubber axe meets the iron axe, else the rock axe, and the third one
+     * waits. Sets sync_targets to the queues the plan aligns, and sync_due to the tick they finish (0: not aligned).
+     */
+    private int syncPlan(float @NonNull [] ms, int avail, int forced, int helpers, int workers, float step) {
+        int targets = sync_targets;
+        int k = syncAlignedIn(ms, avail, targets, workers, step);
+        if (k > 0)
+            return syncAligned(avail, targets, k);
+        sync_due = 0;
+        int catch_up = syncCatchUp(ms, avail, targets, workers, step);
+        boolean close = k == 0 && syncSpread(ms, targets) <= SYNC_DEPTH * (workers * step);
+        long key = ((long) workers << 16) | ((long) helpers << 12) | ((long) avail << 8) | ((long) forced << 4) | targets;
+        if (close && key != sync_failed) {
+            int run = syncSearch(ms, avail, forced, helpers, targets, workers, step);
+            if (run != 0)
+                return run;
+            if (catch_up == avail && Integer.bitCount(targets) == 3) {
+                for (int drop = SYNC_ROCK; drop <= SYNC_IRON; drop++) {
+                    int pair = targets & ~(1 << drop);
+                    int rest = avail & ~(1 << drop);
+                    int kp = syncAlignedIn(ms, rest, pair, workers, step);
+                    if (kp > 0) {
+                        syncHold(drop, pair);
+                        return syncAligned(rest, pair, kp);
+                    }
+                    if (kp == 0) {
+                        run = syncSearch(ms, rest, forced, helpers, pair, workers, step);
+                        if (run != 0) {
+                            syncHold(drop, pair);
+                            return run;
+                        }
+                    }
+                }
+            }
+        }
+        // Caught up and still apart: the queues run as they are until something changes (the peons inside, the
+        // queues that can run), which is when a new search may find a plan.
+        sync_failed = close && catch_up == avail ? key : -1;
+        return catch_up;
+    }
+
+    /** How far apart the targets' remaining man-seconds are. */
+    private static float syncSpread(float @NonNull [] ms, int targets) {
+        float lo = Float.MAX_VALUE;
+        float hi = 0f;
+        for (int c = 0; c < 3; c++) {
+            if ((targets & 1 << c) != 0) {
+                lo = Math.min(lo, SYNC_WORK[c] - ms[c]);
+                hi = Math.max(hi, SYNC_WORK[c] - ms[c]);
+            }
+        }
+        return hi - lo;
+    }
+
+    /** Runs all of run, which makes the targets finish together in k ticks. */
+    private int syncAligned(int run, int targets, int k) {
+        int due = ai.ticks() + k;
+        if (due != sync_due)
+            ai.aiLog().log("WSYNC", () -> String.format("#%d aligned %s: due in %d ticks", sync_attempts,
+                    syncNames(targets), k));
+        sync_due = due;
+        return run;
+    }
+
+    /** Narrows the alignment under way to the pair, holding queue drop until it is over. */
+    private void syncHold(int drop, int pair) {
+        sync_targets = pair;
+        sync_held = 1 << drop;
+        ai.aiLog().log("WSYNC", () -> String.format("#%d three cannot meet: %s, holding %s", sync_attempts,
+                syncNames(pair), SYNC_NAMES[drop]));
+    }
+
+    /**
+     * Ticks until the targets finish, running all of run from man-seconds ms, when they finish on the same tick; 0
+     * when they finish apart, -1 when one of them is more than SYNC_HORIZON ticks away.
+     */
+    private static int syncAlignedIn(float @NonNull [] ms, int run, int targets, int workers, float step) {
+        float share = workers * step / Integer.bitCount(run);
+        int k = 0;
+        boolean apart = false;
+        for (int c = 0; c < 3; c++) {
+            if ((targets & 1 << c) == 0)
+                continue;
+            int kc = syncTicksToFinish(ms[c], SYNC_WORK[c], share);
+            if (kc > SYNC_HORIZON)
+                return -1;
+            if (k == 0)
+                k = kc;
+            else if (kc != k)
+                apart = true;
+        }
+        return apart ? 0 : k;
+    }
+
+    /**
+     * Ticks until a queue at man-seconds ms finishes, adding share each tick as BuildProductionContainer.build does.
+     */
+    private static int syncTicksToFinish(float ms, float work, float share) {
+        if (share <= 0f)
+            return SYNC_HORIZON + 1;
+        float m = ms;
+        for (int k = 1; k <= SYNC_HORIZON; k++) {
+            m += share;
+            if (m >= work)
+                return k;
+        }
+        return SYNC_HORIZON + 1;
+    }
+
+    /**
+     * The first tick of the plan with the fewest ticks, then the fewest paused and helping queue-ticks, of up to
+     * SYNC_DEPTH ticks that run subsets of avail and helpers (never pausing forced) after which the targets finish
+     * together running all of avail, or finish together within it; 0 when there is none. A plan is a multiset of
+     * ticks tried in one order, so the rest of it is found again in the next tick.
+     */
+    private static int syncSearch(float @NonNull [] ms, int avail, int forced, int helpers, int targets, int workers,
+            float step) {
+        int[] moves = new int[7];
+        int m = 0;
+        for (int s = 1; s < 8; s++)
+            if ((s & ~(avail | helpers)) == 0 && (s & forced) == forced && s != avail)
+                moves[m++] = s;
+        if (m == 0)
+            return 0;
+        int[] seq = new int[SYNC_DEPTH];
+        float[] sim = new float[3];
+        for (int depth = 1; depth <= SYNC_DEPTH; depth++) {
+            Arrays.fill(seq, 0);
+            int best = 0;
+            int best_pauses = Integer.MAX_VALUE;
+            while (true) {
+                int pauses = 0;
+                for (int i = 0; i < depth; i++)
+                    pauses += Integer.bitCount(avail & ~moves[seq[i]]) + Integer.bitCount(helpers & moves[seq[i]]);
+                if (pauses < best_pauses
+                        && syncPlanWorks(ms, sim, moves, seq, depth, avail, helpers, targets, workers, step)) {
+                    best = moves[seq[0]];
+                    best_pauses = pauses;
+                }
+                int i = depth - 1;
+                while (i >= 0 && seq[i] == m - 1)
+                    i--;
+                if (i < 0)
+                    break;
+                seq[i]++;
+                for (int j = i + 1; j < depth; j++)
+                    seq[j] = seq[i];
+            }
+            if (best != 0)
+                return best;
+        }
+        return 0;
+    }
+
+    private static boolean syncPlanWorks(float @NonNull [] ms, float @NonNull [] sim, int @NonNull [] moves,
+            int @NonNull [] seq, int depth, int avail, int helpers, int targets, int workers, float step) {
+        System.arraycopy(ms, 0, sim, 0, 3);
+        for (int i = 0; i < depth; i++) {
+            int run = moves[seq[i]];
+            float share = workers * step / Integer.bitCount(run);
+            int finished = 0;
+            for (int c = 0; c < 3; c++) {
+                if ((run & 1 << c) == 0)
+                    continue;
+                float v = sim[c] + share;
+                if (v >= SYNC_WORK[c]) {
+                    finished |= 1 << c;
+                    v = 0f;
+                }
+                sim[c] = v;
+            }
+            // a helper must not finish a weapon the policy did not want (it would take the rock the rubber axe needs)
+            if ((finished & helpers) != 0)
+                return false;
+            if ((finished & targets) != 0)
+                return (finished & targets) == targets;
+        }
+        return syncAlignedIn(sim, avail, targets, workers, step) > 0;
+    }
+
+    /** The targets with the most man-seconds left run, those more than a tick of all the peons' work ahead wait. */
+    private static int syncCatchUp(float @NonNull [] ms, int avail, int targets, int workers, float step) {
+        float top = 0f;
+        for (int c = 0; c < 3; c++)
+            if ((targets & 1 << c) != 0)
+                top = Math.max(top, SYNC_WORK[c] - ms[c]);
+        float slack = workers * step;
+        int run = avail;
+        for (int c = 0; c < 3; c++)
+            if ((targets & 1 << c) != 0 && top - (SYNC_WORK[c] - ms[c]) > slack)
+                run &= ~(1 << c);
+        return run;
+    }
+
+    /** Ends the alignment under way (logging why, when there was one) and orders the queues it held again. */
+    private void syncRelease(@NonNull String why) {
+        if (sync_targets != 0) {
+            int n = sync_attempts;
+            ai.aiLog().log("WSYNC", () -> String.format("#%d released: %s", n, why));
+            sync_targets = 0;
+            sync_due = 0;
+        }
+        sync_held = 0;
+        Building armory = sync_armory;
+        boolean alive = armory != null && !armory.isDead() && armory.isComplete();
+        if (sync_helping != 0 && alive && !wantsRockWeapons()) {
+            int orders = syncQueue(armory, SYNC_ROCK).getNumSupplies();
+            if (orders > 0)
+                syncOrder(armory, SYNC_ROCK, -orders, false);
+        }
+        sync_helping = 0;
+        for (int c = 0; c < 3; c++) {
+            if (!sync_paused[c])
+                continue;
+            sync_paused[c] = false;
+            boolean wanted = c == SYNC_ROCK ? wantsRockWeapons() : c == SYNC_IRON || ai.owner().canUseRubber();
+            if (alive && wanted && syncQueue(armory, c).getNumSupplies() == 0)
+                syncOrder(armory, c, BuildSpinner.INFINITE_LIMIT, true);
+        }
+    }
+
+    /** Remembers what the armory holds after our orders, and what the next tick should make of its queues. */
+    private void syncSnapshot(@NonNull Building armory, @NonNull BuildProductionContainer @NonNull [] queues,
+            float @NonNull [] ms, int @NonNull [] stock, int workers, float step) {
+        int run = 0;
+        for (int c = 0; c < 3; c++)
+            if (queues[c].getNumSupplies() > 0 && syncAffordable(stock, c))
+                run |= 1 << c;
+        float share = run != 0 ? workers * step / Integer.bitCount(run) : 0f;
+        for (int c = 0; c < 3; c++) {
+            float next = ms[c];
+            if ((run & 1 << c) != 0) {
+                next += share;
+                if (next >= SYNC_WORK[c])
+                    next = 0f;
+            }
+            sync_expect[c] = next;
+            sync_ms[c] = ms[c];
+            sync_progress[c] = queues[c].getBuildProgress();
+            sync_weapons[c] = armory.getSupplyContainer(SYNC_WEAPONS[c]).getNumSupplies();
+        }
+        System.arraycopy(stock, 0, sync_stock, 0, 4);
+        sync_carried.clear();
+        int ax = armory.getGridX();
+        int ay = armory.getGridY();
+        for (Selectable<?> s : ai.owner().getUnits().getSet()) {
+            if (!(s instanceof Unit u) || u.isDead() || Math.abs(u.getGridX() - ax) > SYNC_REACH
+                    || Math.abs(u.getGridY() - ay) > SYNC_REACH)
+                continue;
+            UnitSupplyContainer load = u.getSupplyContainer();
+            if (load == null || load.getNumSupplies() == 0)
+                continue;
+            int supply = syncSupplyIndex(load.getSupplyType());
+            if (supply >= 0)
+                sync_carried.put(u, new int[]{supply, load.getNumSupplies()});
+        }
+        sync_tick = ai.ticks();
+    }
+
+    /**
+     * The man-seconds behind a queue's progress (man_seconds / work in floats): a guess that gives the same progress
+     * (the planned next value, then the unchanged one), else the float nearest progress x work that does.
+     */
+    private static float syncManSeconds(float progress, float work, float planned, float unchanged) {
+        if (progress == 0f)
+            return 0f;
+        if (!Float.isNaN(planned) && planned / work == progress)
+            return planned;
+        if (!Float.isNaN(unchanged) && unchanged / work == progress)
+            return unchanged;
+        float guess = progress * work;
+        float best = guess;
+        float best_d = Float.MAX_VALUE;
+        float f = Math.nextDown(Math.nextDown(Math.nextDown(guess)));
+        for (int i = 0; i < 7; i++, f = Math.nextUp(f)) {
+            if (f / work == progress && Math.abs(f - guess) < best_d) {
+                best = f;
+                best_d = Math.abs(f - guess);
+            }
+        }
+        return best;
+    }
+
+    /** Whether the stock holds a weapon of queue c, as BuildProductionContainer.hasEnoughSupplies checks. */
+    private static boolean syncAffordable(int @NonNull [] stock, int c) {
+        for (int s = 0; s < 4; s++)
+            if (stock[s] < SYNC_COST[c][s])
+                return false;
+        return true;
+    }
+
+    /** Whether queue c and the rubber axe share a resource the stock holds too little of to pay for both. */
+    private static boolean syncShortShared(int @NonNull [] stock, int c) {
+        for (int s = 0; s < 4; s++)
+            if (SYNC_COST[c][s] > 0 && SYNC_COST[SYNC_RUBBER][s] > 0
+                    && stock[s] < SYNC_COST[c][s] + SYNC_COST[SYNC_RUBBER][s])
+                return true;
+        return false;
+    }
+
+    private static int syncSupplyIndex(@Nullable Class<?> type) {
+        for (int s = 0; s < 4; s++)
+            if (SYNC_SUPPLIES[s] == type)
+                return s;
+        return -1;
+    }
+
+    private static @NonNull BuildProductionContainer syncQueue(@NonNull Building armory, int c) {
+        return (BuildProductionContainer) armory.getBuildSupplyContainer(SYNC_WEAPONS[c]);
+    }
+
+    private static int @NonNull [] syncStock(@NonNull Building armory) {
+        int[] stock = new int[4];
+        for (int s = 0; s < 4; s++)
+            stock[s] = armory.getSupplyContainer(SYNC_SUPPLIES[s]).getNumSupplies();
+        return stock;
+    }
+
+    private void syncOrder(@NonNull Building armory, int c, int count, boolean infinite) {
+        Player owner = ai.owner();
+        switch (c) {
+            case SYNC_ROCK -> owner.buildRockWeapons(armory, count, infinite);
+            case SYNC_IRON -> owner.buildIronWeapons(armory, count, infinite);
+            default -> owner.buildRubberWeapons(armory, count, infinite);
+        }
+    }
+
+    private static @NonNull String syncNames(int queues) {
+        StringBuilder sb = new StringBuilder();
+        for (int c = 0; c < 3; c++)
+            if ((queues & 1 << c) != 0)
+                sb.append(sb.isEmpty() ? "" : "+").append(SYNC_NAMES[c]);
+        return sb.toString();
+    }
+
+    private static @NonNull String syncState(float @NonNull [] ms, int @NonNull [] stock) {
+        return String.format("left rock %.2f iron %.2f rubber %.2f, stock %d/%d/%d/%d", SYNC_WORK[0] - ms[0],
+                SYNC_WORK[1] - ms[1], SYNC_WORK[2] - ms[2], stock[0], stock[1], stock[2], stock[3]);
     }
 
     private void computeGatherTargets() {
