@@ -1238,3 +1238,9 @@ retreat through the same pass (only the attack role is watched).
   tower_parallel=1). Also bit-identical at N=13 (params that never bind there): attack_max_strength 50/100, capped_ratio
   0.4/0.9. tower_parallel 2/3 and a tower-pipeline audit (4 lenses + verifiers + judge) are running.
 - logs-cur5-vs13 (24 logged N=13 games, seeds 2001-2024, current defaults): 2 wins, s2017 at 88 min and s2007 at 215 min.
+- The two logged N=13 wins replay VERIFIED on snapshot cf55e1be15: logs-cur5-vs13 s2017 (88:22, checksum 1656383995)
+  and s2007 (214:42, checksum -640923937).
+- **Tower throughput is a lever** (N=13 s1..200): tower_parallel_late=2 (two tower projects at once from 600 s) alive40
+  +4.5 pp (z 2.3), surv60 +0.48 (z 1.3), towers20 +0.31 (z 1.3), wp +0.3 pp (z 1.5); tower_parallel=2 from the start
+  surv60 +0.42, wp +0.6 pp (z 1.7); tower_builders=12 no (elim -.012, towers20 -0.45). Confirmations queued (fresh N=13,
+  N=12 both halves, N=14).
