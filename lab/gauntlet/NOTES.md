@@ -1144,3 +1144,8 @@ retreat through the same pass (only the attack role is watched).
   from the staging point (which sits toward the map centre, not at our start) + priority + 8 m per unit of the target's
   defense. In s1007 (N=14) four candidates tied within 8 points: s2's armory 140 m away with defense 36 against s13's
   352 m away with defense 9; a small first army then takes the weakest far copy.
+- **N=12 cheap arms on cur4 (s1..200 vs freeze-squad6-c3-vs12-hv):** chief_safe=10 (our chieftain keeps 10 cells from
+  awake enemy warriors while his stun recharges; never screened before) W 9 -> 11, surv60 +0.9 (z 1.7), alive40 +4.5
+  pp (z 2.2), wp +0.9 pp (z 1.3): confirming (N=12 s201..400, N=13, safe 7 and 14). tower_home_anchor=true with
+  tower_q_anchor=false W 9 -> 1, surv60 -3.0 (z -3.8), towers20 -2.4 (z -6.6): no. recall_old_gatherers=false W 9 -> 5,
+  surv60 +1.2 (z 1.9), wp -0.7 pp: no. tower_min_quarters=1 W 9 -> 9, all ~0: no.
