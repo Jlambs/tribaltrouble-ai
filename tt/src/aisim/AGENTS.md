@@ -19,7 +19,7 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 | `aisim.build` | `Snapshot`, `Pool`, `ClassFiles` | Build snapshots; frozen AIs; reading and writing class folders and jars. |
 | | `Lint`, `NewAi` | The fair-play and determinism check of AI packages; new NAME, from the template `player/starter/StarterAI`. |
 | `aisim.analysis` | `Runs`, `Game`, `End` | Reading run folders; one recorded game (result row and game file); how a game ended. |
-| | `Summary`, `Compare`, `Show`, `Curves`, `Fights`, `Export` | One command each (`Curves` also makes summary's and compare's curve tables). |
+| | `Summary`, `Compare`, `Show`, `Curves`, `Fights`, `Export`, `Profile` | One command each (`Curves` also makes summary's and compare's curve tables; `Profile` reads the Flight Recorder files of `--profile`). |
 | | `Stats`, `Table` | Statistics; aligned text tables, short numbers and clock times. |
 
 `play` uses `build` (snapshots, frozen AIs) and `analysis` (the summary after a run, reading games to replay them).

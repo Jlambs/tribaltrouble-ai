@@ -38,12 +38,11 @@ public final class Replay {
 
     /**
      * Replays game {@code key} of {@code run} with AI logs on, on the run's snapshot or on {@code snap_option}, for
-     * {@code until} game minutes or to the end, and verifies it. Returns 1 when a finished game replayed on its own
-     * snapshot differs.
+     * {@code until} game minutes or to the end, and verifies it; with {@code profile}, under Flight Recorder, next to
+     * the replayed game. Returns 1 when a finished game replayed on its own snapshot differs.
      */
     public static int run(@NonNull String run, @NonNull String key, @Nullable String snap_option,
-            @Nullable Integer until,
-            boolean stale_ok) throws IOException {
+            @Nullable Integer until, boolean stale_ok, boolean profile) throws IOException {
         Path dir = Runs.dir(run);
         Map<String, Object> original = Runs.row(run, key);
         ObjectNode job = originalJob(dir, run, key);
@@ -67,9 +66,16 @@ public final class Replay {
         System.out.println("replaying " + game + " on snapshot " + snap + " with AI logs on ...");
         Path natives = dir.resolve("n").resolve("r");
         String heap = WorkerProcess.heap(job.get("seats").size(), job.get("size").asInt());
-        WorkerProcess worker = new WorkerProcess(worker_log, natives, snap, heap);
+        Path recording = profile ? out.resolve(key + ".jfr") : null;
+        if (recording != null) {
+            Files.deleteIfExists(recording);
+        }
+        WorkerProcess worker = new WorkerProcess(worker_log, natives, snap, heap, recording);
         Map<String, Object> row = worker.play(job);
         worker.close();
+        if (recording != null) {
+            System.out.println("profile: ./aisim.sh profile " + Aisim.slash(recording) + " [--focus TEXT]");
+        }
         if (row == null) {
             System.out.println("!!! the replay worker died; see " + Aisim.slash(worker_log));
             return 1;

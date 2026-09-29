@@ -16,7 +16,7 @@ AI itself is in **[the AI guide](../tt/src/main/java/com/oddlabs/tt/player/AGENT
 is in [maintaining.md](./maintaining.md).
 
 Contents: [Words used here](#words-used-here) · [Requirements](#requirements) · [Quick start](#quick-start) ·
-[The development loop](#the-development-loop) · [Workers](#workers) · [Opponents](#opponents) · [Players](#players) · [Maps](#maps) ·
+[The development loop](#the-development-loop) · [Workers](#workers) · [Speed](#speed) · [Opponents](#opponents) · [Players](#players) · [Maps](#maps) ·
 [Reading results](#reading-results) ·
 [Why did it lose?](#why-did-it-lose-show-and-replay) · [Across a run](#across-a-run-curves-fights-and-export) ·
 [Your own tools](#your-own-tools) · [Play-tests](#play-tests) · [Troubleshooting](#troubleshooting) · Reference:
@@ -135,6 +135,40 @@ To take less, or a fixed amount:
 
 The machine's numbers come from the JDK (`com.sun.management.OperatingSystemMXBean`, and `MemAvailable` in
 `/proc/meminfo` on Linux), so they respect a container's CPU and memory limits. `play` and `replay` use one worker.
+
+## Speed
+
+The simulation's CPU per game is in `summary` (`cost`) and in each result row (`cpu`). To make your AI (or the
+harness) cheaper, find where the time goes, change it, and measure the change on the same games:
+
+```bash
+./aisim.sh batch --players "myai vs hard*3" --seeds 1..8 --profile --name prof-myai
+./aisim.sh profile prof-myai                              # engine, each AI, map generation; the top methods
+./aisim.sh profile prof-myai --focus player.myai          # only your methods
+./aisim.sh profile prof-myai --callers HashMap.getNode    # who calls a method, three callers deep
+```
+
+`--profile` runs every worker under Java Flight Recorder (about 2% more CPU) and writes one file per worker JVM to
+the run's `prof/` when it exits; `replay RUN KEY --profile` profiles one game. `profile` reads the simulation
+thread's samples: the share of the engine, of each AI (the samples inside it, the engine calls it makes included), of
+map generation and of the recorder; then the methods by inclusive share (with everything they call) and own share
+(their own code), and the time the JIT compiled and the GC paused on other threads.
+
+A profile says where time may go, not what a change saves: a method can look several times bigger than removing it
+saves. Measure every change with `compare` on runs that played the same games at the same time, since the CPU per
+game moves with the machine's load (a few % between runs of the same build, one after the other):
+
+```bash
+./aisim.sh freeze myai-before myai                        # the current version, before the change
+# change the code, then ./aisim.sh build
+./aisim.sh batch --players "@myai-before vs hard*3" --seeds 1..24 --name speed-before &
+./aisim.sh batch --players "myai vs hard*3" --seeds 1..24 --name speed-after
+wait; ./aisim.sh compare speed-before speed-after
+```
+
+A speed change should play every game the same: `compare` then says all games are identical, and its `cpu` line
+gives the change and its standard error over the games, such as `cpu per game 39.2 s -> 26.3 s: -32.6% +- 1.4% *`;
+`*` marks a change beyond 2 SE. It warns when the runs started more than 10 minutes apart, or only one was profiled.
 
 ## Opponents
 
@@ -274,7 +308,9 @@ as `a="myai hard"`, is quoted.
 `compare BASE VARIANT` pairs the two runs game by game (same key = same map, start and world seed). Per metric it prints
 both runs' means and the paired difference with its standard error (SE), weighting maps equally, since a map's starts
 are not independent. `*` marks a difference larger than 2 SE. It counts identical games (same final checksum): when
-almost all are identical, the variant is inert or never triggers. It refuses runs that differ in anything but team A's
+almost all are identical, the variant is inert or never triggers, or it is a pure speed change, which should play every
+game the same. Its `cpu` line is the change of the simulation's CPU per game, paired over the games
+([Speed](#speed)). It refuses runs that differ in anything but team A's
 AIs and races: the other teams (`lineup` in run.json), how many players team A has, the frozen version of any player
 outside team A, the map options, the maps of the paired games, minutes, `--rng`, `--no-collapse` or `--stop-when-a-out`
 (`--force` compares anyway). It prints team A's curves for both runs. The metrics are team A's ([How a game
@@ -459,15 +495,7 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
 - The CPU goes to the engine's unit movement and path finding, map generation (about 0.8 s per game) and the AIs.
   Headless, the engine skips what only drawing reads: the scene tree, the heights and bounds of models, and the motion
   of particles.
-  `summary` prints the cost per game. To see where one game's time goes, replay it under Java Flight Recorder
-  (`jfr` is in the JDK's `bin` folder):
-
-  ```bash
-  AISIM_JAVA_OPTS=-XX:StartFlightRecording=filename=aisim/profile.jfr,settings=profile ./aisim.sh replay RUN KEY
-  jfr view hot-methods aisim/profile.jfr               # the busiest methods
-  jfr print --stack-depth 64 --events jdk.ExecutionSample aisim/profile.jfr |
-      awk '/jdk.ExecutionSample/ {n++; in_ai=0} /player\.myai\./ && !in_ai {ai++; in_ai=1} END {print ai+0 " of " n " samples in myai"}'
-  ```
+  `summary` prints the cost per game; [Speed](#speed) shows where it goes and how to measure a change.
 - Snapshots cost about 2-3 MB per changed build (the game and harness classes as jars); the ~65 MB of assets and
   resources are stored once. Snapshots hold absolute paths into `aisim/snap/blobs` and the Gradle cache: after
   moving the checkout or clearing `~/.gradle/caches`, run `./aisim.sh build`; runs from older snapshots can then no
@@ -503,13 +531,14 @@ The same list as `./aisim.sh help`:
 ./aisim.sh build                      compile (JDK 26), lint every AI package and snapshot the build
 ./aisim.sh new     NAME               start AI NAME from the template
 ./aisim.sh lint    [NAME|CLASS|@TAG...]
-./aisim.sh play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
-./aisim.sh batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--logs [lost]] [--name NAME] [WORKERS]
-                   [MAP] [GAME]
+./aisim.sh play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [--profile] [MAP] [GAME]
+./aisim.sh batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--logs [lost]] [--name NAME] [--profile]
+                   [WORKERS] [MAP] [GAME]
 ./aisim.sh summary RUN
 ./aisim.sh compare BASE VARIANT [VARIANT...] [--force]
 ./aisim.sh show    RUN KEY | FILE.jsonl
-./aisim.sh replay  RUN KEY [--snap latest|ID] [--until MIN]
+./aisim.sh replay  RUN KEY [--snap latest|ID] [--until MIN] [--profile]
+./aisim.sh profile RUN | FILE.jfr [--focus TEXT] [--callers TEXT] [--top N]
 ./aisim.sh curves  RUN [RUN...] [--fields F,F] [--at MIN,MIN] [--split]
 ./aisim.sh fights  RUN [KEY] | FILE.jsonl [--min N]
 ./aisim.sh export  RUN [RUN...]
@@ -611,6 +640,8 @@ aisim/                                  (in the repository root, git-ignored)
     g/<key>-ai-s<slot>.log              AI decision logs (play, and batch --logs; only AIs that use AiLog write one)
     g/<key>.err                         the full stack of a crash, hang or error
     replay/<key>.jsonl, <key>-ai-s<slot>.log, <key>.row.json, <key>.worker.log      from `replay`
+    replay/<key>.jfr                    from `replay --profile`
+    prof/<pid>.jfr                      from `--profile`: one Flight Recorder file per worker JVM, written as it exits
     replay-<snap>/...                   from `replay --snap latest|ID` (another build)
     log/w<i>.log                        worker output (engine chatter, errors)
     n/                                  native libraries unpacked for the workers (ignore)
@@ -618,9 +649,10 @@ aisim/                                  (in the repository root, git-ignored)
   natives/gui                           native libraries unpacked for `gui` (ignore)
 ```
 
-**run.json**: `v name snap java created workers workerLimits players a lineup config logs aPools pools expected jobs`.
+**run.json**: `v name snap java created workers workerLimits profile players a lineup config logs aPools pools expected
+jobs`.
 `workers` is the most workers the run may have, and `workerLimits` what was asked for: `workers` (`auto` or the
-count), `cpus` and `memoryMb` (null when not given). `players` is
+count), `cpus` and `memoryMb` (null when not given); `profile` whether the workers were profiled. `players` is
 `--players` as given (like `hard easy vs normal*2`), `a` team A's part of it, `lineup` the same with each player of team
 A written as `A` (like `A*2 vs normal*2`) and `config` the map options and game settings (compare checks both), `logs`
 which games keep AI logs (`all`, `lost` or null), and `aPools` and `pools` the jar hashes of the frozen AIs on team A

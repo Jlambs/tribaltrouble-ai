@@ -69,26 +69,34 @@ public final class Batch {
 
     /**
      * Plays {@code jobs} as run {@code name} on the latest snapshot with worker JVMs within {@code limits} (see
-     * {@link Pace}), then prints the summary. Returns 2 if the run was cancelled or aborted, else the summary's exit
-     * code.
+     * {@link Pace}), then prints the summary; with {@code profile}, every worker writes a Flight Recorder profile to
+     * the run's prof/ folder. Returns 2 if the run was cancelled or aborted, else the summary's exit code.
      */
     public static int run(@NonNull String name, @NonNull Setup setup, @NonNull List<Job> jobs,
-            Pace.@NonNull Limits limits) throws IOException {
+            Pace.@NonNull Limits limits, boolean profile) throws IOException {
         String snap = Snapshot.latest();
         Path dir = Runs.RUNS.resolve(name);
         Files.createDirectories(dir.resolve("log"));
         String heap = WorkerProcess.heap(jobs);
-        RunInProgress progress = new RunInProgress(dir, name, snap, jobs, limits, heap, LOGS_LOST.equals(setup.logs()));
+        Path profile_dir = profile ? dir.resolve("prof") : null;
+        RunInProgress progress = new RunInProgress(dir, name, snap, jobs, limits, heap, LOGS_LOST.equals(setup.logs()),
+                profile_dir);
         int slots = progress.pace.slots();
-        writeRunJson(dir, name, setup, jobs, slots, limits, snap);
+        writeRunJson(dir, name, setup, jobs, slots, limits, profile, snap);
         String counts = jobs.size() + " games | " + (progress.pace.automatic() ? "workers auto, up to " + slots : slots + " workers");
         if (setup.logs() != null) {
             counts += setup.logs().equals(LOGS_LOST) ? " | AI logs of the games team A did not win" : " | AI logs";
+        }
+        if (profile) {
+            counts += " | profiled";
         }
         System.out.println(
                 "aisim " + name + ": " + setup.players() + " | " + setup.config() + " | " + counts + " | snapshot " + snap);
         boolean completed = progress.playAll();
         int status = Summary.run(name);
+        if (profile) {
+            System.out.println("profile: ./aisim.sh profile " + name + " [--focus TEXT] [--callers TEXT]");
+        }
         return completed ? status : 2;
     }
 
@@ -97,7 +105,7 @@ public final class Batch {
      * for, and {@code jobs} is what a replay later forwards to the run's own (possibly older) snapshot.
      */
     private static void writeRunJson(@NonNull Path dir, @NonNull String name, @NonNull Setup setup,
-            @NonNull List<Job> jobs, int workers, Pace.@NonNull Limits limits,
+            @NonNull List<Job> jobs, int workers, Pace.@NonNull Limits limits, boolean profile,
             @NonNull String snap) throws IOException {
         Job first = jobs.get(0);
         Map<String, Object> meta = new LinkedHashMap<>();
@@ -108,6 +116,7 @@ public final class Batch {
         meta.put("created", Instant.now().toString());
         meta.put("workers", workers);
         meta.put("workerLimits", limits.json());
+        meta.put("profile", profile);
         meta.put("players", setup.players());
         meta.put("a", first.teamPlayers(first.team(first.side())));
         meta.put("lineup", setup.lineup());
@@ -142,6 +151,8 @@ public final class Batch {
         private final @NonNull String heap;
         private final int expected;
         private final @NonNull Pace pace;
+        /** Where workers write their profiles (--profile), else null. */
+        private final @Nullable Path profile;
         /** Delete the AI logs of every game team A won (--logs lost). */
         private final boolean lost_only;
         private final long start_nanos = System.nanoTime();
@@ -167,8 +178,9 @@ public final class Batch {
         private int draws;
 
         RunInProgress(@NonNull Path dir, @NonNull String name, @NonNull String snap, @NonNull List<Job> jobs,
-                Pace.@NonNull Limits limits, @NonNull String heap, boolean lost_only) {
+                Pace.@NonNull Limits limits, @NonNull String heap, boolean lost_only, @Nullable Path profile) {
             this.lost_only = lost_only;
+            this.profile = profile;
             this.dir = dir;
             this.snap = snap;
             this.heap = heap;
@@ -311,7 +323,8 @@ public final class Batch {
                     return null;
                 }
                 Path natives = dir.resolve("n").resolve("w" + index);
-                WorkerProcess worker = new WorkerProcess(workerLog(index), natives, snap, heap);
+                WorkerProcess worker = new WorkerProcess(workerLog(index), natives, snap, heap,
+                        profile == null ? null : profile.resolve("%p.jfr"));
                 live.add(worker);
                 return worker;
             }
