@@ -826,18 +826,6 @@ class Strategy {
      */
     boolean shepherd_safe_walk = false;
     /**
-     * shepherd_calm_peons (cells, 0 = off): enemy peons that cannot start a fight on their own (gathering, building,
-     * walking without aggression; only idle units and attack-walks scan) block a spot and make a shepherd flee only
-     * within this many cells, not shepherd_clear (Shepherd.enemyNear, threatAway).
-     */
-    int shepherd_calm_peons = 0;
-    /**
-     * shepherd_route (cells, 0 = off): a shepherd farther than this from its spot walks legs of this length, each
-     * straight at the spot if clear of enemy warriors (shepherd_safe_clear cells), fighting peons and enemy towers
-     * (16 cells), else bent by up to 90 degrees; with no clear leg it holds (Shepherd.routeStep).
-     */
-    int shepherd_route = 0;
-    /**
      * shepherd_follow: while a copy's oldest idle warrior stands at home (40 cells from its armory) and its last wave
      * is still out, its shepherd's spot is picked around that wave's target (where its survivors go idle and lead the
      * next launch), not at home. shepherd_home_pair (cells, 0 = off): copies starting at least this far from us get a
@@ -846,23 +834,10 @@ class Strategy {
      */
     boolean shepherd_follow = false;
     /**
-     * shepherd_light: shepherds are recruited only from peons that carry nothing. A loaded peon walks at 4 m/s instead
-     * of 5 (Unit.TRANSPORT_SPEED_SCALE), as fast as the warriors it runs from, and a shepherd never delivers its load:
-     * half the recruits were gatherers (shep-base2-log), and 90 % of shepherds die while fleeing (Shepherd.recruit).
+     * shepherd_gap (seconds, 0 = off): after a copy's shepherd is lost, the next is recruited only this much later
+     * (nine shepherds of ten die, most on the way: Shepherd.tend).
      */
-    boolean shepherd_light = false;
-    /**
-     * shepherd_flee_near: a shepherd flees along the sum of its threats' pushes, each 1 / distance (the nearest
-     * decide), not away from their centroid, on the nearest of 16 headings whose straight 22-cell walk crosses only
-     * open cells, keeping its last heading while that stays within 45 degrees (Shepherd.fleePoint); dying shepherds
-     * made only 1.1-1.4 cells/s over their last 6 s, shuffling at woods (shep-flee-log; a peon runs 2.5).
-     */
-    boolean shepherd_flee_near = false;
-    /**
-     * A warrior walking aggressively within 40 cells whose target is within this many cells of the shepherd is a wave
-     * coming at it, and the shepherd runs (Shepherd.threatAway); fleeing dying shepherds ran mostly from such waves.
-     */
-    int shepherd_coming_r = 14;
+    float shepherd_gap = 0f;
     int shepherd_home_pair = 0;
     int shepherd_safe_look = 40;
     int shepherd_safe_clear = 10;
@@ -918,12 +893,8 @@ class Strategy {
         shepherd_grace = (float) params.getDouble("shepherd_grace", shepherd_grace);
         shepherd_travel = (float) params.getDouble("shepherd_travel", shepherd_travel);
         shepherd_safe_walk = params.getBoolean("shepherd_safe_walk", shepherd_safe_walk);
-        shepherd_calm_peons = params.getInt("shepherd_calm_peons", shepherd_calm_peons);
-        shepherd_route = params.getInt("shepherd_route", shepherd_route);
         shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
-        shepherd_light = params.getBoolean("shepherd_light", shepherd_light);
-        shepherd_flee_near = params.getBoolean("shepherd_flee_near", shepherd_flee_near);
-        shepherd_coming_r = params.getInt("shepherd_coming_r", shepherd_coming_r);
+        shepherd_gap = (float) params.getDouble("shepherd_gap", shepherd_gap);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
