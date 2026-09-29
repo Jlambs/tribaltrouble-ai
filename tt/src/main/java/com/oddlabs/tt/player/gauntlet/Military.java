@@ -510,6 +510,18 @@ final class Military {
         List<Unit> at_base = new ArrayList<>();
         // parked_scan_threat: a parked enemy is a threat only within its scan of something of ours (Chebyshev).
         int parked_scan = ai.strategy().parked_scan_threat;
+        // The cells of the peons an enemy near them threatens (not chicken hunters or shepherds), in list order, looked
+        // up once instead of once per enemy.
+        int np = 0;
+        int[] pxs = new int[intel.peons.size()];
+        int[] pys = new int[intel.peons.size()];
+        for (Unit p : intel.peons) {
+            PeonState s = intel.peon_states.get(p);
+            if (s == PeonState.GATHER_CHICKEN || s == PeonState.SHEPHERD)
+                continue;
+            pxs[np] = p.getGridX();
+            pys[np++] = p.getGridY();
+        }
         for (Unit e : enemies) {
             if (ai.decoys().caged(e))
                 continue;
@@ -529,13 +541,10 @@ final class Military {
             }
             boolean near_peons = false;
             if (!near_base) {
-                for (Unit p : intel.peons) {
-                    PeonState s = intel.peon_states.get(p);
-                    if (s == PeonState.GATHER_CHICKEN || s == PeonState.SHEPHERD)
-                        continue;
-                    if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), p.getGridX(), p.getGridY()) <= 12 * 12) {
-                        if (box != Integer.MAX_VALUE && Math.max(Math.abs(e.getGridX() - p.getGridX()), Math.abs(
-                                e.getGridY() - p.getGridY())) > box) {
+                for (int k = 0; k < np; k++) {
+                    if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), pxs[k], pys[k]) <= 12 * 12) {
+                        if (box != Integer.MAX_VALUE && Math.max(Math.abs(e.getGridX() - pxs[k]), Math.abs(
+                                e.getGridY() - pys[k])) > box) {
                             exempt = true;
                             continue;
                         }
