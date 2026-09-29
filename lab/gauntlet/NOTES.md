@@ -1117,3 +1117,9 @@ retreat through the same pass (only the attack role is watched).
   strength poured in over 12 min). Typical campaign: 1-3 outs of near neighbours at 7.5-10 min, then far targets
   and worn down by 15-18 min while the base, with 10-15 towers, falls at 20-27 min. Target-weight arms
   (target_home_weight 0.3 / 1 / 2.5, target_defense_weight 2 / 4 / 14) are in the N=13 sweep.
+- **unjam=8 screens: neutral, kept off.** N=11 s1..400 (360 min): fires in 12 games, the other 388 are bit-identical;
+  W 31 -> 31: s203 draw -> win at 75 min, s98 107 -> 58 min, s22 68 -> 54 min, but s97 (a 316-min win) -> loss at 262
+  min. N=12 s1..400: fires in 12, W 15 -> 15 (s63 61 -> 57 min). N=14 s1..200: never fires. It speeds up long wins and
+  fixes the s98-type wedge; it has not shown more wins. Harness note: a 400-game batch with 360-min games ran the
+  parent JVM (-Xmx768m) out of heap in the summary step (Curves) after every game had finished, so no summary.txt;
+  results.jsonl was complete (stub summaries written by hand so the pool moves on).
