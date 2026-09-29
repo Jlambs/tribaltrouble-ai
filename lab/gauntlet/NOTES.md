@@ -1208,3 +1208,7 @@ retreat through the same pass (only the attack role is watched).
   shepherd_gap=60 null at N=13, elim -.018 at N=12: no. shepherd_range=200 (no shepherds for far copies): elim -.070
   (z -8.2), surv60 -3.6 min (z -6.0): far copies' shepherds are essential although most die on the way. The lever, if
   any, is how shepherds survive a flee, not where they stand.
+- unstick_builders=30 fires in ~60 % of games (N=11: 460 unsticks in 121 of 200 games; N=13: 270 in 114), so wedged
+  builders are common, but outcomes do not move: N=11 s1..200 W 15 -> 19, elim +.023 (z 1.8); s201..400 W 20 -> 17, wp
+  -1.8 pp (z -2.5); pooled W 35 -> 36; N=13 W 0 -> 1, all ~0. With walk_select=300: N=11 W 15 -> 18, elim +.016 (z 1.1);
+  N=13 ~0. Kept off (a correct fix of a silly behaviour, but no measurable gain).
