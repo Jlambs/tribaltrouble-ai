@@ -864,3 +864,33 @@ map-specific; the legacy params and early features come from a 1v1 superhuman pr
   (-.005 / -.010: flat optimum around 8-10).
 - **N=12, base2 (before shepherds 120): cur-vs12-hv W 3/200 (s13, s64, s83), elim .177.** N=12/13 baselines with the
   new defaults running (7 workers each: >12 players need a 1 GB heap per worker).
+
+### Planning for N=13-14; code round 4 (2026-09-28/29)
+
+Plans (session scratchpad): maxn/synthesis.md (legacy params, win proxy, shepherds, towers, scaling) and
+archaeology/synthesis.md (1v1-era features, discarded ideas, hard-coded constants). Key findings:
+- N=11 gains do not always carry to N=12: shepherd_time 120 gave N=11 +2-3 min survival and W 28 vs 19, but at N=12
+  alive-at-40-min -2.5 pp and the first armory standing at 20 min -.045 (z -2.0). The N-step is survival from 25 to
+  40 min (alive at 25 min -> alive at 40 min: 30 % at N=11, 13 % at N=12, 7 % at N=13); copies out at 25 min are the
+  same in wins and losses. So adoptions need an N=12 check and survival ideas are screened at N=12.
+- Baselines (current defaults): **N=11 28/400 (7.0 %), N=12 4/400 (1.0 %: s63, s64, s274, s399), N=13 1/200 (s26)**.
+- lab/gauntlet/winproxy.py (committed): logistic P(win) from the 15/20/25-min census (copies out, homeless copies,
+  strength ratios, buildings, iron); held-out AUC .95-.99 at N=11, paired SE ~.007 per 200 games (wins .014). Used to
+  decide small margins only; N>=12 borrows N=11's intercept and it cannot see the 25-40-min window.
+- The user approved engine timing exploits that a human with perfect information and tick-by-tick control could do
+  (weapon_sync below).
+
+Legacy screens at N=11 (paired with st120b2-vs11-hv, wp = winproxy): shepherd_hold wp -1.1 pp (z -1.0), W 9 vs 10;
+attack_min_strength=22 wp -2.0 pp (z -2.0); base_radius=22 wp -0.5, W 7 vs 12; armory_delay_weight=0.8 elim -.035
+(z -2.7); attack_min_strength=14 -.024; hold_mid=6 +.003; hold_late=4 -.022. None adopted.
+
+Merged (all default off, the default build reproduces the reference checksums on s2-s5): freeze opening (Freeze.java:
+freeze_open, freeze_squad, freeze_eta, freeze_raze; N=12 smoke: target out at 73 s and 99 s in 2 of 3 seeds, our
+first armory +64-102 s later), Military legacy params (worn_basis/window/ratio, enemy_stun_mult, enemy_spell_recharge,
+enemy_first_seen, retreat_split_guard, parked_scan_econ/threat, hold_closing, hold_multi), Economy/Shepherd items
+(tower_face_live/place, shepherd_lead, tower_home_anchor, tower_q_anchor, front_order, tower_min_quarters, shepherd
+and chicken diagnostics), weapon_sync (align rubber/iron/rock axe completions on one tick so they share iron/rock:
+1-3 verified duplications per game when chickens are available; weapon_sync_three), and EnemyIndex (towers look up
+nearby enemies instead of every enemy; same choices, less CPU; suggested by the headless-engine session's profile).
+Observed: we gather few chickens (1 in 24 min in one smoke game while each Hard got 0-16): pickChicken skips chickens
+with enemies near.
