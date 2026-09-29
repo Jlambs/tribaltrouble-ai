@@ -27,6 +27,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,7 @@ import java.util.function.IntFunction;
  * place and team A's measures.
  *
  * <p>One game at a time per JVM, always on the thread that called {@link #boot()}: the simulation keeps static
- * scratch buffers and the GL context belongs to that thread.
+ * scratch buffers, and without {@link com.oddlabs.tt.global.Headless} the GL context belongs to that thread.
  */
 final class Match {
     /** A player with at most this many units and no chieftain or real building is collapsing, see collapsing(). */
@@ -62,13 +63,21 @@ final class Match {
     private static int perturb;
     /** Written so the JIT cannot drop the hashing loop as dead code. */
     private static volatile int hash_sink;
+    /**
+     * One class loader per frozen AI tag, which every slot and game of this worker JVM shares, as they share the
+     * classes of the build's own AIs. Loading a frozen AI afresh for each slot of each game made the JIT compile its
+     * code again every time, which cost about as much CPU as the games. Like any AI, a frozen one must keep no state
+     * in statics (the AI guide's rule); one that does plays its later games in a worker differently from its replay,
+     * and replay reports the MISMATCH.
+     */
+    private static final Map<String, URLClassLoader> frozen_loaders = new HashMap<>();
     /** Ticks played in the current game, for the worker's hang watchdog. */
     static volatile int progress;
 
     private Match() {
     }
 
-    /** Readies the calling thread for games: the client's resources and GL context, then the hash offset. */
+    /** Readies the calling thread for games: the resources ({@link ClientWorld#boot()}), then the hash offset. */
     static void boot() {
         ClientWorld.boot();
         perturb = (int) (ProcessHandle.current().pid() % 1000);
@@ -94,12 +103,15 @@ final class Match {
             GameRecorder recorder = startRecorder(job, snapshot, world);
             // before the AIs, which fetch their log handles when created
             AiLog.begin(world, aiLogFiles(job), "key=" + job.key() + " snap=" + snapshot);
-            List<URLClassLoader> loaders = new ArrayList<>();
             try {
                 Outcome outcome = new Outcome();
                 try {
-                    createAIs(job, world, outcome, loaders);
+                    createAIs(job, world, outcome);
                     if (outcome.end == null) {
+                        // Generating the map leaves garbage in the old generation, which the serial collector grows
+                        // rather than collects, game after game, up to -Xmx. One full collection here (tens of
+                        // milliseconds) shrinks the heap back to the world instead.
+                        System.gc();
                         play(job, world, recorder, outcome);
                     }
                 } catch (LinkageError e) {
@@ -111,9 +123,6 @@ final class Match {
                 row = finalRow(job, snapshot, world, recorder, outcome); // before AiLog.end(): it reads the AI counters
             } finally {
                 AiLog.end();
-                for (URLClassLoader loader : loaders) {
-                    loader.close();
-                }
             }
         }
         row.put("wall", seconds(System.nanoTime() - wall_start));
@@ -125,15 +134,14 @@ final class Match {
     // ---------------------------------------------------------------- the AIs
 
     /** Creates the AIs in slot order, as the game does; an AI that fails to start fails the game with an error. */
-    private static void createAIs(@NonNull Job job, @NonNull World world, @NonNull Outcome outcome,
-            @NonNull List<URLClassLoader> loaders) {
+    private static void createAIs(@NonNull Job job, @NonNull World world, @NonNull Outcome outcome) {
         // as Client creates it
         UnitInfo unit_info = new UnitInfo(false, false, 0, false, ClientWorld.STARTING_UNITS, 0, 0, 0);
         for (int slot = 0; slot < job.slots() && outcome.end == null; slot++) {
             Player player = world.getPlayers()[slot];
             String failed_start = "ai_init: slot " + slot + " " + job.spec(slot) + ": ";
             try {
-                player.setAI(createAI(job.spec(slot), player, unit_info, loaders));
+                player.setAI(createAI(job.spec(slot), player, unit_info));
             } catch (ExceptionInInitializerError e) {
                 // a LinkageError too, so it is caught first: a failing static initializer is the AI's own error
                 Throwable cause = e.getCause() == null ? e : e.getCause();
@@ -146,16 +154,15 @@ final class Match {
         }
     }
 
-    /** The AI of {@code spec}; a frozen AI gets a class loader of its own, which run() closes after the game. */
-    private static @NonNull AI createAI(@NonNull String spec, @NonNull Player player, @NonNull UnitInfo unit_info,
-            @NonNull List<URLClassLoader> loaders) {
+    /** The AI of {@code spec}; a frozen AI comes from its tag's class loader ({@link #frozen_loaders}). */
+    private static @NonNull AI createAI(@NonNull String spec, @NonNull Player player,
+            @NonNull UnitInfo unit_info) {
         String name = AiSpec.nameOf(spec);
         if (!name.startsWith("@")) {
             return AiSpec.create(spec, player, unit_info);
         }
         Pool pool = Pool.of(name.substring(1));
-        URLClassLoader loader = pool.newLoader();
-        loaders.add(loader);
+        URLClassLoader loader = frozen_loaders.computeIfAbsent(pool.tag(), _ -> pool.newLoader());
         try {
             return AiSpec.create(Class.forName(pool.entry(), true, loader), AiSpec.paramsOf(spec), player, unit_info);
         } catch (ClassNotFoundException e) {

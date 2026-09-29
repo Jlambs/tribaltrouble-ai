@@ -100,6 +100,14 @@ public class Particle extends Model {
         energy -= t;
     }
 
+    /**
+     * The part of {@link #update} that decides when the particle dies, for headless emitters: everything else a
+     * particle has (position, colour, size) is only drawn.
+     */
+    public final void age(float t) {
+        energy -= t;
+    }
+
     public final void setPos(float x, float y, float z) {
         position.set(x, y, z);
     }

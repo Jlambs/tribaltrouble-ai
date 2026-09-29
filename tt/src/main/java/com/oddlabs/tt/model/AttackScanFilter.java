@@ -2,6 +2,7 @@ package com.oddlabs.tt.model;
 
 import com.oddlabs.tt.pathfinder.Occupant;
 import com.oddlabs.tt.pathfinder.ScanFilter;
+import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -53,6 +54,12 @@ public final class AttackScanFilter implements ScanFilter {
     @Override
     public int getMaxRadius() {
         return max_range;
+    }
+
+    @Override
+    public long tagMask() {
+        // filter only takes live Selectables of enemies (Player.isEnemy)
+        return UnitGrid.enemyTagMask(owner.getPlayerInfo().getTeam());
     }
 
     @Override

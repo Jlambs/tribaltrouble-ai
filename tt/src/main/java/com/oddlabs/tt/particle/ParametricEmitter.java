@@ -1,6 +1,7 @@
 package com.oddlabs.tt.particle;
 
 import com.oddlabs.tt.animation.AnimationManager;
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.render.TextureKey;
 import org.joml.Vector3f;
@@ -112,6 +113,10 @@ public class ParametricEmitter extends Emitter<ParametricParticle> {
                     particles.remove();
                     continue;
                 }
+                if (Headless.ENABLED) {
+                    particle.age(t); // only the lifetime matters when nothing is drawn
+                    continue;
+                }
 
                 particle.update(t, getScaleX(), getScaleY(), getScaleZ());
                 float x = particle.getPosX();
@@ -133,8 +138,10 @@ public class ParametricEmitter extends Emitter<ParametricParticle> {
             }
             size += list.size();
         }
-        setBounds(x_min, x_max, y_min, y_max, z_min, z_max);
-        reregister();
+        if (!Headless.ENABLED) {
+            setBounds(x_min, x_max, y_min, y_max, z_min, z_max);
+            reregister();
+        }
         if (size == 0 && num_particles == 0) {
             remove();
         }

@@ -78,7 +78,7 @@ final class WorkerProcess {
     private static @NonNull List<String> command(@NonNull Path natives, @NonNull String snap, @NonNull String heap) {
         String java = ProcessHandle.current().info().command().orElse("java");
         List<String> command = new ArrayList<>(List.of(java, "-ea", "--enable-native-access=ALL-UNNAMED",
-                "-Xmx" + heap, "-XX:+UseSerialGC", "-Djava.awt.headless=true"));
+                "-Xmx" + heap, "-XX:+UseSerialGC", "-Djava.awt.headless=true", "-Dcom.oddlabs.tt.headless=true"));
         if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac")) {
             command.add("-XstartOnFirstThread"); // GLFW must own the first thread on macOS
         }

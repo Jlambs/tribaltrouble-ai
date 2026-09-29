@@ -1,14 +1,17 @@
 package com.oddlabs.tt.resource;
 
 import com.oddlabs.tt.global.Globals;
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.render.Texture;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL13;
 
 public final class StructureBlend extends BlendInfo {
-    private final @NonNull Texture structure_map;
-    private final @NonNull Texture normal_map;
+    // null headless, where nothing is drawn
+    private final @Nullable Texture structure_map;
+    private final @Nullable Texture normal_map;
 
     private @NonNull Texture createStructureMap(GLIntImage structure_image) {
         return new Texture(new GLIntImage[]{structure_image}, GL11.GL_RGB, GL11.GL_LINEAR, GL11.GL_LINEAR,
@@ -17,15 +20,15 @@ public final class StructureBlend extends BlendInfo {
 
     public StructureBlend(GLIntImage structure_image, GLIntImage normal_image, @NonNull GLByteImage alpha_image) {
         super(alpha_image, Globals.COMPRESSED_A_FORMAT);
-        structure_map = createStructureMap(structure_image);
-        normal_map = createStructureMap(normal_image);
+        structure_map = Headless.ENABLED ? null : createStructureMap(structure_image);
+        normal_map = Headless.ENABLED ? null : createStructureMap(normal_image);
     }
 
-    public @NonNull Texture getStructureMap() {
+    public @Nullable Texture getStructureMap() {
         return structure_map;
     }
 
-    public @NonNull Texture getNormalMap() {
+    public @Nullable Texture getNormalMap() {
         return normal_map;
     }
 

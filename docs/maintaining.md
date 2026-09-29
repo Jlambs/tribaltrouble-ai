@@ -51,6 +51,8 @@ These are the places a merge from upstream can conflict. On any conflict, take u
 | `tt/src/main/java/com/oddlabs/tt/viewer/WorldViewer.java` | Three lines: the import of `com.oddlabs.tt.aikit.harness.PlayTest`; the Hard slot `case PlayerSlot.AI_HARD -> ai = PlayTest.hardAi(player, unit_info, ingame_info, world_params);` (upstream creates `new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD)`); and `PlayTest.leave(world);` as the first line of `close()`. For every game except an `./aisim.sh gui` play-test they change nothing. |
 | `tt/src/main/java/com/oddlabs/tt/landscape/HeightMap.java` | `computeInterpolatedHeight` wraps coordinates without float remainders: bit for bit the same results (the comment there proves it), games about 22% faster. A candidate for an upstream pull request; once upstream has it, this row goes away. |
 | `tt/src/main/java/com/oddlabs/tt/model/behaviour/HuntController.java`, `AttackController.java`, `GatherController.java` and `tt/src/main/java/com/oddlabs/tt/model/BuildProductionContainer.java` | Read-only getters for AIs: `getTarget()` (the unit a hunter or attacker is after), `getSupply()` (the resource a gatherer works) and `isInfinite()` (whether an armory's weapon order is endless). The frozen `@ultra` and `@fable` call them. |
+| `tt/src/main/java/com/oddlabs/tt/global/Headless.java` (new) and the `Headless.ENABLED` branches in `model/Element.java`, `model/Model.java`, `model/AttackScanFilter.java`, `model/RacesResources.java`, `pathfinder/UnitGrid.java`, `pathfinder/ScanFilter.java`, `pathfinder/FindOccupantFilter.java`, `animation/AnimationManager.java`, `particle/Particle.java`, `particle/LinearEmitter.java`, `particle/ParametricEmitter.java`, `render/RenderQueues.java`, `audio/AudioFile.java`, `landscape/HeightMap.java`, `resource/BlendInfo.java` and `resource/StructureBlend.java` | Headless mode, which harness workers turn on with `-Dcom.oddlabs.tt.headless=true`. They skip what only drawing and sound read (the element tree, the heights and bounds of models, particle motion, GPU and OpenAL resources), and scan for enemies (over a byte grid that tags each cell with what occupies it: nothing, a non-Selectable, or a Selectable of team t) and keep the animation list with cheaper structures that give the same results in the same order. Workers then take about a third of the memory and games about 40% less CPU. The game never sets the flag, which is a constant, so for the game these branches are dead code. On a conflict, take upstream's version and put the branch back. Headless must play every game the same as the game does: after such a merge, run [the headless check](#checking-the-harness-itself). |
+| `tt/src/main/java/com/oddlabs/tt/util/BezierPath.java` | The control points and the current point are fields instead of small arrays: the same arithmetic, bit for bit, and one object instead of seven to reach per moving unit per tick. A candidate for an upstream pull request. |
 | `tt/build.gradle.kts` | The `aisim` block after `tasks.run`: the source set, `check` depending on it, and the `aisimClasspath` task. |
 | `README.md` | The "Developing Computer Players" section and its line in the contents. |
 | `.gitignore` | `/aisim/`. |
@@ -100,8 +102,7 @@ git worktree add ../tt-rival rival                                   # the other
 
 `.github/workflows/aisim.yml` runs on every push to a branch that contains it, which is `headless` and the AI branches:
 `spotlessCheck`, then `./aisim.sh build`, which compiles the game, the harness and the example AIs and lints every AI
-package. It plays no games, since those need OpenGL and an audio device, and does not look at `lab/`, which is
-scratch. Upstream's `gradle.yml` only runs for `main` and `release`.
+package. It plays no games and does not look at `lab/`, which is scratch. Upstream's `gradle.yml` only runs for `main` and `release`.
 
 ## Checking the harness itself
 
@@ -117,6 +118,11 @@ rm -rf aisim/runs/check-*                                       # the run names 
     ./aisim.sh replay check-teams s1-1
 ./aisim.sh batch --players "hard vs normal/n vs easy" --seeds 1 --minutes 20 --name check-free-for-all &&
     ./aisim.sh replay check-free-for-all s1-2
+# headless plays every game as the game's own code path does (headless=false needs GL 4.1 and an audio device):
+# compare prints "identical games 3"
+./aisim.sh batch --players "hard/n*2 vs hard*2 vs normal/n" --size medium --seeds 1..3 --side 0 --minutes 20 \n    --name check-headless
+AISIM_JAVA_OPTS=-Dcom.oddlabs.tt.headless=false ./aisim.sh batch --players "hard/n*2 vs hard*2 vs normal/n" \n    --size medium --seeds 1..3 --side 0 --minutes 20 --name check-headless-off
+./aisim.sh compare check-headless-off check-headless
 # 32 players, beyond the skirmish menu's 12: the engine must still build and play them
 ./aisim.sh batch --players "hard*16 vs normal*16" --size large --seeds 3 --side 5 --minutes 3 --name check-32-players &&
     ./aisim.sh replay check-32-players s3-5

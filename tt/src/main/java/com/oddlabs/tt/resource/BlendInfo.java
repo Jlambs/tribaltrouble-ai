@@ -1,11 +1,14 @@
 package com.oddlabs.tt.resource;
 
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.render.Texture;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 import org.lwjgl.opengl.GL11;
 
 public abstract class BlendInfo {
-    private final @NonNull Texture alpha_map;
+    /** Null headless, where nothing is drawn. */
+    private final @Nullable Texture alpha_map;
     private final @NonNull GLByteImage sourceImage;
 
     private @NonNull Texture createAlphaMap(@NonNull GLByteImage alpha_image, int format) {
@@ -16,10 +19,10 @@ public abstract class BlendInfo {
 
     protected BlendInfo(@NonNull GLByteImage alpha_image, int format) {
         this.sourceImage = alpha_image;
-        alpha_map = createAlphaMap(alpha_image, format);
+        alpha_map = Headless.ENABLED ? null : createAlphaMap(alpha_image, format);
     }
 
-    public @NonNull Texture getAlphaMap() {
+    public @Nullable Texture getAlphaMap() {
         return alpha_map;
     }
 

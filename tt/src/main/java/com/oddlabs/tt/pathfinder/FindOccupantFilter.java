@@ -36,6 +36,11 @@ public final class FindOccupantFilter<S extends Selectable<?>> implements ScanFi
     }
 
     @Override
+    public long tagMask() {
+        return UnitGrid.SELECTABLE_TAG_MASK; // type is a kind of Selectable
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public boolean filter(int grid_x, int grid_y, Occupant occ) {
         if (occ != src && type.isInstance(occ)) {

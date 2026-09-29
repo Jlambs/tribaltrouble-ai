@@ -102,7 +102,7 @@ public final class Aisim {
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.
             defaults: vikings, every map setting random, 360 minutes (up to 600), seeds tune from every start,
-                      4 workers (1..16); play: --players "hard vs hard" --seed 1 --side 0
+                      4 workers (1..32); play: --players "hard vs hard" --seed 1 --side 0
             writing an AI (rules, orders, recipes): tt/src/main/java/com/oddlabs/tt/player/AGENTS.md
             """;
     /** Options that shape a map. */
@@ -117,7 +117,8 @@ public final class Aisim {
     private static final int DEFAULT_MINUTES = 360;
     private static final int MAX_MINUTES = 600;
     private static final int DEFAULT_WORKERS = 4;
-    private static final int MAX_WORKERS = 16;
+    /** Headless workers take a few hundred MB each, so a desktop's cores, not its memory, bound them. */
+    private static final int MAX_WORKERS = 32;
     private static final int MAX_RUN_NAME = 40;
     /** The time part of a default run name. */
     private static final DateTimeFormatter RUN_TIME = DateTimeFormatter.ofPattern("MMdd-HHmmss");

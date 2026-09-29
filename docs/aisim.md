@@ -49,8 +49,9 @@ Contents: [Words used here](#words-used-here) Â· [Requirements](#requirements) Â
 
 - **JDK 26.** `aisim.sh` takes the first JDK 26 it finds in `AISIM_JDK`, `JAVA_HOME`, `C:/Program Files/Java/jdk-26*`,
   `/usr/lib/jvm/*26*` or `/Library/Java/JavaVirtualMachines/*26*`, so your default JDK does not matter.
-- **A desktop session with OpenGL 4.1 and an audio device.** Loading the game's resources creates GL objects and
-  sound buffers, so every game JVM opens a hidden 64x64 window. Games do not run on a display-less server.
+- **For `gui` only, a desktop session with OpenGL 4.1 and an audio device.** The games the harness plays are headless
+  (`-Dcom.oddlabs.tt.headless=true`, see `com.oddlabs.tt.global.Headless`): they load only what the simulation
+  reads, and open no window and no audio device.
 - **Git Bash on Windows** (it comes with Git for Windows). From PowerShell run
   `& "C:\Program Files\Git\bin\bash.exe" ./aisim.sh ...`.
 - **A build first.** Every command except `build` runs from the last build. The first build needs the network
@@ -108,9 +109,10 @@ and keep working: they run from their snapshot, so rebuilding cannot disturb the
 
 - **The stock AI**: `easy`, `normal`, `hard`. Hard is the first opponent to beat.
 - **Your own earlier versions**: `./aisim.sh freeze TAG myai` copies the compiled package of `myai` (subpackages
-  included) from the last build into `aisim/pool/TAG.jar`; `@TAG` in `--players` plays it. Each game loads it
-  through a class loader of its own (only that package; the engine comes from the running build), so frozen AIs keep
-  no state between games and several versions of one package can play each other. A tag is never overwritten: pick a
+  included) from the last build into `aisim/pool/TAG.jar`; `@TAG` in `--players` plays it. A worker loads it
+  once, through a class loader of its own that all its slots and games share (only that package; the engine comes
+  from the running build), so several versions of one package can play each other. Like any AI, a frozen one must
+  keep no state in statics: one that does replays with a MISMATCH. A tag is never overwritten: pick a
   new tag for a new version.
 - **An AI from another branch or checkout**, from its compiled classes: build that checkout first, then freeze from
   its class folder (a relative path is resolved from this repository's root).
@@ -418,11 +420,14 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
 
 ## Troubleshooting
 
-- Batches default to 4 workers, each a JVM with a 256 MB heap (512 MB when a game of the run has 4 players or more, or
-  a huge map; 1 GB with more than 12 players) that takes about 0.6-0.8 GB in total, most of it the graphics driver's
-  copy of the game's textures; use `--workers`. Cancel a run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers
-  die with their parent.
+- Batches default to 4 workers (`--workers` 1..32), each a JVM whose heap may grow to 256 MB (512 MB when a game of
+  the run has 4 players or more, or a huge map; 1 GB with more than 12 players). Headless workers load no textures,
+  models or sounds, and a full garbage collection before each game drops the last map's garbage, so a worker takes
+  about 250-350 MB in all even for 12 players on a large map: the CPU, not memory, limits how many run at once.
+  Cancel a run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers die with their parent.
 - The CPU goes to the engine's unit movement and path finding, map generation (about 0.8 s per game) and the AIs.
+  Headless, the engine skips what only drawing reads: the scene tree, the heights and bounds of models, and the motion
+  of particles.
   `summary` prints the cost per game. To see where one game's time goes, replay it under Java Flight Recorder
   (`jfr` is in the JDK's `bin` folder):
 
@@ -437,7 +442,9 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
   moving the checkout or clearing `~/.gradle/caches`, run `./aisim.sh build`; runs from older snapshots can then no
   longer be replayed. Deleting `aisim/snap` has the same effect.
 - `AISIM_JAVA_OPTS` adds JVM options to workers, split at spaces. The hang limits are `-Daisim.hangCpu=SECONDS` and
-  `-Daisim.hangWall=SECONDS`.
+  `-Daisim.hangWall=SECONDS`. `-Dcom.oddlabs.tt.headless=false` plays games the old way, with the client's resources
+  in a hidden GL window (it needs GL 4.1 and an audio device): headless must play every game the same, checksum for
+  checksum.
 - `ripgrep` skips `aisim/` because git ignores it: use `grep`/`awk`, or `rg -uu`.
 
 What the messages mean:
@@ -451,8 +458,8 @@ What the messages mean:
 - `lint NAME: ... error` and `build refused`: the AI breaks a fair-play rule; each error says what to use instead,
   and the AI guide explains the rules.
 - `worker exited with N (see aisim/runs/<run>/log/w<i>.log)`, `run aborted: the first 3 games could not be played`
-  or `the replay worker died; see ...`: read that log. `glfwInit failed` or an OpenAL error there means aisim needs a
-  desktop session with GL 4.1 and an audio device.
+  or `the replay worker died; see ...`: read that log. `glfwInit failed` or an OpenAL error there (only with
+  `-Dcom.oddlabs.tt.headless=false`) means that needs a desktop session with GL 4.1 and an audio device.
 - `ai_init` errors: the AI's constructor threw (often an unknown param), with the stack in `g/<key>.err`.
 - `$'\r': command not found` in Git Bash: `aisim.sh` was checked out with CRLF line endings. The repository's
   `.gitattributes` keeps `*.sh` files LF; delete `aisim.sh` and run `git checkout aisim.sh` to get it back with LF.
@@ -494,7 +501,7 @@ GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --n
 ```
 
 - **Defaults**: vikings, every map setting random, 360 minutes, `--seeds tune` from every start, 4 workers
-  (`--workers` 1..16). `play` also defaults to `--players "hard vs hard" --seed 1 --side 0`; `batch` needs
+  (`--workers` 1..32). `play` also defaults to `--players "hard vs hard" --seed 1 --side 0`; `batch` needs
   `--players`. [Players](#players) and [Maps](#maps) explain the players and the map options.
 - **`--minutes`** (1..600, default 360) is the time limit. A game that reaches it is a draw, however far ahead
   anyone is: only beating every opponent wins. A limit far below the natural length of a game turns late-game
