@@ -1424,3 +1424,5 @@ retreat through the same pass (only the attack role is watched).
   2.0). Race check on cur6 at N=12: native Hards W 5 -> 2, surv60 -2.5 (z -2.9): vikings stay the easier opponent.
 - The summary step now runs out of heap even on 200-300-game batches (cur6 games last longer): stub summaries written
   for cur6-vs8-hv-b, woodr20-c6-vs13-f2, cur6-vs14-hv-d, cur6-vs16-hv; results.jsonl complete in each.
+- cur6 N=14 wins replay VERIFIED: cur6-vs14-f1 s4051 (96:17), s4113 (209:48), s4139 (219:45), s4154 (88:04); cur6-vs14-f2
+  s4455 (165:00); cur6-vs14-hv-d s642 (203:39); with slots32 s3484 and s3549, all 8 cur6 N=14 wins are verified.
