@@ -1288,3 +1288,7 @@ retreat through the same pass (only the attack role is watched).
   **sites_parallel_late=3 + tower_parallel_late=2** (both construction limits raised): towers20 +0.75 (z 2.9), alive40
   +3.5 pp (z 2.1), surv60 +0.63 (z 1.5), wp +0.35 pp (z 1.5); against the median sweep arm still towers +1.05, alive40
   +2.8 pp. Confirmations queued (N=13 s201..400, N=14 both blocks, N=12).
+- tower_site_fallback screens (fires in 145 / 154 of 200 games, 2.8-2.9 times a game, never finds nothing): N=13 s1..200
+  towers20 +0.42 (z 1.6), alive40 +2.5 pp (z 1.5), wp +0.5 pp (z 1.6); N=12 s1..200 surv60 +1.1 (z 2.1), alive40 +4.5 pp
+  (z 2.1), W 9 -> 4, elim -.013. A pattern across the tower arms: survival up, N=12 wins down (tower_parallel_late 15 ->
+  10 of 400), elim slightly down; at 15 min the tower arms field 2-5 fewer warriors (for +0.4-0.5 towers).
