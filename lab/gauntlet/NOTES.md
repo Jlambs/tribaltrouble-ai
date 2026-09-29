@@ -797,3 +797,36 @@ and route), launch_recheck (drop a timed-out muster that the staging army cannot
 retreat_rearguard, and a consistency bundle: rush_opening_only, target_path (re-targets by walking distance),
 defend_stable (stun credit only near the threat, armory hysteresis 14/17, 3 s engage dwell), tower_cooldown.
 Screens queued: recall_ratio=99 (N=11 and N=8), each new param, the bundle, and the remaining param screens.
+
+### Screens after the audit (paired with full-vs11-hv unless noted; seeds 1..200)
+
+| variant | elim diff (z) | other | verdict |
+|---|---|---|---|
+| recall_ratio=99 | +.008 (1.4); fresh 201..400 **+.020 (3.3)**, W 8 vs 6 | lsr20 +.10 (3.0); N=8 +.004, W 111/111 | **adopt** (logged: ATTACK 676 s vs 560, 2.23 outs vs 2.00; attacks wear out 2 min later) |
+| launch_recheck (on recall99) | -.002 vs recall99 | 0.18 drops/game | no |
+| hold_mid=10 | +.013 (1.0); fresh **+.030 (2.4)** | W 16 vs 11 over 400; N=8 +.003, W 114/111, kd +.051 | **adopt** |
+| retreat_rearguard | **+.004 (2.0)** | kd +.018 (2.0) | adopt (fires only on retreats) |
+| sites_parallel=3 | +.006; fresh +.015 | lsr15 +.09 (2.0); N=8 lsr20 -.12 (-2.0), elim -.024; with hm10 +.005 fresh | no |
+| **shepherd_time=150** | **+.038 (2.4)** | lsr15 +.12 (2.4), **W 12 vs 5** | confirm on the new base, fresh seeds, N=8 |
+| attack_min_strength=14 | +.014 (1.2) | W 7 vs 5 | maybe |
+| chief_trainer_near | +.003 | kd -.048 (-2.1) | no |
+| expand_under_threat | -.003 | 14.5 sites blocked, 0.8 placed per game | no |
+| danger_refuge | -.002 | | no |
+| bundle (rush_opening_only, target_path, defend_stable, tower_cooldown) | -.001 | | no |
+| max_quarters=5 | -.010 | kd -.078 (-3.7) | no |
+| armory_builders=20 | +.003 | | no |
+| chieftain_time=180 / initial_quarters=3 | -.008 / -.026 (-2.1) | | no |
+
+The user asked (2026-09-28) whether hysteresis, enemy-count-dynamic strategies and wasted peon-time are worth
+pursuing; the analysis (session scratchpad threads/synthesis.md) found: engage/fall-back flips (26/game) already have
+hysteresis and cost little; the costly moments are one-way decisions (retreat: 247 lost / 113 killed in the next
+20 s), which recall99 and rearguard soften. Games are decided at 9-6 copies alive and effects keep their sign
+across N, so no count-keyed rules (and new adoptions go to all N>1, checked at N=8; the user prefers no N>1 gating
+where it barely matters). Unit-time budget over 0-25 min: breeding holds below the cap 13.6 % (too high: hold_mid=10),
+idle armory workers 7.9 % (mostly exposure after 10 min, not recoverable), cap time not a waste (stock ~0 there).
+New param hold_backlog (quarters hold only hold_early while the main armory can forge >= N weapons) queued.
+
+New params behind flags (commit 7d8c74b8): finish_lean (finish_skip_out, finish_units, finish_ratio) and the
+chief_hunt squad (6 iron warriors kill the lone chieftain / rebuild sites of homeless copies; round-3 design report
+scratchpad round3/judge.md). All tuning batches use the benchmark map settings (dev.sh: large tropical h0..2 t10
+s10, slot 0); 93 runs checked.
