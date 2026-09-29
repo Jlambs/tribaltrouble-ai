@@ -1223,3 +1223,9 @@ retreat through the same pass (only the attack role is watched).
   and 6 -> 6 (pooled -1), and it lost two long N=12 wins (s169 220 min, s160 283 min), the kind it was meant to keep.
   Every such change flips 5-9 % of games both ways (many of them decided before 30 min), so a few-win net over 400 is
   within the churn.
+- **N=13 legacy sweep, 16 arms in** (cur5, s1..200 vs freeze-squad6-c3-vs13-hv; base W 0): reinforce_ratio=0.8 W 0 -> 4,
+  elim +.009 (z 1.1), wp +0.3 pp (z 1.3), towers20 -0.6 (z -2.1); target_home_weight=2.5 alive40 +3.5 pp (z 1.8), surv60
+  +0.5, wp z 1.1; target_home_weight=1 elim +.008 (z 1.7); attack_min_strength=12 W 0 -> 1, towers20 -0.5; 26 surv60
+  -0.7, towers20 -0.8 (z -2.4); retreat_ratio=1.2 elim z -1.9; reinforce_ratio=0.3 ~0. Bit-identical to the base (the
+  param never binds at N=13): attack_max_strength 50 / 100, capped_ratio 0.4 / 0.9. Confirmations queued for
+  reinforce_ratio 0.8 and target_home_weight 2.5 (fresh N=13 seeds, N=12, and both together).
