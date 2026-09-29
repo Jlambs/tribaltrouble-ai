@@ -589,6 +589,15 @@ class Strategy {
      * priority, no defense) and took our first attack in 35 of 38 N=13 games (audit13 frozen_last).
      */
     boolean frozen_last = false;
+    /**
+     * The freeze opening strikes this many copies at once, the nearest ones first: each strike after the first takes
+     * freeze_squad2 peons (0: freeze_squad) at a copy at most freeze_eta2 seconds of peon walk away (0: freeze_eta),
+     * and every strike leaves at least freeze_keep starting peons at home.
+     */
+    int freeze_targets = 1;
+    int freeze_squad2 = 0;
+    float freeze_eta2 = 0f;
+    int freeze_keep = 1;
 
     /**
      * In a fight, give each warrior its own target: the enemy in range with the best value times hit chance times
@@ -1034,6 +1043,10 @@ class Strategy {
         freeze_armory_push = params.getBoolean("freeze_armory_push", freeze_armory_push);
         freeze_retarget = params.getBoolean("freeze_retarget", freeze_retarget);
         frozen_last = params.getBoolean("frozen_last", frozen_last);
+        freeze_targets = params.getInt("freeze_targets", freeze_targets);
+        freeze_squad2 = params.getInt("freeze_squad2", freeze_squad2);
+        freeze_eta2 = (float) params.getDouble("freeze_eta2", freeze_eta2);
+        freeze_keep = params.getInt("freeze_keep", freeze_keep);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
         restore_dodge_gap = (float) params.getDouble("restore_dodge_gap", restore_dodge_gap);
