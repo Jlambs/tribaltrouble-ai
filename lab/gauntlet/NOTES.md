@@ -1218,3 +1218,8 @@ retreat through the same pass (only the attack role is watched).
   into wins, s97 (a 316-min win, fragile under every change) into a loss, and won s172 in 81 min instead of 154. Since
   the rare wins at N=13-14 are long games (s169: 261 min), a bundle of the long-game fixes (wood_reach=150, unjam=8,
   stall_peons, unstick_builders=30) is queued at N=11 and N=12 over 400 seeds each, judged on wins.
+- **Long-game bundle (wood_reach=150, unjam=8, stall_peons, unstick_builders=30): not adopted.** N=11 W 15 -> 22 (elim
+  +.029, z 2.3) and 20 -> 22 (wp -1.8 pp, z -2.5): pooled +9 of 400 (21 flips to wins, 11 to losses); N=12 W 9 -> 8
+  and 6 -> 6 (pooled -1), and it lost two long N=12 wins (s169 220 min, s160 283 min), the kind it was meant to keep.
+  Every such change flips 5-9 % of games both ways (many of them decided before 30 min), so a few-win net over 400 is
+  within the churn.
