@@ -815,13 +815,8 @@ final class Economy {
             Site site = ai.planner().findQuartersSite(reservedSites(null), ax, ay, 90, field,
                     ai.planner().getStartX(), ai.planner().getStartY(), ai.strategy().quarters_builders, .25f, .02f);
             if (site != null && strategy.veto_resite > 0f && strategy.veto_resite_quarters
-                    && time >= strategy.veto_resite_time && ai.military().threatNearEcon(site.x, site.y, 16)) {
-                // veto_resite: a site vetoed at birth goes where no threat is, else stays for the veto path.
-                Site clear = clearSite(Race.BUILDING_QUARTERS, site.x, site.y, null);
-                ai.aiLog().count(clear != null ? "veto_resite_born_quarters" : "veto_resite_born_quarters_none");
-                if (clear != null)
-                    site = clear;
-            }
+                    && time >= strategy.veto_resite_time)
+                site = clearAtBirth(site, Race.BUILDING_QUARTERS, "veto_resite_born_quarters");
             if (site != null)
                 addProject(Race.BUILDING_QUARTERS, site, 5);
         }
@@ -876,20 +871,26 @@ final class Economy {
                 Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
                         existing,
                         face[0], face[1]);
-                if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time
-                        && ai.military().threatNearEcon(site.x, site.y, 16)) {
-                    // veto_resite: a site vetoed at birth goes where no threat is, else stays for the veto path.
-                    Site clear = clearSite(Race.BUILDING_TOWER, site.x, site.y, null);
-                    ai.aiLog().count(clear != null ? "veto_resite_born" : "veto_resite_born_none");
-                    if (clear != null)
-                        site = clear;
-                }
+                if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time)
+                    site = clearAtBirth(site, Race.BUILDING_TOWER, "veto_resite_born");
                 if (site != null)
                     addProject(Race.BUILDING_TOWER, site, 8);
             }
             planForwardTower();
             planSniper();
         }
+    }
+
+    /**
+     * veto_resite: a new site that projectMayStart would veto at once (a threat within 16 cells) goes to the nearest
+     * clear site, else it stays for the veto path; counts counter or counter_none.
+     */
+    private @NonNull Site clearAtBirth(@NonNull Site site, int type, @NonNull String counter) {
+        if (!ai.military().threatNearEcon(site.x, site.y, 16))
+            return site;
+        Site clear = clearSite(type, site.x, site.y, null);
+        ai.aiLog().count(clear != null ? counter : counter + "_none");
+        return clear != null ? clear : site;
     }
 
     /** Sniper tower projects, placed or not (their sites are in intel.tower_sites until they stand). */
@@ -1564,12 +1565,10 @@ final class Economy {
             noforge_since = -1f;
             return;
         }
-        int wood = stock(a, TreeSupply.class);
         int iron = stock(a, IronSupply.class);
         int rock = stock(a, RockSupply.class);
         boolean rockw = rock_weapons || rock_filler;
-        // drainSecondary's test
-        boolean can_make = wood >= 2 && (iron >= 1 || (rockw && rock >= 1));
+        boolean can_make = canForge(a);
         noforge_since = can_make ? -1f : noforge_since < 0f ? now : noforge_since;
         if (noforge_since >= 0f && now - noforge_since >= st.bank_noforge_s) {
             bank_cap = st.bank_min; // the forge_release clause (K11a-2)
@@ -1666,14 +1665,17 @@ final class Economy {
         int chicken = armory.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies();
         int rock = armory.getSupplyContainer(RockAxeWeapon.class).getNumSupplies();
         int left = workers - deployWarriors(armory, workers, chicken, iron, rock);
-        boolean can_make = armory.getSupplyContainer(TreeSupply.class).getNumSupplies() >= 2
-                && (armory.getSupplyContainer(IronSupply.class).getNumSupplies() >= 1
-                        || ((rock_weapons || rock_filler)
-                                && armory.getSupplyContainer(RockSupply.class).getNumSupplies() >= 1));
+        boolean can_make = canForge(armory);
         int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
         boolean refuge = armory == refuge_armory && ai.time() < refuge_until;
         if (!can_make && left > 0 && pending == 0 && !refuge)
             owner.deployUnits(armory, DeployType.PEON, left);
+    }
+
+    /** Whether an armory's stock pays for a weapon: two wood and an iron, or a rock while rock axes are made. */
+    private boolean canForge(@NonNull Building armory) {
+        return stock(armory, TreeSupply.class) >= 2 && (stock(armory, IronSupply.class) >= 1
+                || ((rock_weapons || rock_filler) && stock(armory, RockSupply.class) >= 1));
     }
 
     private void orderWeapons(@NonNull Building armory) {
