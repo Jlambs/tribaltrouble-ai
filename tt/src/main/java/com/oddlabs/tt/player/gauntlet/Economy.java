@@ -311,18 +311,9 @@ final class Economy {
             if (inside == 0)
                 continue;
             int deployed = 0;
-            if (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY) {
-                int c = Math.min(b.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies(), inside);
-                if (c > 0)
-                    owner.deployUnits(b, DeployType.RUBBER_WARRIOR, c);
-                int i = Math.min(b.getSupplyContainer(IronAxeWeapon.class).getNumSupplies(), inside - c);
-                if (i > 0)
-                    owner.deployUnits(b, DeployType.IRON_WARRIOR, i);
-                int r = Math.min(b.getSupplyContainer(RockAxeWeapon.class).getNumSupplies(), inside - c - i);
-                if (r > 0)
-                    owner.deployUnits(b, DeployType.ROCK_WARRIOR, r);
-                deployed = c + i + r;
-            }
+            if (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY)
+                deployed = deployWarriors(b, inside, stock(b, RubberAxeWeapon.class), stock(b, IronAxeWeapon.class),
+                        stock(b, RockAxeWeapon.class));
             int pending = b.getDeployContainer(DeployType.PEON).getNumSupplies();
             int peons = inside - deployed - pending;
             if (peons > 0)
@@ -1684,16 +1675,7 @@ final class Economy {
         int iron = armory.getSupplyContainer(IronAxeWeapon.class).getNumSupplies();
         int chicken = armory.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies();
         int rock = armory.getSupplyContainer(RockAxeWeapon.class).getNumSupplies();
-        int c = Math.min(chicken, workers);
-        if (c > 0)
-            owner.deployUnits(armory, DeployType.RUBBER_WARRIOR, c);
-        int i = Math.min(iron, workers - c);
-        if (i > 0)
-            owner.deployUnits(armory, DeployType.IRON_WARRIOR, i);
-        int r = Math.min(rock, workers - c - i);
-        if (r > 0)
-            owner.deployUnits(armory, DeployType.ROCK_WARRIOR, r);
-        int left = workers - c - i - r;
+        int left = workers - deployWarriors(armory, workers, chicken, iron, rock);
         boolean can_make = armory.getSupplyContainer(TreeSupply.class).getNumSupplies() >= 2
                 && (armory.getSupplyContainer(IronSupply.class).getNumSupplies() >= 1
                         || ((rock_weapons || rock_filler)
@@ -1760,15 +1742,25 @@ final class Economy {
         deploy = Math.min(deploy, Math.min(stock, workers - keep));
         if (deploy <= 0)
             return;
-        int c = Math.min(chicken, deploy);
+        deployWarriors(armory, deploy, chicken, iron, rock);
+    }
+
+    /**
+     * Deploys up to n warriors from an armory's weapon stock (chicken, iron and rock axes, as read before), chicken
+     * warriors first, then iron, then rock, and returns how many.
+     */
+    private int deployWarriors(@NonNull Building armory, int n, int chicken, int iron, int rock) {
+        Player owner = ai.owner();
+        int c = Math.min(chicken, n);
         if (c > 0)
             owner.deployUnits(armory, DeployType.RUBBER_WARRIOR, c);
-        int i = Math.min(iron, deploy - c);
+        int i = Math.min(iron, n - c);
         if (i > 0)
             owner.deployUnits(armory, DeployType.IRON_WARRIOR, i);
-        int r = Math.min(rock, deploy - c - i);
+        int r = Math.min(rock, n - c - i);
         if (r > 0)
             owner.deployUnits(armory, DeployType.ROCK_WARRIOR, r);
+        return c + i + r;
     }
 
     // ------------------------------------------------------------------------------------------------------------
