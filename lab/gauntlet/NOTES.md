@@ -972,3 +972,11 @@ branch. N=12/13 logged games (camp-cur-vs12/13-hv): games end at 16-37 min; peon
 vanish with it (230 units at once in N=13 s38); towers razed 7.4-8.8 vs completed 0.7 per game at 15-25 min (before
 veto_resite). An N=12/13 collapse audit is running; unjam and behaviour-preserving hygiene are being built in worktrees.
 Harness: pool.sh (K auto-sized batches from a job file) replaced the lanes.
+- **cur3 levels (400 seeds each):** N=11 31/400 (7.75 %), N=12 8/400 (2.0 %), N=13 3/400 (0.75 %). Against cur2 on the
+  fresh halves: survival up (N=12 surv60 +2.0 min z 2.9; N=13 +2.0 z 3.6, arm25 +10.5 pp z 3.8), wins level.
+- **First N=14 win: cur3-vs14-hv s169-0 at 260:45, all 14 copies out; replay VERIFIED** (checksum -1932835330; replay
+  logs in aisim/runs/cur3-vs14-hv/replay/). N=14 1/200. Even this win had a stuck army: 218 warriors jammed at 422,202
+  from 110 to 246 min (warrior jams 57/min, 106 stall retargets): the unjam fix matters at high N.
+- On cur3: stall_peons at N=12 W 6 -> 6 (fires rarely); stall_peons + wood_reach at N=13 W 2 -> 2; wood_reach=150 at N=11
+  W 19 -> 20 (fires rarely); at N=12 5 games changed (2 wins faster, 1 loss -> win, 1 long win -> loss): wood_reach=110
+  queued. live facing (tower_face_live + tower_face_place) at N=11 W 19 -> 11: no.
