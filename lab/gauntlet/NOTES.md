@@ -1254,3 +1254,29 @@ retreat through the same pass (only the attack role is watched).
 - tower_parallel_late=2 on N=12 s201..400: towers20 +0.53 (z 2.5), W 6 -> 5, wp -0.3 pp. Towers rise in every block
   (+0.31 / +0.34 / +0.57 / +0.53 / +0.82 at N=13 / 13 / 12 / 12 / 14), survival only at N=14 (surv60 +0.8, z 2.4), wins
   fall at N=12 (15 -> 10 of 400). A second N=14 block with its own base is running.
+
+### Tower audit at N=13-14 (tower13: 4 lenses, adversarial verifiers, judge; scratchpad/tower13/judge.md)
+
+- **Model:** manned towers in the 12-25-min window = towers standing x 0.94 (manning is not the gap: 94 % of tower-time
+  is manned; wins 97-98 % with 12.6-13.2 towers standing, losses 93-94 % with ~8). Towers standing = the stock at 12 min
+  (36-38 % of games are at the 20-building cap then) minus a net loss of ~1.3 razed against 0.43-0.55 completed per
+  minute. Completions = open tower sites x share finishing / site time = 1.02 x 0.70 / 84 s: the real bound is two
+  placed sites at a time (sites_parallel_late=2, shared with quarters), not tower_parallel; tower_parallel_late=2 worked
+  through a loophole (a second placer on its way lets a third site go up).
+- **The two construction slots at N=13, 10-25 min:** tower sites 48.8 %, building cap 10.8 %, no finished armory 10.2 %,
+  site-search lock 9.2 %, quarters sites 7.8 %, placer walk 6.4 %, fewer than 2 quarters 3.5 %, one project at a time
+  2.7 %, vetoes 0.4 %.
+- **Site-search lock** (a misevaluation): after ~12 towers findTowerSite returns null for the one anchor tower_count
+  picks, and planning retries it every 3 s until one of our towers is razed (23 of 24 locks end exactly at a razing),
+  in about half the games; 31 % of the slots in the two wins' 15-25 min (s2007 planned no tower from 1045 to 1671 s).
+  Built: tower_site_fallback (off; commit b61957a9; smoke fires in 9 of 12 games).
+- **Treeless sites:** 53 % of window tower sites have no tree within 7 cells; they take a median 116 s against 45-69 s
+  (same gap in the calm opening: walking for wood, not threats) and are razed as sites 48 % vs 33 %. Wood overall is not
+  short (40/min harvested). Being built: tower_wood_drop (carry wood from the armory's transport-wood deploy).
+- **Sites near a building razed in the last 3 min** are razed 54 % vs 26 % (only +0.10 after controlling for local
+  fighting): tower_cooldown (existing) screened first, tower_hot_clear only if that is not negative.
+- **Not levers:** the tower target (never binds in 1,628 capped samples), builders per site (at or above the wanted count
+  86-92 %), manning/gunners (+0.35 towers at most), the building cap in the window (no wasted slot: the 4th quarters
+  still breeds against losses of 28-33 units/min, the expansion brings +5 iron/min), moving expansion towers home.
+  Wins and losses differ in razings (0.23 vs 1.21 per min), not completions (0.60 vs 0.48): the levers only slow the
+  net loss.
