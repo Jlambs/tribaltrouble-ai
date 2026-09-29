@@ -723,6 +723,15 @@ class Strategy {
      * once when one comes closer; 0 leaves him in the clump. Enemies value his head highly.
      */
     int chief_safe = 0;
+    /**
+     * From chief_wake_retreat seconds after our chieftain's cast until his stun is ready again, he keeps
+     * chief_wake_keep
+     * cells from every enemy warrior within reach, stunned ones included: the ones his stun froze wake inside his
+     * reach otherwise (audit13 shepherds 2: 92 % of his deaths come within 40 s after his own stun, a median 11 cells
+     * from where he cast; chief_safe skips stunned warriors). 0: off.
+     */
+    float chief_wake_retreat = 0f;
+    int chief_wake_keep = 12;
     /** Hit points at which the chieftain walks home to the armory. */
     int chief_flee_hp = 24;
 
@@ -1109,6 +1118,8 @@ class Strategy {
         unstick = params.getBoolean("unstick", unstick);
         chief_keep_out = params.getInt("chief_keep_out", chief_keep_out);
         chief_safe = params.getInt("chief_safe", chief_safe);
+        chief_wake_retreat = (float) params.getDouble("chief_wake_retreat", chief_wake_retreat);
+        chief_wake_keep = params.getInt("chief_wake_keep", chief_wake_keep);
         chief_flee_hp = params.getInt("chief_flee_hp", chief_flee_hp);
         threat_look = params.getInt("threat_look", threat_look);
         hold_ratio = (float) params.getDouble("hold_ratio", hold_ratio);

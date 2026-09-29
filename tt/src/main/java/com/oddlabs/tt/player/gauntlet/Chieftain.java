@@ -28,6 +28,7 @@ final class Chieftain {
     private final @NonNull GauntletAI ai;
     private float last_move = -100f;
     private float last_cast = -100f;
+    private boolean had_chief;
     /** Enemy warriors in reach when the last stun was cast, checked once it has gone off. */
     private final java.util.List<@NonNull Unit> cast_candidates = new java.util.ArrayList<>();
     private float cast_check = -1f;
@@ -109,9 +110,18 @@ final class Chieftain {
         checkCatch();
         Unit chief = ai.intel().chieftain;
         if (chief == null) {
+            if (had_chief) {
+                // counters only: how many of his deaths come in the wake window after his own cast
+                had_chief = false;
+                ai.aiLog().count("chief_lost");
+                float since = ai.time() - last_cast;
+                if (since >= 5f && since <= 40f)
+                    ai.aiLog().count("chief_lost_wake");
+            }
             considerTraining();
             return;
         }
+        had_chief = true;
         if (Intel.isStunned(chief))
             return;
         if (ai.strategy().blast && isViking() && chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST)
@@ -737,6 +747,11 @@ final class Chieftain {
         int safe = ai.strategy().chief_safe;
         boolean threatened = safe > 0 && !stunReady()
                 && nearestWarriorDistance(chief.getGridX(), chief.getGridY()) <= safe;
+        // chief_wake_retreat: after his cast the warriors he froze count too, since they wake within his reach
+        float wake = ai.strategy().chief_wake_retreat;
+        int wake_keep = ai.strategy().chief_wake_keep;
+        boolean waking = wake > 0f && !stunReady() && ai.time() - last_cast >= wake;
+        threatened |= waking && nearestWarriorDistance(chief.getGridX(), chief.getGridY(), true) <= wake_keep;
         if ((ai.time() - last_move < MOVE_PERIOD && !threatened) || ai.military().isDodging(chief))
             return;
         Military military = ai.military();
@@ -799,6 +814,13 @@ final class Chieftain {
             tx = away[0];
             ty = away[1];
         }
+        if (waking) {
+            int[] away = awayFromWarriors(tx, ty, wake_keep + 1, true);
+            if (away[0] != tx || away[1] != ty)
+                ai.aiLog().count("chief_wake_move");
+            tx = away[0];
+            ty = away[1];
+        }
         if (ai.strategy().chief_tower_standoff && chief.getHitPoints() > 24) {
             int[] clear = clearOfTowers(tx, ty, chief.getGridX(), chief.getGridY());
             tx = clear[0];
@@ -843,11 +865,16 @@ final class Chieftain {
 
     /** Moves a point out to `keep` cells from the enemy warriors nearest to it, a few passes deep. */
     private int @NonNull [] awayFromWarriors(int x, int y, int keep) {
+        return awayFromWarriors(x, y, keep, false);
+    }
+
+    /** As awayFromWarriors, counting stunned warriors too when include_stunned. */
+    private int @NonNull [] awayFromWarriors(int x, int y, int keep, boolean include_stunned) {
         for (int pass = 0; pass < 3; pass++) {
             Unit near = null;
             int best = keep * keep;
             for (Unit e : ai.intel().enemy_warriors) {
-                if (Intel.isStunned(e))
+                if (!include_stunned && Intel.isStunned(e))
                     continue;
                 int d = MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY());
                 if (d < best) {
@@ -873,9 +900,14 @@ final class Chieftain {
 
     /** Cells to the nearest enemy warrior that is not stunned, or a large number. */
     private int nearestWarriorDistance(int x, int y) {
+        return nearestWarriorDistance(x, y, false);
+    }
+
+    /** As nearestWarriorDistance, counting stunned warriors too when include_stunned. */
+    private int nearestWarriorDistance(int x, int y, boolean include_stunned) {
         int best = Integer.MAX_VALUE;
         for (Unit e : ai.intel().enemy_warriors)
-            if (!Intel.isStunned(e))
+            if (include_stunned || !Intel.isStunned(e))
                 best = Math.min(best, MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()));
         return best == Integer.MAX_VALUE ? 1000 : (int) Math.sqrt(best);
     }
