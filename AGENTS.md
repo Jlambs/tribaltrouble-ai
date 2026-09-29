@@ -36,9 +36,9 @@ Read `tt/src/main/java/com/oddlabs/tt/player/AGENTS.md` before writing AI code. 
 orders it can give, the fair-play and determinism rules, and recipes. Start an AI with `./aisim.sh new NAME`. The
 harness (`./aisim.sh`, manual in `docs/aisim.md`) plays, compares, replays and analyses AIs. Write your own analysis
 tools in `lab/<name>/`; the AI must play without them. An AI never changes game mechanics: engine code stays as it is.
-Profile your AI regularly as it grows (`--profile`, `./aisim.sh profile RUN --focus player.<name>`): its CPU is time
-every experiment waits for. Keep a speed change only when `compare` shows every game identical and a real `cpu`
-saving (the AI guide, Speed and robustness).
+Mind your AI's cost as it grows: profile it now and then (`--profile`, `./aisim.sh profile RUN --focus
+player.<name>`) and look at the longest games of a run, which decide how long every experiment waits (the AI guide,
+Speed and robustness).
 
 ## Changing the harness
 
