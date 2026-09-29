@@ -1311,10 +1311,12 @@ final class Military {
                 continue;
             evacuate.add(p);
         }
+        // bank_guard: a main armory at its cap shelters peons only when no quarters can (Economy.guardBank).
+        boolean bank_full = !evacuate.isEmpty() && ai.economy().bankFull(armory);
         for (Unit p : evacuate) {
             Building shelter = null;
             int best = Integer.MAX_VALUE;
-            if (armory != null && !threatNear(armory.getGridX(), armory.getGridY(), 6))
+            if (armory != null && !bank_full && !threatNear(armory.getGridX(), armory.getGridY(), 6))
                 shelter = armory;
             for (Building q : intel.quarters) {
                 if (threatNear(q.getGridX(), q.getGridY(), 6))
@@ -1327,6 +1329,10 @@ final class Military {
                     shelter = q;
                 }
             }
+            if (shelter == null && bank_full && armory != null && !threatNear(armory.getGridX(), armory.getGridY(), 6))
+                shelter = armory; // no quarters qualifies: as without bank_guard
+            else if (bank_full && shelter != null)
+                ai.aiLog().count("bank_shelter_quarters");
             if (shelter != null && shelter.getUnitContainer() != null)
                 ai.owner().setTarget(Selectable.newArray(p), shelter, Action.DEFAULT, false);
         }

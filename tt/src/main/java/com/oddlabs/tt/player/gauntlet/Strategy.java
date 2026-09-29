@@ -341,6 +341,37 @@ class Strategy {
      */
     int hold_backlog = 0;
     float hold_backlog_until = 0f;
+    /**
+     * veto_resite (s, 0 = off; late/spec S1): from veto_resite_time, a tower project that projectMayStart has vetoed
+     * for a threat near its site this long moves to the nearest site with no threat within veto_resite_clear cells,
+     * or is dropped and tower planning pauses for veto_resite s (Economy.manageProjects): one vetoed project stopped
+     * all tower planning for 225-794 s in 14 of 16 logged N=12 games while the standing towers fell.
+     */
+    float veto_resite = 0f;
+    float veto_resite_time = 600f;
+    int veto_resite_clear = 20;
+    /** The same for quarters projects (the second arm of veto_resite). */
+    boolean veto_resite_quarters = false;
+    /**
+     * bank_guard (late/spec S2): from bank_guard_time the main armory keeps only the workers its measured iron income
+     * and stock can keep forging (bank_min once it cannot forge for bank_noforge_s); the rest wait in the quarters
+     * farthest from the threat and come out for builders or when the armory has room again (Economy.guardBank): 105
+     * units per game vanish in razed buildings by 20 min at N=12, 42 per armory razing.
+     */
+    boolean bank_guard = false;
+    float bank_guard_time = 600f;
+    int bank_min = 6;
+    float bank_margin = 1.5f;
+    float bank_noforge_s = 20f;
+    /** Most peons bank_guard parks in one quarters above its hold. */
+    int bank_reserve_max = 60;
+    /**
+     * wood_reach (cells, 0 = off; late/spec S3): from wood_reach_time, when the main armory's 60-cell tree ring is
+     * exhausted (tree cycle >= 90 s) or a 60-cell tree search finds nothing, trees up to this far are gathered
+     * (Economy.pickSupply): the wood lock that left ~200 peons idle in the armory in s63, s60 and s315.
+     */
+    int wood_reach = 0;
+    float wood_reach_time = 2400f;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -883,6 +914,18 @@ class Strategy {
         hold_mid = params.getInt("hold_mid", hold_mid);
         hold_backlog = params.getInt("hold_backlog", hold_backlog);
         hold_backlog_until = (float) params.getDouble("hold_backlog_until", hold_backlog_until);
+        veto_resite = (float) params.getDouble("veto_resite", veto_resite);
+        veto_resite_time = (float) params.getDouble("veto_resite_time", veto_resite_time);
+        veto_resite_clear = params.getInt("veto_resite_clear", veto_resite_clear);
+        veto_resite_quarters = params.getBoolean("veto_resite_quarters", veto_resite_quarters);
+        bank_guard = params.getBoolean("bank_guard", bank_guard);
+        bank_guard_time = (float) params.getDouble("bank_guard_time", bank_guard_time);
+        bank_min = params.getInt("bank_min", bank_min);
+        bank_margin = (float) params.getDouble("bank_margin", bank_margin);
+        bank_noforge_s = (float) params.getDouble("bank_noforge_s", bank_noforge_s);
+        bank_reserve_max = params.getInt("bank_reserve_max", bank_reserve_max);
+        wood_reach = params.getInt("wood_reach", wood_reach);
+        wood_reach_time = (float) params.getDouble("wood_reach_time", wood_reach_time);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);
