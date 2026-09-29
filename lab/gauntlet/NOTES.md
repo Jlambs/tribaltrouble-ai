@@ -980,3 +980,31 @@ Harness: pool.sh (K auto-sized batches from a job file) replaced the lanes.
 - On cur3: stall_peons at N=12 W 6 -> 6 (fires rarely); stall_peons + wood_reach at N=13 W 2 -> 2; wood_reach=150 at N=11
   W 19 -> 20 (fires rarely); at N=12 5 games changed (2 wins faster, 1 loss -> win, 1 long win -> loss): wood_reach=110
   queued. live facing (tower_face_live + tower_face_place) at N=11 W 19 -> 11: no.
+
+### cur4: freeze squad 6; frozen_last; two strikes (2026-09-29 day)
+
+The N=13 collapse audit (4 lenses + verifiers + judge, scratchpad audit13) found the freeze is not bait: on the cur3
+stack it beats freeze-off on every block (N=12 s1..200 elim +.030 z 2.0, s201..400 +.026 z 2.6; N=13 +.034 z 3.7),
+and most of its opening price is the size of the squad. It also warned that aborting path (c) (proposed by three lenses
+on squad-10 data) would have hidden that path (c) is the best class at squad 6.
+
+- **freeze_squad 6 adopted (commit 6d706c11).** N=12 s1..200 W 6 -> 9, surv60 +1.25 min (z 1.9); s201..400 W 2 -> 6,
+  surv60 +1.38 (z 1.9), alive40 +5 pp (z 2.2); pooled over 400 W 8 -> 15, surv60 +1.3 (z ~2.7), wp z ~1.7. N=13 s1..200
+  W 2 -> 0, surv60 +0.77 (z 1.3), towers20 +0.8 (z 2.5), wp -0.3 pp (z -1.1): N=13 s201..400 and N=14 decide whether it
+  needs an N gate. squad 4: W 9 -> 2 against squad 6 (elim z -3.5; strikes fail); squad 8 W 6 -> 7; squad 14 W 7 -> 1.
+  At squad 6 more strikes end in path (c): 70 of 400 N=12 games freeze a copy (39 at squad 10).
+- **frozen_last** (commit cde8c7e4, off): the attack target's choice leaves frozen copies until no other copy is a
+  candidate (a frozen copy never launches; it scored as the easiest target and took the first attack). Games without a
+  frozen copy are bit-identical, so it is screened only on the seeds where the base froze a copy.
+- **Freeze runs several strikes** (commit ceaf6d17; freeze_targets, freeze_squad2, freeze_eta2, freeze_keep; one strike
+  reproduces the reference checksums). Geometry: the second-nearest copy is within 200 m (straight line) in 86 / 91 / 93 %
+  of N=12 / 13 / 14 games (the third is at 250-330 m). Smoke (N=12 s1..8, two strikes of 6, eta 40 s): 4 of 8 launched
+  a second strike: 2 outs (s7), out + frozen (s2), out + failed strike (s3, s4). Screens queued at N=12 (eta2 40 and 50)
+  and N=14.
+- N=11 code arms on cur3 (vs veto-resite-vs11-hv): weapon_sync W 19 -> 20 (wp z -0.3), tower_min_quarters=1 W 19 -> 18
+  (towers20 z 2.6, wp z 1.6: fresh half queued), worn_basis=1 W 19 -> 18 (neutral), enemy_stun_mult=1.0 W 19 -> 11 (wp z
+  -2.4: the default stays), parked_scan_econ=10 W 19 -> 7 (wp z -2.3). freeze_fight + freeze_unfreeze at N=12 (squad
+  10) W 6 -> 6, surv60 +0.35 (z 1.9): re-run on cur4.
+- Levels on cur3: N=14 1/600 (s169), N=15 0/200; median game 21 min at N=14, 20 min at N=15. quirks.py at N=14: 4-8.5 %
+  of games show a pathology (peon trap, peon jams, tower decay); the typical loss is the plain collapse at ~21 min with
+  1-2 copies out, so the lever at N=14 is removing more copies early.
