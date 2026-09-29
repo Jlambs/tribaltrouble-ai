@@ -1123,3 +1123,13 @@ retreat through the same pass (only the attack role is watched).
   fixes the s98-type wedge; it has not shown more wins. Harness note: a 400-game batch with 360-min games ran the
   parent JVM (-Xmx768m) out of heap in the summary step (Curves) after every game had finished, so no summary.txt;
   results.jsonl was complete (stub summaries written by hand so the pool moves on).
+- **More cur4 screens (all off / not adopted):** capped_clump=0.5 (fires in 60-70 % of games) N=12 W 9 -> 10, elim 0, wp
+  -0.4 pp; N=13 elim -.007: neutral. chief_wake_retreat 6 s / 12 cells: our chieftain still dies ~1.05 times a game
+  (0.85 of them in the wake window), N=13 elim +.005, wp +0.2 pp (z 1.2), N=12 W 9 -> 8: neutral; 10 s / 14 cells
+  the same. freeze_fight + unfreeze on cur4 N=12: W 9 -> 7, elim -.010 (z -1.4). ring_sweep (built, commit 51ae511b):
+  smoke shows it acting mostly as an early recall (the base sits at threat level 2, so defend() has the army);
+  screen queued.
+- **Freeze at other N with squad 6:** N=8 s201..400 W 111 -> 115, elim +.016 (z 1.8), wp +1.4 pp (z 1.5); N=11
+  s1..200 W 19 -> 15, surv60 +1.3 (z 1.3), elim +.015, wp +0.1 pp. N=11 fresh half queued to decide whether the
+  enemies >= 12 gate can go. tower_min_quarters=1 at N=11 on 201..400: surv60 +0.4 (z 2.4), W 12 -> 11, elim -.006
+  (pooled 400: surv60 +0.3, W 31 -> 29, elim -.004 z -1.8): survival up, outs not; N=12 arm queued.
