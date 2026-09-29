@@ -934,3 +934,41 @@ and failed rebuilds (62 % never complete another armory after the first falls). 
 than 10 field warriors alive, so a recall would not have saved them. Being built: veto_resite (move or drop a vetoed
 tower project), bank_guard (cap the armory's idle bank; the rest wait in the safest quarters), wood_reach (the endgame
 wood lock of the 360-min draws).
+
+### cur3: veto_resite and the freeze opening adopted; long games; jams (2026-09-29 night)
+
+Adopted (commit b4f1a27f; the default build equals the explicit arms, same checksums at N=11 and N=12):
+- **veto_resite=20** for all N: survival up at every N (surv60 +1.9 / +1.0 / +0.8 min at N=11 / 12 / 13, z 4.4 / 2.2 /
+  3.0; towers at 20 min +1.3 to +1.8, z 6-8); wins N=11 15 -> 19 (1..200), N=12 2 -> 5 and 2 -> 1, N=13 1 -> 1.
+- **freeze_open from N=12** (Strategy.forGame, enemies >= 12): N=12 W 2 -> 7, 2 -> 2, 0 -> 4 on seeds 1..200 / 201..400 /
+  401..600 (elim +.041 / +.021 / +.033, z 3.3 / 2.2 / 3.4); N=13 W 1 -> 2, 1 -> 2 (elim +.025 / +.020); N=11 W 15 -> 11,
+  13 -> 12 (wp -1.2 pp, z -1.4): not at N=11. With veto_resite on top at N=12: W 2 -> 6, elim +.042, alive40 +7.5 pp
+  (z 3.4); N=13: W 1 -> 2, elim +.028 (z 2.9). Kept under test (the user: no local-minimum bait either way): every
+  re-base keeps a freeze-off arm at N=12/13; cheaper variants queued (squad 6/8, eta 30, fight + unfreeze).
+- Not adopted: freeze_squad=14 (worse), freeze_armory_push (armory 80 s earlier but W 3 vs 7 against plain freeze),
+  armory_threat_cap=2 (N=12 fresh neutral), bank_guard (nothing on top of veto_resite), stall_peons (converts s98 draw ->
+  win at 89 min but flips s264 the other way; fires rarely), weapon_sync (2.8 duplications per game, W 15 vs 14),
+  shepherd_until=1200 (surv60 -1.0, z -6.4), recall_ratio=4, base_radius=22 (wp z -2.0), shepherd_lead (neutral),
+  N=11 legacy: front towers in/out, tower_mutual, towers_early_time=120, shepherd_ring26, shepherd patience 60 +
+  site_shepherd, retreat_ratio=2.0 (all neutral or negative).
+
+Long games (the user asked what the tails are): at N=12-13 the longest games are mostly wins (N=12 > 90 min: 11 wins,
+5 losses, 1 draw in 1,600 games; N=13: 2 wins, 1 loss in 800); the 360-min draws are an N=11 thing (7 in 1,000). A
+lower time cap would cut wins; the tails are two pathologies: the **wood lock** (trees only searched within 60 cells:
+Economy.pickSupply `radius = type == TreeSupply.class ? 60 : 200`; the gatherer loop breaks at the first failed send so
+workers are never released; the primary armory never releases workers at weapon stock 0; 150-210 peons idle in the
+armory with no army for 20-200 min; the 3-hour N=12 wins all had a 33-57-min lock) -> wood_reach (built, screening);
+and the **stuck army** (s98: a column wedged at a choke, 30-46 warriors blocked at one cell for 5 hours, and peon fights
+reset the stall clock) -> stall_peons (converts s98) and an unjam fix in progress (s97 in the weapon-sync run: the stall
+fired 236 times and the army still never moved, so the choke jam itself needs fixing). Once <= 3 copies remain,
+conversion is fast (median 9.5 min) and no game was ever lost from there.
+
+Diagnostics: Jams.java (counters peon_blocked, warrior_blocked, peon_jam, warrior_jam; log "jam: N ... blocked around
+x,y"; no decisions) and lab/gauntlet/quirks.py (per-run pathology signatures: wood_lock, stuck_army, peon_trap,
+tower_decay, dry_spell, homeless_alive, stall_churn, draw_at_cap, warrior_jam, peon_jam). Seeds with repeated peon jams
+across configs (s9, s93, s192) point to map geography; logged replays queued. Silly behaviour found: at the unit cap the
+attack gate's capped clause launches attacks with army 0.0 vs defense 0.0 (wood locks); guard param in the hygiene
+branch. N=12/13 logged games (camp-cur-vs12/13-hv): games end at 16-37 min; peon banks of 100-236 inside the armory
+vanish with it (230 units at once in N=13 s38); towers razed 7.4-8.8 vs completed 0.7 per game at 15-25 min (before
+veto_resite). An N=12/13 collapse audit is running; unjam and behaviour-preserving hygiene are being built in worktrees.
+Harness: pool.sh (K auto-sized batches from a job file) replaced the lanes.
