@@ -39,7 +39,9 @@ final class Military {
         ATTACK,
         /** On the way to join the attacking army. */
         REINFORCE,
-        RAID
+        RAID,
+        /** chief_hunt squad. */
+        CHASE
     }
 
     private static final int ENGAGE_RADIUS = 22;
@@ -352,6 +354,7 @@ final class Military {
         }
         reinforce();
         raid();
+        chase();
         peonRush();
         restoreDodge();
         towerFire();
@@ -379,6 +382,8 @@ final class Military {
             considerReinforcing();
         if (mode == Mode.HOME && threat_level <= ai.strategy().raid_threat)
             considerRaid();
+        if (ai.strategy().chief_hunt && countRole(Role.CHASE) == 0 && ai.time() - last_chase_end >= 10f)
+            considerChase();
     }
 
     private void updateRoles() {
@@ -387,6 +392,8 @@ final class Military {
             Map.Entry<Unit, Role> e = it.next();
             Unit u = e.getKey();
             if (u.isDead() || u.isMounted()) {
+                if (u.isDead() && e.getValue() == Role.CHASE)
+                    ai.aiLog().count("hunt_lost");
                 it.remove();
                 tower_assignments.remove(u);
                 last_order.remove(u);
@@ -1608,6 +1615,12 @@ final class Military {
         }
         if (best != null)
             return best;
+        Strategy s = ai.strategy();
+        boolean lean = s.finish_skip_out || s.finish_units >= 0 || s.finish_ratio > 0f;
+        if (lean)
+            countBases();
+        float ref = mode == Mode.ATTACK ? attackStrength() : armyStrength();
+        Map<Player, Boolean> skip = new LinkedHashMap<>();
         // Units of homeless copies: chieftains count as four times nearer.
         for (List<Unit> group : List.of(intel.enemy_chieftains, intel.enemy_warriors, intel.enemy_peons))
             for (Unit u : group) {
@@ -1616,6 +1629,14 @@ final class Military {
                 int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
                 if (d > range2 || !homeless(u.getOwner()))
                     continue;
+                Player p = u.getOwner();
+                if (lean && skip.computeIfAbsent(p, k -> leanSkip(k, from_x, from_y, ref)))
+                    continue;
+                if (s.finish_units >= 0 && group != intel.enemy_chieftains
+                        && p.getUnitCountContainer().getNumSupplies() - (p.hasActiveChieftain() ? 1 : 0) <= s.finish_units)
+                    continue; // only its chieftain (and sites, above) still matter
+                if (s.finish_ratio > 0f && guarded(u, ref))
+                    continue;
                 float score = group == intel.enemy_chieftains ? d / 4f : d;
                 if (score < best_score) {
                     best_score = score;
@@ -1623,6 +1644,45 @@ final class Military {
                 }
             }
         return best;
+    }
+
+    /** finish_lean: a copy already collapsing, or a remnant stronger than finish_ratio x our army. */
+    private boolean leanSkip(@NonNull Player p, int fx, int fy, float ref) {
+        Strategy s = ai.strategy();
+        int[] c = qa_counts.getOrDefault(p, new int[2]);
+        if (s.finish_skip_out && p.getUnitCountContainer().getNumSupplies() <= 8 && !p.hasActiveChieftain()
+                && c[1] == 0) {
+            ai.aiLog().count("finish_skip_out");
+            return true;
+        }
+        if (s.finish_ratio > 0f) {
+            int r2 = s.finish_range * s.finish_range;
+            float remnant = 0f;
+            for (List<Unit> g : List.of(ai.intel().enemy_warriors, ai.intel().enemy_chieftains))
+                for (Unit u : g)
+                    if (!u.isDead() && u.getOwner() == p && MapAnalysis.dist2(fx, fy, u.getGridX(), u.getGridY()) <= r2)
+                        remnant += Combat.value(u);
+            if (remnant > s.finish_ratio * ref) {
+                ai.aiLog().count("finish_skip_big");
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** finish_lean: other copies' awake warriors within 25 cells of the candidate outweigh 0.3 x our army. */
+    private boolean guarded(@NonNull Unit t, float ref) {
+        float others = 0f;
+        for (Unit e : ai.intel().enemy_warriors)
+            if (!e.isDead() && e.getOwner() != t.getOwner()
+                    && !(e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController)
+                    && MapAnalysis.dist2(e.getGridX(), e.getGridY(), t.getGridX(), t.getGridY()) <= 25 * 25)
+                others += Combat.value(e);
+        if (others > .3f * ref) {
+            ai.aiLog().count("finish_skip_guarded");
+            return true;
+        }
+        return false;
     }
 
     private @Nullable Selectable<?> chooseTarget(int from_x, int from_y) {
@@ -3188,6 +3248,243 @@ final class Military {
             }
         }
         return best;
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // chief_hunt: a small squad finishes homeless copies (their lone chieftain, their quarters/armory sites)
+
+    private @Nullable Selectable<?> chase_target;
+    private @Nullable Player chase_owner;
+    private float chase_start = -1000f;
+    private float last_chase_end = -1000f;
+    private final Map<@NonNull Selectable<?>, Float> chase_banned = new LinkedHashMap<>();
+    /** Per enemy player: {finished quarters + armories, quarters + armory sites}. Rebuilt by countBases(). */
+    private final Map<@NonNull Player, int @NonNull []> qa_counts = new LinkedHashMap<>();
+
+    private void countBases() {
+        qa_counts.clear();
+        for (Building b : ai.intel().enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (b.isDead() || (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                    && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY))
+                continue;
+            qa_counts.computeIfAbsent(b.getOwner(), k -> new int[2])[b.isComplete() ? 0 : 1]++;
+        }
+    }
+
+    /** Killing its chieftain and razing its quarters/armory sites puts p out: homeless and at most 8 other units. */
+    private boolean huntable(@NonNull Player p) {
+        int[] c = qa_counts.getOrDefault(p, new int[2]);
+        if (c[0] > 0)
+            return false;
+        int after = p.getUnitCountContainer().getNumSupplies() - (p.hasActiveChieftain() ? 1 : 0);
+        if (after > 8)
+            return false;
+        return p.hasActiveChieftain() || c[1] > 0;
+    }
+
+    private boolean clearForChase(@NonNull Selectable<?> t, int @NonNull [] from, int @Nullable [] army_c) {
+        Strategy s = ai.strategy();
+        Intel intel = ai.intel();
+        int x = t.getGridX();
+        int y = t.getGridY();
+        if (MapAnalysis.dist2(from[0], from[1], x, y) > s.chief_hunt_range * s.chief_hunt_range) {
+            ai.aiLog().count("hunt_skip_far");
+            return false;
+        }
+        if (inDeadRegion(x, y) || stalled_targets.containsKey(t))
+            return false;
+        if (Combat.countNear(intel.enemy_warriors, x, y, 15) > s.chief_hunt_escort) {
+            ai.aiLog().count("hunt_skip_escort");
+            return false;
+        }
+        for (Building tw : intel.enemy_towers)
+            if (Intel.isTowerActive(tw) && MapAnalysis.dist2(tw.getGridX(), tw.getGridY(), x, y) <= 22 * 22) {
+                ai.aiLog().count("hunt_skip_tower");
+                return false;
+            }
+        // Near the army its own fights have him; near our buildings the towers and the home defense do.
+        if (army_c != null && MapAnalysis.dist2(army_c[0], army_c[1], x, y) <= 25 * 25) {
+            ai.aiLog().count("hunt_skip_army");
+            return false;
+        }
+        for (Selectable<?> sel : ai.owner().getUnits().getSet())
+            if (sel instanceof Building b && !b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), x,
+                    y) <= 25 * 25) {
+                        ai.aiLog().count("hunt_skip_base");
+                        return false;
+                    }
+        return true;
+    }
+
+    private void considerChase() {
+        Strategy s = ai.strategy();
+        Intel intel = ai.intel();
+        Role source = mode == Mode.ATTACK ? Role.ATTACK : mode == Mode.HOME && threat_level < 2 ? Role.ARMY : null;
+        if (source == null)
+            return;
+        List<Unit> pool = new ArrayList<>();
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            WarriorState st = intel.warrior_states.get(u);
+            if (e.getValue() == source && Intel.warriorType(u) == WarriorType.IRON && st != WarriorState.STUNNED
+                    && st != WarriorState.ENTER && st != WarriorState.FIGHT)
+                pool.add(u);
+        }
+        if (pool.size() < s.chief_hunt_size + (source == Role.ATTACK ? 12 : 6))
+            return;
+        int[] army_c = source == Role.ATTACK ? centroid(pool) : null;
+        int[] from = army_c != null ? army_c : new int[]{staging_x, staging_y};
+        countBases();
+        chase_banned.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 120f);
+        Selectable<?> best = null;
+        int best_d = Integer.MAX_VALUE;
+        for (Unit ch : intel.enemy_chieftains) {
+            if (ch.isDead() || chase_banned.containsKey(ch) || !huntable(ch.getOwner()) || !clearForChase(ch, from,
+                    army_c))
+                continue;
+            int d = MapAnalysis.dist2(from[0], from[1], ch.getGridX(), ch.getGridY());
+            if (d < best_d) {
+                best_d = d;
+                best = ch;
+            }
+        }
+        if (s.hunt_sites)
+            for (Building b : intel.enemy_buildings) {
+                int id = b.getTemplate().getTemplateID();
+                if (b.isDead() || b.isComplete() || chase_banned.containsKey(b)
+                        || (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                                && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY)
+                        || !huntable(b.getOwner()) || !clearForChase(b, from, army_c))
+                    continue;
+                int d = MapAnalysis.dist2(from[0], from[1], b.getGridX(), b.getGridY());
+                if (d < best_d) {
+                    best_d = d;
+                    best = b;
+                }
+            }
+        if (best == null)
+            return;
+        Selectable<?> t = best;
+        pool.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), t.getGridX(), t.getGridY()),
+                MapAnalysis.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY())));
+        for (Unit u : pool.subList(0, s.chief_hunt_size)) {
+            roles.put(u, Role.CHASE);
+            last_order.put(u, ai.time());
+            ai.owner().setTarget(Selectable.newArray(u), t, Action.ATTACK, true);
+        }
+        chase_target = t;
+        chase_owner = t.getOwner();
+        chase_start = ai.time();
+        ai.aiLog().count(t instanceof Unit ? "hunt_start_chief" : "hunt_start_site");
+        int dist = (int) Math.sqrt(best_d);
+        ai.log(String.format("chase: %d on %s of %s at %d,%d, %d cells out", s.chief_hunt_size,
+                t instanceof Unit ? "chieftain" : "site", t.getOwner().getPlayerInfo().getName(), t.getGridX(),
+                t.getGridY(), dist));
+    }
+
+    /** The owner's next blocker within {@code cells} of c: its chieftain, or (hunt_sites) a quarters/armory site. */
+    private @Nullable Selectable<?> nextBlocker(@NonNull Player owner, int @NonNull [] c, int cells) {
+        Intel intel = ai.intel();
+        countBases();
+        if (!huntable(owner))
+            return null;
+        Selectable<?> best = null;
+        int best_d = cells * cells;
+        List<Selectable<?>> candidates = new ArrayList<>();
+        for (Unit ch : intel.enemy_chieftains)
+            if (!ch.isDead() && ch.getOwner() == owner)
+                candidates.add(ch);
+        if (ai.strategy().hunt_sites)
+            for (Building b : intel.enemy_buildings) {
+                int id = b.getTemplate().getTemplateID();
+                if (!b.isDead() && !b.isComplete() && b.getOwner() == owner
+                        && (id == com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                                || id == com.oddlabs.tt.model.Race.BUILDING_ARMORY))
+                    candidates.add(b);
+            }
+        for (Selectable<?> t : candidates) {
+            int d = MapAnalysis.dist2(c[0], c[1], t.getGridX(), t.getGridY());
+            if (d <= best_d && !chase_banned.containsKey(t) && clearForChase(t, c, null)) {
+                best_d = d;
+                best = t;
+            }
+        }
+        return best;
+    }
+
+    private void chase() {
+        List<Unit> squad = new ArrayList<>();
+        for (Map.Entry<Unit, Role> e : roles.entrySet())
+            if (e.getValue() == Role.CHASE)
+                squad.add(e.getKey());
+        if (squad.isEmpty())
+            return;
+        Strategy s = ai.strategy();
+        Intel intel = ai.intel();
+        Selectable<?> t = chase_target;
+        int[] c = centroid(squad);
+        if (t == null || t.isDead()) {
+            if (t != null) {
+                ai.aiLog().count(t instanceof Unit ? "hunt_kill" : "hunt_site_razed");
+                ai.log("chase: " + (t instanceof Unit ? "chieftain" : "site") + " of " + t.getOwner().getPlayerInfo().getName() + " done");
+            }
+            Selectable<?> next = chase_owner == null ? null : nextBlocker(chase_owner, c, 60);
+            if (next != null) {
+                chase_target = next;
+                chase_start = ai.time();
+                ai.aiLog().count("hunt_chain");
+                return;
+            }
+            endChase(squad);
+            return;
+        }
+        float ours = 0f;
+        for (Unit u : squad)
+            ours += Combat.value(u);
+        float danger = Combat.strengthNear(intel.enemy_warriors, c[0], c[1], 24);
+        for (Unit ch : intel.enemy_chieftains)
+            if (ch != t && !ch.isDead() && MapAnalysis.dist2(ch.getGridX(), ch.getGridY(), c[0], c[1]) <= 24 * 24)
+                danger += Combat.value(ch);
+        for (Building tw : intel.enemy_towers)
+            if (!tw.isDead() && MapAnalysis.dist2(tw.getGridX(), tw.getGridY(), c[0], c[1]) <= 10 * 10)
+                danger += enemyTowerValue(tw);
+        String abort = danger > .8f * ours ? "hunt_abort_danger" : ai.time() - chase_start > s.chief_hunt_time ? "hunt_abort_time" : squad.size() < 3 ? "hunt_abort_small" : Combat.countNear(
+                intel.enemy_warriors, t.getGridX(), t.getGridY(),
+                15) > s.chief_hunt_escort + 2 ? "hunt_abort_escort" : null;
+        if (abort == null) {
+            countBases();
+            if (!huntable(t.getOwner()))
+                abort = "hunt_abort_changed";
+        }
+        if (abort != null) {
+            ai.aiLog().count(abort);
+            chase_banned.put(t, ai.time());
+            endChase(squad);
+            return;
+        }
+        for (Unit u : squad) {
+            WarriorState st = intel.warrior_states.get(u);
+            if (st == WarriorState.FIGHT || st == WarriorState.STUNNED || st == WarriorState.ENTER)
+                continue;
+            Float last = last_order.get(u);
+            if (last != null && ai.time() - last < 2f)
+                continue;
+            last_order.put(u, ai.time());
+            ai.owner().setTarget(Selectable.newArray(u), t, Action.ATTACK, true);
+        }
+    }
+
+    private void endChase(@NonNull List<@NonNull Unit> squad) {
+        Role back = mode == Mode.ATTACK ? Role.ATTACK : Role.ARMY;
+        for (Unit u : squad) {
+            roles.put(u, back);
+            if (back == Role.ARMY)
+                move(u, staging_x, staging_y);
+        }
+        chase_target = null;
+        chase_owner = null;
+        last_chase_end = ai.time();
     }
 
     private void raid() {

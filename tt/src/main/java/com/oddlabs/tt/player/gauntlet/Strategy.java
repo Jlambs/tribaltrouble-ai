@@ -83,6 +83,28 @@ class Strategy {
     /** Finish a raided copy (sites, chieftain, units within finish_range cells) before choosing another. */
     boolean finish_copies = false;
     int finish_range = 90;
+    /**
+     * finish_lean (with finish_copies): skip copies that already meet the collapse rule, stop hunting a copy's units
+     * once it has finish_units or fewer besides its chieftain (-1 = off), skip remnants stronger than finish_ratio x
+     * our
+     * army (0 = off) and targets guarded by other copies' awake warriors (Military.finishTarget).
+     */
+    boolean finish_skip_out = false;
+    int finish_units = -1;
+    float finish_ratio = 0f;
+    /**
+     * chief_hunt: a squad of chief_hunt_size iron warriors kills the chieftain of a copy with no finished quarters or
+     * armory and at most 8 other units (it is then out); hunt_sites: its quarters/armory sites too. Target within
+     * chief_hunt_range cells, at most chief_hunt_escort enemy warriors within 15 cells, no enemy tower within 22; the
+     * squad gives up after chief_hunt_time s or when outmatched (Military.considerChase). Six never set off a Viking
+     * blast (7 of our selectables within 18 cells).
+     */
+    boolean chief_hunt = false;
+    boolean hunt_sites = false;
+    int chief_hunt_size = 6;
+    int chief_hunt_range = 150;
+    int chief_hunt_escort = 3;
+    float chief_hunt_time = 90f;
     /** Keep the tower target under the building cap; front towers add at most front_tower_bonus_max. */
     boolean tower_cap = false;
     int front_tower_bonus_max = 100;
@@ -625,6 +647,15 @@ class Strategy {
         gate_owner = params.getBoolean("gate_owner", gate_owner);
         reinforce_threat_ratio = (float) params.getDouble("reinforce_threat_ratio", reinforce_threat_ratio);
         finish_copies = params.getBoolean("finish_copies", finish_copies);
+        finish_skip_out = params.getBoolean("finish_skip_out", finish_skip_out);
+        finish_units = params.getInt("finish_units", finish_units);
+        finish_ratio = (float) params.getDouble("finish_ratio", finish_ratio);
+        chief_hunt = params.getBoolean("chief_hunt", chief_hunt);
+        hunt_sites = params.getBoolean("hunt_sites", hunt_sites);
+        chief_hunt_size = params.getInt("chief_hunt_size", chief_hunt_size);
+        chief_hunt_range = params.getInt("chief_hunt_range", chief_hunt_range);
+        chief_hunt_escort = params.getInt("chief_hunt_escort", chief_hunt_escort);
+        chief_hunt_time = (float) params.getDouble("chief_hunt_time", chief_hunt_time);
         finish_range = params.getInt("finish_range", finish_range);
         tower_cap = params.getBoolean("tower_cap", tower_cap);
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);
