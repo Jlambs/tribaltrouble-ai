@@ -1426,3 +1426,8 @@ retreat through the same pass (only the attack role is watched).
   for cur6-vs8-hv-b, woodr20-c6-vs13-f2, cur6-vs14-hv-d, cur6-vs16-hv; results.jsonl complete in each.
 - cur6 N=14 wins replay VERIFIED: cur6-vs14-f1 s4051 (96:17), s4113 (209:48), s4139 (219:45), s4154 (88:04); cur6-vs14-f2
   s4455 (165:00); cur6-vs14-hv-d s642 (203:39); with slots32 s3484 and s3549, all 8 cur6 N=14 wins are verified.
+- **Summary out-of-memory fixed on headless** (bceffd8d, merged 0fb44a3a): each analysis Game kept its whole parsed game
+  file, so the summary held all of a run's census at once in the parent's 768 MB heap; it now adds each game to the curve
+  cells in one pass and forgets it. The six stubbed runs (cur6-vs8-hv-b, cur6-vs14-hv-d, cur6-vs16-hv, unjam8-c4-vs11-hv,
+  unjam8-c4-vs12-hv, woodr20-c6-vs13-f2) now have real summaries (./aisim.sh summary RUN); the 200-game cap and the stub
+  watcher are no longer needed. The merged build plays cur6 bit-identically (s201, s202).
