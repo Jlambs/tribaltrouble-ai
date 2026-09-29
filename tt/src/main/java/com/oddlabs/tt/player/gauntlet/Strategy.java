@@ -811,6 +811,62 @@ class Strategy {
     /** Weight of a spot's distance from the copy's own quarters and armory, beside its distance from our start. */
     float shepherd_home_weight = 0f;
     /**
+     * shepherd_sticky (score cells, 0 = off): a shepherd's current spot, and ring cells within 4 cells of it, score
+     * this much more, so the spot no longer flips between ring cells of about equal score (Shepherd.findSpot); the
+     * current spot also stays a candidate while enemies have blocked it for less than shepherd_grace seconds.
+     * shepherd_travel: each cell from the shepherd to a candidate costs this much score.
+     */
+    float shepherd_sticky = 0f;
+    float shepherd_grace = 0f;
+    float shepherd_travel = 0f;
+    /**
+     * shepherd_safe_walk: a shepherd takes the best of the 12 best spots whose straight walk, over its first
+     * shepherd_safe_look cells, keeps shepherd_safe_clear cells from every enemy warrior and chieftain, and a flee runs
+     * 3 s before it heads back (Shepherd.findSpot, tend).
+     */
+    boolean shepherd_safe_walk = false;
+    /**
+     * shepherd_calm_peons (cells, 0 = off): enemy peons that cannot start a fight on their own (gathering, building,
+     * walking without aggression; only idle units and attack-walks scan) block a spot and make a shepherd flee only
+     * within this many cells, not shepherd_clear (Shepherd.enemyNear, threatAway).
+     */
+    int shepherd_calm_peons = 0;
+    /**
+     * shepherd_route (cells, 0 = off): a shepherd farther than this from its spot walks legs of this length, each
+     * straight at the spot if clear of enemy warriors (shepherd_safe_clear cells), fighting peons and enemy towers
+     * (16 cells), else bent by up to 90 degrees; with no clear leg it holds (Shepherd.routeStep).
+     */
+    int shepherd_route = 0;
+    /**
+     * shepherd_follow: while a copy's oldest idle warrior stands at home (40 cells from its armory) and its last wave
+     * is still out, its shepherd's spot is picked around that wave's target (where its survivors go idle and lead the
+     * next launch), not at home. shepherd_home_pair (cells, 0 = off): copies starting at least this far from us get a
+     * second, home shepherd, whose spot is picked around the copy's oldest idle warrior at home, else its armory;
+     * the copy's own shepherd then follows its wave as with shepherd_follow (Shepherd.tend).
+     */
+    boolean shepherd_follow = false;
+    /**
+     * shepherd_light: shepherds are recruited only from peons that carry nothing. A loaded peon walks at 4 m/s instead
+     * of 5 (Unit.TRANSPORT_SPEED_SCALE), as fast as the warriors it runs from, and a shepherd never delivers its load:
+     * half the recruits were gatherers (shep-base2-log), and 90 % of shepherds die while fleeing (Shepherd.recruit).
+     */
+    boolean shepherd_light = false;
+    /**
+     * shepherd_flee_near: a shepherd flees along the sum of its threats' pushes, each 1 / distance (the nearest
+     * decide), not away from their centroid, on the nearest of 16 headings whose straight 22-cell walk crosses only
+     * open cells, keeping its last heading while that stays within 45 degrees (Shepherd.fleePoint); dying shepherds
+     * made only 1.1-1.4 cells/s over their last 6 s, shuffling at woods (shep-flee-log; a peon runs 2.5).
+     */
+    boolean shepherd_flee_near = false;
+    /**
+     * A warrior walking aggressively within 40 cells whose target is within this many cells of the shepherd is a wave
+     * coming at it, and the shepherd runs (Shepherd.threatAway); fleeing dying shepherds ran mostly from such waves.
+     */
+    int shepherd_coming_r = 14;
+    int shepherd_home_pair = 0;
+    int shepherd_safe_look = 40;
+    int shepherd_safe_clear = 10;
+    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -858,6 +914,19 @@ class Strategy {
         tower_min_quarters = params.getInt("tower_min_quarters", tower_min_quarters);
         shepherd_patience = (float) params.getDouble("shepherd_patience", shepherd_patience);
         shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
+        shepherd_sticky = (float) params.getDouble("shepherd_sticky", shepherd_sticky);
+        shepherd_grace = (float) params.getDouble("shepherd_grace", shepherd_grace);
+        shepherd_travel = (float) params.getDouble("shepherd_travel", shepherd_travel);
+        shepherd_safe_walk = params.getBoolean("shepherd_safe_walk", shepherd_safe_walk);
+        shepherd_calm_peons = params.getInt("shepherd_calm_peons", shepherd_calm_peons);
+        shepherd_route = params.getInt("shepherd_route", shepherd_route);
+        shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
+        shepherd_light = params.getBoolean("shepherd_light", shepherd_light);
+        shepherd_flee_near = params.getBoolean("shepherd_flee_near", shepherd_flee_near);
+        shepherd_coming_r = params.getInt("shepherd_coming_r", shepherd_coming_r);
+        shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
+        shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
+        shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
         front_tower_max = params.getInt("front_tower_max", front_tower_max);
