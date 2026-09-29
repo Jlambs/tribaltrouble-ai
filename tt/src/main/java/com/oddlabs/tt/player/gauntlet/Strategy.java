@@ -361,6 +361,23 @@ class Strategy {
     /** The same for quarters projects (the second arm of veto_resite). */
     boolean veto_resite_quarters = false;
     /**
+     * unjam (units, 0 = off; arm 8): when the Jams scan finds at least this many attack units blocked (walking but on
+     * the same cell as 5 s before) on every scan for unjam_after s, with no enemy warrior, chieftain or tower within
+     * 30 cells of them, while the army's pivot got less than unjam_progress m closer to the target, the attack marches
+     * as a column until unjam_time s after the last jammed scan: no pivot hold, and every unit walks towards its own
+     * point `lead` meters on along the target field (the front at most two leads past the pivot) instead of the
+     * pivot's waypoint (Military.noteBlocked, Military.attack). s97 and s98 at N=11 (lab note 2026-09-29, jam
+     * pictures): the first units through a 1-3-cell pass reach their spread cells at its exit and stand idle; the
+     * engine's pathfinder treats idle and blocked units as walls, so the column behind them blocks, the pivot in it
+     * never moves the waypoint on, and the idle plug, "already there" and ahead of the pivot, is never re-ordered.
+     */
+    int unjam = 0;
+    float unjam_after = 15f;
+    int unjam_progress = 10;
+    float unjam_time = 30f;
+    /** unjam acts only from this game time (s): for replaying a jammed game unchanged up to its jam. */
+    float unjam_from = 0f;
+    /**
      * bank_guard (late/spec S2): from bank_guard_time the main armory keeps only the workers its measured iron income
      * and stock can keep forging (bank_min once it cannot forge for bank_noforge_s); the rest wait in the quarters
      * farthest from the threat and come out for builders or when the armory has room again (Economy.guardBank): 105
@@ -947,6 +964,11 @@ class Strategy {
         veto_resite_time = (float) params.getDouble("veto_resite_time", veto_resite_time);
         veto_resite_clear = params.getInt("veto_resite_clear", veto_resite_clear);
         veto_resite_quarters = params.getBoolean("veto_resite_quarters", veto_resite_quarters);
+        unjam = params.getInt("unjam", unjam);
+        unjam_after = (float) params.getDouble("unjam_after", unjam_after);
+        unjam_progress = params.getInt("unjam_progress", unjam_progress);
+        unjam_time = (float) params.getDouble("unjam_time", unjam_time);
+        unjam_from = (float) params.getDouble("unjam_from", unjam_from);
         bank_guard = params.getBoolean("bank_guard", bank_guard);
         bank_guard_time = (float) params.getDouble("bank_guard_time", bank_guard_time);
         bank_min = params.getInt("bank_min", bank_min);
