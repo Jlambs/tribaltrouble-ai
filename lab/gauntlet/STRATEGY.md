@@ -40,6 +40,7 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 | freeze squad 6 (was 10) | four more peons at home; a frozen copy is worth nearly an out | N=12 W 8 -> 15 over 400 |
 | freeze at every N (gate at 12 removed) | the N=11 loss was squad 10's cost | N=11 W 31 -> 35 over 400 |
 | two tower projects, three sites after 10 min | two placed sites (shared with quarters) bounded tower completions | towers20 +0.7..+1.3, surv60 +0.3..+1.3 in 10 blocks; N=13-14 wins 8 vs 3 |
+| chieftain from 300 s (was 240) | training takes a quarters' breeding; an early chieftain costs the opening peons | surv60 up in 8 of 9 N=13-14 blocks; fresh wins 9 -> 12 |
 
 ## What did not (and why, briefly)
 

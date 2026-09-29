@@ -1431,3 +1431,14 @@ retreat through the same pass (only the attack role is watched).
   cells in one pass and forgets it. The six stubbed runs (cur6-vs8-hv-b, cur6-vs14-hv-d, cur6-vs16-hv, unjam8-c4-vs11-hv,
   unjam8-c4-vs12-hv, woodr20-c6-vs13-f2) now have real summaries (./aisim.sh summary RUN); the 200-game cap and the stub
   watcher are no longer needed. The merged build plays cur6 bit-identically (s201, s202).
+
+### cur7: the chieftain from 300 s (2026-09-29 late afternoon)
+
+- **Adopted (0dd43463): chieftain_time 300 for many enemies (Strategy.forGame; was 240).** On cur6: N=13 s1..200 surv60
+  +0.67, s201..400 +1.83 (z 2.8); fresh 4001..4300 W 2 -> 5, surv60 +1.41 (z 2.8), wp +0.7 pp (z 2.6), elim +.013;
+  4301..4600 W 2 -> 3, elim +.016 (z 2.4); N=14 s1..200 surv60 +0.65, s201..400 surv60 +0.85 (z 2.0), arm25 +6 pp (z 2.2);
+  fresh 4001..4300 W 4 -> 0, surv60 -0.44, arm25 -4 pp (z -2.4); 4301..4600 W 1 -> 4, elim +.024 (z 3.3); N=12 ~0.
+  Fresh-seed wins 9 -> 12 of 1,200. 360 / 420 / 480 at N=13: surv60 +0.75 / +1.04 / +0.74, elim +.012 / +.005 / +.016:
+  the optimum is broad; 240 trained him too early (training takes a quarters' breeding in the opening).
+- N=15 fishing on cur6: 0 wins in 1,000 more games (0 in 1,600 in all). N=16: 0 in 400.
+- cur7 benchmark on fresh seeds (6001+) running: N=14 2,000, N=15 2,000, N=13 1,000.
