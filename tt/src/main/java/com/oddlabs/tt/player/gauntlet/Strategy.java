@@ -558,9 +558,11 @@ class Strategy {
      * kill its peons before its first quarters stands, which puts it out (no units, no finished quarters). If the
      * quarters stands first, the squad waits outside its defense circle for the armory site and kills its builders,
      * which freezes the copy (never touching the site); freeze_raze then stays to raze the frozen quarters.
+     * freeze_squad 6 (was 10): the four peons more at home pay (N=12 over 400 seeds W 8 -> 15, surv60 +1.3 min, z 2.7;
+     * freeze-squad6-c3-vs12-hv and -b), 4 fails the strike too often (W 9 -> 2) and 14 starves the opening (W 7 -> 1).
      */
     boolean freeze_open = false;
-    int freeze_squad = 10;
+    int freeze_squad = 6;
     float freeze_eta = 40f;
     boolean freeze_raze = false;
     /**
