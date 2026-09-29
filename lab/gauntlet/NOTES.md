@@ -1332,3 +1332,4 @@ retreat through the same pass (only the attack role is watched).
   +0.31, wp +0.4 pp (z 1.4), w15 57.5 -> 56.3; **from 600 s with reserve 20 (woodr20)** surv60 +0.52, alive40 +2.5 pp,
   towers20 +0.41, w15 57.5 -> 58.0 (25 carried pieces a game). site_towers_first: surv60 -0.3 (z -1.7), no. Queued:
   woodr20 confirmations and the tower package slots32 + woodr20 at N=12-14.
+- **Second N=14 win:** cur5-vs14-w1 s3275 (default cur5), 151:44, replay VERIFIED (checksum 324272624).
