@@ -65,12 +65,14 @@ def read_game(run, row):
     path = os.path.join(ROOT, run, 'g', key + '.jsonl')
     if g['failed'] or not os.path.exists(path):
         g.update(failed=True, N=max(1, (row.get('slots') or 2) - 1), elim=0.0, feats={t: None for t in TIMES},
-                 surv=0.0, hold20=0)
+                 surv=0.0, hold20=0, hold20a1=0, base25=0, arm25=0, towers20=0, peons20=0, vanished20=0)
         return g
     want = {t * 60 for t in TIMES}
     census = {}
     outs = {}
     header = None
+    early = {}  # (slot, t) -> census row, every row up to 25 min (the window columns)
+    events = []  # (t, 'built' | 'razed', slot, building, x, y, site)
     with open(path, encoding='utf-8') as f:
         for line in f:
             if line.startswith('{"ev":"census"'):
@@ -78,6 +80,11 @@ def read_game(run, row):
                 t = int(round(e['t']))
                 if t in want:
                     census[(e['s'], t)] = e
+                if t <= 1500:
+                    early[(e['s'], t)] = e
+            elif line.startswith('{"ev":"built"') or line.startswith('{"ev":"razed"'):
+                e = json.loads(line)
+                events.append((e['t'], e['ev'], e['s'], e['b'], e['x'], e['y'], e.get('site', 0)))
             elif line.startswith('{"ev":"out"') or line.startswith('{"ev":"collapse"'):
                 e = json.loads(line)
                 outs.setdefault(e['s'], e['t'])
@@ -97,6 +104,7 @@ def read_game(run, row):
     g['surv'] = float(a_out) if a_out is not None and not g['win'] else max(g['t_end'], 3600.0)
     us20 = [census.get((s, 1200)) for s in a_slots]
     g['hold20'] = 1 if g['surv'] > 1200 and all(u is not None for u in us20) and sum(u['armories'] for u in us20) > 0 else 0
+    window(g, a_slots, early, events)
     g['elim'] = 1.0 if g['win'] else sum(1 for s in b_slots if s in outs and outs[s] <= limit) / max(1, n)
     g['feats'] = {}
     for tm in TIMES:
@@ -127,6 +135,46 @@ def read_game(run, row):
             'a_iron': math.log(sum(u['harvestedIron'] for u in us) + 10.0),
         }
     return g
+
+
+def window(g, a_slots, early, events):
+    """The 20-25-min window columns (late/spec.md S0): our first armory still standing at 20 min, a base and an
+    armory at 25 min, towers and peons at 20 min, and units that vanished inside our razed buildings by 20 min."""
+    def row(t):
+        us = [early.get((s, t)) for s in a_slots]
+        return None if any(u is None for u in us) else us
+
+    def total(us, field):
+        return sum(u[field] for u in us)
+
+    ours = [e for e in events if e[2] in a_slots]
+    first = min((e for e in ours if e[1] == 'built' and e[3] == 'armory' and e[0] <= 1200), default=None)
+    razed_first = first is not None and any(e[1] == 'razed' and e[3] == 'armory' and not e[6] and e[4] == first[4]
+                                            and e[5] == first[5] and first[0] <= e[0] <= 1200 for e in ours)
+    g['hold20a1'] = 1 if g['surv'] > 1200 and first is not None and not razed_first else 0
+    r25 = row(1500)
+    g['base25'] = 1 if g['surv'] > 1500 and r25 and total(r25, 'quarters') + total(r25, 'armories') > 0 else 0
+    g['arm25'] = 1 if g['surv'] > 1500 and r25 and total(r25, 'armories') > 0 else 0
+    r20 = row(1200)
+    alive20 = g['surv'] > 1200 and r20 is not None
+    g['towers20'] = total(r20, 'towers') if alive20 else 0
+    g['peons20'] = total(r20, 'peons') if alive20 else 0
+    times = sorted({t for (s, t) in early if s in a_slots})
+    vanished = 0
+    seen = set()
+    for e in ours:
+        if e[1] != 'razed' or e[6] or e[3] not in ('armory', 'quarters') or e[0] > 1200:
+            continue
+        before = max((t for t in times if t <= e[0]), default=None)
+        after = min((t for t in times if t >= e[0]), default=None)
+        if before is None or after is None or before == after or (before, after) in seen:
+            continue
+        seen.add((before, after))
+        rb, ra = row(before), row(after)
+        if rb is None or ra is None:
+            continue
+        vanished += max(0, (total(rb, 'units') - total(ra, 'units')) - (total(ra, 'lost') - total(rb, 'lost')))
+    g['vanished20'] = vanished
 
 
 def read_rows(run):
@@ -188,6 +236,8 @@ def score(g, model):
     s['alive30'] = 1.0 if g['surv'] > 1800 else 0.0
     s['alive40'] = 1.0 if g['surv'] > 2400 else 0.0
     s['hold20'] = float(g['hold20'])
+    for f in ('hold20a1', 'base25', 'arm25', 'towers20', 'peons20', 'vanished20'):
+        s[f] = float(g[f])
     return s
 
 
@@ -223,7 +273,7 @@ def print_table(rows):
 
 SUMMARY = ['elim', 'P15', 'P20', 'P25', 'wp', 'wpe']
 PAIRED = ['win', 'elim', 'P15', 'P20', 'P25', 'wp', 'wpe', 'by15', '15-25', 'after25', 'surv60', 'alive30', 'alive40',
-          'hold20']
+          'hold20', 'hold20a1', 'base25', 'arm25', 'towers20', 'peons20', 'vanished20']
 
 
 def summary(runs, model, jobs):
