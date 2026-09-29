@@ -466,6 +466,18 @@ class Strategy {
     float militia_time = 600f;
     /** Sparring only: send the starting peons at the enemy's peons for the first minutes, as some humans do. */
     boolean peon_rush = false;
+    /**
+     * The freeze opening (Freeze; archaeology A1, re-scoped from the freeze strike of NOTES 2026-09-28 for N >= 11):
+     * at the start freeze_squad starting peons walk to the copy with the least walking time, if it is at most
+     * freeze_eta seconds of peon walk away (walking distance, so the rule is inert where copies start far apart), and
+     * kill its peons before its first quarters stands, which puts it out (no units, no finished quarters). If the
+     * quarters stands first, the squad waits outside its defense circle for the armory site and kills its builders,
+     * which freezes the copy (never touching the site); freeze_raze then stays to raze the frozen quarters.
+     */
+    boolean freeze_open = false;
+    int freeze_squad = 10;
+    float freeze_eta = 40f;
+    boolean freeze_raze = false;
 
     /**
      * In a fight, give each warrior its own target: the enemy in range with the best value times hit chance times
@@ -839,6 +851,10 @@ class Strategy {
         peon_militia = params.getBoolean("peon_militia", peon_militia);
         militia_time = (float) params.getDouble("militia_time", militia_time);
         peon_rush = params.getBoolean("peon_rush", peon_rush);
+        freeze_open = params.getBoolean("freeze_open", freeze_open);
+        freeze_squad = params.getInt("freeze_squad", freeze_squad);
+        freeze_eta = (float) params.getDouble("freeze_eta", freeze_eta);
+        freeze_raze = params.getBoolean("freeze_raze", freeze_raze);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
         restore_dodge_gap = (float) params.getDouble("restore_dodge_gap", restore_dodge_gap);

@@ -105,7 +105,8 @@ final class Economy {
         if (armory_site != null)
             reserved.add(armory_site.withHalf(SitePlanner.RaceSizes.ARMORY));
 
-        int first_builders = Math.max(1, intel.peons.size() - strategy.scouts);
+        // The freeze squad (Freeze) walks off at the start: it builds nothing until the strike ends.
+        int first_builders = Math.max(1, intel.peons.size() - strategy.scouts - intel.strikers.size());
         Site q1 = planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), ax, ay, first_builders,
                 .2f, .06f);
         // The score is minus the seconds until the quarters stands; when that is poor nearby, a walk to better
@@ -160,6 +161,8 @@ final class Economy {
         Unit best_scout = null;
         int best_d = Integer.MAX_VALUE;
         for (Unit peon : intel.peons) {
+            if (intel.strikers.contains(peon))
+                continue;
             int d = MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), ax, ay);
             if (d < best_d) {
                 best_d = d;
@@ -171,7 +174,7 @@ final class Economy {
         if (first != null && first.first) {
             List<Unit> builders = new ArrayList<>();
             for (Unit peon : intel.peons)
-                if (peon != scout)
+                if (peon != scout && !intel.strikers.contains(peon))
                     builders.add(peon);
             if (!builders.isEmpty())
                 place(first, builders);

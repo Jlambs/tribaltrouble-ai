@@ -51,6 +51,7 @@ public final class GauntletAI extends AI {
     private @Nullable Shepherd shepherd;
     private @Nullable Lures lures;
     private @Nullable Dodges dodges;
+    private @Nullable Freeze freeze;
 
     private int ticks;
     private float time;
@@ -144,6 +145,7 @@ public final class GauntletAI extends AI {
             next_economy = time + ECONOMY_PERIOD;
             economy().tick();
             decoys().tick();
+            freeze().tick();
         }
         if (due_plan) {
             next_plan = time + PLAN_PERIOD;
@@ -176,6 +178,10 @@ public final class GauntletAI extends AI {
         log(String.format("map %d cells, start %d,%d, nearest enemy starts %d,%d (%dm walk), %d enemies", map.getSize(),
                 sx, sy, ex, ey, start_field.get(ex, ey), countEnemies(owner)));
         intel.update();
+        // The freeze squad leaves before the economy hands out the starting peons.
+        freeze = new Freeze(this);
+        if (freeze.plan(start_field))
+            intel.update();
         economy = new Economy(this);
         military = new Military(this);
         chieftain = new Chieftain(this);
@@ -331,6 +337,12 @@ public final class GauntletAI extends AI {
     Dodges dodges() {
         assert dodges != null;
         return dodges;
+    }
+
+    @NonNull
+    Freeze freeze() {
+        assert freeze != null;
+        return freeze;
     }
 
     @NonNull
