@@ -1323,3 +1323,7 @@ retreat through the same pass (only the attack role is watched).
 - **site_towers_first** (`smoke-sites`, no logs): site_towers_first_used 0/45/17/0/0/3/0/6/29/60/69/0 (economy ticks)
   in s2001-2012; the 5 games where it never fires play identically; W 1 (s2007), w15 69.3 vs 68.0.
 - Default build: freeze-squad6-c3-vs13-hv s1-0..s3-0 and logs-cur5-vs13 s2017-0 checksums reproduced.
+- Merged tower_wood_drop (+ tower_wood_trees/reach/reserve/max/time) and site_towers_first (both off; commit 10db0f79,
+  reviewed: identity, determinism, engine safety and fair play OK; two review fixes applied). Smoke N=13 s2001-2012:
+  treeless tower sites finish in a median 55 s instead of 105 s (600-1500 s: 61 vs 127 s), 58 -> 65 of ~80 finished;
+  but the army at 15 min fell 74 -> 53 (median of 12; 57 with tower_wood_time=600), so screens carry an army guard.
