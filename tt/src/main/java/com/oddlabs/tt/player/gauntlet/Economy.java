@@ -2796,7 +2796,35 @@ final class Economy {
             if (s == PeonState.GATHER_TREE || s == PeonState.GATHER_IRON || s == PeonState.GATHER_ROCK)
                 gatherers.add(peon);
         }
+        if (ai.strategy().walk_select > 0 && n > 0 && !gatherers.isEmpty()) {
+            takeWalkNearest(gatherers, into, n, x, y, ai.strategy().walk_select);
+            return;
+        }
         takeNearest(gatherers, into, n, x, y);
+    }
+
+    /**
+     * walk_select: the n units with the shortest walk to (x, y), within max_walk meters; a gatherer across a cliff is
+     * near in a straight line but may walk into a dead end or a pass it deadlocks in (jam-logs s9).
+     */
+    private void takeWalkNearest(@NonNull List<@NonNull Unit> from, @NonNull List<@NonNull Unit> into, int n, int x,
+            int y, int max_walk) {
+        DistanceField field = ai.map().computeField(x, y, max_walk);
+        for (int k = 0; k < n && !from.isEmpty(); k++) {
+            Unit best = null;
+            int best_d = Integer.MAX_VALUE;
+            for (Unit u : from) {
+                int d = field.getAround(u.getGridX(), u.getGridY(), 1);
+                if (d != DistanceField.UNREACHABLE && d < best_d) {
+                    best_d = d;
+                    best = u;
+                }
+            }
+            if (best == null)
+                return;
+            from.remove(best);
+            into.add(best);
+        }
     }
 
     private static @Nullable Building nearest(@NonNull List<@NonNull Building> buildings, int x, int y) {

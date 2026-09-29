@@ -734,6 +734,11 @@ class Strategy {
      * sent into the nearest armory, which frees it for the economy. 0: off.
      */
     float unstick_builders = 0f;
+    /**
+     * Builders and repairers taken from the gatherers are the ones with the shortest walk to the site (meters, the
+     * farthest considered), not the nearest in a straight line. 0: straight line.
+     */
+    int walk_select = 0;
 
     /**
      * Cells the chieftain keeps from the nearest enemy warrior while closing in to stun: inside his 18-cell stun
@@ -1145,6 +1150,7 @@ class Strategy {
         tower_fire = params.getBoolean("tower_fire", tower_fire);
         unstick = params.getBoolean("unstick", unstick);
         unstick_builders = (float) params.getDouble("unstick_builders", unstick_builders);
+        walk_select = params.getInt("walk_select", walk_select);
         chief_keep_out = params.getInt("chief_keep_out", chief_keep_out);
         chief_safe = params.getInt("chief_safe", chief_safe);
         chief_wake_retreat = (float) params.getDouble("chief_wake_retreat", chief_wake_retreat);
