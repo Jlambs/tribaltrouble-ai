@@ -215,6 +215,20 @@ public final class GauntletAI extends AI {
         return n;
     }
 
+    /** The mean start cell of the enemies still in the game (tower_face_live, tower_face_place), or null. */
+    float @Nullable [] liveEnemyCenter() {
+        long x = 0;
+        long y = 0;
+        int n = 0;
+        for (Player p : getOwner().getWorld().getPlayers())
+            if (getOwner().isEnemy(p) && p.isAlive()) {
+                x += UnitGrid.toGridCoordinate(p.getStartX());
+                y += UnitGrid.toGridCoordinate(p.getStartY());
+                n++;
+            }
+        return n == 0 ? null : new float[]{x / (float) n, y / (float) n};
+    }
+
     private @Nullable Player nearestEnemy(int sx, int sy) {
         Player best = null;
         int best_d = Integer.MAX_VALUE;

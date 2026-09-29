@@ -659,7 +659,9 @@ final class Economy {
             if (site != null)
                 addProject(Race.BUILDING_QUARTERS, site, 5);
         }
-        if (armory != null && intel.quarters.size() >= 2) {
+        if (armory != null && intel.quarters.size() < strategy.tower_min_quarters)
+            ai.aiLog().count("tower_gate_quarters"); // plan ticks the quarters gate keeps towers off (A3)
+        if (armory != null && intel.quarters.size() >= strategy.tower_min_quarters) {
             int target_towers = 0;
             if (time >= strategy.towers_early_time)
                 target_towers = strategy.towers_early;
@@ -691,6 +693,9 @@ final class Economy {
                     existing.add(new int[]{t.getGridX(), t.getGridY()});
                 int[] center = towerAnchor(tower_count);
                 int[] face = {ai.planner().getEnemyX(), ai.planner().getEnemyY()};
+                float[] live = strategy.tower_face_place ? ai.liveEnemyCenter() : null;
+                if (live != null)
+                    face = new int[]{Math.round(live[0]), Math.round(live[1])};
                 int min_cells = 7;
                 int max_cells = 15;
                 if (fronts && tower_count % 2 == 1) {
@@ -698,11 +703,14 @@ final class Economy {
                     if (front != null) {
                         center = front[0];
                         face = front[1];
+                        live = null;
                         // Front towers further out leave room for decoys in front of them (Decoys).
                         min_cells = ai.strategy().front_tower_min;
                         max_cells = ai.strategy().front_tower_max;
                     }
                 }
+                if (live != null)
+                    ai.aiLog().count("tower_face_place");
                 Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
                         existing,
                         face[0], face[1]);
@@ -976,11 +984,20 @@ final class Economy {
         return ours < 1.2f * military.threatStrength() + 4f;
     }
 
-    /** Towers mostly guard the armory; every third one covers the quarters nearest the enemy. */
+    /**
+     * Towers mostly guard the armory (tower_home_anchor: the home armory); every third one covers the quarters nearest
+     * the enemy (not tower_q_anchor: the home armory).
+     */
     private int @NonNull [] towerAnchor(int tower_count) {
         Intel intel = ai.intel();
         Building armory = intel.armory();
         assert armory != null;
+        Strategy strategy = ai.strategy();
+        if (tower_count % 3 == 2 && !intel.quarters.isEmpty() && !strategy.tower_q_anchor) {
+            Building home = homeArmory(armory);
+            ai.aiLog().count("tower_q_home");
+            return new int[]{home.getGridX(), home.getGridY()};
+        }
         if (tower_count % 3 == 2 && !intel.quarters.isEmpty()) {
             Building exposed = null;
             float best = -1f;
@@ -995,12 +1012,40 @@ final class Economy {
             if (exposed != null)
                 return new int[]{exposed.getGridX(), exposed.getGridY()};
         }
+        if (strategy.tower_home_anchor) {
+            Building home = homeArmory(armory);
+            if (home != armory) {
+                ai.aiLog().count("tower_home_anchor");
+                return new int[]{home.getGridX(), home.getGridY()};
+            }
+        }
         return new int[]{armory.getGridX(), armory.getGridY()};
     }
 
     /**
-     * The k-th living enemy in turn, as {our building nearest to his start, his start}: the building his attacks go
-     * for first.
+     * The home armory (tower_home_anchor, tower_q_anchor): the finished armory nearest our start, which stays the
+     * core's armory once a finished expansion becomes the primary one (choosePrimaryArmory).
+     */
+    private @NonNull Building homeArmory(@NonNull Building primary) {
+        Building home = primary;
+        int best = Integer.MAX_VALUE;
+        int sx = ai.planner().getStartX();
+        int sy = ai.planner().getStartY();
+        for (Building a : ai.intel().armories) {
+            if (a.isDead())
+                continue;
+            int d = MapAnalysis.dist2(sx, sy, a.getGridX(), a.getGridY());
+            if (d < best) {
+                best = d;
+                home = a;
+            }
+        }
+        return home;
+    }
+
+    /**
+     * The k-th living enemy in turn (front_order: in slot order, farthest start first, or most base-bound waves
+     * first), as {our building nearest to his start, his start}: the building his attacks go for first.
      */
     private int @Nullable [] @Nullable [] enemyFront(int k) {
         List<Player> enemies = new ArrayList<>();
@@ -1010,6 +1055,28 @@ final class Economy {
         if (enemies.isEmpty())
             return null;
         Player enemy = enemies.get(k % enemies.size());
+        int order = ai.strategy().front_order;
+        if (order != 0 && enemies.size() > 1) {
+            int sx = ai.planner().getStartX();
+            int sy = ai.planner().getStartY();
+            java.util.Comparator<Player> farthest = java.util.Comparator.comparingInt(
+                    p -> -MapAnalysis.dist2(sx, sy, UnitGrid.toGridCoordinate(p.getStartX()),
+                            UnitGrid.toGridCoordinate(p.getStartY())));
+            Shepherd shepherd = ai.shepherd();
+            List<Player> sorted = new ArrayList<>(enemies);
+            // A stable sort: ties stay in slot order.
+            sorted.sort(order == 2 ? java.util.Comparator.<Player>comparingInt(p -> -shepherd.baseWaves(
+                    p)).thenComparing(farthest) : farthest);
+            Player chosen = sorted.get(k % sorted.size());
+            if (chosen != enemy) {
+                ai.aiLog().count("front_order");
+                if (ai.logging())
+                    ai.log("front tower " + k + " faces " + chosen.getPlayerInfo().getName() + " (" + shepherd.baseWaves(
+                            chosen) + " base waves), not " + enemy.getPlayerInfo().getName() + " (" + shepherd.baseWaves(
+                                    enemy) + ")");
+            }
+            enemy = chosen;
+        }
         int ex = UnitGrid.toGridCoordinate(enemy.getStartX());
         int ey = UnitGrid.toGridCoordinate(enemy.getStartY());
         List<Building> own = new ArrayList<>(ai.intel().quarters);
@@ -1993,11 +2060,16 @@ final class Economy {
         countChickens();
         RubberSupply best = null;
         int best_d = Integer.MAX_VALUE;
+        // Why no chicken comes back (counters only): none left, all taken, all by enemies, the nearest too far.
+        int left = 0;
+        int free = 0;
         for (RubberSupply c : chickens) {
             if (c.isEmpty() || c.isHit())
                 continue;
+            left++;
             if (supply_load.getOrDefault(c, 0) > 0)
                 continue;
+            free++;
             if (ai.military().enemyStrengthNear(c.getGridX(), c.getGridY(), 20) > 0)
                 continue;
             int d = MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), c.getGridX(), c.getGridY());
@@ -2006,8 +2078,13 @@ final class Economy {
                 best = c;
             }
         }
-        if (best != null && best_d > 150 * 150)
+        if (best == null)
+            ai.aiLog().count(
+                    left == 0 ? "chicken_null_left" : free == 0 ? "chicken_null_taken" : "chicken_null_enemy20");
+        if (best != null && best_d > 150 * 150) {
+            ai.aiLog().count("chicken_null_range");
             return null;
+        }
         return best;
     }
 

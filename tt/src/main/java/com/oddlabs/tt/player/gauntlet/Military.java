@@ -257,6 +257,13 @@ final class Military {
         return threat_level;
     }
 
+    /** A warrior's military role in lower case, or null when it has none (for logs: Shepherd's launch lines). */
+    @Nullable
+    String roleOf(@NonNull Unit u) {
+        Role role = roles.get(u);
+        return role == null ? null : role.name().toLowerCase(java.util.Locale.ROOT);
+    }
+
     boolean threatNear(int x, int y, int radius) {
         int r2 = radius * radius;
         for (Unit u : threats)
@@ -1335,8 +1342,21 @@ final class Military {
                 ey += e.getGridY();
                 n++;
             }
-        float dx = n > 0 ? ex / (float) n - tx : ai.planner().getEnemyX() - tx;
-        float dy = n > 0 ? ey / (float) n - ty : ai.planner().getEnemyY() - ty;
+        float dx;
+        float dy;
+        float[] live = n == 0 && ai.strategy().tower_face_live ? liveFacing(tx, ty) : null;
+        if (n > 0) {
+            dx = ex / (float) n - tx;
+            dy = ey / (float) n - ty;
+        } else if (live != null) {
+            dx = live[0];
+            dy = live[1];
+            ai.aiLog().count("tower_face_live");
+        } else {
+            dx = ai.planner().getEnemyX() - tx;
+            dy = ai.planner().getEnemyY() - ty;
+            ai.aiLog().count("tower_face_fallback");
+        }
         double base = Math.atan2(dy, dx);
         for (double turn : new double[]{0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2}) {
             int fx = tx + (int) Math.round(3 * Math.cos(base + turn));
@@ -1352,6 +1372,48 @@ final class Military {
             return hot ? null : new int[]{fx, fy};
         }
         return null;
+    }
+
+    /**
+     * tower_face_live: the unit vector from the tower towards the living copies' mean start plus the unit vector from
+     * our core (the centre of our finished quarters and armories, else our start) out to the tower. Where the two
+     * nearly cancel (towers behind the core) only the first; null when that is degenerate too (old fallback).
+     */
+    private float @Nullable [] liveFacing(int tx, int ty) {
+        float[] live = ai.liveEnemyCenter();
+        if (live == null)
+            return null;
+        float ux = live[0] - tx;
+        float uy = live[1] - ty;
+        float nu = (float) Math.sqrt(ux * ux + uy * uy);
+        if (nu < 1e-3f)
+            return null;
+        ux /= nu;
+        uy /= nu;
+        Intel intel = ai.intel();
+        long cx = 0;
+        long cy = 0;
+        int n = 0;
+        for (Building b : intel.quarters) {
+            cx += b.getGridX();
+            cy += b.getGridY();
+            n++;
+        }
+        for (Building b : intel.armories) {
+            cx += b.getGridX();
+            cy += b.getGridY();
+            n++;
+        }
+        float bx = n > 0 ? cx / (float) n : ai.planner().getStartX();
+        float by = n > 0 ? cy / (float) n : ai.planner().getStartY();
+        float wx = tx - bx;
+        float wy = ty - by;
+        float nw = (float) Math.sqrt(wx * wx + wy * wy);
+        float dx = ux + (nw > 0f ? wx / nw : 0f);
+        float dy = uy + (nw > 0f ? wy / nw : 0f);
+        if (Math.sqrt(dx * dx + dy * dy) < .5f)
+            return new float[]{ux, uy};
+        return new float[]{dx, dy};
     }
 
     /** tower_reaim: when each tower last re-aimed. */
