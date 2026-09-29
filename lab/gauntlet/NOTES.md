@@ -103,6 +103,12 @@ N>=7:
   wins. On base-expert-vs5 + vs6 (200 games, 40 wins): elim r=+0.96 (trivial: wins are 1), lsr20 r=+0.57, lsr15
   r=+0.46, lsr10 r=+0.39, kd r=+0.49; by lsr15 tercile the win rate is 0% / 0% / 60%. So lsr15/lsr20 and elim are
   the continuous scores to decide on beside wins.
+- `lab/gauntlet/board.py BASE PREFIX [--median]`: a sweep's scoreboard, every finished arm against one base
+  (winproxy --pair per arm, cached in aisim/board_cache.json); `--median` reads each arm against the median arm that
+  changes play, which takes the shared base's own draw out (see "Method: one base shared by many arms").
+  `lab/gauntlet/pairs.sh "BASE ARM" ...`: one line per pair.
+- Logged-game readers: `lab/gauntlet/musters.py RUN` (campaign target choices), `lab/gauntlet/cuts.py RUN` (freeze
+  path-(c) cuts and how they ended); `lab/gauntlet/chiefs.py RUN...` (enemy chieftain gating, from game records).
 
 ## Log
 
@@ -1099,7 +1105,7 @@ retreat through the same pass (only the attack role is watched).
   shared with the shepherds and updated in place, computeField buffer reuse, dead code, the N>1 gate of forGame
   removed, capped_min_strength param at 0) and unjam (default off). The merged build reproduces cur4's N=12 checksums
   (s1, s5, s9, s120, frozen games included) and N=11 (s1-s3).
-- Enemy chieftains (census, lab script chiefs.py in the session): chieftain-gated copies (the Hard launches only
+- Enemy chieftains (census, lab/gauntlet/chiefs.py): chieftain-gated copies (the Hard launches only
   with an active chieftain once its wave size reaches 20, AdvancedAI:118-119, 305-306) are without one 19-21 % of
   the time by 20 min (16-19 births, 9.5 deaths per game). Terciles by that share: N=14 games last 19.4 / 21.6 / 24.1
   min (correlation only). A chieftain has 60 HP against a warrior's 1, so killing one costs ~30 iron hits; training a
@@ -1375,3 +1381,25 @@ retreat through the same pass (only the attack role is watched).
   (z 2.3), towers20 +1.22 (z 4.2): cur6 is good at N=11 too.
 - slots32 (= cur6) wins replay VERIFIED: N=13 s3077 (358:23), s3287 (77:07), s3521 (130:48); N=14 s3484 (220:18) and
   s3549 (see replay-s32-14-3549.log).
+
+### Hygiene pass 2 (behaviour-preserving, on cur6; 2026-09-29 evening)
+
+- Commits f804f67d..f1670fc8: shared MapAnalysis.centroid / nearest and Intel.homes / finishedBuildings for helpers
+  and lists copied in 4-5 places; Freeze.Strike phases take their target (moveSquad, quartersStood); the longest new
+  methods split (Military.attack: traceBattle, chargeStunned, endColumnMarch, stalled; chooseTarget: focusRemnant,
+  nearestEnemyUnit; Economy.planBuildings: planArmory / planQuarters / planTowers; dropWood: orderWood); one parked-
+  ring test (inRing); stale and orphaned Javadoc, spotless-broken paragraphs, and the strike log that printed a
+  Building's identity hash. Failed experiments stay behind their flags; no param was inert everywhere.
+- Identity after every code commit: default N=13 s201-203 (slots32-c5-vs13-hv-b), N=14 s1-2 (slots32-c5-vs14-hv),
+  N=11 s1-2 (cur6-vs11-hv), N=12 s1-2 (slots32-c5-vs12-hv), N=8 s201-202 (cur6-vs8-hv-b), logged N=13 s201, and the
+  tower_site_fallback (cur5 slots) and tower_wood_drop arms: every checksum equal. The final build also plays the
+  same games as the frozen starting point (@g-pre-hyg2) with 24 off-by-default params on at once (N=13 s1031-1033,
+  N=11 s97-98: ring_sweep, unjam columns, stall_retarget, evacuate, lures, snipers, freeze_fight/armory_push,
+  shepherd_follow/home_pair/safe_walk, tower_site_fallback, tower_wood_drop, site_towers_first all fired).
+- CPU (paired, identical games, N=13): Shepherd.findSpot's per-candidate shepherd_rej_* counters are now counted only
+  in logged games (3-7 million AiLog.count calls in a 30-120-min game): -0.9 % +- 0.4 % over 8 games. computeField tests each
+  neighbour cell once per expansion (8 lookups instead of 16): -3.2 % +- 1.5 % over 7. The whole pass against the
+  starting point on 24 fresh games (s1011-1022, s1041-1052): -1.5 % +- 0.7 % per game, -1.2 % of the total. The
+  profile's 2.2 % for the counters overstated what removing them saves, as the harness manual warns.
+- Lab: board.py (a sweep's scoreboard, --median reads each arm against the median arm), pairs.sh, musters.py,
+  cuts.py and chiefs.py moved in from the session scratchpad.

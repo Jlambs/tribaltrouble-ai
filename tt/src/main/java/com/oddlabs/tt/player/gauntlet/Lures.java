@@ -192,9 +192,7 @@ final class Lures {
                 active.add(t);
         if (active.isEmpty())
             return;
-        List<Building> own = new ArrayList<>(intel.armories);
-        own.addAll(intel.quarters);
-        own.addAll(intel.towers);
+        List<Building> own = intel.finishedBuildings();
         int range2 = strategy.lure_range * strategy.lure_range;
         List<Unit> parked = new ArrayList<>();
         List<Unit> awake = new ArrayList<>();
@@ -257,7 +255,7 @@ final class Lures {
         // Refuge: a quarters or armory behind the tower, seen from the blob.
         Building refuge = null;
         int rbest = Integer.MAX_VALUE;
-        for (Building b : ai.intel().quarters.isEmpty() ? intel.armories : concat(intel.quarters, intel.armories)) {
+        for (Building b : intel.homes()) {
             if (b.isDead() || !b.isComplete() || ai.economy().isEvacuating(b))
                 continue;
             int bd2 = MapAnalysis.dist2(sx, sy, b.getGridX(), b.getGridY());
@@ -356,13 +354,6 @@ final class Lures {
         ai.aiLog().count("lure_start");
         ai.log(String.format("lure for %d parked at %d,%d: bait %d,%d, tower %d,%d, refuge %d,%d", best_n, sx, sy,
                 bait[0], bait[1], tower.getGridX(), tower.getGridY(), refuge.getGridX(), refuge.getGridY()));
-    }
-
-    private static @NonNull List<@NonNull Building> concat(@NonNull List<@NonNull Building> a,
-            @NonNull List<@NonNull Building> b) {
-        List<Building> all = new ArrayList<>(a);
-        all.addAll(b);
-        return all;
     }
 
     /** The nearest free peon within 60 cells, with no enemy within 12 cells of it. */

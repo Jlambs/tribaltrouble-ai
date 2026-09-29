@@ -5,9 +5,11 @@ import com.oddlabs.tt.aikit.AiParams;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Tunable numbers behind the expert AI's plan. The field defaults come from 1v1 on large islands; {@link #forGame}
- * sets the ones tuned against many Hard copies (for every number of enemies) and the freeze opening from 12 enemies,
- * {@link #forMapSize} adjusts them for other sizes, and new styles of play can subclass or copy this.
+ * Tunable numbers behind the AI's plan. The field defaults come from the 1v1 Expert AI it was ported from (large
+ * islands); {@link #forGame} sets the ones tuned against many Hard copies and the freeze opening (for every number of
+ * enemies), {@link #forMapSize} adjusts them for other sizes, and new styles of play can subclass or copy this. Every
+ * field is a param of the spec (gauntlet:name=value, {@link #apply}); the ones that default to off are experiments
+ * kept for reference, lab/gauntlet/NOTES.md records how each one did.
  */
 class Strategy {
     /** Quarters to raise before or alongside the armory. */
@@ -104,8 +106,7 @@ class Strategy {
     /**
      * finish_lean (with finish_copies): skip copies that already meet the collapse rule, stop hunting a copy's units
      * once it has finish_units or fewer besides its chieftain (-1 = off), skip remnants stronger than finish_ratio x
-     * our
-     * army (0 = off) and targets guarded by other copies' awake warriors (Military.finishTarget).
+     * our army (0 = off) and targets guarded by other copies' awake warriors (Military.finishTarget).
      */
     boolean finish_skip_out = false;
     int finish_units = -1;
@@ -308,10 +309,9 @@ class Strategy {
     float lure_time = 420f;
     /**
      * From tower_parallel_late_time on: tower projects and placed sites at a time (the siege razes towers). 2 and 3
-     * (were
-     * 1 and 2): two placed sites shared with quarters were the real bound on tower completions in the collapse window
-     * (tower13 audit), so more towers stand; towers20 +0.7 to +1.3 and surv60 +0.3 to +1.3 in every one of 11 blocks at
-     * N=12-14; wins on 1,200 fresh seeds N=13 0 -> 3, N=14 1 -> 2; N=12 over 400 W 15 -> 13.
+     * (were 1 and 2): two placed sites shared with quarters were the real bound on tower completions in the collapse
+     * window (tower13 audit), so more towers stand; towers20 +0.7 to +1.3 and surv60 +0.3 to +1.3 in every one of 11
+     * blocks at N=12-14; wins on 1,200 fresh seeds N=13 0 -> 3, N=14 1 -> 2; N=12 over 400 W 15 -> 13.
      */
     int tower_parallel_late = 2;
     int sites_parallel_late = 3;
@@ -346,8 +346,7 @@ class Strategy {
     boolean opening_near_start = false;
     /**
      * When the enemy arms early (six warriors out, or an armory up with fewer than rush_quarters quarters) while ours
-     * is
-     * not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
+     * is not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
      * rush_seconds.
      */
     boolean rush_response = true;
@@ -372,8 +371,7 @@ class Strategy {
     /**
      * While the main armory could forge at least hold_backlog weapons (0 = off), quarters hold only hold_early: a held
      * peon above 4 buys ~8 peons per 1000 s, a worker with ore ~12.5 weapons (Economy.holdFor). Off again once 1 or
-     * fewer
-     * can be forged and 30 s have passed; hold_backlog_until > 0 limits it to the early game.
+     * fewer can be forged and 30 s have passed; hold_backlog_until > 0 limits it to the early game.
      */
     int hold_backlog = 0;
     float hold_backlog_until = 0f;
@@ -527,12 +525,13 @@ class Strategy {
      * cells out lost 0.38-0.46 per unit sent, clumps 0.18-0.28). 0: off.
      */
     float capped_clump = 0f;
+    float capped_clump_min = 24f;
+    int capped_clump_cells = 100;
     /**
      * Between ring_sweep_from and ring_sweep_until, with no copy out for ring_sweep_quiet seconds, an attack army
-     * within
-     * ring_sweep_reach cells of the armory and worth ring_sweep_ratio times the parked ring (idle enemy warriors within
-     * 45 cells of our buildings) comes home, and the home army then takes on the ring's blobs nearest the armory one at
-     * a time while the base is quiet, until the ring is down to 30 % or ring_sweep_until + 60 s (audit13
+     * within ring_sweep_reach cells of the armory and worth ring_sweep_ratio times the parked ring (idle enemy warriors
+     * within 45 cells of our buildings) comes home, and the home army then takes on the ring's blobs nearest the armory
+     * one at a time while the base is quiet, until the ring is down to 30 % or ring_sweep_until + 60 s (audit13
      * military 5: 12-15 min is the one window in which the army outnumbers the ring, whose blobs launch 37-41 % of the
      * base-bound waves at 12-20 min; fights near our buildings trade 4.6-5.9:1, abroad 2.1-2.6:1). An attack whose
      * target's owner has fewer than two finished buildings left is not called off.
@@ -543,8 +542,6 @@ class Strategy {
     float ring_sweep_ratio = 1.5f;
     float ring_sweep_quiet = 120f;
     int ring_sweep_reach = 200;
-    float capped_clump_min = 24f;
-    int capped_clump_cells = 100;
     /** How much more an enemy manned tower counts than Combat.TOWER when judging an attack or retreat. */
     float tower_weight = 1f;
     /** Army strength that attacks regardless of the odds. */
@@ -789,10 +786,9 @@ class Strategy {
     int chief_safe = 0;
     /**
      * From chief_wake_retreat seconds after our chieftain's cast until his stun is ready again, he keeps
-     * chief_wake_keep
-     * cells from every enemy warrior within reach, stunned ones included: the ones his stun froze wake inside his
-     * reach otherwise (audit13 shepherds 2: 92 % of his deaths come within 40 s after his own stun, a median 11 cells
-     * from where he cast; chief_safe skips stunned warriors). 0: off.
+     * chief_wake_keep cells from every enemy warrior within reach, stunned ones included: the ones his stun froze wake
+     * inside his reach otherwise (audit13 shepherds 2: 92 % of his deaths come within 40 s after his own stun, a median
+     * 11 cells from where he cast; chief_safe skips stunned warriors). 0: off.
      */
     float chief_wake_retreat = 0f;
     int chief_wake_keep = 12;

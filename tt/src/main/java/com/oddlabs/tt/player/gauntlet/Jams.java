@@ -1,7 +1,10 @@
 package com.oddlabs.tt.player.gauntlet;
 
+import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.behaviour.RepairController;
 import com.oddlabs.tt.model.behaviour.WalkBehaviour;
+import com.oddlabs.tt.model.behaviour.WalkController;
 import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
@@ -68,14 +71,12 @@ final class Jams {
             if (!sb.isEmpty())
                 sb.append(", ");
             sb.append(u.getPrimaryController().getClass().getSimpleName().replace("Controller", ""));
-            if (u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.WalkController w)
+            if (u.getCurrentController() instanceof WalkController w)
                 sb.append(" to ").append(w.getTarget().getGridX()).append(',').append(w.getTarget().getGridY());
-            else if (u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.RepairController r) {
-                com.oddlabs.tt.model.Building b = r.getBuilding();
-                sb.append(" site ").append(
-                        b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_TOWER ? "tower" : b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_ARMORY ? "armory" : "quarters").append(
-                                " at ").append(b.getGridX()).append(',').append(b.getGridY()).append(
-                                        b.isComplete() ? " (complete)" : "");
+            else if (u.getPrimaryController() instanceof RepairController r) {
+                Building b = r.getBuilding();
+                sb.append(" site ").append(Intel.kind(b)).append(" at ").append(b.getGridX()).append(',').append(
+                        b.getGridY()).append(b.isComplete() ? " (complete)" : "");
             }
         }
         return sb.toString();

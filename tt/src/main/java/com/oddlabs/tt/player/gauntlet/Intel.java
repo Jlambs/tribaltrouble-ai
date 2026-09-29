@@ -371,6 +371,16 @@ final class Intel {
                 && tower.getUnitContainer().getNumSupplies() > 0;
     }
 
+    /** A building's kind for log lines: quarters, armory, tower, or building for any other. */
+    static @NonNull String kind(@NonNull Building b) {
+        return switch (b.getTemplate().getTemplateID()) {
+            case Race.BUILDING_QUARTERS -> "quarters";
+            case Race.BUILDING_ARMORY -> "armory";
+            case Race.BUILDING_TOWER -> "tower";
+            default -> "building";
+        };
+    }
+
     int countPeons(@NonNull PeonState state) {
         int n = 0;
         for (PeonState s : peon_states.values())
@@ -394,7 +404,23 @@ final class Intel {
         primary_armory = armory;
     }
 
-    /** Gatherers of a type working for the given armory (or for whichever armory is nearest their supply). */
+    /** Our finished quarters, then our finished armories, as of the last update (a new list). */
+    @NonNull
+    List<@NonNull Building> homes() {
+        List<Building> homes = new ArrayList<>(quarters);
+        homes.addAll(armories);
+        return homes;
+    }
+
+    /** Our finished armories, quarters and towers, in that order, as of the last update (a new list). */
+    @NonNull
+    List<@NonNull Building> finishedBuildings() {
+        List<Building> own = new ArrayList<>(armories);
+        own.addAll(quarters);
+        own.addAll(towers);
+        return own;
+    }
+
     /** Gatherers of a kind working for exactly this building. */
     int countLinkedGatherers(@NonNull PeonState state, @NonNull Building armory) {
         int n = 0;

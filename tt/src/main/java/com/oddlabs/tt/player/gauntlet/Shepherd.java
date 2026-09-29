@@ -27,7 +27,7 @@ import java.util.Locale;
  *
  * <p>A copy aims its wave from its oldest idle warrior at our nearest selectable of any kind if that one is closer
  * than 0.707 of our nearest building, else at that building (AdvancedAI.findTarget, Player.findNearestEnemy), and
- * orders an attack-move to that target's cell as it stands (a snapshot). A lone peon of ours standing 12-20 cells from
+ * orders an attack-move to that target's cell as it stands (a snapshot). A lone peon of ours standing 14-22 cells from
  * that warrior, where no enemy sees it (idle and walking units scan 8 cells), is that target. When the wave starts
  * walking the peon steps away, faster than the warriors (5 m/s against 4), and the wave arrives on an empty cell and
  * goes idle there, blind beyond 8 cells. Its survivors lead the copy's next wave, so the next spot is picked from
@@ -71,7 +71,6 @@ final class Shepherd {
         int spot_y = -1;
         @Nullable
         Unit leader;
-        boolean launched;
         float last_order = -100f;
         float nospot_since = -1f;
         /** shepherd_sticky: since when enemies have blocked the current spot, -1 while it is clear. */
@@ -338,7 +337,7 @@ final class Shepherd {
             int idle = 0;
             for (Unit e : intel.enemy_warriors)
                 if (!e.isDead() && e.getOwner() == f.copy
-                        && e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController)
+                        && e.getPrimaryController() instanceof IdleController)
                     idle++;
             boolean was = f.imminent;
             f.imminent = idle >= num && (num < 20 || f.copy.hasActiveChieftain());
@@ -593,9 +592,11 @@ final class Shepherd {
     }
 
     /**
-     * A cell 12-20 cells from the copy's wave origin, nearer to it than 0.66 of our nearest building and nearer than
-     * any other unit of ours, clear of every enemy by 10 cells, of the copy's defense circles and of enemy towers,
-     * reachable, and as far from our start as possible.
+     * A cell on the rings 14 to shepherd_max_r cells from the copy's wave origin (24 cells to a ring), nearer to it
+     * than 0.66 of our nearest building and 0.89 of our nearest other unit, with no enemy within shepherd_clear cells
+     * along both axes, outside the copy's defense circles and enemy towers' reach, reachable from our start, and as far
+     * from our start as possible (spotScore). With s null this is the recruiting probe, which the shepherd_sticky,
+     * shepherd_travel and shepherd_safe_walk terms leave alone.
      */
     private int @Nullable [] findSpot(@NonNull Flock f, int ox, int oy, @Nullable Unit s, @NonNull Intel intel) {
         int building2 = nearestOwnBuilding2(ox, oy);
@@ -604,11 +605,15 @@ final class Shepherd {
         int unit2 = nearestOtherUnit2(ox, oy, s, f.partner == null ? null : f.partner.shepherd);
         float limit = (float) Math.sqrt(Math.min(building2 * .44f, unit2 * .8f));
         int max_r = (int) Math.min(ai.strategy().shepherd_max_r, limit);
-        // Candidate cells the leash cuts off (counter only).
-        for (int r = 14; r <= ai.strategy().shepherd_max_r; r += r < 22 ? 2 : 4)
-            if (r > max_r)
-                for (int a = 0; a < 24; a++)
-                    ai.aiLog().count("shepherd_rej_leash");
+        // The per-candidate rejection counters (shepherd_rej_*) only in logged games: counted in every game they took
+        // 2.2 % of the simulation's CPU (prof-cur4-vs14, AiLog.count under findSpot), the most of any one AI method.
+        boolean rejections = ai.logging();
+        if (rejections)
+            // Candidate cells the leash cuts off.
+            for (int r = 14; r <= ai.strategy().shepherd_max_r; r += r < 22 ? 2 : 4)
+                if (r > max_r)
+                    for (int a = 0; a < 24; a++)
+                        ai.aiLog().count("shepherd_rej_leash");
         if (max_r < 14) {
             ai.aiLog().count(building2 * .44f < unit2 * .8f ? "shepherd_nospot_building" : "shepherd_nospot_unit");
             return null;
@@ -634,8 +639,7 @@ final class Shepherd {
             int x = f.spot_x;
             int y = f.spot_y;
             int r2 = MapAnalysis.dist2(x, y, ox, oy);
-            if (r2 >= 12 * 12 && r2 <= max_r * max_r && reach.reachable(x, y) && clearOfBuildings(guarded, intel, x,
-                    y)) {
+            if (r2 >= 12 * 12 && r2 <= max_r * max_r && reach.reachable(x, y) && coverAt(guarded, intel, x, y) == 0) {
                 boolean blocked = enemyNear(intel, x, y) != null;
                 if (!blocked)
                     f.blocked_since = -1f;
@@ -655,31 +659,20 @@ final class Shepherd {
                 int x = ox + (int) Math.round(r * Math.cos(ang));
                 int y = oy + (int) Math.round(r * Math.sin(ang));
                 if (!reach.reachable(x, y)) {
-                    ai.aiLog().count("shepherd_rej_reach");
+                    if (rejections)
+                        ai.aiLog().count("shepherd_rej_reach");
                     continue;
                 }
                 String enemy = enemyNear(intel, x, y);
                 if (enemy != null) {
-                    ai.aiLog().count(enemy);
+                    if (rejections)
+                        ai.aiLog().count(enemy);
                     continue;
                 }
-                boolean ok = true;
-                for (Building b : guarded)
-                    if (MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y) <= DEFENSE_CELLS * DEFENSE_CELLS) {
-                        ok = false;
-                        break;
-                    }
-                if (!ok) {
-                    ai.aiLog().count("shepherd_rej_defense17");
-                    continue;
-                }
-                for (Building t : intel.enemy_towers)
-                    if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= TOWER_CELLS * TOWER_CELLS) {
-                        ok = false;
-                        break;
-                    }
-                if (!ok) {
-                    ai.aiLog().count("shepherd_rej_tower19");
+                int cover = coverAt(guarded, intel, x, y);
+                if (cover != 0) {
+                    if (rejections)
+                        ai.aiLog().count(cover == 1 ? "shepherd_rej_defense17" : "shepherd_rej_tower19");
                     continue;
                 }
                 float score = spotScore(x, y, r, bx, by, guarded);
@@ -730,16 +723,18 @@ final class Shepherd {
         return score;
     }
 
-    /** Whether (x, y) is outside the copy's defense circles and every enemy tower's reach. */
-    private static boolean clearOfBuildings(@NonNull List<@NonNull Building> guarded, @NonNull Intel intel, int x,
-            int y) {
+    /**
+     * What covers (x, y): 1 within a defense circle of the copy (DEFENSE_CELLS from its quarters and armories), else 2
+     * within TOWER_CELLS of an enemy tower, else 0.
+     */
+    private static int coverAt(@NonNull List<@NonNull Building> guarded, @NonNull Intel intel, int x, int y) {
         for (Building b : guarded)
             if (MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y) <= DEFENSE_CELLS * DEFENSE_CELLS)
-                return false;
+                return 1;
         for (Building t : intel.enemy_towers)
             if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= TOWER_CELLS * TOWER_CELLS)
-                return false;
-        return true;
+                return 2;
+        return 0;
     }
 
     private int addCandidate(int n, int x, int y, float score) {
@@ -930,6 +925,7 @@ final class Shepherd {
         return best == Integer.MAX_VALUE ? -1 : (int) Math.sqrt(best);
     }
 
+    /** Our building or site nearest (x, y) (towers and decoy sites included), or null. */
     private @Nullable Building nearestOwnBuilding(int x, int y) {
         Building best = null;
         int best_d = Integer.MAX_VALUE;
@@ -945,13 +941,10 @@ final class Shepherd {
         return best;
     }
 
+    /** The squared cells from (x, y) to our nearest building or site, Integer.MAX_VALUE with none. */
     private int nearestOwnBuilding2(int x, int y) {
-        int best = Integer.MAX_VALUE;
-        for (Selectable<?> sel : ai.owner().getUnits().getSet())
-            if (sel instanceof Building b && !b.isDead()
-                    && b.getTemplate().getType() == BuildingTemplate.TYPE_BUILDING)
-                best = Math.min(best, MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y));
-        return best;
+        Building b = nearestOwnBuilding(x, y);
+        return b == null ? Integer.MAX_VALUE : MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y);
     }
 
     private int nearestOtherUnit2(int x, int y, @Nullable Unit self, @Nullable Unit partner) {

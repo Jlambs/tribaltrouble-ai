@@ -166,7 +166,7 @@ final class Freeze {
             float eta = etas.get(i);
             log(() -> (first ? "" : "further ") + "strike on " + name(
                     best) + " at " + sx + "," + sy + " with " + strike.squad.size() + " peons, eta " + (int) eta + "s");
-            strike.walk(ai.time());
+            strike.walk(best, ai.time());
         }
         return !strikes.isEmpty();
     }
@@ -243,12 +243,12 @@ final class Freeze {
                 return;
             }
             switch (phase) {
-                case WALK -> walk(now);
-                case STRIKE -> strike(now);
-                case STAGE -> stage(now);
-                case WAIT -> await(now);
-                case CUT -> cut(now);
-                case RAZE -> raze(now);
+                case WALK -> walk(t, now);
+                case STRIKE -> strike(t, now);
+                case STAGE -> stage(t, now);
+                case WAIT -> await(t, now);
+                case CUT -> cut(t, now);
+                case RAZE -> raze(t, now);
                 default -> {
                 }
             }
@@ -257,46 +257,29 @@ final class Freeze {
         // --------------------------------------------------------------------------------------------------------
         // Path (a)
 
-        private void walk(float now) {
-            Player t = target;
-            assert t != null;
-            if (quartersStands(t)) {
-                if (retargeted)
-                    abort("its quarters stood before the squad arrived");
-                else
-                    fallback("its quarters stood before the squad arrived");
+        private void walk(@NonNull Player t, float now) {
+            if (quartersStood(t, "its quarters stood before the squad arrived"))
                 return;
-            }
             if (now - phase_time > ai.strategy().freeze_eta + STRIKE_LIMIT) {
                 abort("the squad never reached its peons");
                 return;
             }
             List<Unit> prey = outsideUnits(t);
-            int[] goal = prey.isEmpty() ? new int[]{start_x, start_y} : centre(prey);
-            int[] c = centre(squad);
+            int[] goal = prey.isEmpty() ? new int[]{start_x, start_y} : MapAnalysis.centroid(prey);
+            int[] c = MapAnalysis.centroid(squad);
             if (!prey.isEmpty() && MapAnalysis.dist2(c[0], c[1], goal[0], goal[1]) <= ARRIVE_CELLS * ARRIVE_CELLS) {
                 setPhase(Phase.STRIKE);
                 ai.aiLog().count("freeze_path_a");
                 log(() -> "squad at " + name(t) + " at " + (int) now + "s: striking " + prey.size() + " peons");
-                strike(now);
+                strike(t, now);
                 return;
             }
-            if (now - last_order >= 6f) {
-                last_order = now;
-                ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), goal[0], goal[1], Action.MOVE, false);
-            }
+            moveSquad(now, goal[0], goal[1]);
         }
 
-        private void strike(float now) {
-            Player t = target;
-            assert t != null;
-            if (quartersStands(t)) {
-                if (retargeted)
-                    abort("its quarters stood during the strike");
-                else
-                    fallback("its quarters stood during the strike");
+        private void strike(@NonNull Player t, float now) {
+            if (quartersStood(t, "its quarters stood during the strike"))
                 return;
-            }
             if (now - phase_time > STRIKE_LIMIT) {
                 abort("strike took over " + (int) STRIKE_LIMIT + "s");
                 return;
@@ -309,10 +292,8 @@ final class Freeze {
 
         /**
          * freeze_retarget: after a path-(a) out the squad strikes once more, at the living copy with the least walking
-         * time
-         * from it, if that is at most freeze_eta seconds of peon walk and its quarters is not finished. Returns whether
-         * it
-         * did; either way there is no third look.
+         * time from it, if that is at most freeze_eta seconds of peon walk and its quarters is not finished. Returns
+         * whether it did; either way there is no third look.
          */
         private boolean retarget(float now) {
             Player done = target;
@@ -320,7 +301,7 @@ final class Freeze {
             retargeted = true;
             Player me = ai.owner();
             float limit = ai.strategy().freeze_eta;
-            int[] c = centre(squad);
+            int[] c = MapAnalysis.centroid(squad);
             DistanceField field = ai.map().computeField(c[0], c[1], (int) Math.ceil(limit * PEON_SPEED) + 10);
             Player best = null;
             float best_eta = Float.MAX_VALUE;
@@ -366,25 +347,35 @@ final class Freeze {
             Player t = best;
             log(() -> "second strike on " + name(
                     t) + " at " + start_x + "," + start_y + " with " + squad.size() + " peons, eta " + (int) eta + "s");
-            walk(now);
+            walk(best, now);
+            return true;
+        }
+
+        /**
+         * Path (a) is over once the copy's quarters stands: the squad falls back to the armory cut (path (c)), or,
+         * on a second strike (freeze_retarget), gives up. Returns whether it did.
+         */
+        private boolean quartersStood(@NonNull Player t, @NonNull String why) {
+            if (!quartersStands(t))
+                return false;
+            if (retargeted)
+                abort(why);
+            else
+                fallback(t, why);
             return true;
         }
 
         // --------------------------------------------------------------------------------------------------------
         // Path (c)
 
-        private void fallback(@NonNull String why) {
-            Player t = target;
-            assert t != null;
+        private void fallback(@NonNull Player t, @NonNull String why) {
             setPhase(Phase.STAGE);
             ai.aiLog().count("freeze_fallback_c");
             log(() -> "falling back to the armory cut on " + name(t) + ": " + why);
-            stage(ai.time());
+            stage(t, ai.time());
         }
 
-        private void stage(float now) {
-            Player t = target;
-            assert t != null;
+        private void stage(@NonNull Player t, float now) {
             stagePoint(t);
             if (armoryCheck(t))
                 return;
@@ -392,22 +383,17 @@ final class Freeze {
                 abort("the squad never reached its stage point");
                 return;
             }
-            int[] c = centre(squad);
+            int[] c = MapAnalysis.centroid(squad);
             if (MapAnalysis.dist2(c[0], c[1], stage_x, stage_y) <= 7 * 7) {
                 setPhase(Phase.WAIT);
                 log(() -> "squad staged by " + name(t) + " at " + stage_x + "," + stage_y);
-                await(now);
+                await(t, now);
                 return;
             }
-            if (now - last_order >= 6f) {
-                last_order = now;
-                ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), stage_x, stage_y, Action.MOVE, false);
-            }
+            moveSquad(now, stage_x, stage_y);
         }
 
-        private void await(float now) {
-            Player t = target;
-            assert t != null;
+        private void await(@NonNull Player t, float now) {
             if (armoryCheck(t))
                 return;
             if (now - phase_time > WAIT_LIMIT) {
@@ -419,20 +405,15 @@ final class Freeze {
                 fight(t);
                 return;
             }
-            if (now - last_order >= 6f) {
-                last_order = now;
-                ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), stage_x, stage_y, Action.MOVE, false);
-            }
+            moveSquad(now, stage_x, stage_y);
         }
 
         /**
          * freeze_fight, while waiting: the squad takes on the copy's units within FIGHT_CELLS of a squad peon that
-         * stand
-         * outside the defense circle of the copy's finished quarters or armory (its drafted peons hunted the squad down
-         * at
-         * the stage point while it walked back there without fighting). A peon inside the circle walks back to the
-         * stage
-         * point, and so does one that hunts nothing near or idles away from it; the others are left where they are.
+         * stand outside the defense circle of the copy's finished quarters or armory (its drafted peons hunted the
+         * squad down at the stage point while it walked back there without fighting). A peon inside the circle walks
+         * back to the stage point, and so does one that hunts nothing near or idles away from it; the others are left
+         * where they are.
          */
         private void fight(@NonNull Player t) {
             List<Building> guards = new ArrayList<>();
@@ -499,13 +480,11 @@ final class Freeze {
             log(() -> "cut on " + name(
                     t) + ": armory site at " + armory.getGridX() + "," + armory.getGridY() + ", " + outsideUnits(
                             t).size() + " peons outside");
-            cut(ai.time());
+            cut(t, ai.time());
             return true;
         }
 
-        private void cut(float now) {
-            Player t = target;
-            assert t != null;
+        private void cut(@NonNull Player t, float now) {
             Building armory = building(t, Race.BUILDING_ARMORY);
             if (armory != null && armory.isComplete()) {
                 abort("its armory stood during the cut");
@@ -539,9 +518,7 @@ final class Freeze {
             assign(prey);
         }
 
-        private void raze(float now) {
-            Player t = target;
-            assert t != null;
+        private void raze(@NonNull Player t, float now) {
             Building quarters = building(t, Race.BUILDING_QUARTERS);
             if (quarters == null) {
                 abort("no quarters left to raze");
@@ -583,6 +560,14 @@ final class Freeze {
 
         // --------------------------------------------------------------------------------------------------------
         // The squad
+
+        /** Every 6 s the squad walks (a MOVE, without fighting) towards (x, y). */
+        private void moveSquad(float now, int x, int y) {
+            if (now - last_order < 6f)
+                return;
+            last_order = now;
+            ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), x, y, Action.MOVE, false);
+        }
 
         /** Every squad peon without a live target goes for the nearest prey that has fewer than three hunters. */
         private void assign(@NonNull List<@NonNull Unit> prey) {
@@ -640,12 +625,11 @@ final class Freeze {
                 squad.clear();
                 return;
             }
-            int[] c = centre(squad);
-            List<Building> homes = new ArrayList<>(intel.quarters);
-            homes.addAll(intel.armories);
-            Building home = nearest(homes, c[0], c[1]);
+            int[] c = MapAnalysis.centroid(squad);
+            List<Building> homes = intel.homes();
+            Building home = MapAnalysis.nearest(homes, c[0], c[1]);
             if (home == null)
-                home = nearest(intel.quarters_sites, c[0], c[1]);
+                home = MapAnalysis.nearest(intel.quarters_sites, c[0], c[1]);
             if (home != null)
                 ai.owner().setTarget(units, home, Action.DEFAULT, false);
             else
@@ -763,32 +747,6 @@ final class Freeze {
             if (sel instanceof Unit u && !u.isDead() && !u.isMounted())
                 units.add(u);
         return units;
-    }
-
-    private static @Nullable Building nearest(@NonNull List<@NonNull Building> buildings, int x, int y) {
-        Building best = null;
-        int best_d = Integer.MAX_VALUE;
-        for (Building b : buildings) {
-            if (b.isDead())
-                continue;
-            int d = MapAnalysis.dist2(x, y, b.getGridX(), b.getGridY());
-            if (d < best_d) {
-                best_d = d;
-                best = b;
-            }
-        }
-        return best;
-    }
-
-    private static int @NonNull [] centre(@NonNull List<@NonNull Unit> units) {
-        long x = 0;
-        long y = 0;
-        for (Unit u : units) {
-            x += u.getGridX();
-            y += u.getGridY();
-        }
-        int n = Math.max(1, units.size());
-        return new int[]{(int) (x / n), (int) (y / n)};
     }
 
     private static @NonNull String name(@NonNull Player p) {
