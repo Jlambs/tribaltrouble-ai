@@ -1327,3 +1327,8 @@ retreat through the same pass (only the attack role is watched).
   reviewed: identity, determinism, engine safety and fair play OK; two review fixes applied). Smoke N=13 s2001-2012:
   treeless tower sites finish in a median 55 s instead of 105 s (600-1500 s: 61 vs 127 s), 58 -> 65 of ~80 finished;
   but the army at 15 min fell 74 -> 53 (median of 12; 57 with tower_wood_time=600), so screens carry an army guard.
+- tower_wood_drop screens (N=13 s1..200 vs freeze-squad6-c3-vs13-hv): from the start elim -.028 (z -3.1), towers20
+  -0.44: no (the early drain hurts the opening); from 600 s surv60 +0.64 (z 1.3), alive40 +3.5 pp (z 1.8), towers20
+  +0.31, wp +0.4 pp (z 1.4), w15 57.5 -> 56.3; **from 600 s with reserve 20 (woodr20)** surv60 +0.52, alive40 +2.5 pp,
+  towers20 +0.41, w15 57.5 -> 58.0 (25 carried pieces a game). site_towers_first: surv60 -0.3 (z -1.7), no. Queued:
+  woodr20 confirmations and the tower package slots32 + woodr20 at N=12-14.
