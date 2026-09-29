@@ -122,6 +122,14 @@ workers: 7 to start, up to 28 (28 threads, 47% busy, 10.8 GB available)
 workers 7 -> 14 (28 threads, 83% busy, 9.1 GB available, other runs 0 workers)
 ```
 
+Games differ a lot in length (the longest of a run often take ten times the median), and a run ends only when its
+last game does: the long games started last would run on alone while the other workers idle. So a batch plays the
+longest games first: a game's length is its mean CPU in the earlier runs that played the same games (the same lineup
+but for team A, maps and settings, what compare pairs), and a game none of them played counts at their median
+(`order: the longest games first, from 24 of the 30 games in 6 earlier runs`). Only the order changes, never a game.
+A run still cannot end before its longest game, so start the next batch while one finishes: automatic batches share
+the machine, and the new one takes the threads the old one's last games leave free.
+
 To take less, or a fixed amount:
 
 - `--cpus N` or `--cpus P%`: at most N hardware threads, or P% of them (a worker keeps about one busy), so other work
