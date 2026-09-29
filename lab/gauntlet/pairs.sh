@@ -18,8 +18,8 @@ k = sorted(set(ra) & set(rb))
 if not k:
     print(f'{b:30s} (no common games with {a})')
     sys.exit()
-wa = sum(ra[x]['result'] == 'win' for x in k)
-wb = sum(rb[x]['result'] == 'win' for x in k)
+wa = sum(ra[x].get('result') == 'win' for x in k)
+wb = sum(rb[x].get('result') == 'win' for x in k)
 out = subprocess.run([sys.executable, 'lab/gauntlet/winproxy.py', '--pair', a, b], capture_output=True,
                      text=True).stdout.splitlines()
 d = {}

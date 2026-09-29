@@ -7,9 +7,10 @@ wins base -> arm, and the difference and z of elim, surv60, alive40, towers20 an
 
 A shared base carries its own draw into every comparison (NOTES.md, "Method: one base shared by many arms"): any
 change re-rolls the games it touches, so over a sweep the arms' differences centre on the base's luck rather than on
-zero. The head line gives the median difference of the arms that change play (not every game identical), and
---median prints each arm against that median arm instead: (difference - median) and its z, taking the arm's paired
-SE for both (the median of many arms is nearly a constant). Read a sweep that way before trusting a first-block z.
+zero. The head line gives the median difference of the arms that re-roll at least half the games, and --median
+prints each arm against that median arm instead: (difference - median x the arm's share of changed games) and its
+z, taking the arm's paired SE (the median of many arms is nearly a constant). Read a sweep that way before trusting a
+first-block z. Games pair by key, player count and map.
 
 The pairings are cached in aisim/board_cache.json (git-ignored; delete it to recompute).
 """
@@ -38,11 +39,14 @@ def rows(run):
 def score(base, arm):
     """The pairing of one arm with the base: n, identical games, wins, and {metric: [diff, se]}."""
     ra, rb = rows(base), rows(arm)
-    keys = sorted(set(ra) & set(rb))
+    # the same game: same key, same number of players and the same map (a key alone matches across N)
+    keys = sorted(k for k in set(ra) & set(rb)
+                  if ra[k].get('slots') == rb[k].get('slots') and ra[k].get('map') == rb[k].get('map'))
     d = {'n': len(keys),
          'same': sum(ra[k].get('checksum') == rb[k].get('checksum') and ra[k].get('end') == rb[k].get('end')
                      for k in keys),
-         'W': '%d->%d' % (sum(ra[k]['result'] == 'win' for k in keys), sum(rb[k]['result'] == 'win' for k in keys))}
+         'W': '%d->%d' % (sum(ra[k].get('result') == 'win' for k in keys),
+                          sum(rb[k].get('result') == 'win' for k in keys))}
     out = subprocess.run([sys.executable, os.path.join(HERE, 'winproxy.py'), '--pair', base, arm],
                          capture_output=True, text=True, cwd=REPO).stdout.splitlines()
     for line in out:
@@ -73,18 +77,21 @@ def main():
     names = sorted(n for n in os.listdir(ROOT) if n.startswith(prefix) and n != base
                    and os.path.exists(os.path.join(ROOT, n, 'summary.txt')))
     res = []
+    base_done = os.path.exists(os.path.join(ROOT, base, 'summary.txt'))
     for n in names:
         key = base + '|' + n
-        if key not in cache:
+        if key not in cache or not base_done:
             cache[key] = score(base, n)
-            with open(CACHE, 'w', encoding='utf-8') as f:
-                json.dump(cache, f)
+            if base_done:  # a base still running would freeze a partial pairing in the cache
+                with open(CACHE, 'w', encoding='utf-8') as f:
+                    json.dump(cache, f)
         res.append((n, cache[key]))
     apart = [n for n, d in res if not d['n']]
     res = [(n, d) for n, d in res if d['n']]
     if apart:
         print('no game in common with %s: %s' % (base, ' '.join(apart)))
-    changing = [d for _, d in res if d['same'] < d['n']]
+    # the median over arms that re-roll most games: an arm that changes only a few carries little of the base's luck
+    changing = [d for _, d in res if d['same'] <= d['n'] // 2]
     median = {m: statistics.median(d[m][0] for d in changing if m in d) if any(m in d for d in changing) else 0.0
               for m in METRICS}
     print('%s: %d arms, %d change play; median difference %s' % (
@@ -96,7 +103,9 @@ def main():
         v = d.get(m)
         if not v:
             return None
-        diff = v[0] - (median[m] if vs_median else 0.0)
+        # an arm that re-rolls k of n games carries about k/n of the base's draw
+        changed = (d['n'] - d['same']) / d['n'] if d['n'] else 0.0
+        diff = v[0] - (median[m] * changed if vs_median else 0.0)
         return diff, z(diff, v[1])
 
     def rank(item):
