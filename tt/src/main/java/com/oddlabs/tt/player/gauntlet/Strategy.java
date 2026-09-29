@@ -105,6 +105,15 @@ class Strategy {
     int chief_hunt_range = 150;
     int chief_hunt_escort = 3;
     float chief_hunt_time = 90f;
+    /**
+     * weapon_sync: an armory takes a weapon's cost when the weapon is done, clamped at zero, so weapons done on the
+     * same tick share what they have in common. While the main armory can forge a rubber axe and the iron it shares
+     * with an iron axe is short, the queue that would finish first is paused (its orders cancelled, which keeps its
+     * progress) and resumed so both finish on the same tick (Economy.weaponSync). weapon_sync_three: the rock axe joins
+     * when rock is short too.
+     */
+    boolean weapon_sync = false;
+    boolean weapon_sync_three = true;
     /** Keep the tower target under the building cap; front towers add at most front_tower_bonus_max. */
     boolean tower_cap = false;
     int front_tower_bonus_max = 100;
@@ -767,6 +776,8 @@ class Strategy {
         chief_hunt_range = params.getInt("chief_hunt_range", chief_hunt_range);
         chief_hunt_escort = params.getInt("chief_hunt_escort", chief_hunt_escort);
         chief_hunt_time = (float) params.getDouble("chief_hunt_time", chief_hunt_time);
+        weapon_sync = params.getBoolean("weapon_sync", weapon_sync);
+        weapon_sync_three = params.getBoolean("weapon_sync_three", weapon_sync_three);
         finish_range = params.getInt("finish_range", finish_range);
         tower_cap = params.getBoolean("tower_cap", tower_cap);
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);

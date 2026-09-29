@@ -104,6 +104,9 @@ public final class GauntletAI extends AI {
         ticks++;
         time = ticks / (float) GameTime.TICKS_PER_SECOND;
         try {
+            // weapon_sync looks at the armory before any order of this tick and plans after all of them
+            if (initialized && strategy.weapon_sync)
+                economy().weaponSyncObserve();
             reflexes.tick();
             if (initialized) {
                 military().towerReflex();
@@ -115,6 +118,8 @@ public final class GauntletAI extends AI {
                 dodges().guard();
             }
             think();
+            if (initialized && strategy.weapon_sync)
+                economy().weaponSync(t);
         } catch (RuntimeException | AssertionError e) {
             // Engine getters assert on units that just died: count the error (every result row shows it), log the
             // first stack traces, and let the game go on. Every peer hits the same mistake at the same tick, so
@@ -291,6 +296,11 @@ public final class GauntletAI extends AI {
 
     float time() {
         return time;
+    }
+
+    /** World ticks this AI has seen. */
+    int ticks() {
+        return ticks;
     }
 
     @NonNull
