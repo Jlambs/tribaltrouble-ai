@@ -7,8 +7,9 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 ## How a game against N copies goes
 
 1. **0-4 min, the opening.** Four quarters and an armory (about 3.5 min), towers from ~4.5 min. From N=12 the freeze
-   opening sends 10 starting peons to kill the nearest copy's quarters builders: that copy is out in about a minute
-   (79-88 % of games at N=12-13), at the cost of a later first armory.
+   opening sends 6 starting peons to kill the nearest copy's quarters builders: that copy is out in about a minute
+   (path a, ~55-75 % of strikes), or frozen for good when its quarters stood first and the squad kills its armory
+   builders (path c: the site keeps the copy's "armory under construction" flag, so it never builds another).
 2. **2-8 min, the first waves.** Each copy launches a wave when it has enough idle warriors, at our nearest building (or
    a unit that is clearly nearer). Shepherd peons (from 120 s, one per copy) stand on empty ground ahead of each wave so
    the wave targets them instead of the base; towers (with front entry, re-aim and fast re-targeting) kill most of what
@@ -36,6 +37,7 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 | shepherds from 120 s (was 200) | the first waves are leashed from the start | N=11 W 28 vs 19 over 400 |
 | re-site vetoed tower projects | a project vetoed by a nearby threat was never moved: towers stopped being replaced | survival +1-2 min at every N |
 | freeze opening from N=12 | one copy fewer from minute 1 relieves the collapse window | N=12 W 4 -> 13 over 600 |
+| freeze squad 6 (was 10) | four more peons at home; a frozen copy is worth nearly an out | N=12 W 8 -> 15 over 400 |
 
 ## What did not (and why, briefly)
 
@@ -48,6 +50,24 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 - **Hysteresis and N-keyed rules**: the flips that happen are cheap; the costly moments are one-way decisions (retreats,
   recalls). Effects keep their sign across N, so tune once and check at N=8 and N=12.
 - **Late-acting tweaks judged by early metrics**: finishers and endgame fixes need wins, not the 15-25-min win proxy.
+- **More or different freeze strikes**: a second strike at the next copy converts 80 % of the time but final
+  eliminations barely move (that copy falls to the campaign around 9 min anyway, and 12 peons away cost later outs);
+  leaving frozen copies for last (frozen_last) is worse: the first attack on the undefended frozen copy is a cheap out.
+
+## The opponent, in the few rules that matter (AdvancedAI)
+
+- It thinks every 5-7 s. A wave is exactly NUM idle warriors (10, then +5 per launch up to 40), sent at our building
+  nearest its oldest idle warrior, or at one of our units if that one is under 0.707 of that distance. After razing
+  its target the wave stands idle there: the parked blobs of the collapse window.
+- From NUM = 20 (after two launches) it launches only while it has an active chieftain; a new one takes 40 breeding
+  ticks at its quarters (~160 s with 20 peons inside). Homeless copies therefore stop launching once their chieftain
+  dies (0.04 waves per copy-minute).
+- It builds one quarters and one armory, plus a tower at 90 units and a second at 120. It defends only when an enemy
+  unit stands within 30 m of that quarters or armory, with its armory stock, idle warriors and gatherers.
+- Idle units react only through their 8-cell scan; being hit does not wake them (Unit.hit). A tower garrison reaches
+  ~15.5 cells.
+- Late iron is a global respawn trickle (one random empty node regrows every 10 s once 75 % are empty): ~44 iron/min
+  mined map-wide at 15-20 min at N=14, about one field's share per copy (4.1/min), 1.8/min for us.
 
 ## How to measure
 
