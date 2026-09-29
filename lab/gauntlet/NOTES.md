@@ -894,3 +894,43 @@ and chicken diagnostics), weapon_sync (align rubber/iron/rock axe completions on
 nearby enemies instead of every enemy; same choices, less CPU; suggested by the headless-engine session's profile).
 Observed: we gather few chickens (1 in 24 min in one smoke game while each Hard got 0-16): pickChicken skips chickens
 with enemies near.
+
+### N=12 screens; the freeze opening; what kills us at 25-40 min (2026-09-29)
+
+Engine: merged headless 2a79342a and b42a45be (headless harness games: ~40 % less CPU, a third of the memory, workers
+up to 32 and --workers auto); games bit-identical (s2-s4 25-min checksums unchanged). N=13 base: cur2-vs13-hv(-b)
+**2/400 (0.5 %: s26, s370)**. winproxy.py --pair now also prints survival (surv60, alive30, alive40, hold20) and the
+window columns of late/spec.md S0 (hold20a1 = first armory standing at 20 min, base25, arm25, towers20, peons20,
+vanished20); base rates at N=12: hold20a1 .30, arm25 .16, towers20 3.9, peons20 27, vanished20 ~105.
+
+N=12 screens (paired with cur2-vs12-hv, seeds 1..200):
+
+| arm | wins | elim (z) | wp (z) | surv60 (z) | alive40 (z) | verdict |
+|---|---|---|---|---|---|---|
+| **freeze_open** | **7 vs 2** (6/1) | **+.041 (3.3)** | +0.7 pp (1.1) | **+1.5 min (2.4)** | **+5.0 pp (2.4)** | confirming (fresh N=12, N=13, N=11, N=8) |
+| armory_threat_cap=2 | 4 vs 2 | +.003 | +0.1 pp | +0.7 (1.7) | +0.5 pp | confirming on 201..400 |
+| shepherd_lead=144 | 2 vs 2 | -.002 | +0.2 pp | +0.8 (1.2) | +3.0 pp (1.5) | maybe |
+| recall_ratio=4 | 2 vs 2 | -.002 | 0 | -0.1 | 0 | no |
+| shepherd_until=1200 | 1 vs 2 | -.004 | +0.1 | **-1.0 (-6.4)** | +0.5 | no |
+| base_radius=22 | 0 vs 2 | -.015 | **-0.6 pp (-2.0)** | 0 | +0.5 | no |
+
+The freeze opening puts the nearest copy out in about a minute (10 starting peons kill its quarters builders before
+the quarters is finished; with no units, chieftain or finished quarters it collapses). Window columns: arm25 +7.5 pp
+(z 2.1), towers20 +0.8 (z 2.3), peons20 +4.4 (z 2.1). Follow-ups being built: unfreeze a recovered copy, let the squad
+fight while staging, push our armory after a strike, strike a second copy.
+
+N=11 legacy screens since: front_tower_max=12 and front_tower_min=10,max=19 (see lane results), tower_mutual,
+towers_early_time=120 and the rest are running.
+
+What kills us between 25 and 40 min at N=12 (late/collapse.md, late/spec.md; 16 logged N=12 games alive at 40 min
+plus the 400-game census): the 25-40-min step is mostly a 13-24-min collapse that shows up later (47 % of the N=12
+games alive at 25 min have no armory or quarters left; N=11 28 %); three quarters of the N=11 -> N=12 drop in alive40
+is the worse 20-min state (fewer towers, warriors, peons), one quarter is extra pressure at an equal state. Mechanisms:
+the peon trap (idle peons bank in the primary armory, usually the exposed expansion; ~103 units vanish inside razed
+buildings by 20 min), the expansion as a sinkhole (built at 8 min 106 cells out, razed at 14.5 min, ~80 units lost per
+razing), tower attrition (6.8 towers razed and 0.8 completed from 15 to 20 min: a tower project vetoed by a nearby
+threat is never re-sited, and only one is built at a time), iron starvation, reinforcements blocked by threat level 2,
+and failed rebuilds (62 % never complete another armory after the first falls). Half the armory falls happen with fewer
+than 10 field warriors alive, so a recall would not have saved them. Being built: veto_resite (move or drop a vetoed
+tower project), bank_guard (cap the armory's idle bank; the rest wait in the safest quarters), wood_reach (the endgame
+wood lock of the 360-min draws).
