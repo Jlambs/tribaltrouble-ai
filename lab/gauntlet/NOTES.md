@@ -1344,3 +1344,17 @@ retreat through the same pass (only the attack role is watched).
   blocks 8 vs 3; N=12 W 9 -> 5 and 6 -> 8 (15 -> 13 of 400). elim ~0 to +.014.
 - The win-count comparison (cur5-vs1x-w1/w2 vs slots32-vs1x-w1/w2, 300 games each) also gave the default cur5 an N=14 win
   (s3275, above) and slots32 N=14 wins s3484, s3549 and N=13 wins s3077, s3287, s3521.
+- **Why tower-adding changes cost warriors (towercost workflow: 3 hypotheses, checks, synthesis; scratchpad/towercost):**
+  the channel is peon labour. An extra site takes its crew from idle and transit peons that would have entered the
+  armory, and computeGatherTargets' pool leaves builders out, so forge workers and iron gatherers shrink pro rata: -1.35
+  weapons per extra site placed (arm as its own instrument), -0.8 at 12 min, -1.6 at 15 min over 3,000 pairs; each extra
+  tower also takes 0.7-0.8 warriors as its gunner. Wood is not the cost (builders chop their own) and neither is iron
+  before 13 min (the forge is short of workers, not ore). It is repaid: pairs alive at 20 min have lost 2.7 fewer
+  warriors (z -4.6). Outs, their timing and the army at each out do not change at any N. The "2-5 fewer warriors at 15
+  min" was mostly the base's own draw (the base spikes at exactly 900 s against the non-tower arms).
+- **The N=12 win loss is mostly the base's lucky block plus noise**: against 11 non-tower reference arms matched by
+  seed block, about 10 of 14 lost wins may be tower-specific (z 1.25-1.4), all decided after 25 min, mostly fallback
+  (-5.7) and twparl2 (-3.7); slots32 at N=12 (15 -> 13) is inside the reference range. Leads, unproven: the late slots
+  never end (more tower placements after 25 min), wood lock 2.75 % vs 1.7 % (z ~2, post hoc). Seven of slots32's eight
+  N=13-14 wins last over 90 min, so long-game conversion there is fine. The one variant (end the late slots at 1500 s,
+  tower_parallel_late_end) expects ~0 and is not built.
