@@ -7,7 +7,8 @@
     python lab/gauntlet/winproxy.py fit [RUN...] [--save F]  # refit the model (numpy), with seed-fold validation
     add --model F to any mode to use a model saved by fit --save instead of the built-in one
 
-Scores of team A (our AI, slot 0 in the benchmark), per game:
+Scores of team A (our AI, slot 0 in the benchmark), per game (plus survival rows in --pair: surv60 = minutes until out,
+capped at 60, a win counting 60; alive30 / alive40; hold20 = an armory of ours standing at the 20-min census):
   PT     predicted P(win) from the census at T = 15, 20, 25 min: a logistic model of
            x_out   copies out by T / N          x_home  copies in but homeless (no finished quarters or armory) / N
            lsr     log((ours + 10) / (all copies' + 10)) census strength
@@ -63,7 +64,8 @@ def read_game(run, row):
          'failed': row.get('result') is None, 't_end': row.get('t') or 0.0}
     path = os.path.join(ROOT, run, 'g', key + '.jsonl')
     if g['failed'] or not os.path.exists(path):
-        g.update(failed=True, N=max(1, (row.get('slots') or 2) - 1), elim=0.0, feats={t: None for t in TIMES})
+        g.update(failed=True, N=max(1, (row.get('slots') or 2) - 1), elim=0.0, feats={t: None for t in TIMES},
+                 surv=0.0, hold20=0)
         return g
     want = {t * 60 for t in TIMES}
     census = {}
@@ -91,6 +93,10 @@ def read_game(run, row):
     if a_out is not None and len([s for s in a_slots if s in outs]) < len(a_slots):
         a_out = None
     limit = a_out if a_out is not None else g['t_end'] + 1
+    # survival: seconds until we are out (a win or a game we survive to its end counts as surviving it)
+    g['surv'] = float(a_out) if a_out is not None and not g['win'] else max(g['t_end'], 3600.0)
+    us20 = [census.get((s, 1200)) for s in a_slots]
+    g['hold20'] = 1 if g['surv'] > 1200 and all(u is not None for u in us20) and sum(u['armories'] for u in us20) > 0 else 0
     g['elim'] = 1.0 if g['win'] else sum(1 for s in b_slots if s in outs and outs[s] <= limit) / max(1, n)
     g['feats'] = {}
     for tm in TIMES:
@@ -177,6 +183,11 @@ def score(g, model):
     s['by15'] = s['P15']
     s['15-25'] = s['P25'] - s['P15']
     s['after25'] = s['win'] - s['P25']
+    # survival rows for N >= 12, where the 25-40-min window that wp cannot see decides games
+    s['surv60'] = min(g['surv'], 3600.0) / 60.0
+    s['alive30'] = 1.0 if g['surv'] > 1800 else 0.0
+    s['alive40'] = 1.0 if g['surv'] > 2400 else 0.0
+    s['hold20'] = float(g['hold20'])
     return s
 
 
@@ -211,7 +222,8 @@ def print_table(rows):
 
 
 SUMMARY = ['elim', 'P15', 'P20', 'P25', 'wp', 'wpe']
-PAIRED = ['win', 'elim', 'P15', 'P20', 'P25', 'wp', 'wpe', 'by15', '15-25', 'after25']
+PAIRED = ['win', 'elim', 'P15', 'P20', 'P25', 'wp', 'wpe', 'by15', '15-25', 'after25', 'surv60', 'alive30', 'alive40',
+          'hold20']
 
 
 def summary(runs, model, jobs):
@@ -245,6 +257,8 @@ def pair(base, variant, model, jobs):
         zs[f] = (mean(d), s, z)
         if f == 'by15':
             out.append(['win split:', '', '', '', '', ''])
+        if f == 'surv60':
+            out.append(['survival:', '', '', '', '', ''])
         out.append([f, '%.4f' % mean(xa), '%.4f' % mean(xb), '%+.4f' % mean(d), '%.4f' % s,
                     ('%+.1f' % z) + (' *' if abs(z) > 2 else '')])
     print_table(out)
@@ -254,7 +268,7 @@ def pair(base, variant, model, jobs):
     m, s, z = zs['wp']
     print('wp: the variant changes the win rate by about %+.2f pp (95%% %+.2f..%+.2f), z %+.1f'
           % (100 * m, 100 * (m - 1.96 * s), 100 * (m + 1.96 * s), z))
-    if zs['elim'][2] > 1.5 and zs['wp'][2] < 0.5:
+    if zs['elim'][0] >= .01 and zs['elim'][2] >= 1.5 and zs['wp'][2] < 0.5:
         print('note: elim is up but wp is not: the extra outs do not look like wins (cf. finish_copies)')
 
 
