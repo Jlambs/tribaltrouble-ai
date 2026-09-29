@@ -1079,3 +1079,28 @@ So the jam is rare (about 1 game in 30 at N=11 and 40 at N=12 within these limit
 alone. Not measured: longer games (the s98-type draws run to 360 min), and adoption. Next: an N=11 1..400 360-min pair
 (or the draw seeds of all 65 s98 configs) before making unjam=8 the default. Not done: jams of reinforcements or of a
 retreat through the same pass (only the attack role is watched).
+
+### cur4 screens: frozen_last and two strikes do not pay; hygiene and unjam merged (2026-09-29 day)
+
+- **frozen_last: no.** On the seeds where cur4 froze a copy (N=12: 70 of 400, N=13: 25 of 400; all other games are
+  bit-identical): N=12 W 4 -> 2, elim -.043 (z -1.5), wp -1.4 pp (z -1.4); N=13 elim -.034 (z -2.0), surv60 -1.0.
+  The audit's reading (the frozen copy takes the first attack for nothing) was wrong in sign: that first attack is a
+  quick, undefended out next to home, and skipping it sends the army farther.
+- **Two strikes (freeze_targets=2): no.** The second strike launches and converts well (N=14: 117 second strikes in
+  200 games, outs 141 -> 217, frozen 24 -> 41), but final eliminations barely move: N=14 elim +.007 (z 1.2), surv60
+  +0.03; N=12 W 9 -> 9, elim -.011 (z -1.4); eta2 50 N=12 W 9 -> 6, elim -.034 (z -3.0); eta2 30 N=14 elim +.003. The
+  first strike's value sits in a very near neighbour (audit: starts within 60-80 cells); the second copy is usually
+  75-100 cells out, a copy the campaign takes around 9 min anyway, and the 12 peons away cost later outs.
+- Squad size, the rest: squad 5 = squad 6 at N=12 (W 10 vs 9, all columns ~0); squad 6 vs 10 at N=13 s201..400 W 1 -> 2,
+  elim +.017 (z 1.8), surv60 +0.3 (pooled N=13 400: W 3 -> 2, surv60 +0.5, elim +.010, wp -0.4 pp); at N=14 s1..200
+  neutral (W 1 -> 0, elim +.002, surv60 +0.2). Freeze off at N=14 (squad 10 base): elim -.021 (z -2.7), surv60 -0.75
+  (z -1.9), towers20 -0.9 (z -2.8): the freeze pays at N=14 too.
+- **Merged**: the behaviour-preserving hygiene branch (15 commits: shared helpers, Intel.isParked/gunner, EnemyIndex
+  shared with the shepherds and updated in place, computeField buffer reuse, dead code, the N>1 gate of forGame
+  removed, capped_min_strength param at 0) and unjam (default off). The merged build reproduces cur4's N=12 checksums
+  (s1, s5, s9, s120, frozen games included) and N=11 (s1-s3).
+- Enemy chieftains (census, lab script chiefs.py in the session): chieftain-gated copies (the Hard launches only
+  with an active chieftain once its wave size reaches 20, AdvancedAI:118-119, 305-306) are without one 19-21 % of
+  the time by 20 min (16-19 births, 9.5 deaths per game). Terciles by that share: N=14 games last 19.4 / 21.6 / 24.1
+  min (correlation only). A chieftain has 60 HP against a warrior's 1, so killing one costs ~30 iron hits; training a
+  new one takes a copy 40 breeding ticks (~160 s with 20 peons inside), during which it breeds no peons.
