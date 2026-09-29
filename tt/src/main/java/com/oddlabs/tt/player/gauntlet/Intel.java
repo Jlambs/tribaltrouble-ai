@@ -127,6 +127,27 @@ final class Intel {
     /** Changes whenever update() rebuilds the lists (EnemyIndex caches on it). */
     int version;
 
+    private @Nullable EnemyIndex enemy_index;
+    private int enemy_index_tick = -1;
+    private int enemy_index_version = -1;
+
+    /**
+     * The enemy warriors, chieftains and peons bucketed by where they stand on this tick (EnemyIndex), rebuilt at most
+     * once a tick and whenever update() rebuilds the lists. Units only move between ticks, so every query of a tick
+     * sees what a scan over the lists would.
+     */
+    @NonNull
+    EnemyIndex enemyIndex(int tick) {
+        if (enemy_index == null)
+            enemy_index = new EnemyIndex(owner.getWorld().getUnitGrid().getGridSize());
+        if (enemy_index_tick != tick || enemy_index_version != version) {
+            enemy_index.rebuild(enemy_warriors, enemy_chieftains, enemy_peons);
+            enemy_index_tick = tick;
+            enemy_index_version = version;
+        }
+        return enemy_index;
+    }
+
     void update() {
         version++;
         quarters.clear();

@@ -228,20 +228,8 @@ final class Military {
     private float last_raid_end = -1000f;
 
     /** Enemies bucketed by position for the towers, rebuilt once per tick (or when Intel rebuilds its lists). */
-    private @Nullable EnemyIndex enemy_index;
-    private float enemy_index_time = -1f;
-    private int enemy_index_version = -1;
-
     private @NonNull EnemyIndex enemyIndex() {
-        Intel intel = ai.intel();
-        if (enemy_index == null)
-            enemy_index = new EnemyIndex(ai.map().getSize());
-        if (enemy_index_time != ai.time() || enemy_index_version != intel.version) {
-            enemy_index.rebuild(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons);
-            enemy_index_time = ai.time();
-            enemy_index_version = intel.version;
-        }
-        return enemy_index;
+        return ai.intel().enemyIndex(ai.ticks());
     }
 
     Military(@NonNull GauntletAI ai) {
@@ -4156,16 +4144,16 @@ final class Military {
             @Nullable Unit skip) {
         Unit best = null;
         float best_score = 0f;
-        Map<Unit, Integer> targeted = new LinkedHashMap<>();
-        for (Unit other : tower_targets.values())
-            targeted.merge(other, 1, Integer::sum);
         EnemyIndex index = enemyIndex();
         int[] near = index.query(o[0], o[1], r2);
         for (int k = 0, n = index.count(); k < n; k++) {
             Unit e = index.unit(near[k]);
             if (e == skip || e.isDead() || inflight.containsKey(e))
                 continue;
-            int others = targeted.getOrDefault(e, 0);
+            int others = 0;
+            for (Unit other : tower_targets.values())
+                if (other == e)
+                    others++;
             float score = throwValue(gunner, e) * towerSelfFactor(t, e) * towerHitChance(gunner, t,
                     e) / (1 << Math.min(others, 4));
             if (score > best_score) {

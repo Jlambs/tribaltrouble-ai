@@ -8,19 +8,24 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The enemy warriors, chieftains and peons of one tick, bucketed by 16-cell squares, so that towers look only at the
- * enemies near them instead of every enemy unit (most of the AI's CPU went to that). A query returns the units in
- * range in their list order (warriors, chieftains, peons, each in Intel's order), so a scan over the result picks
- * exactly what a scan over the full lists would.
+ * The enemy warriors, chieftains and peons of one tick, bucketed by 16-cell squares, so that towers and shepherds look
+ * only at the enemies near them instead of every enemy unit (most of the AI's CPU went to that). A query returns the
+ * units in range in their list order (warriors, chieftains, peons, each in Intel's order), so a scan over the result
+ * picks exactly what a scan over the full lists would. Dead units stay in the index, as they stay in Intel's lists
+ * until its next update: queries leave the isDead test to the caller.
  */
 final class EnemyIndex {
+    static final byte WARRIOR = 0;
+    static final byte CHIEFTAIN = 1;
+    static final byte PEON = 2;
+
     private static final int SHIFT = 4;
 
     private final int side;
     private final List<@NonNull Unit> units = new ArrayList<>();
     private int[] xs = new int[256];
     private int[] ys = new int[256];
-    private boolean[] peon = new boolean[256];
+    private byte[] groups = new byte[256];
     private final int[][] buckets;
     private final int[] bucket_sizes;
     private int[] result = new int[64];
@@ -36,25 +41,25 @@ final class EnemyIndex {
             @NonNull List<@NonNull Unit> peons) {
         units.clear();
         Arrays.fill(bucket_sizes, 0);
-        add(warriors, false);
-        add(chieftains, false);
-        add(peons, true);
+        add(warriors, WARRIOR);
+        add(chieftains, CHIEFTAIN);
+        add(peons, PEON);
     }
 
-    private void add(@NonNull List<@NonNull Unit> group, boolean is_peon) {
+    private void add(@NonNull List<@NonNull Unit> group, byte kind) {
         for (Unit u : group) {
             int i = units.size();
             if (i == xs.length) {
                 xs = Arrays.copyOf(xs, i * 2);
                 ys = Arrays.copyOf(ys, i * 2);
-                peon = Arrays.copyOf(peon, i * 2);
+                groups = Arrays.copyOf(groups, i * 2);
             }
             units.add(u);
             int x = u.getGridX();
             int y = u.getGridY();
             xs[i] = x;
             ys[i] = y;
-            peon[i] = is_peon;
+            groups[i] = kind;
             int b = bucket(x, y);
             int[] list = buckets[b];
             if (list == null) {
@@ -80,6 +85,18 @@ final class EnemyIndex {
      */
     int @NonNull [] query(int x, int y, int r2) {
         int r = (int) Math.ceil(Math.sqrt(r2));
+        return collect(x, y, r, r2, false);
+    }
+
+    /**
+     * The indices of the units at most c cells from (x, y) along both axes (a Chebyshev square), in list order. The
+     * array is reused by the next query; the count is returned by {@link #count()}.
+     */
+    int @NonNull [] queryBox(int x, int y, int c) {
+        return collect(x, y, c, 0, true);
+    }
+
+    private int @NonNull [] collect(int x, int y, int r, int r2, boolean box) {
         int bx0 = Math.clamp((x - r) >> SHIFT, 0, side - 1);
         int bx1 = Math.clamp((x + r) >> SHIFT, 0, side - 1);
         int by0 = Math.clamp((y - r) >> SHIFT, 0, side - 1);
@@ -93,7 +110,7 @@ final class EnemyIndex {
                     int i = list[k];
                     int dx = xs[i] - x;
                     int dy = ys[i] - y;
-                    if (dx * dx + dy * dy > r2)
+                    if (box ? Math.abs(dx) > r || Math.abs(dy) > r : dx * dx + dy * dy > r2)
                         continue;
                     if (n == result.length)
                         result = Arrays.copyOf(result, n * 2);
@@ -116,7 +133,12 @@ final class EnemyIndex {
         return units.get(i);
     }
 
+    /** WARRIOR, CHIEFTAIN or PEON: the list unit i came from. */
+    byte group(int i) {
+        return groups[i];
+    }
+
     boolean isPeon(int i) {
-        return peon[i];
+        return groups[i] == PEON;
     }
 }
