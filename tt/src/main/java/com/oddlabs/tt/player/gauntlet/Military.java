@@ -109,6 +109,8 @@ final class Military {
     /** When the number of living copies last fell, and that number (ring_sweep's quiet test). */
     private float last_out_time;
     private int last_alive = -1;
+    /** Log only: chooseTarget records its best candidates while this is non-null (the muster's explanation). */
+    private @Nullable List<@NonNull String> explain;
     /** frozen_last: the frozen copies a choice has passed over at least once (counted once each). */
     private final List<com.oddlabs.tt.player.@NonNull Player> frozen_deferred = new ArrayList<>();
     private int target_x;
@@ -2004,6 +2006,11 @@ final class Military {
             if (focus_owner != null && b.getOwner() == focus_owner)
                 score -= strategy.focus_bonus;
             score -= strategy.target_threat_weight * base_threat.getOrDefault(b.getOwner(), 0f);
+            if (explain != null)
+                explain.add(String.format("%07.1f %s %s at %d,%d: d %.0f + pri %.0f + def %.0f", score,
+                        b.getOwner().getPlayerInfo().getName(),
+                        b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_ARMORY ? "armory" : b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS ? "quarters" : "tower",
+                        b.getGridX(), b.getGridY(), d, priority, defense));
             if (strategy.frozen_last && ai.freeze().isFrozen(b.getOwner())) {
                 if (score < best_frozen_score) {
                     best_frozen_score = score;
@@ -2071,7 +2078,11 @@ final class Military {
     private void considerAttack() {
         Intel intel = ai.intel();
         Strategy strategy = ai.strategy();
+        if (ai.logging())
+            explain = new ArrayList<>();
         Selectable<?> t = chooseTarget(staging_x, staging_y);
+        List<String> why = explain;
+        explain = null;
         if (t == null)
             return;
         float army = armyStrength();
@@ -2110,6 +2121,12 @@ final class Military {
         target = t;
         mode = Mode.MUSTER;
         muster_start = ai.time();
+        if (why != null && !why.isEmpty()) {
+            // log only: the best few candidates by score (lower is better), from the staging point
+            why.sort(null);
+            ai.log("muster candidates from " + staging_x + "," + staging_y + ": " + String.join("; ", why.subList(0,
+                    Math.min(4, why.size()))));
+        }
         ai.log(String.format("muster: army %.1f + stock %.1f vs defense %.1f at %d,%d", army, potential - army,
                 defense, t.getGridX(), t.getGridY()));
     }
