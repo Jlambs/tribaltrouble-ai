@@ -264,9 +264,18 @@ when the AI is nondeterministic.
 ### Speed and robustness
 
 - Think every second or few seconds, not every tick. `summary` prints each run's CPU cost per game; compare it with a
-  run of the stock AI to see what your AI adds. `--profile` and `profile RUN --focus player.myai` show where it goes,
-  and `compare` measures a speed change: it must keep every game identical, and its `cpu` line gives the saving
-  (`docs/aisim.md`, Speed).
+  run of the stock AI to see what your AI adds.
+- **Profile your AI regularly while you develop it**: after each feature that loops over units, buildings or cells,
+  and whenever `summary`'s cost per game grows. Your AI's CPU is time every experiment waits for, and it grows
+  quietly, feature by feature: one AI's tower targeting scanned every enemy unit on the map for every tower, every
+  tick, and took nearly a tenth of all the simulation's CPU until a profile showed it. Run a batch with `--profile`, then
+  `./aisim.sh profile RUN --focus player.myai` (your share and your costliest methods) and `--callers METHOD` (who
+  calls it). Usual fixes: look at what is near through the grid or an index of your own built once a tick, not by
+  scanning every unit; decide less often; keep results you would compute again.
+- **Measure every speed change, and keep only the ones that pay**: freeze the version before it, play both on the
+  same seeds at the same time, and `compare` them. The games must all be identical (a speed change must not change a
+  decision) and the `cpu` line must show a saving beyond 2 SE. A profile only says where time may go: methods that
+  looked like 4-10% of the CPU have saved little or nothing when made faster (`docs/aisim.md`, Speed).
 - Catch exceptions around your decisions and pass them to `log.error` (the template does). An exception that
   escapes `animate` crashes the game, which is then not counted, and the run exits 1.
 - Check what you act on first (see How orders reach the game): the engine asserts, and the harness runs with `-ea`.
