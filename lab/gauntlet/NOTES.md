@@ -1104,3 +1104,16 @@ retreat through the same pass (only the attack role is watched).
   the time by 20 min (16-19 births, 9.5 deaths per game). Terciles by that share: N=14 games last 19.4 / 21.6 / 24.1
   min (correlation only). A chieftain has 60 HP against a warrior's 1, so killing one costs ~30 iron hits; training a
   new one takes a copy 40 breeding ticks (~160 s with 20 peons inside), during which it breeds no peons.
+- **Late iron is a global respawn trickle** (engine SupplyManager): once more than 75 % of a supply type's nodes are
+  empty, one random empty node anywhere on the map regrows every 10 s (an iron node holds 10), skipped that cycle if a
+  unit stands on its cell. That is ~60 iron/min map-wide; census at N=14 (freeze-squad6-c3-vs14-hv, 142 games alive
+  at 20 min): 43.9 iron/min harvested by all players at 15-20 min, a mining copy 4.1/min (about one field's share
+  each), we 1.8/min (4 %). So late production is set by how many iron fields a player works; the copies' combined
+  ~50 iron/min is what the collapse window is made of. Unexplored: working the fields of copies that are out (their
+  respawns go unclaimed), and denial (a unit standing on an empty node's cell blocks that respawn).
+- **Campaign targets at N=14** (logged logs-cur4-vs14, seeds 1001-1010): the first muster (5.5-7 min, 18-22
+  strength) goes to the nearest living copy in 8 of 10 games; in two it skipped a near copy for its defense and
+  marched to a far one (s1006: rank 2 at 145 cells, worn 57 -> 11 with no out; s1007: rank 5 at 203 cells, 124
+  strength poured in over 12 min). Typical campaign: 1-3 outs of near neighbours at 7.5-10 min, then far targets
+  and worn down by 15-18 min while the base, with 10-15 towers, falls at 20-27 min. Target-weight arms
+  (target_home_weight 0.3 / 1 / 2.5, target_defense_weight 2 / 4 / 14) are in the N=13 sweep.
