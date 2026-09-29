@@ -1371,3 +1371,7 @@ retreat through the same pass (only the attack role is watched).
   s201..400 surv60 +0.77 (z 1.6), towers20 +1.13 (z 3.9), arm25 +6 pp (z 1.9), W 2 -> 0, elim -.011; N=14 surv60 +0.26;
   N=12 W 5 -> 2, surv60 ~0. woodr20 alone vs cur5 at N=14: surv60 +0.70 (z 2.4), towers20 +0.49 (z 2.2). Survival up in
   4 of 5 blocks, wins undecided: a fresh-seed win count (N=13 and N=14, 600 per arm) is queued.
+- cur6 regression check at N=11 (cur6-vs11-hv vs freeze-squad6-c3-vs11-hv, s1..200): W 15 -> 16, elim +.016, surv60 +1.8
+  (z 2.3), towers20 +1.22 (z 4.2): cur6 is good at N=11 too.
+- slots32 (= cur6) wins replay VERIFIED: N=13 s3077 (358:23), s3287 (77:07), s3521 (130:48); N=14 s3484 (220:18) and
+  s3549 (see replay-s32-14-3549.log).
