@@ -1453,3 +1453,6 @@ retreat through the same pass (only the attack role is watched).
   the opening (does not change with N), rock_stream, more towers to save armories (armory fall times do not move with
   tower count), wider shepherd rings for far copies, focusing fire on enemy chieftains (30 throws for ~0.8 fewer base
   waves), sweeping parked blobs, recalls. The no-code arms are queued after the cur7 benchmark, on its seeds.
+- **First N=15 wins** (cur7 benchmark, fresh seeds 6001..6500): cur7-bench-vs15-a s6022 (305 min) and s6303 (204 min),
+  2 of 500; same seeds N=14 2 of 500 (s6409 116 min, s6415 288 min), N=13 5 of 500 (s6037, s6187, s6029, s6189, s6490).
+  Replays running.
