@@ -1133,3 +1133,14 @@ retreat through the same pass (only the attack role is watched).
   s1..200 W 19 -> 15, surv60 +1.3 (z 1.3), elim +.015, wp +0.1 pp. N=11 fresh half queued to decide whether the
   enemies >= 12 gate can go. tower_min_quarters=1 at N=11 on 201..400: surv60 +0.4 (z 2.4), W 12 -> 11, elim -.006
   (pooled 400: surv60 +0.3, W 31 -> 29, elim -.004 z -1.8): survival up, outs not; N=12 arm queued.
+- **Snipe towers: no** (branch worktree-agent-a53df44682a25bdbf, commits 2cfe6bac, bdd051b4, ff10f3aa; not merged).
+  A garrisoned tower 12-14 cells from an idle parked blob (outside its 8-cell scan, which `Unit.hit` does not wake)
+  shoots it for free, parked chieftains first. Built with site choice clear of every enemy unit, builders carrying wood
+  from the armory, gunner lending, and a cage rule so our defense does not wake the blob. Mechanism too slow: blobs park
+  1-3 min, a tower takes ~90 s from plan to garrison; 2.6 parked kills per game (N=12 s1..12), 0.6 towers finished and
+  manned per game. Screen N=12 s1..200: W 9 -> 5, elim -.018 (z -1.9), wp -0.75 pp (z -1.9). The old `snipers` rule was
+  the same idea and had also been worse.
+- **Why the campaign sometimes marches far** (muster candidate log, commit of this entry): scores are walking distance
+  from the staging point (which sits toward the map centre, not at our start) + priority + 8 m per unit of the target's
+  defense. In s1007 (N=14) four candidates tied within 8 points: s2's armory 140 m away with defense 36 against s13's
+  352 m away with defense 9; a small first army then takes the weakest far copy.
