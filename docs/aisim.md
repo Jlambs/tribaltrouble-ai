@@ -16,7 +16,7 @@ AI itself is in **[the AI guide](../tt/src/main/java/com/oddlabs/tt/player/AGENT
 is in [maintaining.md](./maintaining.md).
 
 Contents: [Words used here](#words-used-here) · [Requirements](#requirements) · [Quick start](#quick-start) ·
-[The development loop](#the-development-loop) · [Opponents](#opponents) · [Players](#players) · [Maps](#maps) ·
+[The development loop](#the-development-loop) · [Workers](#workers) · [Opponents](#opponents) · [Players](#players) · [Maps](#maps) ·
 [Reading results](#reading-results) ·
 [Why did it lose?](#why-did-it-lose-show-and-replay) · [Across a run](#across-a-run-curves-fights-and-export) ·
 [Your own tools](#your-own-tools) · [Play-tests](#play-tests) · [Troubleshooting](#troubleshooting) · Reference:
@@ -102,8 +102,39 @@ is drawn per seed, so they cover every size and terrain, and they are the same m
 Narrow them to what you are working on, such as `--size small,medium`.
 
 A 120-game batch takes from about a minute (games of the stock AIs end early) to an hour or more (most games run to
-the 360-minute limit) with 4 workers on a recent desktop; huge maps take the longest. Run batches in the background
-and keep working: they run from their snapshot, so rebuilding cannot disturb them.
+the 360-minute limit) on a recent desktop; huge maps take the longest. Run batches in the background and keep
+working: they run from their snapshot, so rebuilding cannot disturb them. [Workers](#workers) explains how many games
+run at once.
+
+## Workers
+
+A batch plays its games in parallel, one per worker JVM. By default (`--workers auto`) it uses as much of the machine
+as is free, and keeps adjusting: every 5 seconds it looks at the hardware threads, the CPU load and the available
+memory, and at the other batches running on the machine, from this checkout or any other. Every batch registers its
+live workers in `aisim-runs/` in the system's temp directory. The threads that nothing else uses are split evenly
+among the automatic batches, and a batch takes what another leaves unused. A new batch starts with a quarter of the
+machine at most and grows from there, so batches started together share rather than both grab everything; when the
+machine fills up, workers beyond a batch's share retire after their game, never during one. The progress output
+says when the count changes:
+
+```
+workers: 7 to start, up to 28 (28 threads, 47% busy, 10.8 GB available)
+workers 7 -> 14 (28 threads, 83% busy, 9.1 GB available, other runs 0 workers)
+```
+
+To take less, or a fixed amount:
+
+- `--cpus N` or `--cpus P%`: at most N hardware threads, or P% of them (a worker keeps about one busy), so other work
+  keeps the rest. `--cpus 50%` leaves half the machine.
+- `--memory SIZE` or `--memory P%`: at most SIZE (such as `800m` or `6g`) or P% of the memory for all the workers,
+  counted at a worker's typical size: half its heap cap plus 128 MB (256 MB for 2-3 players, 384 MB for 4-12 players
+  or a huge map, 640 MB for more than 12 players). With or without it, a batch starts a worker only while that much
+  memory is available above a margin (5% of the memory, at least 512 MB).
+- `--workers N` (1..256): exactly N workers, within `--cpus` and `--memory` when those are given; it does not adapt
+  to the machine, but other automatic batches leave its workers alone.
+
+The machine's numbers come from the JDK (`com.sun.management.OperatingSystemMXBean`, and `MemAvailable` in
+`/proc/meminfo` on Linux), so they respect a container's CPU and memory limits. `play` and `replay` use one worker.
 
 ## Opponents
 
@@ -420,11 +451,11 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
 
 ## Troubleshooting
 
-- Batches default to 4 workers (`--workers` 1..32), each a JVM whose heap may grow to 256 MB (512 MB when a game of
-  the run has 4 players or more, or a huge map; 1 GB with more than 12 players). Headless workers load no textures,
-  models or sounds, and a full garbage collection before each game drops the last map's garbage, so a worker takes
-  about 250-350 MB in all even for 12 players on a large map: the CPU, not memory, limits how many run at once.
-  Cancel a run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers die with their parent.
+- Each worker is a JVM whose heap may grow to 256 MB (512 MB when a game of the run has 4 players or more, or a huge
+  map; 1 GB with more than 12 players). Headless workers load no textures, models or sounds, and a full garbage
+  collection before each game drops the last map's garbage, so a worker takes about 250-350 MB in all even for 12
+  players on a large map: the CPU, not memory, usually limits how many run at once ([Workers](#workers)). Cancel a
+  run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers die with their parent.
 - The CPU goes to the engine's unit movement and path finding, map generation (about 0.8 s per game) and the AIs.
   Headless, the engine skips what only drawing reads: the scene tree, the heights and bounds of models, and the motion
   of particles.
@@ -473,7 +504,7 @@ The same list as `./aisim.sh help`:
 ./aisim.sh new     NAME               start AI NAME from the template
 ./aisim.sh lint    [NAME|CLASS|@TAG...]
 ./aisim.sh play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
-./aisim.sh batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--workers W] [--logs [lost]] [--name NAME]
+./aisim.sh batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--logs [lost]] [--name NAME] [WORKERS]
                    [MAP] [GAME]
 ./aisim.sh summary RUN
 ./aisim.sh compare BASE VARIANT [VARIANT...] [--force]
@@ -496,12 +527,15 @@ MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0..10 --
      per seed, the same for a seed in every run.
      Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
 LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
+WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared with the other runs on it,
+         growing and shrinking as it frees up or fills) --cpus N|P% (at most N or P% of the hardware threads)
+         --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
 GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
       --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
 ```
 
-- **Defaults**: vikings, every map setting random, 360 minutes, `--seeds tune` from every start, 4 workers
-  (`--workers` 1..32). `play` also defaults to `--players "hard vs hard" --seed 1 --side 0`; `batch` needs
+- **Defaults**: vikings, every map setting random, 360 minutes, `--seeds tune` from every start, `--workers auto`
+  ([Workers](#workers)). `play` also defaults to `--players "hard vs hard" --seed 1 --side 0`; `batch` needs
   `--players`. [Players](#players) and [Maps](#maps) explain the players and the map options.
 - **`--minutes`** (1..600, default 360) is the time limit. A game that reaches it is a draw, however far ahead
   anyone is: only beating every opponent wins. A limit far below the natural length of a game turns late-game
@@ -584,7 +618,9 @@ aisim/                                  (in the repository root, git-ignored)
   natives/gui                           native libraries unpacked for `gui` (ignore)
 ```
 
-**run.json**: `v name snap java created workers players a lineup config logs aPools pools expected jobs`. `players` is
+**run.json**: `v name snap java created workers workerLimits players a lineup config logs aPools pools expected jobs`.
+`workers` is the most workers the run may have, and `workerLimits` what was asked for: `workers` (`auto` or the
+count), `cpus` and `memoryMb` (null when not given). `players` is
 `--players` as given (like `hard easy vs normal*2`), `a` team A's part of it, `lineup` the same with each player of team
 A written as `A` (like `A*2 vs normal*2`) and `config` the map options and game settings (compare checks both), `logs`
 which games keep AI logs (`all`, `lost` or null), and `aPools` and `pools` the jar hashes of the frozen AIs on team A

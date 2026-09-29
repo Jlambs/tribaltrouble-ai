@@ -21,6 +21,7 @@ import com.oddlabs.tt.aisim.build.Pool;
 import com.oddlabs.tt.aisim.build.Snapshot;
 import com.oddlabs.tt.aisim.play.Batch;
 import com.oddlabs.tt.aisim.play.Job;
+import com.oddlabs.tt.aisim.play.Pace;
 import com.oddlabs.tt.aisim.play.Replay;
 import com.oddlabs.tt.aisim.play.WorkerMain;
 import org.jspecify.annotations.NonNull;
@@ -71,7 +72,7 @@ public final class Aisim {
               lint    [NAME|CLASS|@TAG...]       check AIs against the fair-play and determinism rules (build does it)
               play    [--players "P.. vs P.."] [--seed N|random] [--side S] [--name NAME] [MAP] [GAME]
                                                  one game with AI logs on -> aisim/runs/NAME/
-              batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--workers W] [--logs [lost]] [--name NAME]
+              batch   --players "P.. vs P.." [--seeds LIST] [--side S] [--logs [lost]] [--name NAME] [WORKERS]
                       [MAP] [GAME]               every map, A from every start -> aisim/runs/NAME/; --logs keeps the
                                                  AI logs of every game (lost: of the games team A did not win)
               summary RUN                        results of a (running) run
@@ -97,12 +98,15 @@ public final class Aisim {
                  is drawn per seed, the same for a seed in every run.
                  Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
             LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
+            WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared with the other runs on
+                     it, growing and shrinking as it frees up or fills) --cpus N|P% (at most N or P% of the hardware
+                     threads) --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
             GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
                   --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.
             defaults: vikings, every map setting random, 360 minutes (up to 600), seeds tune from every start,
-                      4 workers (1..32); play: --players "hard vs hard" --seed 1 --side 0
+                      --workers auto; play: --players "hard vs hard" --seed 1 --side 0
             writing an AI (rules, orders, recipes): tt/src/main/java/com/oddlabs/tt/player/AGENTS.md
             """;
     /** Options that shape a map. */
@@ -116,9 +120,6 @@ public final class Aisim {
      */
     private static final int DEFAULT_MINUTES = 360;
     private static final int MAX_MINUTES = 600;
-    private static final int DEFAULT_WORKERS = 4;
-    /** Headless workers take a few hundred MB each, so a desktop's cores, not its memory, bound them. */
-    private static final int MAX_WORKERS = 32;
     private static final int MAX_RUN_NAME = 40;
     /** The time part of a default run name. */
     private static final DateTimeFormatter RUN_TIME = DateTimeFormatter.ofPattern("MMdd-HHmmss");
@@ -237,23 +238,23 @@ public final class Aisim {
         int side = options.integer("side", 0, 0, lineup.size() - 1);
         printRandomSeeds(maps, "--seed");
         Run run = run(name, options, lineup, maps, side, Batch.LOGS_ALL);
-        int status = Batch.run(name, run.setup(), run.jobs(), 1);
+        int status = Batch.run(name, run.setup(), run.jobs(), Pace.Limits.fixed(1));
         Job job = run.jobs().get(0);
         System.out.println("game " + job.game() + " | " + Runs.aiLogs(Path.of(job.game())));
         System.out.println("next: ./aisim.sh show " + name + " " + job.key());
         return status;
     }
 
-    /** batch --players "P.. vs P.." [--seeds LIST] [--side S] [--workers W] [--name NAME] [MAP] [GAME] */
+    /** batch --players "P.. vs P.." [--seeds LIST] [--side S] [--name NAME] [WORKERS] [MAP] [GAME] */
     private static int batch(@NonNull Options options) throws IOException {
         if (options.get("players") == null) {
             throw new UsageException("batch needs its players, such as --players \"myai vs hard\"");
         }
         Lineup lineup = lineup(options, "hard vs hard");
-        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "logs", "name"), 0);
+        options.check(union(GAME_OPTIONS, "seeds", "side", "workers", "cpus", "memory", "logs", "name"), 0);
         Snapshot.requireFresh(options.flag("stale-ok"));
         String name = runName(options, "", lineup);
-        int workers = options.integer("workers", DEFAULT_WORKERS, 1, MAX_WORKERS);
+        Pace.Limits workers = Pace.Limits.parse(options.get("workers"), options.get("cpus"), options.get("memory"));
         Integer side = options.optionalInteger("side", 0, lineup.size() - 1);
         Maps maps = Maps.of(options, true);
         printRandomSeeds(maps, "--seeds");
