@@ -94,8 +94,7 @@ final class Dodges {
         // Cover: our nearest quarters or armory within 60 cells that is not behind the hunters.
         Building best = null;
         int best_d = 60 * 60;
-        List<Building> homes = new ArrayList<>(intel.quarters);
-        homes.addAll(intel.armories);
+        List<Building> homes = intel.homes();
         for (Building b : homes) {
             if (b.isDead() || !b.isComplete() || ai.economy().isEvacuating(b))
                 continue;

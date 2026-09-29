@@ -626,8 +626,7 @@ final class Freeze {
                 return;
             }
             int[] c = MapAnalysis.centroid(squad);
-            List<Building> homes = new ArrayList<>(intel.quarters);
-            homes.addAll(intel.armories);
+            List<Building> homes = intel.homes();
             Building home = MapAnalysis.nearest(homes, c[0], c[1]);
             if (home == null)
                 home = MapAnalysis.nearest(intel.quarters_sites, c[0], c[1]);

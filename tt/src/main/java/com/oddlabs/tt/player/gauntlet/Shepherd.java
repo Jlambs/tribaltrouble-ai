@@ -71,7 +71,6 @@ final class Shepherd {
         int spot_y = -1;
         @Nullable
         Unit leader;
-        boolean launched;
         float last_order = -100f;
         float nospot_since = -1f;
         /** shepherd_sticky: since when enemies have blocked the current spot, -1 while it is clear. */
@@ -640,8 +639,7 @@ final class Shepherd {
             int x = f.spot_x;
             int y = f.spot_y;
             int r2 = MapAnalysis.dist2(x, y, ox, oy);
-            if (r2 >= 12 * 12 && r2 <= max_r * max_r && reach.reachable(x, y) && clearOfBuildings(guarded, intel, x,
-                    y)) {
+            if (r2 >= 12 * 12 && r2 <= max_r * max_r && reach.reachable(x, y) && coverAt(guarded, intel, x, y) == 0) {
                 boolean blocked = enemyNear(intel, x, y) != null;
                 if (!blocked)
                     f.blocked_since = -1f;
@@ -671,25 +669,10 @@ final class Shepherd {
                         ai.aiLog().count(enemy);
                     continue;
                 }
-                boolean ok = true;
-                for (Building b : guarded)
-                    if (MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y) <= DEFENSE_CELLS * DEFENSE_CELLS) {
-                        ok = false;
-                        break;
-                    }
-                if (!ok) {
+                int cover = coverAt(guarded, intel, x, y);
+                if (cover != 0) {
                     if (rejections)
-                        ai.aiLog().count("shepherd_rej_defense17");
-                    continue;
-                }
-                for (Building t : intel.enemy_towers)
-                    if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= TOWER_CELLS * TOWER_CELLS) {
-                        ok = false;
-                        break;
-                    }
-                if (!ok) {
-                    if (rejections)
-                        ai.aiLog().count("shepherd_rej_tower19");
+                        ai.aiLog().count(cover == 1 ? "shepherd_rej_defense17" : "shepherd_rej_tower19");
                     continue;
                 }
                 float score = spotScore(x, y, r, bx, by, guarded);
@@ -740,16 +723,18 @@ final class Shepherd {
         return score;
     }
 
-    /** Whether (x, y) is outside the copy's defense circles and every enemy tower's reach. */
-    private static boolean clearOfBuildings(@NonNull List<@NonNull Building> guarded, @NonNull Intel intel, int x,
-            int y) {
+    /**
+     * What covers (x, y): 1 within a defense circle of the copy (DEFENSE_CELLS from its quarters and armories), else 2
+     * within TOWER_CELLS of an enemy tower, else 0.
+     */
+    private static int coverAt(@NonNull List<@NonNull Building> guarded, @NonNull Intel intel, int x, int y) {
         for (Building b : guarded)
             if (MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y) <= DEFENSE_CELLS * DEFENSE_CELLS)
-                return false;
+                return 1;
         for (Building t : intel.enemy_towers)
             if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y) <= TOWER_CELLS * TOWER_CELLS)
-                return false;
-        return true;
+                return 2;
+        return 0;
     }
 
     private int addCandidate(int n, int x, int y, float score) {

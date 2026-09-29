@@ -2149,9 +2149,7 @@ final class Military {
     /** The enemy building closest to our own inside the base or near our gatherers, or null. */
     private @Nullable Building intruder() {
         Intel intel = ai.intel();
-        List<Building> own = new ArrayList<>(intel.armories);
-        own.addAll(intel.quarters);
-        own.addAll(intel.towers);
+        List<Building> own = intel.finishedBuildings();
         int r = ai.strategy().base_radius + 6;
         Building best = null;
         int best_d = Integer.MAX_VALUE;
@@ -4812,9 +4810,7 @@ final class Military {
      */
     private @NonNull String parkedStatus() {
         Intel intel = ai.intel();
-        List<Building> own = new ArrayList<>(intel.armories);
-        own.addAll(intel.quarters);
-        own.addAll(intel.towers);
+        List<Building> own = intel.finishedBuildings();
         int out = 0;
         int in = 0;
         int[] by_building = new int[4];

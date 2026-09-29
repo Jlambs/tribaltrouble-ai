@@ -255,8 +255,7 @@ final class Economy {
         if (!strategy.evacuate)
             return;
         Intel intel = ai.intel();
-        List<Building> homes = new ArrayList<>(intel.quarters);
-        homes.addAll(intel.armories);
+        List<Building> homes = intel.homes();
         for (Building b : homes) {
             if (b.isDead() || !b.isComplete() || b.getUnitContainer() == null)
                 continue;
@@ -1034,9 +1033,7 @@ final class Economy {
                 || owner.getBuildingCountContainer().getNumSupplies() + 2 >= owner.getWorld().getMaxBuildingCount())
             return;
         Intel intel = ai.intel();
-        List<Building> own = new ArrayList<>(intel.armories);
-        own.addAll(intel.quarters);
-        own.addAll(intel.towers);
+        List<Building> own = intel.finishedBuildings();
         int range2 = strategy.snipe_range * strategy.snipe_range;
         List<Unit> parked = new ArrayList<>();
         for (Unit e : intel.enemy_warriors) {
@@ -1351,8 +1348,7 @@ final class Economy {
         }
         int ex = UnitGrid.toGridCoordinate(enemy.getStartX());
         int ey = UnitGrid.toGridCoordinate(enemy.getStartY());
-        List<Building> own = new ArrayList<>(ai.intel().quarters);
-        own.addAll(ai.intel().armories);
+        List<Building> own = ai.intel().homes();
         Building nearest = MapAnalysis.nearest(own, ex, ey);
         if (nearest == null)
             return null;

@@ -404,6 +404,23 @@ final class Intel {
         primary_armory = armory;
     }
 
+    /** Our finished quarters, then our finished armories, as of the last update (a new list). */
+    @NonNull
+    List<@NonNull Building> homes() {
+        List<Building> homes = new ArrayList<>(quarters);
+        homes.addAll(armories);
+        return homes;
+    }
+
+    /** Our finished armories, quarters and towers, in that order, as of the last update (a new list). */
+    @NonNull
+    List<@NonNull Building> finishedBuildings() {
+        List<Building> own = new ArrayList<>(armories);
+        own.addAll(quarters);
+        own.addAll(towers);
+        return own;
+    }
+
     /** Gatherers of a kind working for exactly this building. */
     int countLinkedGatherers(@NonNull PeonState state, @NonNull Building armory) {
         int n = 0;
