@@ -338,14 +338,6 @@ final class Chieftain {
         return findBlob(chief.getGridX(), chief.getGridY()) != null;
     }
 
-    /**
-     * Where to blast the blob from: {x, y, parked enemies within 17 cells}. A walkable cell 10-24 cells from the blob's
-     * centre, at least 9 cells (Chebyshev: idle units scan an 8-cell square) from every enemy unit, 22 from enemy
-     * towers, with no unit or building of ours within 19 cells (the blast reaches 18 and hits friends), catching at
-     * least shred_min parked warriors; enemy chieftains in reach count 8 more (two blasts kill one, and a copy past
-     * wave
-     * size 20 cannot launch without one). Nearer to the chieftain breaks ties. Null if there is none.
-     */
     /** Strict shred: blasts from where the chieftain stands if that catches enough; true if it did. */
     private boolean blastHere(@NonNull Unit chief, int cx, int cy) {
         java.util.List<Unit> enemies = new java.util.ArrayList<>(ai.intel().enemy_warriors);
@@ -430,6 +422,13 @@ final class Chieftain {
         return hit;
     }
 
+    /**
+     * Where to blast the blob from: {x, y, parked enemies within 17 cells}. A walkable cell 10-24 cells from the blob's
+     * centre, at least 9 cells (Chebyshev: idle units scan an 8-cell square) from every enemy unit, 22 from enemy
+     * towers, with no unit or building of ours within 19 cells (the blast reaches 18 and hits friends), catching at
+     * least shred_min parked warriors; enemy chieftains in reach count 8 more (two blasts kill one, and a copy past
+     * wave size 20 cannot launch without one). Nearer to the chieftain breaks ties. Null if there is none.
+     */
     private int @Nullable [] castPoint(int @NonNull [] blob, int cx, int cy) {
         Intel intel = ai.intel();
         java.util.List<Unit> enemies = new java.util.ArrayList<>(intel.enemy_warriors);
@@ -598,8 +597,7 @@ final class Chieftain {
 
     /**
      * chief_trainer_near: the fullest quarters near the armory with no enemy warrior within 30 cells and full hit
-     * points;
-     * when none qualifies for 60 s, the quarters farthest from the nearest enemy warrior.
+     * points; when none qualifies for 60 s, the quarters farthest from the nearest enemy warrior.
      */
     private @Nullable Building nearTrainer(@NonNull Intel intel) {
         Building armory = intel.armory();

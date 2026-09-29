@@ -18,7 +18,6 @@ import java.util.List;
  * armory from the enemy's side.
  */
 final class SitePlanner {
-    /** Seconds a peon spends harvesting one unit: ten hits, one per second. */
     /** Seconds of walking per meter of distance for a round trip: out at 5 m/s, back loaded at 4 m/s. */
     private static final float ROUND_TRIP_SECONDS_PER_METER = 1f / 5f + 1f / 4f;
     private static final int MISSING_DISTANCE = 140;

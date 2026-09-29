@@ -640,9 +640,8 @@ final class Economy {
 
     /**
      * tower_site_fallback: a tower site around another anchor when the planned one's ring is full: the same center at
-     * 4-20
-     * cells, then the home and primary armory and each finished quarters (nearest the center first) at 7-15 cells, then
-     * those again at 4-20. Null when none has a legal site.
+     * 4-20 cells, then the home and primary armory and each finished quarters (nearest the center first) at 7-15 cells,
+     * then those again at 4-20. Null when none has a legal site.
      */
     private @Nullable Site fallbackTowerSite(int @NonNull [] center, int @NonNull [] face,
             @NonNull List<int @NonNull []> existing) {

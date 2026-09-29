@@ -27,7 +27,7 @@ import java.util.Locale;
  *
  * <p>A copy aims its wave from its oldest idle warrior at our nearest selectable of any kind if that one is closer
  * than 0.707 of our nearest building, else at that building (AdvancedAI.findTarget, Player.findNearestEnemy), and
- * orders an attack-move to that target's cell as it stands (a snapshot). A lone peon of ours standing 12-20 cells from
+ * orders an attack-move to that target's cell as it stands (a snapshot). A lone peon of ours standing 14-22 cells from
  * that warrior, where no enemy sees it (idle and walking units scan 8 cells), is that target. When the wave starts
  * walking the peon steps away, faster than the warriors (5 m/s against 4), and the wave arrives on an empty cell and
  * goes idle there, blind beyond 8 cells. Its survivors lead the copy's next wave, so the next spot is picked from
@@ -338,7 +338,7 @@ final class Shepherd {
             int idle = 0;
             for (Unit e : intel.enemy_warriors)
                 if (!e.isDead() && e.getOwner() == f.copy
-                        && e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController)
+                        && e.getPrimaryController() instanceof IdleController)
                     idle++;
             boolean was = f.imminent;
             f.imminent = idle >= num && (num < 20 || f.copy.hasActiveChieftain());
@@ -593,9 +593,11 @@ final class Shepherd {
     }
 
     /**
-     * A cell 12-20 cells from the copy's wave origin, nearer to it than 0.66 of our nearest building and nearer than
-     * any other unit of ours, clear of every enemy by 10 cells, of the copy's defense circles and of enemy towers,
-     * reachable, and as far from our start as possible.
+     * A cell on the rings 14 to shepherd_max_r cells from the copy's wave origin (24 cells to a ring), nearer to it
+     * than 0.66 of our nearest building and 0.89 of our nearest other unit, with no enemy within shepherd_clear cells
+     * along both axes, outside the copy's defense circles and enemy towers' reach, reachable from our start, and as far
+     * from our start as possible (spotScore). With s null this is the recruiting probe, which the shepherd_sticky,
+     * shepherd_travel and shepherd_safe_walk terms leave alone.
      */
     private int @Nullable [] findSpot(@NonNull Flock f, int ox, int oy, @Nullable Unit s, @NonNull Intel intel) {
         int building2 = nearestOwnBuilding2(ox, oy);

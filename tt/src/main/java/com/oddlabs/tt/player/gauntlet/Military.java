@@ -1161,7 +1161,6 @@ final class Military {
         }
     }
 
-    /** Gatherers with enemy warriors close by go inside before they are cut down. */
     /**
      * An enemy peon inside our base and far from every building of his side outside it; a tower he is putting up in
      * our base is no home of his.
@@ -1995,9 +1994,8 @@ final class Military {
             score -= strategy.target_threat_weight * base_threat.getOrDefault(b.getOwner(), 0f);
             if (explain != null)
                 explain.add(String.format("%07.1f %s %s at %d,%d: d %.0f + pri %.0f + def %.0f", score,
-                        b.getOwner().getPlayerInfo().getName(),
-                        b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_ARMORY ? "armory" : b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS ? "quarters" : "tower",
-                        b.getGridX(), b.getGridY(), d, priority, defense));
+                        b.getOwner().getPlayerInfo().getName(), Intel.kind(b), b.getGridX(), b.getGridY(), d, priority,
+                        defense));
             if (strategy.frozen_last && ai.freeze().isFrozen(b.getOwner())) {
                 if (score < best_frozen_score) {
                     best_frozen_score = score;
@@ -2136,7 +2134,8 @@ final class Military {
             return;
         target = b;
         strike = true;
-        ai.log(String.format("strike on %s at %d,%d: army %.1f vs %.1f", b, bx, by, army, defense));
+        ai.log(String.format("strike on %s's %s at %d,%d: army %.1f vs %.1f", b.getOwner().getPlayerInfo().getName(),
+                Intel.kind(b), bx, by, army, defense));
         launchAttack();
     }
 
@@ -2974,8 +2973,7 @@ final class Military {
 
     /**
      * hold_closing 1: whether the enemy group centred at {@code enemy} came at least 2 cells nearer to our army's
-     * centre
-     * {@code c} by its own motion since its centre of 2-4 s ago, with fewer than half of its units parked.
+     * centre {@code c} by its own motion since its centre of 2-4 s ago, with fewer than half of its units parked.
      */
     private boolean groupComing(@NonNull List<@NonNull Unit> units, int @NonNull [] enemy, int @NonNull [] c) {
         float now = ai.time();
@@ -3529,9 +3527,8 @@ final class Military {
      * blocked on every scan for unjam_after s (from unjam_from s of game time), no enemy fighter near them, and the
      * pivot less than unjam_progress m closer to the target, the attack marches as a column until unjam_time s after
      * the last jammed scan (Military.attack). The progress test keeps it out of a crowded march that still moves: in
-     * s13, s16 and s31
-     * at N=11 a column march started so, strung the army out, and it met the enemy piecemeal (s31: 39 of 147 units left
-     * at 1000 s, against 102 in the base game).
+     * s13, s16 and s31 at N=11 a column march started so, strung the army out, and it met the enemy piecemeal (s31: 39
+     * of 147 units left at 1000 s, against 102 in the base game).
      */
     void noteBlocked(@NonNull List<@NonNull Unit> blocked) {
         Strategy strategy = ai.strategy();
@@ -4666,10 +4663,6 @@ final class Military {
         ai.log("jampic kinds blocked=" + kinds[0] + " walking=" + kinds[1] + " idle=" + kinds[2] + " other=" + kinds[3] + " own_other=" + kinds[4] + " enemy=" + kinds[5] + " walk_targets=" + walk_targets);
     }
 
-    /**
-     * Idle enemy warriors near our base (within 45 cells of a building of ours): out of reach of our manned towers /
-     * in reach / how many of those out of reach a tower 11+ cells from every enemy could reach (15 cells).
-     */
     /** Idle enemy warriors within 45 cells of our armories, quarters and towers (the parked ring), in value. */
     private float ringStrength() {
         Intel intel = ai.intel();
@@ -4767,6 +4760,10 @@ final class Military {
             ai.aiLog().count("ring_sweep_order");
     }
 
+    /**
+     * Idle enemy warriors near our base (within 45 cells of a building of ours): out of reach of our manned towers /
+     * in reach / how many of those out of reach a tower 11+ cells from every enemy could reach (15 cells).
+     */
     private @NonNull String parkedStatus() {
         Intel intel = ai.intel();
         List<Building> own = new ArrayList<>(intel.armories);
