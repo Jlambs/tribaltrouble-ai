@@ -498,6 +498,22 @@ class Strategy {
      * cells out lost 0.38-0.46 per unit sent, clumps 0.18-0.28). 0: off.
      */
     float capped_clump = 0f;
+    /**
+     * Between ring_sweep_from and ring_sweep_until, with no copy out for ring_sweep_quiet seconds, an attack army
+     * within
+     * ring_sweep_reach cells of the armory and worth ring_sweep_ratio times the parked ring (idle enemy warriors within
+     * 45 cells of our buildings) comes home, and the home army then takes on the ring's blobs nearest the armory one at
+     * a time while the base is quiet, until the ring is down to 30 % or ring_sweep_until + 60 s (audit13
+     * military 5: 12-15 min is the one window in which the army outnumbers the ring, whose blobs launch 37-41 % of the
+     * base-bound waves at 12-20 min; fights near our buildings trade 4.6-5.9:1, abroad 2.1-2.6:1). An attack whose
+     * target's owner has fewer than two finished buildings left is not called off.
+     */
+    boolean ring_sweep = false;
+    float ring_sweep_from = 720f;
+    float ring_sweep_until = 930f;
+    float ring_sweep_ratio = 1.5f;
+    float ring_sweep_quiet = 120f;
+    int ring_sweep_reach = 200;
     float capped_clump_min = 24f;
     int capped_clump_cells = 100;
     /** How much more an enemy manned tower counts than Combat.TOWER when judging an attack or retreat. */
@@ -1057,6 +1073,12 @@ class Strategy {
         reinforce_ratio = (float) params.getDouble("reinforce_ratio", reinforce_ratio);
         reinforce_multi = params.getBoolean("reinforce_multi", reinforce_multi);
         capped_clump = (float) params.getDouble("capped_clump", capped_clump);
+        ring_sweep = params.getBoolean("ring_sweep", ring_sweep);
+        ring_sweep_from = (float) params.getDouble("ring_sweep_from", ring_sweep_from);
+        ring_sweep_until = (float) params.getDouble("ring_sweep_until", ring_sweep_until);
+        ring_sweep_ratio = (float) params.getDouble("ring_sweep_ratio", ring_sweep_ratio);
+        ring_sweep_quiet = (float) params.getDouble("ring_sweep_quiet", ring_sweep_quiet);
+        ring_sweep_reach = params.getInt("ring_sweep_reach", ring_sweep_reach);
         capped_clump_min = (float) params.getDouble("capped_clump_min", capped_clump_min);
         capped_clump_cells = params.getInt("capped_clump_cells", capped_clump_cells);
         tower_weight = (float) params.getDouble("tower_weight", tower_weight);

@@ -102,6 +102,13 @@ final class Military {
 
     /** The copy whose buildings the attacks go after first while it is alive (focus_bonus). */
     private com.oddlabs.tt.player.@Nullable Player focus_owner;
+    /** ring_sweep: until when the home army sweeps the parked ring (-1: not sweeping). */
+    private float sweep_until = -1f;
+    /** ring_sweep: the parked ring's strength when the sweep began. */
+    private float sweep_ring_start;
+    /** When the number of living copies last fell, and that number (ring_sweep's quiet test). */
+    private float last_out_time;
+    private int last_alive = -1;
     /** frozen_last: the frozen copies a choice has passed over at least once (counted once each). */
     private final List<com.oddlabs.tt.player.@NonNull Player> frozen_deferred = new ArrayList<>();
     private int target_x;
@@ -400,7 +407,12 @@ final class Military {
         if (mode != Mode.ATTACK && siege_start >= 0f)
             endSiege();
         switch (mode) {
-            case HOME -> holdStaging();
+            case HOME -> {
+                if (sweep_until >= 0f)
+                    sweep();
+                else
+                    holdStaging();
+            }
             case MUSTER -> muster();
             case ATTACK -> attack();
             case RETREAT -> retreat();
@@ -418,6 +430,14 @@ final class Military {
     void plan() {
         updateRoles();
         recordEnemyStrength();
+        int alive = ai.enemiesAlive();
+        if (alive != last_alive) {
+            if (last_alive >= 0 && alive < last_alive)
+                last_out_time = ai.time();
+            last_alive = alive;
+        }
+        if (ai.strategy().ring_sweep)
+            considerSweep();
         easeCaution();
         if (mode == Mode.HOME && threat_level < 2 && ai.strategy().strikes)
             considerStrike();
@@ -425,7 +445,7 @@ final class Military {
         boolean small_threat = threat_level >= 2
                 && base_threat_strength < ai.strategy().attack_threat_ratio * (ai.strategy().launch_recheck ? stagingStrength(
                         40) : armyStrength());
-        if (mode == Mode.HOME && (threat_level < 2 || small_threat))
+        if (mode == Mode.HOME && (threat_level < 2 || small_threat) && sweep_until < 0f)
             considerAttack();
         // reinforce_threat_ratio: reinforce the attack with the base under threat too, while what stands in the base is
         // worth less than that share of our whole army.
@@ -4657,6 +4677,103 @@ final class Military {
      * Idle enemy warriors near our base (within 45 cells of a building of ours): out of reach of our manned towers /
      * in reach / how many of those out of reach a tower 11+ cells from every enemy could reach (15 cells).
      */
+    /** Idle enemy warriors within 45 cells of our armories, quarters and towers (the parked ring), in value. */
+    private float ringStrength() {
+        Intel intel = ai.intel();
+        float s = 0f;
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && Intel.isParked(e) && nearOwnBuilding(e.getGridX(), e.getGridY(), 45))
+                s += Combat.value(e);
+        return s;
+    }
+
+    private boolean nearOwnBuilding(int x, int y, int cells) {
+        Intel intel = ai.intel();
+        int r2 = cells * cells;
+        for (List<Building> group : List.of(intel.armories, intel.quarters, intel.towers))
+            for (Building b : group)
+                if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y) <= r2)
+                    return true;
+        return false;
+    }
+
+    /** ring_sweep: calls a stalled attack home in the window while the army outnumbers the parked ring. */
+    private void considerSweep() {
+        Strategy strategy = ai.strategy();
+        float now = ai.time();
+        if (mode != Mode.ATTACK || sweep_until >= 0f || now < strategy.ring_sweep_from
+                || now > strategy.ring_sweep_until || now - last_out_time < strategy.ring_sweep_quiet)
+            return;
+        float ring = ringStrength();
+        float away = attackStrength();
+        if (ring < 3f || away < strategy.ring_sweep_ratio * ring)
+            return;
+        int[] c = attackCenter();
+        Building armory = ai.intel().armory();
+        if (c == null || armory == null || MapAnalysis.dist2(c[0], c[1], armory.getGridX(),
+                armory.getGridY()) > strategy.ring_sweep_reach * strategy.ring_sweep_reach)
+            return;
+        if (target != null && target.getOwner() != null) {
+            int standing = 0;
+            for (Building b : ai.intel().enemy_buildings)
+                if (!b.isDead() && b.isComplete() && b.getOwner() == target.getOwner())
+                    standing++;
+            if (standing < 2)
+                return;
+        }
+        ai.aiLog().count("ring_sweep");
+        ai.log(String.format("ring sweep: attack %.1f comes home against a parked ring of %.1f", away, ring));
+        endAttack();
+        sweep_until = strategy.ring_sweep_until + 60f;
+        sweep_ring_start = ring;
+    }
+
+    /**
+     * ring_sweep, in HOME mode: while the base is quiet, the home army attacks the parked enemy warrior nearest the
+     * armory; ends when the ring is down to 30 % of what it was, the army is small or outmatched, or the time is up.
+     */
+    private void sweep() {
+        float now = ai.time();
+        float ring = ringStrength();
+        float army = armyStrength();
+        if (now > sweep_until || army < Math.max(12f, .8f * ring) || ring < Math.max(3f, .3f * sweep_ring_start)) {
+            sweep_until = -1f;
+            ai.aiLog().count("ring_sweep_end");
+            ai.log(String.format("ring sweep over: ring %.1f, army %.1f", ring, army));
+            holdStaging();
+            return;
+        }
+        if (threat_level >= 2)
+            return; // defend() has the army
+        Building armory = ai.intel().armory();
+        int ax = armory != null ? armory.getGridX() : staging_x;
+        int ay = armory != null ? armory.getGridY() : staging_y;
+        Unit prey = null;
+        int best = Integer.MAX_VALUE;
+        for (Unit e : ai.intel().enemy_warriors) {
+            if (e.isDead() || !Intel.isParked(e) || !nearOwnBuilding(e.getGridX(), e.getGridY(), 45))
+                continue;
+            int d = MapAnalysis.dist2(ax, ay, e.getGridX(), e.getGridY());
+            if (d < best) {
+                best = d;
+                prey = e;
+            }
+        }
+        if (prey == null) {
+            holdStaging();
+            return;
+        }
+        int ordered = 0;
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            if (e.getValue() != Role.ARMY)
+                continue;
+            attackGround(e.getKey(), prey.getGridX(), prey.getGridY(), false);
+            ordered++;
+        }
+        if (ordered > 0)
+            ai.aiLog().count("ring_sweep_order");
+    }
+
     private @NonNull String parkedStatus() {
         Intel intel = ai.intel();
         List<Building> own = new ArrayList<>(intel.armories);
