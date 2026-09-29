@@ -1403,3 +1403,11 @@ retreat through the same pass (only the attack role is watched).
   profile's 2.2 % for the counters overstated what removing them saves, as the harness manual warns.
 - Lab: board.py (a sweep's scoreboard, --median reads each arm against the median arm), pairs.sh, musters.py,
   cuts.py and chiefs.py moved in from the session scratchpad.
+- **Hygiene pass 2 merged** (dc7fea17; reviewed "merge"): shared MapAnalysis.centroid/nearest, Intel.homes and
+  finishedBuildings, Freeze.Strike phases take their target, long methods split (Military.attack, chooseTarget,
+  Economy.planBuildings into planArmory/planQuarters/planTowers), stale comments and broken Javadoc fixed, the strike log no
+  longer prints an identity hash, computeField tests diagonals only when both side cells are open (identical distances),
+  shepherd_rej_* counters only in logged games (they ran to 3-7 million count calls a game). Checksums identical after
+  every commit at N=8/11/12/13/14, logged and unlogged, and with 24 off-by-default params on; CPU -1.2 % (24 paired N=13
+  games). Lab tools now in lab/gauntlet: board.py (with --median: each arm against the median arm, scaled by its share of
+  re-rolled games), pairs.sh, musters.py, cuts.py, chiefs.py. The main checkout's merged build reproduces cur6 (s201, s202).
