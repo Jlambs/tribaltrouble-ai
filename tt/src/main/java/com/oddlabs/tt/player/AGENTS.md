@@ -263,8 +263,11 @@ when the AI is nondeterministic.
 
 ### Speed and robustness
 
-- Think every second or few seconds, not every tick. `summary` prints each run's CPU cost per game; compare it with a
-  run of the stock AI to see what your AI adds.
+- Match each decision's cadence to its timing. Some actions pay off only when made on the exact tick (a tower
+  retargeting as a throw lands, dodging a spell, a stun's timing): run those reflexes every tick, but keep them cheap,
+  looking only at the few units concerned. Planning (the economy, building sites, army plans) rarely gains from more
+  than a look every second or few. `summary` prints each run's CPU cost per game; compare it with a run of the stock
+  AI to see what your AI adds.
 - **Profile your AI regularly while you develop it**: after each feature that loops over units, buildings or cells,
   and whenever `summary`'s cost per game grows. Your AI's CPU is time every experiment waits for, and it grows
   quietly, feature by feature: one AI's tower targeting scanned every enemy unit on the map for every tower, every
