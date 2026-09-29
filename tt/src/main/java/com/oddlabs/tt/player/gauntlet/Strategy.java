@@ -1178,12 +1178,11 @@ class Strategy {
         // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
         // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
         strategy.gate_owner = true;
-        if (enemies >= 12) {
-            // The freeze opening puts the nearest copy out in about a minute; it pays from N=12, where survival under
-            // pressure decides (N=12 W 4 -> 13 over 600 seeds, elim +.02 to +.04 on each half; N=13 W 2 -> 4 over 400),
-            // but not at N=11, where the delayed opening costs the early campaign (W 26 -> 23 over 400).
-            strategy.freeze_open = true;
-        }
+        // The freeze opening puts the nearest copy out in about a minute when it starts within freeze_eta of peon walk
+        // (N=12 W 4 -> 13 over 600 seeds with squad 10). With squad 6 it pays at every N tried, so the old enemies >= 12
+        // gate went: N=11 over 400 seeds W 31 -> 35, elim +.032, surv60 +2.3 min (s201..400: W 12 -> 20, wp z 4.0);
+        // N=8 W 111 -> 115, elim +.016 (z 1.8); N=14 against freeze off elim +.021 (z 2.7).
+        strategy.freeze_open = true;
         return strategy;
     }
 
