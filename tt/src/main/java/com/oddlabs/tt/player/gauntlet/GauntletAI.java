@@ -51,6 +51,8 @@ public final class GauntletAI extends AI {
     private @Nullable Shepherd shepherd;
     private @Nullable Lures lures;
     private @Nullable Dodges dodges;
+    /** Diagnostics only: traffic jams of our units (counters and log lines). */
+    private @Nullable Jams jams;
     private @Nullable Freeze freeze;
 
     private int ticks;
@@ -145,6 +147,8 @@ public final class GauntletAI extends AI {
             military().tick();
             chieftain().tick();
             shepherd().tick();
+            if (jams != null)
+                jams.tick();
         }
         if (due_economy) {
             next_economy = time + ECONOMY_PERIOD;
@@ -194,6 +198,7 @@ public final class GauntletAI extends AI {
         shepherd = new Shepherd(this);
         lures = new Lures(this);
         dodges = new Dodges(this);
+        jams = new Jams(this);
         intel.decoys = decoys;
     }
 
