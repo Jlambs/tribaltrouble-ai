@@ -124,18 +124,43 @@ final class EnemyIndex {
      */
     int @NonNull [] query(int x, int y, int r2) {
         int r = (int) Math.ceil(Math.sqrt(r2));
+        return collect(x, y, r, r2, true);
+    }
+
+    /** As {@link #query}, in no particular order: for callers whose result does not depend on the order. */
+    int @NonNull [] queryUnordered(int x, int y, int r2) {
+        int r = (int) Math.ceil(Math.sqrt(r2));
         return collect(x, y, r, r2, false);
     }
 
     /**
-     * The indices of the units at most c cells from (x, y) along both axes (a Chebyshev square), in list order. The
-     * array is reused by the next query; the count is returned by {@link #count()}.
+     * The groups with a unit (dead ones included) at most c cells from (x, y) along both axes (a Chebyshev square), as
+     * bits 1 << WARRIOR, 1 << CHIEFTAIN, 1 << PEON. It stops at the first warrior, so with the warrior bit set the
+     * other bits are incomplete.
      */
-    int @NonNull [] queryBox(int x, int y, int c) {
-        return collect(x, y, c, 0, true);
+    int groupsInBox(int x, int y, int c) {
+        int bx0 = Math.clamp((x - c) >> SHIFT, 0, side - 1);
+        int bx1 = Math.clamp((x + c) >> SHIFT, 0, side - 1);
+        int by0 = Math.clamp((y - c) >> SHIFT, 0, side - 1);
+        int by1 = Math.clamp((y + c) >> SHIFT, 0, side - 1);
+        int mask = 0;
+        for (int by = by0; by <= by1; by++)
+            for (int bx = bx0; bx <= bx1; bx++) {
+                int b = by * side + bx;
+                int[] list = buckets[b];
+                for (int k = 0; k < bucket_sizes[b]; k++) {
+                    int i = list[k];
+                    if (Math.abs(xs[i] - x) > c || Math.abs(ys[i] - y) > c)
+                        continue;
+                    if (groups[i] == WARRIOR)
+                        return mask | 1 << WARRIOR;
+                    mask |= 1 << groups[i];
+                }
+            }
+        return mask;
     }
 
-    private int @NonNull [] collect(int x, int y, int r, int r2, boolean box) {
+    private int @NonNull [] collect(int x, int y, int r, int r2, boolean ordered) {
         int bx0 = Math.clamp((x - r) >> SHIFT, 0, side - 1);
         int bx1 = Math.clamp((x + r) >> SHIFT, 0, side - 1);
         int by0 = Math.clamp((y - r) >> SHIFT, 0, side - 1);
@@ -149,14 +174,15 @@ final class EnemyIndex {
                     int i = list[k];
                     int dx = xs[i] - x;
                     int dy = ys[i] - y;
-                    if (box ? Math.abs(dx) > r || Math.abs(dy) > r : dx * dx + dy * dy > r2)
+                    if (dx * dx + dy * dy > r2)
                         continue;
                     if (n == result.length)
                         result = Arrays.copyOf(result, n * 2);
                     result[n++] = i;
                 }
             }
-        Arrays.sort(result, 0, n);
+        if (ordered)
+            Arrays.sort(result, 0, n);
         count = n;
         return result;
     }
