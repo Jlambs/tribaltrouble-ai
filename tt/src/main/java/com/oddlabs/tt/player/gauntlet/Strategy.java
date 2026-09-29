@@ -599,7 +599,11 @@ class Strategy {
     int shred_range = 140;
     /** The chieftain never stuns: every charge goes to shred blasts. */
     boolean shred_strict = false;
-    float shepherd_time = 200f;
+    /**
+     * Shepherds from 120 s (was 200): vs hard*11 elim +.048 / +.024 on seeds 1..200 / 201..400, W 28 vs 19 over 400,
+     * lsr15 +.16 / +.19 (st120b2-vs11-hv, -b); N=8 +.023 (W 118 vs 115). 90 s: same survival, fewer outs; 150 s: less.
+     */
+    float shepherd_time = 120f;
     float shepherd_until = 100000f;
     /**
      * Farthest a shepherd stands from the wave's leader, in cells (it must stay within 0.66 of our nearest building).
