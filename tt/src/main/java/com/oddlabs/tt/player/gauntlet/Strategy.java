@@ -241,6 +241,12 @@ class Strategy {
      * with an awake enemy warrior within 12 cells (Economy): 61 % of such sites were razed, 13 % of the others.
      */
     boolean tower_cooldown = false;
+    /**
+     * The attack's stall clock and stall test count armed enemies and towers only, not peons (Military.attack): in the
+     * N=11 draw s98 the army farmed the last copy's peons for 5 hours 150 m from its building, and every peon fight
+     * reset the stall clock, so the stall rule never fired (late/endgame.md).
+     */
+    boolean stall_peons = false;
     /** Gatherers per ore node before the next node is preferred, and the metres a gatherer already there costs. */
     int ore_load = 3;
     float ore_load_penalty = 6f;
@@ -869,6 +875,7 @@ class Strategy {
         target_path = params.getBoolean("target_path", target_path);
         defend_stable = params.getBoolean("defend_stable", defend_stable);
         tower_cooldown = params.getBoolean("tower_cooldown", tower_cooldown);
+        stall_peons = params.getBoolean("stall_peons", stall_peons);
         ore_load = params.getInt("ore_load", ore_load);
         ore_load_penalty = (float) params.getDouble("ore_load_penalty", ore_load_penalty);
         quarters_rally = params.getBoolean("quarters_rally", quarters_rally);

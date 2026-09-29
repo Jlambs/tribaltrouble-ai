@@ -2550,9 +2550,14 @@ final class Military {
             if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), c[0], c[1]) <= 18 * 18)
                 ours += Combat.value(u);
         float local_enemy = enemyFightersNear(c[0], c[1], ENGAGE_RADIUS);
+        // stall_peons: what could stop the army, without the peons it cuts down on the way
+        float armed = ai.strategy().stall_peons ? enemyStrengthNear(c[0], c[1], ENGAGE_RADIUS) : 0f;
         for (Building t : intel.enemy_towers)
-            if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) <= ENGAGE_RADIUS * ENGAGE_RADIUS)
-                local_enemy += enemyTowerValue(t);
+            if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) <= ENGAGE_RADIUS * ENGAGE_RADIUS) {
+                float v = enemyTowerValue(t);
+                local_enemy += v;
+                armed += v;
+            }
         // Height decides a lot: up to a quarter more (or less) chance to hit.
         ours *= terrainFactor(army, intel.enemy_warriors, c[0], c[1], ENGAGE_RADIUS);
         boolean toot = ai.chieftain().stunReady() && intel.chieftain != null
@@ -2563,8 +2568,11 @@ final class Military {
             local_enemy *= ai.strategy().enemy_stun_mult;
         // stall_calm: the stall clock runs only while the march is calm; long fights on the way are no stall
         // (6 of 6 reachable stalls outside one corner deadlock came after ~80 s of fighting).
-        if (ai.strategy().stall_calm && (local_enemy > 0f || anyFighting(army)))
+        boolean stall_peons = ai.strategy().stall_peons;
+        if (ai.strategy().stall_calm && (stall_peons ? armed > 0f : local_enemy > 0f || anyFighting(army)))
             last_progress_time = ai.time();
+        else if (stall_peons && ai.strategy().stall_calm && local_enemy > 0f && anyFighting(army))
+            ai.aiLog().count("stall_peon_pin");
         float total = 0f;
         int stunned_count = 0;
         for (Unit u : army) {
@@ -2762,7 +2770,7 @@ final class Military {
             best_target_dist = dist;
             last_progress_time = ai.time();
         }
-        if (ai.time() - last_progress_time > 75f && local_enemy == 0f) {
+        if (ai.time() - last_progress_time > 75f && (ai.strategy().stall_peons ? armed == 0f : local_enemy == 0f)) {
             if (ai.logging()) {
                 // Why: how big is the region the target stands in, and can our staging point reach it?
                 DistanceField f = target_field;
