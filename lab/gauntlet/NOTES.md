@@ -1456,3 +1456,5 @@ retreat through the same pass (only the attack role is watched).
 - **First N=15 wins** (cur7 benchmark, fresh seeds 6001..6500): cur7-bench-vs15-a s6022 (305 min) and s6303 (204 min),
   2 of 500; same seeds N=14 2 of 500 (s6409 116 min, s6415 288 min), N=13 5 of 500 (s6037, s6187, s6029, s6189, s6490).
   Replays running.
+- **N=15 beaten, replay VERIFIED** (snapshot 81b6277e74, cur7 defaults): cur7-bench-vs15-a s6022 won at 305:00 (checksum
+  -90583123) and s6303 at 204:20 (checksum -833116341). Also verified: N=14 s6409 (115:48), s6415 (288:26).
