@@ -830,3 +830,19 @@ New params behind flags (commit 7d8c74b8): finish_lean (finish_skip_out, finish_
 chief_hunt squad (6 iron warriors kill the lone chieftain / rebuild sites of homeless copies; round-3 design report
 scratchpad round3/judge.md). All tuning batches use the benchmark map settings (dev.sh: large tropical h0..2 t10
 s10, slot 0); 93 runs checked.
+
+### New base (base2 = recall_ratio 99, hold_mid 10, retreat_rearguard), adopted for all N (commit e5048fd2)
+
+- base2-vs11-hv vs full-vs11-hv (1..200): elim +.026 (z 1.9), W 7 vs 5; **base2-vs11-hv-b vs full-vs11-hv-b (201..400):
+  elim +.050 (z 3.7), W 12 vs 6.** Over 400 seeds: ~+.038 elim, **W 19 vs 11 (4.75 % vs 2.75 %)**. The three effects
+  add up (+.008, +.013, +.004 measured alone).
+- 1v1 on the benchmark maps (duel-cur-hv vs duel-new-hv, with militia off too): W 100 vs 99 of 100, games 3.5 min
+  shorter. So the new values are plain defaults, without an N>1 gate (the user's preference); peon_militia=false and
+  recall_ratio moved out of forGame. The default build reproduces the explicit-param base exactly (same checksum on
+  s5).
+- Later screens: tower_parallel=2 -.014 (no); focus_bonus=100 + focus_finish +.017 (z 2.5; W 4 vs 5; being re-run on
+  base2); attack_min_strength=14 +.014 (re-run on base2).
+- Finishers on base2 (1..200): **finish_copies +.028 (z 2.4)**, survival flat, W 6 vs 7 (confirming on 201..400 and
+  N=8); finish_lean (skip_out, units 8, ratio .5) +.015; finish_lean + chief_hunt +.017; chief_hunt alone +.004 with
+  lsr15 -.023 (z -2.5): the squad starts 0.49 chieftain hunts and kills 0.14 per game (most targets are > 150 cells
+  out). No to lean and hunt.
