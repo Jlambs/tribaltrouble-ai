@@ -3,9 +3,11 @@ package com.oddlabs.tt.player.gauntlet;
 import com.oddlabs.tt.landscape.HeightMap;
 import com.oddlabs.tt.landscape.TreeSupply;
 import com.oddlabs.tt.landscape.World;
+import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.RockSupply;
+import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.pathfinder.Movable;
 import com.oddlabs.tt.pathfinder.Occupant;
 import com.oddlabs.tt.pathfinder.UnitGrid;
@@ -363,5 +365,33 @@ final class MapAnalysis {
     /** Euclidean distance in meters between two grid cells. */
     static float meters(int x0, int y0, int x1, int y1) {
         return (float) Math.sqrt(dist2(x0, y0, x1, y1)) * HeightMap.METERS_PER_UNIT_GRID;
+    }
+
+    /** The mean grid cell of the units (truncated), {0, 0} for none. */
+    static int @NonNull [] centroid(@NonNull List<? extends Selectable<?>> units) {
+        long sx = 0;
+        long sy = 0;
+        for (Selectable<?> u : units) {
+            sx += u.getGridX();
+            sy += u.getGridY();
+        }
+        int n = Math.max(1, units.size());
+        return new int[]{(int) (sx / n), (int) (sy / n)};
+    }
+
+    /** The living building nearest (x, y), the first of equals in list order, or null. */
+    static @Nullable Building nearest(@NonNull List<@NonNull Building> buildings, int x, int y) {
+        Building best = null;
+        int best_d = Integer.MAX_VALUE;
+        for (Building b : buildings) {
+            if (b.isDead())
+                continue;
+            int d = dist2(x, y, b.getGridX(), b.getGridY());
+            if (d < best_d) {
+                best_d = d;
+                best = b;
+            }
+        }
+        return best;
     }
 }

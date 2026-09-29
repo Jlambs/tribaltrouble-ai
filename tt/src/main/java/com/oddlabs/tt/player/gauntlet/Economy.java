@@ -1326,15 +1326,7 @@ final class Economy {
         int ey = UnitGrid.toGridCoordinate(enemy.getStartY());
         List<Building> own = new ArrayList<>(ai.intel().quarters);
         own.addAll(ai.intel().armories);
-        Building nearest = null;
-        int best = Integer.MAX_VALUE;
-        for (Building b : own) {
-            int d = MapAnalysis.dist2(ex, ey, b.getGridX(), b.getGridY());
-            if (d < best) {
-                best = d;
-                nearest = b;
-            }
-        }
+        Building nearest = MapAnalysis.nearest(own, ex, ey);
         if (nearest == null)
             return null;
         return new int[][]{{nearest.getGridX(), nearest.getGridY()}, {ex, ey}};
@@ -2698,7 +2690,7 @@ final class Economy {
         if (armory == null) {
             // Nothing to gather for yet: spare peons speed up a quarters that is below its reserve.
             for (Unit u : free) {
-                Building q = nearest(intel.quarters, u.getGridX(), u.getGridY());
+                Building q = MapAnalysis.nearest(intel.quarters, u.getGridX(), u.getGridY());
                 if (q != null && !evacuating.containsKey(q)
                         && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q))
                     order(u, q, Action.DEFAULT);
@@ -3041,19 +3033,6 @@ final class Economy {
         }
     }
 
-    private static @Nullable Building nearest(@NonNull List<@NonNull Building> buildings, int x, int y) {
-        Building best = null;
-        int best_d = Integer.MAX_VALUE;
-        for (Building b : buildings) {
-            int d = MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y);
-            if (d < best_d) {
-                best_d = d;
-                best = b;
-            }
-        }
-        return best;
-    }
-
     private void rebuildSupplyLoad() {
         supply_load.clear();
         Intel intel = ai.intel();
@@ -3150,7 +3129,7 @@ final class Economy {
         if (wedged.isEmpty())
             return;
         for (Unit u : wedged) {
-            Building home = nearest(intel.armories, u.getGridX(), u.getGridY());
+            Building home = MapAnalysis.nearest(intel.armories, u.getGridX(), u.getGridY());
             if (home != null)
                 order(u, home, Action.DEFAULT);
             ai.aiLog().count("builder_unstuck");

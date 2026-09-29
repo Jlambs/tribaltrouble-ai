@@ -893,7 +893,7 @@ final class Military {
             if (Intel.isStunned(u))
                 stunned.add(u);
         if (stunned.size() >= own_stunned_before + 2) {
-            int[] c = centroid(stunned);
+            int[] c = MapAnalysis.centroid(stunned);
             Unit caster = null;
             int best = 25 * 25;
             for (Unit e : intel.enemy_chieftains) {
@@ -1126,7 +1126,7 @@ final class Military {
             // Thirty hits bring down a healthy chieftain: only a wounded or helpless one is worth a squad.
             if (ai.strategy().chief_per_hit && chief.getHitPoints() > 20 && !Intel.isStunned(chief))
                 continue;
-            int[] c = centroid(units);
+            int[] c = MapAnalysis.centroid(units);
             if (MapAnalysis.dist2(c[0], c[1], chief.getGridX(), chief.getGridY()) > 20 * 20)
                 continue;
             int wanted = Math.min(8, Math.max(3, units.size() / 3));
@@ -1192,7 +1192,7 @@ final class Military {
     private void peonMilitia() {
         Intel intel = ai.intel();
         militia_orders.keySet().removeIf(Unit::isDead);
-        int[] c = centroid(raiders);
+        int[] c = MapAnalysis.centroid(raiders);
         // Peons are no match for warriors: with enemy warriors about, they shelter instead.
         if (enemyStrengthNear(c[0], c[1], 20) > 1f)
             return;
@@ -1218,7 +1218,7 @@ final class Military {
                 boolean close = false;
                 for (Unit e : raiders)
                     close |= MapAnalysis.dist2(p.getGridX(), p.getGridY(), e.getGridX(), e.getGridY()) <= 8 * 8;
-                Building shelter = close ? nearest(intel.quarters, p) : null;
+                Building shelter = close ? MapAnalysis.nearest(intel.quarters, p.getGridX(), p.getGridY()) : null;
                 if (shelter != null && shelter.getUnitContainer() != null)
                     ai.owner().setTarget(Selectable.newArray(p), shelter, Action.DEFAULT, false);
             }
@@ -1254,7 +1254,7 @@ final class Military {
      * fight them off or take cover.
      */
     private void answerRaiders() {
-        int[] c = centroid(raiders);
+        int[] c = MapAnalysis.centroid(raiders);
         if (threat_level == 0) {
             List<Unit> home = new ArrayList<>();
             for (Map.Entry<Unit, Role> e : roles.entrySet())
@@ -1273,19 +1273,6 @@ final class Military {
             }
         }
         peonMilitia();
-    }
-
-    private static @Nullable Building nearest(@NonNull List<@NonNull Building> buildings, @NonNull Unit u) {
-        Building best = null;
-        int best_d = Integer.MAX_VALUE;
-        for (Building b : buildings) {
-            int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), b.getGridX(), b.getGridY());
-            if (d < best_d) {
-                best_d = d;
-                best = b;
-            }
-        }
-        return best;
     }
 
     /** Sparring only: the starting peons go for the enemy's peons. */
@@ -2582,7 +2569,7 @@ final class Military {
             endAttack();
             return;
         }
-        int[] c = centroid(army);
+        int[] c = MapAnalysis.centroid(army);
         float ours = 0f;
         for (Unit u : army)
             if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), c[0], c[1]) <= 18 * 18)
@@ -2670,7 +2657,7 @@ final class Military {
                     ai.log(String.format("charging %d stunned enemies (%.1f asleep, %.1f awake, army %.1f)",
                             stunned.size(), asleep, awake, total));
                 }
-                int[] sc = centroid(stunned);
+                int[] sc = MapAnalysis.centroid(stunned);
                 List<Selectable<?>> prey = new ArrayList<>(stunned);
                 // The ones still awake keep throwing: each warrior weighs them against the helpless.
                 if (ai.strategy().charge_mixed)
@@ -3064,7 +3051,7 @@ final class Military {
             last_pillage_log = ai.time();
             ai.log(String.format("pillaging %d peons outside the towers with %.1f", prey.size(), total));
         }
-        int[] pc = centroid(prey);
+        int[] pc = MapAnalysis.centroid(prey);
         engageSpread(army, prey, pc[0], pc[1], false);
         return true;
     }
@@ -3086,7 +3073,7 @@ final class Military {
         float awake = enemyFightersNear(x, y, 30);
         if (asleep < 3f || ours < .8f * awake || (ai.strategy().enemy_stun_mult > 1f && enemyStunReadyNear(x, y, 40)))
             return false;
-        int[] sc = centroid(stunned);
+        int[] sc = MapAnalysis.centroid(stunned);
         engageSpread(units, stunned, sc[0], sc[1], true);
         huntChieftains(units);
         return true;
@@ -3314,7 +3301,7 @@ final class Military {
         }
         // The rest fight whatever is around the towers.
         if (!free.isEmpty()) {
-            int[] tc = centroid(new ArrayList<>(helpless));
+            int[] tc = MapAnalysis.centroid(new ArrayList<>(helpless));
             for (Unit u : free)
                 attackGround(u, tc[0], tc[1], true);
         }
@@ -3561,7 +3548,7 @@ final class Military {
         }
         // Units crowding a melee are no choke jam (s48 at N=11): only a jam with no enemy warrior, chieftain or tower
         // near counts. Enemy peons do not: the army stuck in s98 cut down gatherers all the time.
-        int[] jc = centroid(stuck);
+        int[] jc = MapAnalysis.centroid(stuck);
         int r = ENGAGE_RADIUS + 8;
         boolean fight = enemyStrengthNear(jc[0], jc[1], r) > 0f;
         for (Building t : ai.intel().enemy_towers)
@@ -3812,7 +3799,7 @@ final class Military {
         }
         if (pool.size() < s.chief_hunt_size + (source == Role.ATTACK ? 12 : 6))
             return;
-        int[] army_c = source == Role.ATTACK ? centroid(pool) : null;
+        int[] army_c = source == Role.ATTACK ? MapAnalysis.centroid(pool) : null;
         int[] from = army_c != null ? army_c : new int[]{staging_x, staging_y};
         countBases();
         chase_banned.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 120f);
@@ -3899,7 +3886,7 @@ final class Military {
         Strategy s = ai.strategy();
         Intel intel = ai.intel();
         Selectable<?> t = chase_target;
-        int[] c = centroid(squad);
+        int[] c = MapAnalysis.centroid(squad);
         if (t == null || t.isDead()) {
             if (t != null) {
                 ai.aiLog().count(t instanceof Unit ? "hunt_kill" : "hunt_site_razed");
@@ -3965,7 +3952,7 @@ final class Military {
         List<Unit> squad = withRole(Role.RAID);
         if (squad.isEmpty())
             return;
-        int[] c = centroid(squad);
+        int[] c = MapAnalysis.centroid(squad);
         float ours = Combat.total(squad);
         float danger = withEnemyTowers(enemyStrengthNear(c[0], c[1], 24), c[0], c[1], 10);
         boolean done = ai.time() - raid_start > 150f;
@@ -4017,17 +4004,6 @@ final class Military {
             if (r == role)
                 n++;
         return n;
-    }
-
-    static int @NonNull [] centroid(@NonNull List<? extends Selectable<?>> units) {
-        long sx = 0;
-        long sy = 0;
-        for (Selectable<?> u : units) {
-            sx += u.getGridX();
-            sy += u.getGridY();
-        }
-        int n = Math.max(1, units.size());
-        return new int[]{(int) (sx / n), (int) (sy / n)};
     }
 
     /**
@@ -4599,7 +4575,7 @@ final class Military {
     /** Middle of the attacking army, or null when it is at home. */
     int @Nullable [] attackCenter() {
         List<Unit> army = withRole(Role.ATTACK);
-        return army.isEmpty() ? null : centroid(army);
+        return army.isEmpty() ? null : MapAnalysis.centroid(army);
     }
 
     @NonNull

@@ -272,8 +272,8 @@ final class Freeze {
                 return;
             }
             List<Unit> prey = outsideUnits(t);
-            int[] goal = prey.isEmpty() ? new int[]{start_x, start_y} : centre(prey);
-            int[] c = centre(squad);
+            int[] goal = prey.isEmpty() ? new int[]{start_x, start_y} : MapAnalysis.centroid(prey);
+            int[] c = MapAnalysis.centroid(squad);
             if (!prey.isEmpty() && MapAnalysis.dist2(c[0], c[1], goal[0], goal[1]) <= ARRIVE_CELLS * ARRIVE_CELLS) {
                 setPhase(Phase.STRIKE);
                 ai.aiLog().count("freeze_path_a");
@@ -320,7 +320,7 @@ final class Freeze {
             retargeted = true;
             Player me = ai.owner();
             float limit = ai.strategy().freeze_eta;
-            int[] c = centre(squad);
+            int[] c = MapAnalysis.centroid(squad);
             DistanceField field = ai.map().computeField(c[0], c[1], (int) Math.ceil(limit * PEON_SPEED) + 10);
             Player best = null;
             float best_eta = Float.MAX_VALUE;
@@ -392,7 +392,7 @@ final class Freeze {
                 abort("the squad never reached its stage point");
                 return;
             }
-            int[] c = centre(squad);
+            int[] c = MapAnalysis.centroid(squad);
             if (MapAnalysis.dist2(c[0], c[1], stage_x, stage_y) <= 7 * 7) {
                 setPhase(Phase.WAIT);
                 log(() -> "squad staged by " + name(t) + " at " + stage_x + "," + stage_y);
@@ -640,12 +640,12 @@ final class Freeze {
                 squad.clear();
                 return;
             }
-            int[] c = centre(squad);
+            int[] c = MapAnalysis.centroid(squad);
             List<Building> homes = new ArrayList<>(intel.quarters);
             homes.addAll(intel.armories);
-            Building home = nearest(homes, c[0], c[1]);
+            Building home = MapAnalysis.nearest(homes, c[0], c[1]);
             if (home == null)
-                home = nearest(intel.quarters_sites, c[0], c[1]);
+                home = MapAnalysis.nearest(intel.quarters_sites, c[0], c[1]);
             if (home != null)
                 ai.owner().setTarget(units, home, Action.DEFAULT, false);
             else
@@ -763,32 +763,6 @@ final class Freeze {
             if (sel instanceof Unit u && !u.isDead() && !u.isMounted())
                 units.add(u);
         return units;
-    }
-
-    private static @Nullable Building nearest(@NonNull List<@NonNull Building> buildings, int x, int y) {
-        Building best = null;
-        int best_d = Integer.MAX_VALUE;
-        for (Building b : buildings) {
-            if (b.isDead())
-                continue;
-            int d = MapAnalysis.dist2(x, y, b.getGridX(), b.getGridY());
-            if (d < best_d) {
-                best_d = d;
-                best = b;
-            }
-        }
-        return best;
-    }
-
-    private static int @NonNull [] centre(@NonNull List<@NonNull Unit> units) {
-        long x = 0;
-        long y = 0;
-        for (Unit u : units) {
-            x += u.getGridX();
-            y += u.getGridY();
-        }
-        int n = Math.max(1, units.size());
-        return new int[]{(int) (x / n), (int) (y / n)};
     }
 
     private static @NonNull String name(@NonNull Player p) {

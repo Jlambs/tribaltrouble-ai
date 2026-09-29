@@ -930,6 +930,7 @@ final class Shepherd {
         return best == Integer.MAX_VALUE ? -1 : (int) Math.sqrt(best);
     }
 
+    /** Our building or site nearest (x, y) (towers and decoy sites included), or null. */
     private @Nullable Building nearestOwnBuilding(int x, int y) {
         Building best = null;
         int best_d = Integer.MAX_VALUE;
@@ -945,13 +946,10 @@ final class Shepherd {
         return best;
     }
 
+    /** The squared cells from (x, y) to our nearest building or site, Integer.MAX_VALUE with none. */
     private int nearestOwnBuilding2(int x, int y) {
-        int best = Integer.MAX_VALUE;
-        for (Selectable<?> sel : ai.owner().getUnits().getSet())
-            if (sel instanceof Building b && !b.isDead()
-                    && b.getTemplate().getType() == BuildingTemplate.TYPE_BUILDING)
-                best = Math.min(best, MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y));
-        return best;
+        Building b = nearestOwnBuilding(x, y);
+        return b == null ? Integer.MAX_VALUE : MapAnalysis.dist2(b.getGridX(), b.getGridY(), x, y);
     }
 
     private int nearestOtherUnit2(int x, int y, @Nullable Unit self, @Nullable Unit partner) {
