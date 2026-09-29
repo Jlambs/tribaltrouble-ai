@@ -1229,3 +1229,12 @@ retreat through the same pass (only the attack role is watched).
   -0.7, towers20 -0.8 (z -2.4); retreat_ratio=1.2 elim z -1.9; reinforce_ratio=0.3 ~0. Bit-identical to the base (the
   param never binds at N=13): attack_max_strength 50 / 100, capped_ratio 0.4 / 0.9. Confirmations queued for
   reinforce_ratio 0.8 and target_home_weight 2.5 (fresh N=13 seeds, N=12, and both together).
+- **Sweep confirmations failed** (fresh seeds): reinforce_ratio=0.8 N=13 s201..400 W 2 -> 1, elim -.014 (z -2.3); N=12
+  W 9 -> 8, ~0. target_home_weight=2.5 N=13 s201..400 W 2 -> 1, ~0; N=12 W 9 -> 5, wp -0.8 pp (z -1.5). Both together
+  at N=13 s1..200 ~0. The first-block "wins" (W 0 -> 4) were noise; at 0-2 base wins per 200, W alone decides nothing.
+- **The tower targets never bind at high N.** Economy.planBuildings adds min(enemies - 1, front_tower_bonus_max=100) to
+  towers_late (multi_front_towers), so the target is 26 at N=13; towers_late 11 or 16 and towers_mid 8 play bit-identical
+  games. The number of towers is set by the 20-building cap (sites count) and by throughput (one tower project at a time,
+  tower_parallel=1). Also bit-identical at N=13 (params that never bind there): attack_max_strength 50/100, capped_ratio
+  0.4/0.9. tower_parallel 2/3 and a tower-pipeline audit (4 lenses + verifiers + judge) are running.
+- logs-cur5-vs13 (24 logged N=13 games, seeds 2001-2024, current defaults): 2 wins, s2017 at 88 min and s2007 at 215 min.
