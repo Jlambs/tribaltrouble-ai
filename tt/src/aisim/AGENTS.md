@@ -35,6 +35,10 @@ of `aikit` is the AI toolkit.
 - **The harness never changes the game.** Harness games must be the client's simulation: `ClientWorld` builds the
   world the way `IslandGenerator`, `TerrainMenu` and `Client` do, and the recorder only reads. When upstream changes
   those, follow it there.
+- **Headless changes nothing the simulation computes.** Workers run the engine with `-Dcom.oddlabs.tt.headless=true`
+  (`com.oddlabs.tt.global.Headless`), which skips what only drawing and sound read. Every headless branch in the
+  engine must leave every game identical, checksum for checksum and game file for game file: run the headless check
+  in `docs/maintaining.md` after touching one. The game itself never sets the flag.
 - **File formats only grow.** Existing names in these must never be renamed, and readers must accept files from
   older and newer harness versions:
   - `Job` fields (workers of older snapshots read them for replays); only a nullable field may be removed;

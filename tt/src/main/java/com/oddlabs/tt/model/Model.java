@@ -1,5 +1,6 @@
 package com.oddlabs.tt.model;
 
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.render.SpriteKey;
 import com.oddlabs.tt.util.BoundingBox;
@@ -80,6 +81,13 @@ public abstract class Model extends Element<Model> {
 
     protected final void reinsert() {
         if (isRegistered()) {
+            if (Headless.ENABLED) {
+                // the height a model is drawn at and its bounds are for drawing and sound only (getOffsetZ,
+                // getZError and the sprite bounds have no side effects); with the element tree they took over a
+                // third of a game's CPU
+                onReinsert();
+                return;
+            }
             Element ref = getReference();
             if (ref == null) {
                 setPositionZ(Math.max(world.getHeightMap().getSeaLevelMeters(), world.getHeightMap().getNearestHeight(

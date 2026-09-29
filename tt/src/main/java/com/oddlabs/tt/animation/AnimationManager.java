@@ -7,6 +7,7 @@ import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.steam.SteamManager;
 import com.oddlabs.tt.form.QuitForm;
 import com.oddlabs.tt.global.Globals;
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.gui.GUI;
 import com.oddlabs.tt.pathfinder.PathFinder;
@@ -14,7 +15,11 @@ import com.oddlabs.tt.render.Renderer;
 import com.oddlabs.tt.util.StatCounter;
 import com.oddlabs.tt.util.StateChecksum;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -51,6 +56,11 @@ public final class AnimationManager {
 
     private final Set<@NonNull Animated> animations = new CopyOnWriteArraySet<>();
     private final Set<@NonNull Animated> deleted_animations = new CopyOnWriteArraySet<>();
+
+    // Headless (Headless.ENABLED) the animations are kept without copy-on-write, which copies the whole array on every
+    // register and remove: in the same order and with the same rules (see HeadlessAnimations), so the same
+    // animations run in the same order.
+    private final @Nullable HeadlessAnimations headless = Headless.ENABLED ? new HeadlessAnimations() : null;
 
     private int tick;
 
@@ -215,11 +225,19 @@ public final class AnimationManager {
     }
 
     public void registerAnimation(@NonNull Animated anim) {
+        if (headless != null) {
+            headless.register(anim);
+            return;
+        }
         deleted_animations.remove(anim);
         animations.add(anim);
     }
 
     public void removeAnimation(@NonNull Animated anim) {
+        if (headless != null) {
+            headless.remove(anim);
+            return;
+        }
         if (animations.contains(anim)) {
             deleted_animations.add(anim);
         }
@@ -231,19 +249,99 @@ public final class AnimationManager {
     }
 
     public void updateChecksum(@NonNull StateChecksum checksum) {
+        if (headless != null) {
+            headless.flush();
+            for (Animated anim : headless.snapshot()) {
+                anim.updateChecksum(checksum);
+            }
+            return;
+        }
         flushAnimations();
         animations.forEach(anim -> anim.updateChecksum(checksum));
     }
 
     public void runAnimations(float t) {
         tick++;
+        if (headless != null) {
+            headless.run(t);
+            return;
+        }
         flushAnimations();
         Predicate<Animated> notDeleted = ((Predicate<Animated>) deleted_animations::contains).negate();
         animations.stream().filter(notDeleted).forEach(a -> a.animate(t));
     }
 
     public void debugPrintAnimations() {
+        if (headless != null) {
+            headless.flush();
+            for (Animated anim : headless.snapshot()) {
+                logger.fine("anim = " + anim);
+            }
+            return;
+        }
         flushAnimations();
         animations.forEach(anim -> logger.fine("anim = " + anim));
+    }
+
+    /**
+     * The animations and deleted_animations sets without copy-on-write, with the same rules:
+     * <ul>
+     * <li>animations keep the order they were first registered in, and registering one that is there changes nothing
+     * (CopyOnWriteArraySet.add);</li>
+     * <li>a removed animation stays in place, marked deleted, until the next flush takes out every marked one; a
+     * marked one registered again loses its mark and keeps its place;</li>
+     * <li>a run animates the animations there when it starts (the copy-on-write snapshot), in order, each unless it is
+     * marked deleted when its turn comes; those registered during the run wait for the next.</li>
+     * </ul>
+     * Membership is by equals, as in the copy-on-write sets.
+     */
+    private static final class HeadlessAnimations {
+        private final List<@NonNull Animated> order = new ArrayList<>();
+        private final Set<@NonNull Animated> members = new HashSet<>();
+        private final Set<@NonNull Animated> deleted = new HashSet<>();
+        /** The array run takes its snapshot into, reused from run to run; null while a run uses it. */
+        private @Nullable Animated @Nullable [] run_snapshot = new Animated[0];
+
+        void register(@NonNull Animated anim) {
+            deleted.remove(anim);
+            if (members.add(anim)) {
+                order.add(anim);
+            }
+        }
+
+        void remove(@NonNull Animated anim) {
+            if (members.contains(anim)) {
+                deleted.add(anim);
+            }
+        }
+
+        void flush() {
+            if (!deleted.isEmpty()) {
+                order.removeIf(deleted::contains);
+                members.removeAll(deleted);
+                deleted.clear();
+            }
+        }
+
+        @NonNull
+        Animated @NonNull [] snapshot() {
+            return order.toArray(new Animated[0]);
+        }
+
+        void run(float t) {
+            flush();
+            int count = order.size();
+            Animated[] reusable = run_snapshot;
+            run_snapshot = null; // a run inside this one (none known) takes a fresh array
+            Animated[] snapshot = order.toArray(reusable != null ? reusable : new Animated[0]);
+            for (int i = 0; i < count; i++) {
+                Animated anim = snapshot[i];
+                snapshot[i] = null; // no reference to a finished animation outlives the run
+                if (deleted.isEmpty() || !deleted.contains(anim)) {
+                    anim.animate(t);
+                }
+            }
+            run_snapshot = snapshot;
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.oddlabs.tt.model;
 
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.util.BoundingBox;
 import com.oddlabs.util.LinkedList;
 import com.oddlabs.util.ListElement;
@@ -31,13 +32,17 @@ public abstract class Element<T extends Element<T>> extends BoundingBox implemen
 
     public abstract void visit(ElementVisitor visitor);
 
+    // Only the renderer and the picker read the element tree, so headless an element is registered without entering it
+    // (node_parent is then the root, as a mark).
     protected void register() {
-        node_parent = element_root.insertElement(self());
+        node_parent = Headless.ENABLED ? element_root : element_root.insertElement(self());
         assert node_parent != null;
     }
 
     protected final void reregister() {
-        node_parent = element_root.reinsertElement(self());
+        if (!Headless.ENABLED) {
+            node_parent = element_root.reinsertElement(self());
+        }
         assert node_parent != null;
     }
 
@@ -47,7 +52,9 @@ public abstract class Element<T extends Element<T>> extends BoundingBox implemen
 
     protected void remove() {
         assert node_parent != null;
-        node_parent.removeElement(self());
+        if (!Headless.ENABLED) {
+            node_parent.removeElement(self());
+        }
         node_parent = null;
     }
 

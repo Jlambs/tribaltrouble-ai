@@ -257,7 +257,7 @@ when the AI is nondeterministic.
   (lint warns on `hashCode`).
 - **No threads or parallel streams** (lint warns).
 - **No mutable statics**: two copies of your AI can share a JVM, as both sides of a mirror game and in each game a
-  worker plays. Lint warns on static fields that are not final. A `static final` collection or array that you
+  worker plays, and so do frozen copies (`@TAG`) of it. Lint warns on static fields that are not final. A `static final` collection or array that you
   change is shared state too.
 - **Logging must not change decisions.** The harness checks that too, by replaying with logs on.
 

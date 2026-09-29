@@ -40,7 +40,8 @@ esac
 
 JDK=$(find_jdk)
 # the parent JVM; workers get the same options from Batch.workerCommand (keep in sync)
-OPTS=(-ea --enable-native-access=ALL-UNNAMED -Xmx768m -XX:+UseSerialGC -Djava.awt.headless=true)
+OPTS=(-ea --enable-native-access=ALL-UNNAMED -Xmx768m -XX:+UseSerialGC -Djava.awt.headless=true
+    -Dcom.oddlabs.tt.headless=true)
 [ "$(uname)" = Darwin ] && OPTS+=(-XstartOnFirstThread) # GLFW must own the first thread on macOS
 
 case "${1:-help}" in

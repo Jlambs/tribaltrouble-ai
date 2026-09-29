@@ -1,6 +1,9 @@
 package com.oddlabs.tt.pathfinder;
 
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.landscape.HeightMap;
+import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.player.PlayerInfo;
 import com.oddlabs.tt.util.DebugRender;
 import com.oddlabs.tt.util.Target;
 import org.joml.Vector4fc;
@@ -16,11 +19,28 @@ public final class UnitGrid {
     public static final int SEA = 1;
     public static final int NUM_LAYERS = 2;
 
+    /** Cell tags, headless: an empty cell. */
+    public static final int TAG_EMPTY = 0;
+    /** A cell whose occupant is no Selectable (trees, rocks, supplies). */
+    public static final int TAG_OTHER = 1;
+    /** A cell whose occupant is a Selectable of team t (PlayerInfo.TEAM_NEUTRAL is -1) has tag TAG_TEAM + t. */
+    private static final int TAG_TEAM = 3;
+    /** The tags of cells whose occupant is a Selectable, for {@link ScanFilter#tagMask}. */
+    public static final long SELECTABLE_TAG_MASK = -1L << (TAG_TEAM - 1);
+
     static class Layer {
         final @NonNull Region @NonNull [] @NonNull [] regions;
         final @Nullable Occupant @NonNull [] @NonNull [] occupants;
+        /** The occupied cells of occupants (the sea layer's stay empty in games without ships). */
+        int occupied;
+        /**
+         * Headless, the tag of each cell, by y * size + x: what occupies it, so that a scan skips the cells its filter
+         * does not take (trees, friends) without reading their occupants. Null in the game.
+         */
+        final byte @Nullable [] tags;
 
         Layer(int size) {
+            tags = Headless.ENABLED ? new byte[size * size] : null;
             occupants = new Occupant[size][size];
             regions = new Region[size][size];
         }
@@ -66,6 +86,11 @@ public final class UnitGrid {
     }
 
     public void scan(@NonNull ScanFilter filter, int center_grid_x, int center_grid_y, int layer) {
+        long mask = filter.tagMask();
+        if (Headless.ENABLED && (mask & (1L << TAG_EMPTY)) == 0) {
+            scanTagged(filter, mask, center_grid_x, center_grid_y, layers[layer]);
+            return;
+        }
         int radius = filter.getMinRadius();
         if (radius == 0) {
             if (filter(filter, center_grid_x, center_grid_y, layer))
@@ -93,6 +118,72 @@ public final class UnitGrid {
             }
             radius++;
         }
+    }
+
+    /**
+     * scan for a filter whose {@link ScanFilter#tagMask() tag mask} leaves out empty cells: the same cells in the same
+     * order, calling it only for the cells whose tag it takes. An empty layer is not scanned at all.
+     */
+    private static void scanTagged(@NonNull ScanFilter filter, long mask, int center_grid_x, int center_grid_y,
+            @NonNull Layer layer) {
+        byte[] tags = layer.tags;
+        if (layer.occupied == 0 || mask == 0 || tags == null) {
+            return;
+        }
+        Occupant[][] occupants = layer.occupants;
+        int size = occupants.length;
+        int radius = filter.getMinRadius();
+        if (radius == 0) {
+            if (filterTagged(filter, mask, center_grid_x, center_grid_y, occupants, tags, size))
+                return;
+            radius++;
+        }
+        while (radius <= filter.getMaxRadius()) {
+            int x = center_grid_x - radius;
+            int x2 = center_grid_x + radius;
+            for (int i = 0; i < 2 * radius - 1; i++) {
+                int y_i = center_grid_y - radius + 1 + i;
+                if (filterTagged(filter, mask, x, y_i, occupants, tags, size))
+                    return;
+                if (filterTagged(filter, mask, x2, y_i, occupants, tags, size))
+                    return;
+            }
+            int y = center_grid_y - radius;
+            int y2 = center_grid_y + radius;
+            for (int i = 0; i < 2 * radius + 1; i++) {
+                int x_i = center_grid_x - radius + i;
+                if (filterTagged(filter, mask, x_i, y, occupants, tags, size))
+                    return;
+                if (filterTagged(filter, mask, x_i, y2, occupants, tags, size))
+                    return;
+            }
+            radius++;
+        }
+    }
+
+    private static boolean filterTagged(@NonNull ScanFilter filter, long mask, int x, int y,
+            @Nullable Occupant @NonNull [] @NonNull [] occupants, byte @NonNull [] tags, int size) {
+        if (x < 0 || y < 0 || x >= size || y >= size || (mask >>> tags[y * size + x] & 1L) == 0)
+            return false;
+        Occupant occupant = occupants[y][x];
+        return occupant != null && filter.filter(x, y, occupant);
+    }
+
+    /** The tag of a cell {@code occupant} occupies. */
+    private static int tagOf(@NonNull Occupant occupant) {
+        if (!(occupant instanceof Selectable<?> selectable))
+            return TAG_OTHER;
+        int tag = TAG_TEAM + selectable.getOwner().getPlayerInfo().getTeam();
+        assert tag >= TAG_TEAM - 1 && tag < Long.SIZE : tag;
+        return tag;
+    }
+
+    /** The tags of the cells a Selectable of {@code team} can attack: enemies, as Player.isEnemy has them. */
+    public static long enemyTagMask(int team) {
+        if (team == PlayerInfo.TEAM_NEUTRAL)
+            return 0; // at peace with everyone
+        long teams = -1L << TAG_TEAM; // every team but the neutral one
+        return teams & ~(1L << (TAG_TEAM + team));
     }
 
     public static float coordinateFromGrid(int g) {
@@ -147,7 +238,12 @@ public final class UnitGrid {
 
     public void occupyGrid(int grid_x, int grid_y, Occupant occupant, int layer) {
         assert !isGridOccupied(grid_x, grid_y, layer);
-        layers[layer].occupants[grid_y][grid_x] = occupant;
+        Layer l = layers[layer];
+        if (l.occupants[grid_y][grid_x] == null && occupant != null)
+            l.occupied++;
+        l.occupants[grid_y][grid_x] = occupant;
+        if (l.tags != null)
+            l.tags[grid_y * l.occupants.length + grid_x] = (byte) (occupant != null ? tagOf(occupant) : TAG_EMPTY);
     }
 
     public final boolean isWater(int grid_x, int grid_y) {
@@ -194,7 +290,12 @@ public final class UnitGrid {
 
     public void freeGrid(int grid_x, int grid_y, Occupant occupant, int layer) {
         assert layers[layer].occupants[grid_y][grid_x] == occupant : occupant + " trying to free " + grid_x + " " + grid_y + " where " + layers[layer].occupants[grid_y][grid_x] + " is.";
-        layers[layer].occupants[grid_y][grid_x] = null;
+        Layer l = layers[layer];
+        if (l.occupants[grid_y][grid_x] != null)
+            l.occupied--;
+        l.occupants[grid_y][grid_x] = null;
+        if (l.tags != null)
+            l.tags[grid_y * l.occupants.length + grid_x] = TAG_EMPTY;
     }
 
     public void debugRenderRegions(float landscape_x, float landscape_y) {

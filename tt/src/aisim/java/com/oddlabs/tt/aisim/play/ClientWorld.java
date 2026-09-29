@@ -4,6 +4,7 @@ import com.oddlabs.matchmaking.Game;
 import com.oddlabs.tt.audio.AbstractAudioPlayer;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.global.GlobalsInit;
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.landscape.AudioImplementation;
 import com.oddlabs.tt.landscape.HeightMap;
@@ -30,7 +31,7 @@ import org.lwjgl.system.MemoryUtil;
 /**
  * The world of one game, built exactly as the client builds it for the same skirmish menu settings: the map as
  * TerrainMenu and IslandGenerator make it, the world and its players as Client makes them. When upstream changes
- * those, follow it here. Closing it frees the world's GL textures.
+ * those, follow it here. Closing it frees the world's GL textures, which it has only when not headless.
  */
 record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implements AutoCloseable {
 
@@ -41,16 +42,23 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
     private static @Nullable LandscapeResources landscape_resources;
     private static @Nullable RacesResources races_resources;
 
-    /** Readies the calling thread for worlds: silent settings, a hidden GL context and the game's resources. */
+    /**
+     * Readies the calling thread for worlds: silent settings and the game's resources. Workers run {@link Headless}:
+     * the resources are then only what the simulation reads, with no GL context, textures, models or sounds. Without
+     * it (-Dcom.oddlabs.tt.headless=false in AISIM_JAVA_OPTS) they are the client's, in a hidden GL context, with
+     * OpenAL.
+     */
     static void boot() {
         Settings settings = new Settings();
         settings.play_sfx = false;
         settings.play_music = false;
         Settings.setSettings(settings);
-        openHiddenGlWindow();
-        GlobalsInit.init();
+        if (!Headless.ENABLED) {
+            openHiddenGlWindow();
+            GlobalsInit.init();
+        }
         RenderQueues queues = new RenderQueues();
-        landscape_resources = World.loadCommon(queues); // also opens OpenAL: sounds are loaded with the resources
+        landscape_resources = World.loadCommon(queues);
         races_resources = World.loadInGame(queues);
     }
 
@@ -161,9 +169,12 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
         return new PlayerInfo(job.team(slot), race, name);
     }
 
-    /** Frees the world's GL textures (only the client's render loop would). */
+    /** Frees the world's GL textures (only the client's render loop would); headless it has none. */
     @Override
     public void close() {
+        if (Headless.ENABLED) {
+            return;
+        }
         world.getHeightMap().getHeightTexture().close();
         for (BlendInfo blend : landscape.getBlendInfos()) {
             blend.getAlphaMap().close();

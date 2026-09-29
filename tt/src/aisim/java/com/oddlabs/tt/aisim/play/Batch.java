@@ -33,8 +33,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
- * Plays a run's games in worker JVMs ({@link WorkerProcess}): the simulation keeps static state and needs its own GL
- * context, so parallel games need separate processes. Everything a worker prints besides its rows (engine noise) goes
+ * Plays a run's games in worker JVMs ({@link WorkerProcess}): the simulation keeps static state, so parallel games need
+ * separate processes. Everything a worker prints besides its rows (engine noise) goes
  * to {@code log/w<i>.log}. A worker is replaced after any game that did not end normally and every
  * {@value #GAMES_PER_WORKER} games. Workers stop when their stdin closes or the parent dies, so no orphans survive; a
  * {@code STOP} file in the run folder cancels the run.
@@ -42,9 +42,10 @@ import java.util.logging.Logger;
 public final class Batch {
     /**
      * Games a worker JVM plays before a fresh one takes its place, so whatever the engine's static state gathers from
-     * game to game stays bounded.
+     * game to game stays bounded. A fresh worker costs about a minute of CPU, mostly the JIT compiling the game again,
+     * so it should be rare.
      */
-    private static final int GAMES_PER_WORKER = 25;
+    private static final int GAMES_PER_WORKER = 100;
     /** Setup.logs: every game keeps its AI logs. */
     public static final String LOGS_ALL = "all";
     /** Setup.logs: only the games team A did not win keep their AI logs; the others' are deleted once recorded. */

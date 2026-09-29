@@ -48,7 +48,7 @@ public record Pool(@NonNull String tag, @NonNull String entry, @NonNull String p
 
     /**
      * A fresh child-first loader for the frozen package; everything else (the engine) comes from the running build.
-     * A new loader per game means a frozen AI keeps no static state from one game to the next.
+     * A worker shares one per tag across its slots and games (Match), so the JIT compiles a frozen AI once.
      */
     @NonNull
     public URLClassLoader newLoader() {

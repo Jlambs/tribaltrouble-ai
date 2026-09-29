@@ -1,5 +1,6 @@
 package com.oddlabs.tt.audio;
 
+import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.resource.File;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -12,8 +13,15 @@ public final class AudioFile extends File<Audio> {
         super(location);
     }
 
+    /** Every sound, headless: the simulation only passes sounds on to players, which play nothing there. */
+    private static final Audio SILENT = new Audio() {
+    };
+
     @Override
     public @NonNull Audio get() throws UncheckedIOException {
+        if (Headless.ENABLED) {
+            return SILENT; // opens no audio device and decodes nothing
+        }
         try {
             return AudioManager.getManager().createAudio(getURL());
         } catch (IOException ex) {
