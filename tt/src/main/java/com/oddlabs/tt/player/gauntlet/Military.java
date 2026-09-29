@@ -2052,7 +2052,13 @@ final class Military {
         boolean go = potential >= strategy.attack_min_strength
                 && potential * bonus >= strategy.attack_ratio * caution * defense;
         go |= potential >= strategy.attack_max_strength * caution && potential * bonus >= .8f * caution * defense;
-        go |= capped && potential * bonus >= strategy.capped_ratio * caution * defense;
+        boolean capped_go = capped && potential * bonus >= strategy.capped_ratio * caution * defense;
+        if (capped_go && potential < strategy.capped_min_strength) {
+            capped_go = false;
+            if (!go)
+                ai.aiLog().count("capped_min_blocked");
+        }
+        go |= capped_go;
         if (!go || ai.time() < next_wave_time)
             return;
         target = t;

@@ -479,6 +479,12 @@ class Strategy {
     float attack_max_strength = 70f;
     /** At the unit cap losses are replaced for free, so attack against this much of the defense. */
     float capped_ratio = .6f;
+    /**
+     * The capped attack needs at least this much army and stock (0: none): during wood locks at the cap it mustered
+     * with nothing ("muster: army 0.0 + stock 0.0 vs defense 0.0", 0 >= 0.6 x 0) and sat in MUSTER, deploying every
+     * weapon, for 45 s at a time (Military.considerAttack).
+     */
+    float capped_min_strength = 0f;
     /** Retreat when the enemy around the army is this much stronger and the chieftain cannot stun. */
     float retreat_ratio = 1.45f;
     /** Units in the staging army sent to hunt enemy peons when the enemy army is elsewhere. */
@@ -995,6 +1001,7 @@ class Strategy {
         tower_weight = (float) params.getDouble("tower_weight", tower_weight);
         attack_max_strength = (float) params.getDouble("attack_max_strength", attack_max_strength);
         capped_ratio = (float) params.getDouble("capped_ratio", capped_ratio);
+        capped_min_strength = (float) params.getDouble("capped_min_strength", capped_min_strength);
         retreat_ratio = (float) params.getDouble("retreat_ratio", retreat_ratio);
         raid_size = params.getInt("raid_size", raid_size);
         raid_time = (float) params.getDouble("raid_time", raid_time);
