@@ -604,6 +604,50 @@ final class Economy {
         return null;
     }
 
+    /** tower_site_fallback: no fallback search before this time (after a miss). */
+    private float fallback_next;
+
+    /**
+     * tower_site_fallback: a tower site around another anchor when the planned one's ring is full: the same center at
+     * 4-20
+     * cells, then the home and primary armory and each finished quarters (nearest the center first) at 7-15 cells, then
+     * those again at 4-20. Null when none has a legal site.
+     */
+    private @Nullable Site fallbackTowerSite(int @NonNull [] center, int @NonNull [] face,
+            @NonNull List<int @NonNull []> existing) {
+        SitePlanner planner = ai.planner();
+        Intel intel = ai.intel();
+        List<Site> reserved = reservedSites(null);
+        Site s = planner.findTowerSite(reserved, center[0], center[1], 4, 20, existing, face[0], face[1]);
+        if (s != null)
+            return s;
+        List<int[]> anchors = new ArrayList<>();
+        Building primary = intel.armory();
+        if (primary != null) {
+            Building home = homeArmory(primary);
+            anchors.add(new int[]{home.getGridX(), home.getGridY()});
+            if (home != primary)
+                anchors.add(new int[]{primary.getGridX(), primary.getGridY()});
+        }
+        List<Building> quarters = new ArrayList<>();
+        for (Building q : intel.quarters)
+            if (!q.isDead() && q.isComplete())
+                quarters.add(q);
+        // A stable sort: ties stay in list order.
+        quarters.sort(Comparator.comparingInt(q -> MapAnalysis.dist2(q.getGridX(), q.getGridY(), center[0],
+                center[1])));
+        for (Building q : quarters)
+            anchors.add(new int[]{q.getGridX(), q.getGridY()});
+        for (int pass = 0; pass < 2; pass++)
+            for (int[] a : anchors) {
+                s = planner.findTowerSite(reserved, a[0], a[1], pass == 0 ? 7 : 4, pass == 0 ? 15 : 20, existing,
+                        face[0], face[1]);
+                if (s != null)
+                    return s;
+            }
+        return null;
+    }
+
     /** Our towers and tower sites, as {x, y}. */
     private @NonNull List<int @NonNull []> existingTowers() {
         Intel intel = ai.intel();
@@ -873,6 +917,18 @@ final class Economy {
                 Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
                         existing,
                         face[0], face[1]);
+                if (site == null) {
+                    ai.aiLog().count("tower_nosite"); // plan ticks with room for a tower and no site on its ring
+                    if (strategy.tower_site_fallback && time >= fallback_next) {
+                        site = fallbackTowerSite(center, face, existing);
+                        if (site != null) {
+                            ai.aiLog().count("tower_site_fallback");
+                        } else {
+                            ai.aiLog().count("tower_site_fallback_none");
+                            fallback_next = time + 15f;
+                        }
+                    }
+                }
                 if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time)
                     site = clearAtBirth(site, Race.BUILDING_TOWER, "veto_resite_born");
                 if (site != null)

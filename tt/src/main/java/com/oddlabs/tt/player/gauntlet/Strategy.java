@@ -739,6 +739,14 @@ class Strategy {
      * farthest considered), not the nearest in a straight line. 0: straight line.
      */
     int walk_select = 0;
+    /**
+     * When the tower anchor's ring has no legal site, look around the other buildings (the same anchor at 4-20 cells,
+     * then the home and primary armory and every finished quarters at 7-15 cells, then all of them at 4-20) instead of
+     * retrying the full ring every plan tick until one of our towers is razed (tower13 audit: the lock takes 9 % of the
+     * construction slots at N=13 in 12-25 min, 31 % in the wins' 15-25 min; s2007 planned no tower from 1045 to 1671 s
+     * with room for two buildings). A miss waits 15 s before the next try.
+     */
+    boolean tower_site_fallback = false;
 
     /**
      * Cells the chieftain keeps from the nearest enemy warrior while closing in to stun: inside his 18-cell stun
@@ -1191,6 +1199,7 @@ class Strategy {
         unstick = params.getBoolean("unstick", unstick);
         unstick_builders = (float) params.getDouble("unstick_builders", unstick_builders);
         walk_select = params.getInt("walk_select", walk_select);
+        tower_site_fallback = params.getBoolean("tower_site_fallback", tower_site_fallback);
         chief_keep_out = params.getInt("chief_keep_out", chief_keep_out);
         chief_safe = params.getInt("chief_safe", chief_safe);
         chief_wake_retreat = (float) params.getDouble("chief_wake_retreat", chief_wake_retreat);
