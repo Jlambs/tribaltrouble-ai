@@ -176,8 +176,11 @@ class Strategy {
     boolean launch_recheck = false;
     /** Seconds before the next attack after the army was called home (20 after any other attack end). */
     float recall_cooldown = 20f;
-    /** On a retreat, warriors in a fight or with an enemy warrior within 9 cells finish it first (Military). */
-    boolean retreat_rearguard = false;
+    /**
+     * On a retreat, warriors in a fight or with an enemy warrior within 9 cells finish it first (Military). Vs hard*11
+     * elim +.004 (z 2.0), kd +.018 (rearg-vs11-hv); in the base2 stack.
+     */
+    boolean retreat_rearguard = true;
     /** No early-rush alarm once we have had an armory (Economy.checkRush): it fired after our last armory fell. */
     boolean rush_opening_only = false;
     /** Re-targets during an attack go by walking distance from the army, not straight-line distance (Military). */
@@ -245,8 +248,12 @@ class Strategy {
      * Attack even with the base threatened, when the enemies in the base are worth less than this share of the army.
      */
     float attack_threat_ratio = 0f;
-    /** An attack is called home when the enemies in the base beat the home defense and this share of the attack. */
-    float recall_ratio = .35f;
+    /**
+     * An attack is called home when the enemies in the base beat the home defense and this share of the attack. 99:
+     * never; after the first recall no copy was ever put out (audit of camp-mf-vs11-hv), and vs hard*11 never recalling
+     * gave elim +.008 / +.020 on seeds 1..200 / 201..400 (recall99-vs11-hv, -b), neutral at N=8 and 1v1.
+     */
+    float recall_ratio = 99f;
     /** Strength (iron warriors) kept at home when the army attacks or reinforces. */
     float home_guard = 0f;
     boolean focus_finish = false;
@@ -273,7 +280,11 @@ class Strategy {
 
     /** Peons to keep inside each quarters to speed up reproduction, early and later in the game. */
     int hold_early = 4;
-    int hold_mid = 14;
+    /**
+     * hold_mid 10 (was 14): peons wait in quarters while the armory has ore for them; vs hard*11 elim +.013 / +.030
+     * (hm10-vs11-hv, -b), W 16 vs 11 over 400; N=8 neutral (W 114 vs 111).
+     */
+    int hold_mid = 10;
     int hold_late = 8;
     float hold_mid_time = 240f;
     /**
@@ -446,10 +457,12 @@ class Strategy {
     float armory_far_cost = 170f;
 
     /**
-     * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_time: peon
-     * raids come before warriors do, and later wandering enemy gatherers would only draw the army about.
+     * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_time. Off:
+     * neighbouring copies' gatherers work near our start and passed for raiders, so the militia sent most of the
+     * starting peons after single enemy peons, again and again (vs hard*11 militiaoff-vs11-hv elim +.051, z 4.1, lsr10
+     * +.26, z 5.8; 1v1 duel-new-hv 100/100). Hard copies never raid with peons.
      */
-    boolean peon_militia = true;
+    boolean peon_militia = false;
     float militia_time = 600f;
     /** Sparring only: send the starting peons at the enemy's peons for the first minutes, as some humans do. */
     boolean peon_rush = false;
@@ -871,15 +884,10 @@ class Strategy {
             // hard*8: aggro-vs8-hv-b 43/200 vs 31/200 on fresh seeds 201..400, elim +.077 z 3.4; 19 vs 16 on 1..100).
             strategy.attack_ratio = 1f;
             strategy.adaptive_caution = false;
-            strategy.recall_ratio = 2f;
             strategy.attack_threat_ratio = 1f;
             // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
             // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
             strategy.gate_owner = true;
-            // Neighbouring copies' gatherers work near our start and passed for raiders: the militia sent most of the
-            // starting peons after single enemy peons, again and again (vs hard*11 militiaoff-vs11-hv elim +.051,
-            // z 4.1, lsr10 +.26, z 5.8). Hard copies never raid with peons.
-            strategy.peon_militia = false;
         }
         return strategy;
     }
