@@ -728,6 +728,12 @@ class Strategy {
      * cannot reach.
      */
     boolean unstick = true;
+    /**
+     * A builder (or repairer) that has stood on the same cell for this many seconds more than 3 cells from its building
+     * is wedged (a dead-end notch or a pass it deadlocks in with others, jam-logs s9: 6-23 builders for 13 min) and is
+     * sent into the nearest armory, which frees it for the economy. 0: off.
+     */
+    float unstick_builders = 0f;
 
     /**
      * Cells the chieftain keeps from the nearest enemy warrior while closing in to stun: inside his 18-cell stun
@@ -1138,6 +1144,7 @@ class Strategy {
         chicken_pool_div = params.getInt("chicken_pool_div", chicken_pool_div);
         tower_fire = params.getBoolean("tower_fire", tower_fire);
         unstick = params.getBoolean("unstick", unstick);
+        unstick_builders = (float) params.getDouble("unstick_builders", unstick_builders);
         chief_keep_out = params.getInt("chief_keep_out", chief_keep_out);
         chief_safe = params.getInt("chief_safe", chief_safe);
         chief_wake_retreat = (float) params.getDouble("chief_wake_retreat", chief_wake_retreat);

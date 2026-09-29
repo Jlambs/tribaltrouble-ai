@@ -61,6 +61,26 @@ final class Jams {
         count(blocked_warriors, "warrior_blocked", "warrior_jam", "warriors");
     }
 
+    /** Log only: each jammed peon's job (primary controller) and where its walk is headed. */
+    private static @NonNull String describePeons(@NonNull List<@NonNull Unit> jam) {
+        StringBuilder sb = new StringBuilder();
+        for (Unit u : jam) {
+            if (!sb.isEmpty())
+                sb.append(", ");
+            sb.append(u.getPrimaryController().getClass().getSimpleName().replace("Controller", ""));
+            if (u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.WalkController w)
+                sb.append(" to ").append(w.getTarget().getGridX()).append(',').append(w.getTarget().getGridY());
+            else if (u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.RepairController r) {
+                com.oddlabs.tt.model.Building b = r.getBuilding();
+                sb.append(" site ").append(
+                        b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_TOWER ? "tower" : b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_ARMORY ? "armory" : "quarters").append(
+                                " at ").append(b.getGridX()).append(',').append(b.getGridY()).append(
+                                        b.isComplete() ? " (complete)" : "");
+            }
+        }
+        return sb.toString();
+    }
+
     /** Counts the blocked units, and each jam: a blocked unit with CLUSTER - 1 other blocked units within RADIUS. */
     private void count(@NonNull List<@NonNull Unit> blocked, @NonNull String blocked_key, @NonNull String jam_key,
             @NonNull String what) {
@@ -85,9 +105,11 @@ final class Jams {
                 int x = seed.getGridX();
                 int y = seed.getGridY();
                 ai.log(String.format("jam: %d %s blocked around %d,%d", size, what, x, y));
+                if (ai.logging() && what.equals("peons"))
+                    ai.log("jam peons: " + describePeons(jam));
             }
-            // log only: what the cells around a big warrior jam hold, at most every 150 s
-            if (ai.logging() && jam.size() >= 12 && what.equals("warriors") && ai.time() - last_pic >= 150f) {
+            // log only: what the cells around a big jam hold (12 warriors or 6 peons), at most every 150 s
+            if (ai.logging() && jam.size() >= (what.equals("warriors") ? 12 : 6) && ai.time() - last_pic >= 150f) {
                 last_pic = ai.time();
                 try {
                     ai.military().describeJam(seed.getGridX(), seed.getGridY());

@@ -82,6 +82,8 @@ final class Economy {
     /** Supplies a gatherer got stuck on, avoided until the time given. */
     private final Map<@NonNull Supply, Float> bad_supplies = new LinkedHashMap<>();
     private int unstuck;
+    /** unstick_builders: each builder's cell and when it got there. */
+    private final Map<@NonNull Unit, float @NonNull []> builder_cells = new LinkedHashMap<>();
     private float last_unstuck_log;
     private boolean rush_alert;
     private float rush_alert_time;
@@ -2634,6 +2636,8 @@ final class Economy {
         }
         retargetGatherers(armory);
         unstickGatherers(armory);
+        if (ai.strategy().unstick_builders > 0f)
+            unstickBuilders();
         int workers = armory.getUnitContainer().getNumSupplies();
         int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
         if (deploy_for_gathering > 0 && workers > 3 && pending == 0)
@@ -2879,6 +2883,39 @@ final class Economy {
             last_unstuck_log = now;
             ai.log(unstuck + " stuck gatherers re-sent so far");
         }
+    }
+
+    /** unstick_builders: builders wedged away from their building walk into the nearest armory instead. */
+    private void unstickBuilders() {
+        Intel intel = ai.intel();
+        float now = ai.time();
+        builder_cells.keySet().removeIf(u -> u.isDead() || !intel.builder_sites.containsKey(u));
+        List<Unit> wedged = new ArrayList<>();
+        for (Map.Entry<Unit, Building> e : intel.builder_sites.entrySet()) {
+            Unit u = e.getKey();
+            Building b = e.getValue();
+            float[] seen = builder_cells.get(u);
+            if (seen == null || seen[0] != u.getGridX() || seen[1] != u.getGridY()) {
+                builder_cells.put(u, new float[]{u.getGridX(), u.getGridY(), now});
+                continue;
+            }
+            if (now - seen[2] < ai.strategy().unstick_builders || b.isDead()
+                    || MapAnalysis.dist2(u.getGridX(), u.getGridY(), b.getGridX(), b.getGridY()) <= 3 * 3)
+                continue;
+            wedged.add(u);
+            builder_cells.remove(u);
+        }
+        if (wedged.isEmpty())
+            return;
+        for (Unit u : wedged) {
+            Building home = nearest(intel.armories, u.getGridX(), u.getGridY());
+            if (home != null)
+                order(u, home, Action.DEFAULT);
+            ai.aiLog().count("builder_unstuck");
+        }
+        Unit first = wedged.getFirst();
+        ai.log(String.format("%d wedged builders around %d,%d sent into the armory", wedged.size(), first.getGridX(),
+                first.getGridY()));
     }
 
     /**
