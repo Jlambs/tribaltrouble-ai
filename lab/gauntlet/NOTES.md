@@ -1180,3 +1180,16 @@ retreat through the same pass (only the attack role is watched).
 - chief_safe on cur4 N=12 s1..200: 7 W 9 -> 6, surv60 +1.3 (z 2.4); 10 W 9 -> 11, surv60 +0.9; 14 W 9 -> 4, elim -.023
   (z -2.2); 10 on s201..400 and at N=13 neutral: no consistent gain, not adopted. quarters_first=true at N=13: surv60
   -0.7 (z -1.3), towers20 -0.5 (z -1.7); one game (s158) became a 360-min draw: no.
+- **Peon jams (the user's question): builders wedged in dead-end notches.** jam-logs s9 (N=11): 6-23 peons "walking"
+  on the same cells at 187,114 from 520 s for 13 min. The jam log now names each jammed peon's job and site: all but
+  one are repairers/builders of towers 24-31 cells south (one tower already complete, only damaged), tree gatherers
+  that were picked as the nearest crew; the jam picture shows them in a 1-2-cell dead-end notch of the cliff where
+  they had been cutting a tree, deadlocked against each other at its mouth (the engine's deadlock solver only frees
+  cycles of walking units). A stuck crew still counts as the building's crew, so nobody replaces it, and the peons
+  are lost to the economy for the game. Built: unstick_builders (a builder on the same cell for N s more than 3 cells
+  from its building goes into the armory; s9 frees them at 540 s and the jam never returns) and walk_select (crews
+  taken from gatherers by walking distance: s93 peon jams 41 -> 0, s9 unchanged). Rare at high N (peon jams at N=14:
+  median 0, p90 0.05 per minute); screens at N=11 and N=13 queued.
+- Freeze reach with squad 6 at N=11: freeze_eta=50 W 15 -> 13, wp -0.9 pp (z -1.8); freeze_eta=35 W 15 -> 21, elim
+  +.011, wp +0.85 pp (z 0.9) with strikes in 55 games instead of 164; N=12/13 and the fresh N=11 half queued.
+  reinforce=false and reinforce_intercept are in the N=13 sweep.
