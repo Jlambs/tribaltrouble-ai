@@ -1256,7 +1256,10 @@ class Strategy {
         strategy.towers_mid_time = Math.min(strategy.towers_mid_time, 330f);
         strategy.towers_late = 14;
         strategy.towers_late_time = 600f;
-        strategy.chieftain_time = Math.min(strategy.chieftain_time, 240f);
+        // The chieftain from 300 s (was 240): training takes a quarters' breeding, and an earlier chieftain costs the
+        // opening more peons than his stuns win back (cur6 N=13-14, 9 blocks: surv60 up in 8, fresh-seed wins 9 -> 12;
+        // 360-480 about as good).
+        strategy.chieftain_time = Math.min(strategy.chieftain_time, 300f);
         // Against many Hard copies (lab/gauntlet/NOTES.md, 2026-09-28): shepherds leash their waves, so a target's
         // defense is what stands near it (shepatk-vs7-hn 35 vs 23, shepatk-vs8-hn 12 vs 6), and attacks are
         // reinforced (rmulti-vs7-hn 27 vs 19).
