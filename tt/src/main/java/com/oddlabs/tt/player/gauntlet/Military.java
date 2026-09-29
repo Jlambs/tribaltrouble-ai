@@ -607,19 +607,34 @@ final class Military {
         // armory.
         Building armory = intel.armory();
         float best = -1f;
-        for (Unit seed : threats) {
+        // Each threat's cell, value and base flag once (the pairwise loop used to recompute them per pair and scan
+        // at_base for every pair); the sums run in the same order, so the result is the same.
+        int nt = threats.size();
+        int[] txs = new int[nt];
+        int[] tys = new int[nt];
+        float[] vals = new float[nt];
+        boolean[] in_base = new boolean[nt];
+        java.util.Set<Unit> base_set = new java.util.LinkedHashSet<>(at_base);
+        for (int i = 0; i < nt; i++) {
+            Unit e = threats.get(i);
+            txs[i] = e.getGridX();
+            tys[i] = e.getGridY();
+            vals[i] = Math.max(.2f, Combat.value(e));
+            in_base[i] = base_set.contains(e);
+        }
+        for (int i = 0; i < nt; i++) {
             long sx = 0;
             long sy = 0;
             int n = 0;
             float strength = 0f;
             boolean base = false;
-            for (Unit e : threats) {
-                if (MapAnalysis.dist2(seed.getGridX(), seed.getGridY(), e.getGridX(), e.getGridY()) <= 15 * 15) {
-                    sx += e.getGridX();
-                    sy += e.getGridY();
+            for (int j = 0; j < nt; j++) {
+                if (MapAnalysis.dist2(txs[i], tys[i], txs[j], tys[j]) <= 15 * 15) {
+                    sx += txs[j];
+                    sy += tys[j];
                     n++;
-                    strength += Math.max(.2f, Combat.value(e));
-                    base |= at_base.contains(e);
+                    strength += vals[j];
+                    base |= in_base[j];
                 }
             }
             int cx = (int) (sx / n);
