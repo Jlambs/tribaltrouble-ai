@@ -1280,3 +1280,6 @@ retreat through the same pass (only the attack role is watched).
   still breeds against losses of 28-33 units/min, the expansion brings +5 iron/min), moving expansion towers home.
   Wins and losses differ in razings (0.23 vs 1.21 per min), not completions (0.60 vs 0.48): the levers only slow the
   net loss.
+- tower_parallel_late=2 at N=14 s201..400 (own cur5 base cur5-vs14-hv-b): towers20 +0.30, surv60 +0.05, alive40 -1 pp,
+  W 0 -> 0: the s1..200 survival gain did not repeat. Not adopted alone; to be retried on top of the fallback and
+  wood drop (the judge: the levers are not additive under the building cap).
