@@ -1298,3 +1298,5 @@ retreat through the same pass (only the attack role is watched).
   blocks (N=13 pooled 400: surv60 +0.53, alive40 +1.75 pp; N=14 pooled 400: surv60 +0.49). N=12 wins fall again (the
   third tower-adding change to do so). A win-count comparison on fresh seeds (N=13 and N=14, 600 per arm) and the fresh
   N=12 half are queued before adopting.
+- tower_site_fallback N=12 s201..400: towers20 +0.55 (z 2.1), surv60 -0.2, W 6 -> 4 (pooled N=12 400: W 15 -> 8): not
+  adopted alone.
