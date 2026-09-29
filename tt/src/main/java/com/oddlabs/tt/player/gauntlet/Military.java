@@ -674,9 +674,7 @@ final class Military {
                 picked += Combat.value(defenders.get(n++));
             defenders = new ArrayList<>(defenders.subList(0, n));
         }
-        float ours = 0f;
-        for (Unit u : defenders)
-            ours += Combat.value(u);
+        float ours = Combat.total(defenders);
         float towers = 0f;
         for (Building t : intel.towers)
             if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), threat_x, threat_y) <= 16 * 16)
@@ -2269,7 +2267,7 @@ final class Military {
             if (e.getValue() == Role.ATTACK && MapAnalysis.dist2(e.getKey().getGridX(), e.getKey().getGridY(), c[0],
                     c[1]) <= 20 * 20)
                 ours += Combat.value(e.getKey());
-        int[] back = stepTowards(c[0], c[1], staging_x, staging_y, 6);
+        int[] back = MapAnalysis.towards(c[0], c[1], staging_x, staging_y, 6);
         creepTick(c, ours);
         Building site = creep_site;
         for (Unit p : intel.sappers) {
@@ -2412,16 +2410,6 @@ final class Military {
             }
         }
         return best;
-    }
-
-    /** The point `cells` away from (x, y) in the direction of (to_x, to_y). */
-    private static int @NonNull [] stepTowards(int x, int y, int to_x, int to_y, int cells) {
-        float dx = to_x - x;
-        float dy = to_y - y;
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        if (len <= cells)
-            return new int[]{to_x, to_y};
-        return new int[]{x + (int) (dx / len * cells), y + (int) (dy / len * cells)};
     }
 
     private void setTarget(@NonNull Selectable<?> t) {
@@ -3324,7 +3312,6 @@ final class Military {
      */
     private void considerReinforcing() {
         List<Unit> group = new ArrayList<>();
-        float home = 0f;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             if (e.getValue() != Role.ARMY)
                 continue;
@@ -3333,12 +3320,9 @@ final class Military {
             if (s == WarriorState.STUNNED || s == WarriorState.ENTER)
                 continue;
             group.add(u);
-            home += Combat.value(u);
         }
         group = beyondGuard(group);
-        home = 0f;
-        for (Unit u : group)
-            home += Combat.value(u);
+        float home = Combat.total(group);
         if (group.isEmpty())
             return;
         float away = attackStrength();
@@ -3716,9 +3700,7 @@ final class Military {
             endChase(squad);
             return;
         }
-        float ours = 0f;
-        for (Unit u : squad)
-            ours += Combat.value(u);
+        float ours = Combat.total(squad);
         float danger = Combat.strengthNear(intel.enemy_warriors, c[0], c[1], 24);
         for (Unit ch : intel.enemy_chieftains)
             if (ch != t && !ch.isDead() && MapAnalysis.dist2(ch.getGridX(), ch.getGridY(), c[0], c[1]) <= 24 * 24)
@@ -3769,9 +3751,7 @@ final class Military {
         if (squad.isEmpty())
             return;
         int[] c = centroid(squad);
-        float ours = 0f;
-        for (Unit u : squad)
-            ours += Combat.value(u);
+        float ours = Combat.total(squad);
         float danger = withEnemyTowers(enemyStrengthNear(c[0], c[1], 24), c[0], c[1], 10);
         boolean done = ai.time() - raid_start > 150f;
         if (danger > .8f * ours || done || squad.size() < 2) {

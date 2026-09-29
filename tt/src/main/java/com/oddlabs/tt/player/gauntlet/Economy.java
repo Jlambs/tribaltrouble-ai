@@ -1125,15 +1125,9 @@ final class Economy {
      */
     private boolean armsRace() {
         Strategy strategy = ai.strategy();
-        float ours = 0f;
-        for (Unit w : ai.intel().warriors)
-            ours += Combat.value(w);
         if (!rush_alert || ai.time() > rush_alert_time + strategy.rush_seconds)
             return false;
-        float theirs = 0f;
-        for (Unit w : ai.intel().enemy_warriors)
-            theirs += Combat.value(w);
-        return ours < 1.2f * theirs + 4f;
+        return Combat.total(ai.intel().warriors) < 1.2f * Combat.total(ai.intel().enemy_warriors) + 4f;
     }
 
     /** Early in the game, enemies in the base that our warriors cannot handle. */
@@ -1142,10 +1136,7 @@ final class Economy {
         Military military = ai.military();
         if (!strategy.pressure_response || ai.time() >= strategy.pressure_time || military.baseThreatLevel() == 0)
             return false;
-        float ours = 0f;
-        for (Unit w : ai.intel().warriors)
-            ours += Combat.value(w);
-        return ours < 1.2f * military.threatStrength() + 4f;
+        return Combat.total(ai.intel().warriors) < 1.2f * military.threatStrength() + 4f;
     }
 
     /**

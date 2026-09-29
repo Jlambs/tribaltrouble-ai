@@ -306,7 +306,7 @@ final class Chieftain {
             return true;
         }
         if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
-            int[] stop = nearest > 11 ? towards(cx, cy, blob[0], blob[1], Math.max(2, nearest - 10)) : towards(blob[0],
+            int[] stop = nearest > 11 ? MapAnalysis.towards(cx, cy, blob[0], blob[1], Math.max(2, nearest - 10)) : MapAnalysis.towards(blob[0],
                     blob[1], cx, cy, 12);
             ai.landscapeOrder(Selectable.newArray(chief), stop[0], stop[1], Action.MOVE, false);
             last_move = ai.time();
@@ -756,7 +756,7 @@ final class Chieftain {
                 tx = chief.getGridX();
                 ty = chief.getGridY();
             } else {
-                int[] stop = towards(chief.getGridX(), chief.getGridY(), at[0], at[1], Math.max(3, nearest - 9));
+                int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), at[0], at[1], Math.max(3, nearest - 9));
                 tx = stop[0];
                 ty = stop[1];
             }
@@ -772,18 +772,18 @@ final class Chieftain {
                     tx = chief.getGridX();
                     ty = chief.getGridY();
                 } else {
-                    int[] stop = towards(chief.getGridX(), chief.getGridY(), enemies[0], enemies[1], nearest - keep);
+                    int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), enemies[0], enemies[1], nearest - keep);
                     tx = stop[0];
                     ty = stop[1];
                 }
             }
         } else if (army != null) {
             // March inside the clump, a little behind its middle.
-            int[] back = towards(army[0], army[1], military.stagingX(), military.stagingY(), enemies != null ? 8 : 3);
+            int[] back = MapAnalysis.towards(army[0], army[1], military.stagingX(), military.stagingY(), enemies != null ? 8 : 3);
             tx = back[0];
             ty = back[1];
         } else if (military.baseThreatLevel() > 0) {
-            int[] back = towards(military.threatX(), military.threatY(), military.stagingX(), military.stagingY(),
+            int[] back = MapAnalysis.towards(military.threatX(), military.threatY(), military.stagingX(), military.stagingY(),
                     12);
             tx = back[0];
             ty = back[1];
@@ -875,16 +875,6 @@ final class Chieftain {
             if (!Intel.isStunned(e))
                 best = Math.min(best, MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()));
         return best == Integer.MAX_VALUE ? 1000 : (int) Math.sqrt(best);
-    }
-
-    /** The point `cells` away from (x, y) in the direction of (to_x, to_y). */
-    private static int @NonNull [] towards(int x, int y, int to_x, int to_y, int cells) {
-        float dx = to_x - x;
-        float dy = to_y - y;
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        if (len <= cells)
-            return new int[]{to_x, to_y};
-        return new int[]{x + (int) (dx / len * cells), y + (int) (dy / len * cells)};
     }
 
     /** Middle of the enemy warriors and manned towers around the nearest one within radius cells, or null. */

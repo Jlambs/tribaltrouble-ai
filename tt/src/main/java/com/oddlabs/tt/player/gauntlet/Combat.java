@@ -74,6 +74,14 @@ final class Combat {
         return sum;
     }
 
+    /** Sum of the units' values, in list order. */
+    static float total(@NonNull List<@NonNull Unit> units) {
+        float sum = 0f;
+        for (Unit u : units)
+            sum += value(u);
+        return sum;
+    }
+
     static int countNear(List<? extends Selectable<?>> units, int x, int y, int radius) {
         int r2 = radius * radius;
         int n = 0;

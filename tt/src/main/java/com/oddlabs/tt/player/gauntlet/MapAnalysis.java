@@ -345,6 +345,16 @@ final class MapAnalysis {
         return dx * dx + dy * dy;
     }
 
+    /** The cell `cells` away from (x, y) in the direction of (to_x, to_y) (truncated), or (to_x, to_y) if nearer. */
+    static int @NonNull [] towards(int x, int y, int to_x, int to_y, int cells) {
+        float dx = to_x - x;
+        float dy = to_y - y;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len <= cells)
+            return new int[]{to_x, to_y};
+        return new int[]{x + (int) (dx / len * cells), y + (int) (dy / len * cells)};
+    }
+
     /** Euclidean distance in meters between two grid cells. */
     static float meters(int x0, int y0, int x1, int y1) {
         return (float) Math.sqrt(dist2(x0, y0, x1, y1)) * HeightMap.METERS_PER_UNIT_GRID;
