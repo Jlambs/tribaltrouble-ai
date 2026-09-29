@@ -1198,3 +1198,13 @@ retreat through the same pass (only the attack role is watched).
 - N=13 sweep, first arms (vs freeze-squad6-c3-vs13-hv): reinforce=false elim -.058 (z -10.0), surv60 -1.9 (z -3.9):
   reinforcing the campaign is essential; reinforce_intercept towers20 -0.7 (z -2.3), surv60 -0.8; target_defense_weight
   2 and quarters_first neutral.
+- **Shepherd efficiency: execution fixed, outcomes unchanged** (merged 62c7d2a5, all params off; lab tool
+  shepherd_audit.py prints the mechanism per run). 40 logged N=13 games: shepherds stand on their spot 3 % of tends
+  (walk 47 %, flee 22 %, no spot 22 %); 90 % of their deaths happen while fleeing (waves aimed at them, hunters), at a
+  net 1.1-1.4 cells/s. shepherd_sticky (+ grace, travel cost) cut A->B->A flips 137 -> 46 per game; safe_walk +
+  sticky raised arrivals 19 % and time on spot 3 % -> 5.8 %, drawn waves +20 %: over 400 N=13 games elim and survival
+  do not move (sticky+travel elim +.010 / -.004, wp +0.4 / +0.25 pp). shepherd_home_pair=200 cuts the base share of
+  waves .279 -> .228 but costs ~30 more peons a game and elim fell on both halves (-.009, -.020 z -2.6): no.
+  shepherd_gap=60 null at N=13, elim -.018 at N=12: no. shepherd_range=200 (no shepherds for far copies): elim -.070
+  (z -8.2), surv60 -3.6 min (z -6.0): far copies' shepherds are essential although most die on the way. The lever, if
+  any, is how shepherds survive a flee, not where they stand.
