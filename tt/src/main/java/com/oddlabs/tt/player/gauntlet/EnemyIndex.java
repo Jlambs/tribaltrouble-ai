@@ -3,7 +3,6 @@ package com.oddlabs.tt.player.gauntlet;
 import com.oddlabs.tt.model.Unit;
 import org.jspecify.annotations.NonNull;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -22,10 +21,14 @@ final class EnemyIndex {
     private static final int SHIFT = 4;
 
     private final int side;
-    private final List<@NonNull Unit> units = new ArrayList<>();
+    private Unit[] units = new Unit[256];
+    private int size;
     private int[] xs = new int[256];
     private int[] ys = new int[256];
     private byte[] groups = new byte[256];
+    /** Per unit, its bucket and its slot in that bucket's list. */
+    private int[] bucket_of = new int[256];
+    private int[] slot = new int[256];
     private final int[][] buckets;
     private final int[] bucket_sizes;
     private int[] result = new int[64];
@@ -39,38 +42,74 @@ final class EnemyIndex {
     /** Rebuilds the index from the lists as they stand now. */
     void rebuild(@NonNull List<@NonNull Unit> warriors, @NonNull List<@NonNull Unit> chieftains,
             @NonNull List<@NonNull Unit> peons) {
-        units.clear();
+        Arrays.fill(units, 0, size, null);
+        size = 0;
         Arrays.fill(bucket_sizes, 0);
         add(warriors, WARRIOR);
         add(chieftains, CHIEFTAIN);
         add(peons, PEON);
     }
 
+    /**
+     * Brings the index up to where the same units stand now: only the units whose cell changed since the last rebuild
+     * or refresh move to their new buckets (most units keep their cell from one tick to the next). Queries then find
+     * what they would after a rebuild from the same lists.
+     */
+    void refresh() {
+        for (int i = 0; i < size; i++) {
+            Unit u = units[i];
+            int x = u.getGridX();
+            int y = u.getGridY();
+            if (x == xs[i] && y == ys[i])
+                continue;
+            xs[i] = x;
+            ys[i] = y;
+            int b = bucket(x, y);
+            int old = bucket_of[i];
+            if (b == old)
+                continue;
+            int[] list = buckets[old];
+            int last = list[--bucket_sizes[old]];
+            list[slot[i]] = last;
+            slot[last] = slot[i];
+            append(b, i);
+        }
+    }
+
     private void add(@NonNull List<@NonNull Unit> group, byte kind) {
         for (Unit u : group) {
-            int i = units.size();
+            int i = size;
             if (i == xs.length) {
+                units = Arrays.copyOf(units, i * 2);
                 xs = Arrays.copyOf(xs, i * 2);
                 ys = Arrays.copyOf(ys, i * 2);
                 groups = Arrays.copyOf(groups, i * 2);
+                bucket_of = Arrays.copyOf(bucket_of, i * 2);
+                slot = Arrays.copyOf(slot, i * 2);
             }
-            units.add(u);
+            units[i] = u;
+            size++;
             int x = u.getGridX();
             int y = u.getGridY();
             xs[i] = x;
             ys[i] = y;
             groups[i] = kind;
-            int b = bucket(x, y);
-            int[] list = buckets[b];
-            if (list == null) {
-                list = new int[8];
-                buckets[b] = list;
-            } else if (bucket_sizes[b] == list.length) {
-                list = Arrays.copyOf(list, list.length * 2);
-                buckets[b] = list;
-            }
-            list[bucket_sizes[b]++] = i;
+            append(bucket(x, y), i);
         }
+    }
+
+    private void append(int b, int i) {
+        int[] list = buckets[b];
+        if (list == null) {
+            list = new int[8];
+            buckets[b] = list;
+        } else if (bucket_sizes[b] == list.length) {
+            list = Arrays.copyOf(list, list.length * 2);
+            buckets[b] = list;
+        }
+        bucket_of[i] = b;
+        slot[i] = bucket_sizes[b];
+        list[bucket_sizes[b]++] = i;
     }
 
     private int bucket(int x, int y) {
@@ -130,7 +169,7 @@ final class EnemyIndex {
 
     @NonNull
     Unit unit(int i) {
-        return units.get(i);
+        return units[i];
     }
 
     /** WARRIOR, CHIEFTAIN or PEON: the list unit i came from. */
