@@ -212,6 +212,23 @@ final class Military {
     private float raid_start = -1000f;
     private float last_raid_end = -1000f;
 
+    /** Enemies bucketed by position for the towers, rebuilt once per tick (or when Intel rebuilds its lists). */
+    private @Nullable EnemyIndex enemy_index;
+    private float enemy_index_time = -1f;
+    private int enemy_index_version = -1;
+
+    private @NonNull EnemyIndex enemyIndex() {
+        Intel intel = ai.intel();
+        if (enemy_index == null)
+            enemy_index = new EnemyIndex(ai.map().getSize());
+        if (enemy_index_time != ai.time() || enemy_index_version != intel.version) {
+            enemy_index.rebuild(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons);
+            enemy_index_time = ai.time();
+            enemy_index_version = intel.version;
+        }
+        return enemy_index;
+    }
+
     Military(@NonNull GauntletAI ai) {
         this.ai = ai;
         staging_x = ai.planner().getStartX();
@@ -3867,24 +3884,23 @@ final class Military {
     /** The best enemy in reach for this tower, skipping one and any already doomed by an axe in flight. */
     private @Nullable Unit bestTowerTarget(@NonNull Building t, @NonNull Unit gunner, int @NonNull [] o, int r2,
             @Nullable Unit skip) {
-        Intel intel = ai.intel();
         Unit best = null;
         float best_score = 0f;
-        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
-            for (Unit e : group) {
-                if (e == skip || e.isDead() || inflight.containsKey(e)
-                        || MapAnalysis.dist2(o[0], o[1], e.getGridX(), e.getGridY()) > r2)
-                    continue;
-                int others = 0;
-                for (Unit other : tower_targets.values())
-                    if (other == e)
-                        others++;
-                float score = throwValue(gunner, e) * towerSelfFactor(t, e) * towerHitChance(gunner, t,
-                        e) / (1 << Math.min(others, 4));
-                if (score > best_score) {
-                    best_score = score;
-                    best = e;
-                }
+        Map<Unit, Integer> targeted = new LinkedHashMap<>();
+        for (Unit other : tower_targets.values())
+            targeted.merge(other, 1, Integer::sum);
+        EnemyIndex index = enemyIndex();
+        int[] near = index.query(o[0], o[1], r2);
+        for (int k = 0, n = index.count(); k < n; k++) {
+            Unit e = index.unit(near[k]);
+            if (e == skip || e.isDead() || inflight.containsKey(e))
+                continue;
+            int others = targeted.getOrDefault(e, 0);
+            float score = throwValue(gunner, e) * towerSelfFactor(t, e) * towerHitChance(gunner, t,
+                    e) / (1 << Math.min(others, 4));
+            if (score > best_score) {
+                best_score = score;
+                best = e;
             }
         }
         return best;
@@ -3917,21 +3933,21 @@ final class Military {
             Unit best = null;
             float best_score = 0f;
             float best_p = 0f;
-            for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons)) {
-                for (Unit e : group) {
-                    if (e.isDead() || MapAnalysis.dist2(o[0], o[1], e.getGridX(), e.getGridY()) > r2
-                            || inflight.containsKey(e))
-                        continue;
-                    float value = throwValue(gunner, e) * towerSelfFactor(t, e);
-                    if (group == intel.enemy_peons && nearOwnTower(e))
-                        value = 1.5f;
-                    float p = towerHitChance(gunner, t, e);
-                    float score = value * p * survival(survive, e);
-                    if (score > best_score) {
-                        best_score = score;
-                        best = e;
-                        best_p = p;
-                    }
+            EnemyIndex index = enemyIndex();
+            int[] near = index.query(o[0], o[1], r2);
+            for (int k = 0, n = index.count(); k < n; k++) {
+                Unit e = index.unit(near[k]);
+                if (e.isDead() || inflight.containsKey(e))
+                    continue;
+                float value = throwValue(gunner, e) * towerSelfFactor(t, e);
+                if (index.isPeon(near[k]) && nearOwnTower(e))
+                    value = 1.5f;
+                float p = towerHitChance(gunner, t, e);
+                float score = value * p * survival(survive, e);
+                if (score > best_score) {
+                    best_score = score;
+                    best = e;
+                    best_p = p;
                 }
             }
             if (best == null) {
@@ -3960,16 +3976,18 @@ final class Military {
             return current;
         Unit best = null;
         float best_score = 0f;
-        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons))
-            for (Unit e : group) {
-                if (e.isDead() || MapAnalysis.dist2(o[0], o[1], e.getGridX(), e.getGridY()) > r2)
-                    continue;
-                float score = throwValue(gunner, e) * towerHitChance(gunner, t, e);
-                if (score > best_score) {
-                    best_score = score;
-                    best = e;
-                }
+        EnemyIndex index = enemyIndex();
+        int[] near = index.query(o[0], o[1], r2);
+        for (int k = 0, n = index.count(); k < n; k++) {
+            Unit e = index.unit(near[k]);
+            if (e.isDead())
+                continue;
+            float score = throwValue(gunner, e) * towerHitChance(gunner, t, e);
+            if (score > best_score) {
+                best_score = score;
+                best = e;
             }
+        }
         if (best != null)
             tower_targets.put(t, best);
         return best;

@@ -122,7 +122,11 @@ final class Intel {
         this.owner = owner;
     }
 
+    /** Changes whenever update() rebuilds the lists (EnemyIndex caches on it). */
+    int version;
+
     void update() {
+        version++;
         quarters.clear();
         armories.clear();
         towers.clear();
