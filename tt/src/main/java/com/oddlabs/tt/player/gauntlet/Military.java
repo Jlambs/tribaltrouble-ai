@@ -227,7 +227,7 @@ final class Military {
     private float raid_start = -1000f;
     private float last_raid_end = -1000f;
 
-    /** Enemies bucketed by position for the towers, rebuilt once per tick (or when Intel rebuilds its lists). */
+    /** Intel's shared index of enemies by position (towers and shepherds), brought up to date once per tick. */
     private @NonNull EnemyIndex enemyIndex() {
         return ai.intel().enemyIndex(ai.ticks());
     }
@@ -2495,6 +2495,13 @@ final class Military {
             }
         }
         attack_running = false;
+        if (column_until >= 0f) {
+            column_until = -1f;
+            column_target = null;
+            ai.aiLog().count("unjam_ended");
+            ai.log("unjam: column march over, the attack ended");
+        }
+        jam_scans = 0;
         for (Map.Entry<Unit, Role> e : roles.entrySet())
             if (e.getValue() == Role.ATTACK || e.getValue() == Role.REINFORCE)
                 e.setValue(Role.ARMY);
@@ -2746,8 +2753,36 @@ final class Military {
         // most per target) instead of being left to chase the army across the field at the same speed.
         if (ai.strategy().reinforce_intercept && waitForReinforcements(c, total))
             return;
+        // unjam: a jammed army marches as a column (see noteBlocked); the idle plug at a pass exit walks on too.
+        boolean column = field != null && ai.time() < column_until;
+        if (column_until >= 0f && !column) {
+            column_until = -1f;
+            // through: the pivot got 30 m closer to the same target, or the target fell; retarget: the stall rule
+            // (or a new target near the old one) took over; still: the column did not move the army on.
+            int gain = column_start_dist != DistanceField.UNREACHABLE
+                    && dist != DistanceField.UNREACHABLE ? column_start_dist - dist : 0;
+            Selectable<?> was = column_target;
+            String outcome = was == null
+                    || was.isDead() ? "through" : was != target ? "retarget" : gain >= 30 ? "through" : "still";
+            ai.aiLog().count("unjam_" + outcome);
+            ai.log(String.format(
+                    "unjam: column march over (%s), pivot %d m from the target at %d,%d (%d m at the start), army at %d,%d",
+                    outcome, dist, target_x, target_y, column_start_dist, c[0], c[1]));
+            column_target = null;
+        }
         for (Unit u : army) {
             int d = field != null ? field.getAround(u.getGridX(), u.getGridY(), 1) : DistanceField.UNREACHABLE;
+            if (column && d != DistanceField.UNREACHABLE) {
+                // Each unit walks on towards its own point; the front walks on too, clear of the pass exit where the
+                // plug stood (one lead past the pivot), but no farther than two leads ahead of the pivot, so the
+                // column cannot string out without end (uj3-s98: 45 of 75 units far from the centre, 20 lost).
+                int step = pivot != null ? Math.min(lead, d - (pivot_dist - 2 * lead)) : lead;
+                if (step >= 8) {
+                    int[] own = field.stepTowardsSource(u.getGridX(), u.getGridY(), step);
+                    attackGround(u, own[0], own[1], false);
+                }
+                continue;
+            }
             // Units well ahead of the pivot wait for the rest instead of walking on alone.
             if (pivot != null && d != DistanceField.UNREACHABLE && d < pivot_dist - 24)
                 continue;
@@ -3454,6 +3489,98 @@ final class Military {
     /** The army's current march waypoint, and when it was set (only while marching calmly). */
     private int @Nullable [] march_wp;
     private float march_calm_time = -100f;
+    /**
+     * unjam: the column march lasts until then (-1: none). A jam window is the run of scans in a row that found the
+     * army jammed, on one target field, and where its pivot stood at the first of them.
+     */
+    private float column_until = -1f;
+    private int jam_scans;
+    private int jam_first_dist = DistanceField.UNREACHABLE;
+    private @Nullable DistanceField jam_field;
+    private int column_start_dist = DistanceField.UNREACHABLE;
+    private @Nullable Selectable<?> column_target;
+
+    /**
+     * unjam: called by Jams after every scan with the warriors it found blocked. With at least unjam attack units
+     * blocked on every scan for unjam_after s (from unjam_from s of game time), no enemy fighter near them, and the
+     * pivot less than unjam_progress m closer to the target, the attack marches as a column until unjam_time s after
+     * the last jammed scan (Military.attack). The progress test keeps it out of a crowded march that still moves: in
+     * s13, s16 and s31
+     * at N=11 a column march started so, strung the army out, and it met the enemy piecemeal (s31: 39 of 147 units left
+     * at 1000 s, against 102 in the base game).
+     */
+    void noteBlocked(@NonNull List<@NonNull Unit> blocked) {
+        Strategy strategy = ai.strategy();
+        if (strategy.unjam <= 0)
+            return;
+        List<Unit> stuck = new ArrayList<>();
+        if (mode == Mode.ATTACK && ai.time() >= strategy.unjam_from)
+            for (Unit u : blocked)
+                if (roles.get(u) == Role.ATTACK)
+                    stuck.add(u);
+        if (stuck.size() < strategy.unjam || target_field == null) {
+            jam_scans = 0;
+            return;
+        }
+        // Units crowding a melee are no choke jam (s48 at N=11): only a jam with no enemy warrior, chieftain or tower
+        // near counts. Enemy peons do not: the army stuck in s98 cut down gatherers all the time.
+        int[] jc = centroid(stuck);
+        int r = ENGAGE_RADIUS + 8;
+        boolean fight = enemyStrengthNear(jc[0], jc[1], r) > 0f;
+        for (Building t : ai.intel().enemy_towers)
+            if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), jc[0], jc[1]) <= r * r)
+                fight = true;
+        if (fight) {
+            jam_scans = 0;
+            return;
+        }
+        int pivot = attackPivotDist(target_field);
+        if (jam_scans == 0 || jam_field != target_field) {
+            jam_scans = 0;
+            jam_field = target_field;
+            jam_first_dist = pivot;
+        }
+        jam_scans++;
+        if ((jam_scans - 1) * Jams.PERIOD < strategy.unjam_after)
+            return;
+        if (column_until < 0f) {
+            if (pivot == DistanceField.UNREACHABLE || jam_first_dist == DistanceField.UNREACHABLE
+                    || pivot <= jam_first_dist - strategy.unjam_progress) {
+                // crowded but moving: start a new window from here
+                ai.aiLog().count("unjam_moving");
+                jam_scans = 1;
+                jam_first_dist = pivot;
+                return;
+            }
+            column_start_dist = pivot;
+            column_target = target;
+            ai.aiLog().count("unjam_column");
+            if (ai.logging())
+                ai.log(String.format(
+                        "unjam: %d of %d attack units blocked around %d,%d, pivot %d m from the target at " + "%d,%d (%d m %.0f s ago): column march",
+                        stuck.size(), countRole(Role.ATTACK), jc[0], jc[1],
+                        pivot, target_x, target_y, jam_first_dist, (jam_scans - 1) * Jams.PERIOD));
+        }
+        column_until = ai.time() + strategy.unjam_time;
+    }
+
+    /** unjam: the field distance of the attack unit a third of the way back from the front, as the march ranks them. */
+    private int attackPivotDist(@NonNull DistanceField field) {
+        List<Integer> ds = new ArrayList<>();
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            if (e.getValue() != Role.ATTACK || u.isDead())
+                continue;
+            int d = field.getAround(u.getGridX(), u.getGridY(), 1);
+            if (d != DistanceField.UNREACHABLE)
+                ds.add(d);
+        }
+        if (ds.isEmpty())
+            return DistanceField.UNREACHABLE;
+        ds.sort(null);
+        return ds.get(ds.size() / 3);
+    }
+
     private @Nullable Selectable<?> hold_target;
     private float hold_since;
 
@@ -4444,6 +4571,86 @@ final class Military {
                 Role.ATTACK) + " raid=" + countRole(Role.RAID) + " twr=" + countRole(Role.TOWER) + String.format(
                         " str=%.1f thr=%d/%.1f",
                         armyStrength(), threat_level, threat_strength) + parkedStatus();
+    }
+
+    /**
+     * Log only (Jams, for a big warrior jam): the cells around (cx, cy), one log line per row. # terrain nobody can
+     * walk, B a building, T a tree or other static occupant, . open ground (, where the target field does not reach),
+     * attack units b blocked walking / w walking / i idle / f anything else, o our other units, e enemy units, W the
+     * march waypoint. The head line compares the target field with one computed now (a stale field would differ).
+     */
+    void describeJam(int cx, int cy) {
+        if (!ai.logging())
+            return;
+        MapAnalysis map = ai.map();
+        com.oddlabs.tt.pathfinder.UnitGrid grid = map.getGrid();
+        int rx = 32;
+        int ry = 22;
+        Map<String, Integer> walk_targets = new LinkedHashMap<>();
+        int[] kinds = new int[6];
+        StringBuilder head = new StringBuilder(
+                "jampic head x0=" + (cx - rx) + " y0=" + (cy - ry) + " mode=" + mode + " target=" + target_x + "," + target_y + " wp=" + (march_wp != null ? march_wp[0] + "," + march_wp[1] : "-"));
+        DistanceField f = target_field;
+        if (f != null) {
+            DistanceField fresh = map.computeField(target_x, target_y, Integer.MAX_VALUE);
+            head.append(" field@c=").append(f.getAround(cx, cy, 1)).append(" fresh@c=").append(fresh.getAround(cx, cy,
+                    1));
+            if (march_wp != null)
+                head.append(" field@wp=").append(f.getAround(march_wp[0], march_wp[1], 1)).append(" fresh@wp=").append(
+                        fresh.getAround(march_wp[0], march_wp[1], 1));
+        }
+        ai.log(head.toString());
+        for (int y = cy - ry; y <= cy + ry; y++) {
+            StringBuilder row = new StringBuilder();
+            for (int x = cx - rx; x <= cx + rx; x++) {
+                char ch;
+                if (march_wp != null && x == march_wp[0] && y == march_wp[1])
+                    ch = 'W';
+                else if (!map.walkable(x, y))
+                    ch = '#';
+                else {
+                    com.oddlabs.tt.pathfinder.Occupant occ = grid.getOccupant(x, y);
+                    if (occ == null)
+                        ch = f != null && !f.reachable(x, y) ? ',' : '.';
+                    else if (occ instanceof Unit u && !u.isDead()) {
+                        if (u.getOwner() == ai.owner()) {
+                            Role role = roles.get(u);
+                            com.oddlabs.tt.model.behaviour.Behaviour b = u.getCurrentBehaviour();
+                            if (role == Role.ATTACK) {
+                                if (b instanceof com.oddlabs.tt.model.behaviour.WalkBehaviour) {
+                                    ch = b.isBlocking() ? 'b' : 'w';
+                                    kinds[b.isBlocking() ? 0 : 1]++;
+                                } else if (b instanceof com.oddlabs.tt.model.behaviour.IdleBehaviour) {
+                                    ch = 'i';
+                                    kinds[2]++;
+                                } else {
+                                    ch = 'f';
+                                    kinds[3]++;
+                                }
+                                if (u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.WalkController wc) {
+                                    String k = wc.getTarget().getGridX() + "," + wc.getTarget().getGridY();
+                                    walk_targets.merge(k, 1, Integer::sum);
+                                }
+                            } else {
+                                ch = 'o';
+                                kinds[4]++;
+                            }
+                        } else {
+                            ch = 'e';
+                            kinds[5]++;
+                        }
+                    } else if (occ instanceof Building)
+                        ch = 'B';
+                    else if (occ.getPenalty() >= com.oddlabs.tt.pathfinder.Occupant.STATIC)
+                        ch = 'T';
+                    else
+                        ch = '?';
+                }
+                row.append(ch);
+            }
+            ai.log(String.format("jampic %4d %s", y, row));
+        }
+        ai.log("jampic kinds blocked=" + kinds[0] + " walking=" + kinds[1] + " idle=" + kinds[2] + " other=" + kinds[3] + " own_other=" + kinds[4] + " enemy=" + kinds[5] + " walk_targets=" + walk_targets);
     }
 
     /**

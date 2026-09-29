@@ -307,8 +307,7 @@ final class Chieftain {
         }
         if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
             int[] stop = nearest > 11 ? MapAnalysis.towards(cx, cy, blob[0], blob[1], Math.max(2,
-                    nearest - 10)) : MapAnalysis.towards(blob[0],
-                            blob[1], cx, cy, 12);
+                    nearest - 10)) : MapAnalysis.towards(blob[0], blob[1], cx, cy, 12);
             ai.landscapeOrder(Selectable.newArray(chief), stop[0], stop[1], Action.MOVE, false);
             last_move = ai.time();
         }
@@ -788,8 +787,7 @@ final class Chieftain {
             ty = back[1];
         } else if (military.baseThreatLevel() > 0) {
             int[] back = MapAnalysis.towards(military.threatX(), military.threatY(), military.stagingX(),
-                    military.stagingY(),
-                    12);
+                    military.stagingY(), 12);
             tx = back[0];
             ty = back[1];
         } else {

@@ -192,6 +192,11 @@ final class MapAnalysis {
         return passable(x, y, null);
     }
 
+    /** Whether the terrain itself can be walked (the height map's access grid), whatever stands there. */
+    boolean walkable(int x, int y) {
+        return inside(x, y) && access[y][x];
+    }
+
     /** Units and chickens move out of the way (an idle unit counts as a static occupant, but not for long). */
     private boolean passable(int x, int y, Occupant ignore) {
         if (!inside(x, y) || !access[y][x])

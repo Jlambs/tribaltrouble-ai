@@ -49,7 +49,7 @@ public final class GauntletAI extends AI {
     private @Nullable Shepherd shepherd;
     private @Nullable Lures lures;
     private @Nullable Dodges dodges;
-    /** Diagnostics only: traffic jams of our units (counters and log lines). */
+    /** Traffic jams of our units: counters and log lines, and the blocked warriors that unjam acts on. */
     private @Nullable Jams jams;
     private @Nullable Freeze freeze;
 

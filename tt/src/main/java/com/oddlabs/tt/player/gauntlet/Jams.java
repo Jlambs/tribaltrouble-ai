@@ -10,13 +10,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Diagnostics only (counters and log lines, no orders): traffic jams of our own units. Every 5 s, a unit that is
- * walking (WalkBehaviour) but stands on the same grid cell as 5 s before is blocked; four or more blocked units within
- * 4 cells of each other are a jam. Peons clustering to harvest behind a narrow gap and an army column stuck at a choke
- * both show up here, which the census cannot see.
+ * Traffic jams of our own units (counters and log lines, no orders of its own). Every 5 s, a unit that is walking
+ * (WalkBehaviour) but stands on the same grid cell as 5 s before is blocked; four or more blocked units within 4 cells
+ * of each other are a jam. Peons clustering to harvest behind a narrow gap and an army column stuck at a choke both
+ * show up here, which the census cannot see. The blocked warriors of every scan go to Military.noteBlocked (unjam), and
+ * a big warrior jam gets a picture of the cells around it in the log (Military.describeJam).
  */
 final class Jams {
-    private static final float PERIOD = 5f;
+    static final float PERIOD = 5f;
     private static final int CLUSTER = 4;
     private static final int RADIUS = 4;
 
@@ -24,6 +25,7 @@ final class Jams {
     private final Map<@NonNull Unit, int @NonNull []> last_cells = new LinkedHashMap<>();
     private float last_scan = -10f;
     private float last_log = -100f;
+    private float last_pic = -1000f;
 
     Jams(@NonNull GauntletAI ai) {
         this.ai = ai;
@@ -52,6 +54,9 @@ final class Jams {
             }
         last_cells.clear();
         last_cells.putAll(cells);
+        // unjam: the one use of the scan that changes play (Military ignores it while unjam is 0); before the log-only
+        // counting below, so nothing there can keep it from running
+        ai.military().noteBlocked(blocked_warriors);
         count(blocked_peons, "peon_blocked", "peon_jam", "peons");
         count(blocked_warriors, "warrior_blocked", "warrior_jam", "warriors");
     }
@@ -80,6 +85,15 @@ final class Jams {
                 int x = seed.getGridX();
                 int y = seed.getGridY();
                 ai.log(String.format("jam: %d %s blocked around %d,%d", size, what, x, y));
+            }
+            // log only: what the cells around a big warrior jam hold, at most every 150 s
+            if (ai.logging() && jam.size() >= 12 && what.equals("warriors") && ai.time() - last_pic >= 150f) {
+                last_pic = ai.time();
+                try {
+                    ai.military().describeJam(seed.getGridX(), seed.getGridY());
+                } catch (RuntimeException e) {
+                    ai.aiLog().error("Jams.describeJam", e);
+                }
             }
         }
     }
