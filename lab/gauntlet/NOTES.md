@@ -846,3 +846,21 @@ s10, slot 0); 93 runs checked.
   N=8); finish_lean (skip_out, units 8, ratio .5) +.015; finish_lean + chief_hunt +.017; chief_hunt alone +.004 with
   lsr15 -.023 (z -2.5): the squad starts 0.49 chieftain hunts and kills 0.14 per game (most targets are > 150 cells
   out). No to lean and hunt.
+
+### shepherd_time 120 adopted (commit d6dfd295); first N=12 numbers; the goal
+
+The user (2026-09-28): the benchmark is the highest N that a general strategy beats even a few times on random seeds
+(N=13-14 with single-digit wins among many games counts more than a 10 % rate), strategy-first and never
+map-specific; the legacy params and early features come from a 1v1 superhuman project that never beat more than 4-5 in
+1vN, so every legacy default, old behaviour and early-discarded idea is to be re-screened in the 1vN regime.
+
+- shepherd_time (paired with base2): 120 s: 1..200 elim +.048 (z 2.9), W 15 vs 7; 201..400 +.024 (z 1.4), W 13 vs 12,
+  lsr15 +.19 (z 4.7), lsr20 +.38 (z 3.9); N=8 +.023, W 118 vs 115. 150 s: survival up, elim -.012 / -.001, W 3 vs 7 and
+  10 vs 12. 90 s: same survival as 120, elim -.030 against it (W 8 vs 15). Adopted 120 (the default build reproduces
+  the explicit arm, same checksum).
+- Not adopted on base2: finish_copies (elim +.028 / +.024, z 2.4 each, but W 14 vs 19 over 400: homeless copies launch
+  0.04 waves per copy-minute vs 0.56 housed, so finishing them adds outs that do not win games), focus_bonus 100 +
+  focus_finish (+.008, W 3 vs 5), hold_backlog=4 (lsr10 -.063, z -5.3: breeding matters early), hold_mid 8 / 12
+  (-.005 / -.010: flat optimum around 8-10).
+- **N=12, base2 (before shepherds 120): cur-vs12-hv W 3/200 (s13, s64, s83), elim .177.** N=12/13 baselines with the
+  new defaults running (7 workers each: >12 players need a 1 GB heap per worker).
