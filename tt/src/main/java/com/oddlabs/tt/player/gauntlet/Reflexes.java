@@ -223,9 +223,4 @@ final class Reflexes {
         if (tick % 250 == 0)
             tower_last.keySet().removeIf(Building::isDead);
     }
-
-    /** Swings in progress, for the log. */
-    int tracked() {
-        return swings.size();
-    }
 }

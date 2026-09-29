@@ -2,7 +2,6 @@ package com.oddlabs.tt.player.gauntlet;
 
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
-import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.HuntController;
@@ -68,13 +67,6 @@ final class Lures {
 
     Lures(@NonNull GauntletAI ai) {
         this.ai = ai;
-    }
-
-    boolean isLure(@NonNull Unit u) {
-        for (Lure l : lures)
-            if (l.peon == u)
-                return true;
-        return false;
     }
 
     /** Every 5 ticks: runs the lures and, once a second, looks for a blob to bait. */
@@ -405,12 +397,4 @@ final class Lures {
         return best;
     }
 
-    /** For the STAT line. */
-    int active() {
-        return lures.size();
-    }
-
-    static boolean isQuarters(@NonNull Building b) {
-        return b.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS;
-    }
 }

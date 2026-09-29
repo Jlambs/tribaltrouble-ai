@@ -6,7 +6,6 @@ import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.RockSupply;
-import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.pathfinder.Movable;
 import com.oddlabs.tt.pathfinder.Occupant;
 import com.oddlabs.tt.pathfinder.UnitGrid;
@@ -184,14 +183,6 @@ final class MapAnalysis {
         int x1 = Math.clamp(x + radius + 1, 0, size);
         int y1 = Math.clamp(y + radius + 1, 0, size);
         return tree_sums[y1 * stride + x1] - tree_sums[y0 * stride + x1] - tree_sums[y1 * stride + x0] + tree_sums[y0 * stride + x0];
-    }
-
-    static int countStanding(List<? extends Supply> supplies) {
-        int n = 0;
-        for (Supply s : supplies)
-            if (!s.isEmpty())
-                n++;
-        return n;
     }
 
     /**

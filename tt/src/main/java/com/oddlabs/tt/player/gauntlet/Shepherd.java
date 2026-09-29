@@ -91,13 +91,6 @@ final class Shepherd {
         this.ai = ai;
     }
 
-    boolean isShepherd(@NonNull Unit u) {
-        for (Flock f : flocks)
-            if (f.shepherd == u)
-                return true;
-        return false;
-    }
-
     void tick() {
         Strategy strategy = ai.strategy();
         if (!strategy.shepherd || ai.time() - last_tick < .5f)

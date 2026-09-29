@@ -84,14 +84,6 @@ final class Combat {
         return n;
     }
 
-    /**
-     * Lanchester's square law: fighting strength grows with the square of numbers, so compare squared sums when
-     * judging who wins a straight-up fight.
-     */
-    static float advantage(float ours, float theirs) {
-        return ours * ours - theirs * theirs;
-    }
-
     private Combat() {
     }
 }

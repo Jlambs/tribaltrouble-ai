@@ -4,7 +4,6 @@ import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Supply;
-import com.oddlabs.tt.landscape.TreeSupply;
 import com.oddlabs.tt.player.Player;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -405,22 +404,6 @@ final class SitePlanner {
                 return true;
         }
         return false;
-    }
-
-    /** Nearest standing tree to a cell, or null. */
-    static @Nullable TreeSupply nearestTree(@NonNull List<@NonNull TreeSupply> trees, int x, int y) {
-        TreeSupply best = null;
-        int best_d = Integer.MAX_VALUE;
-        for (TreeSupply t : trees) {
-            if (t.isEmpty())
-                continue;
-            int d = MapAnalysis.dist2(x, y, t.getGridX(), t.getGridY());
-            if (d < best_d) {
-                best_d = d;
-                best = t;
-            }
-        }
-        return best;
     }
 
     int getStartX() {

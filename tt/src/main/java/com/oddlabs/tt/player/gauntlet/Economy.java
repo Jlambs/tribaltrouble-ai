@@ -71,7 +71,6 @@ final class Economy {
     private @Nullable Building expansion;
     private float last_expansion_check = -100f;
     private float last_old_recall = -100f;
-    private boolean chieftain_topup;
     private int project_counter;
     private final List<@NonNull Building> forward_towers = new ArrayList<>();
     private final List<@NonNull Building> sniper_towers = new ArrayList<>();
@@ -2569,7 +2568,6 @@ final class Economy {
         }
 
         // 2. Chieftain training quarters top-up.
-        chieftain_topup = false;
         Building trainer = ai.chieftain().trainingQuarters();
         boolean topup_ok = ai.military().baseThreatLevel() == 0 || (ai.strategy().chief_topup_any && trainer != null
                 && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
@@ -2597,7 +2595,6 @@ final class Economy {
                         topup_sent.put(u, trainer);
                         ai.aiLog().count("topup_sent");
                     }
-                chieftain_topup = true;
             }
         }
 
@@ -3092,10 +3089,6 @@ final class Economy {
     }
 
     // ------------------------------------------------------------------------------------------------------------
-
-    int wantWorkers() {
-        return want_workers;
-    }
 
     @NonNull
     String debugStatus() {

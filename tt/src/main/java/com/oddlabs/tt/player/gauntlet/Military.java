@@ -70,7 +70,6 @@ final class Military {
     private int threat_x;
     private int threat_y;
     private int threat_level;
-    private float last_threat_time = -100f;
     private int last_logged_threat;
     private boolean last_logged_engage;
     /** 1 while defenders are engaged with the current threat, -1 while they have fallen back, 0 for a new threat. */
@@ -106,7 +105,6 @@ final class Military {
     private int target_x;
     private int target_y;
     private @Nullable DistanceField target_field;
-    private float attack_start;
     private float attack_initial_strength;
     /** worn_basis 1: the attacking army's peak strength since the launch. */
     private float worn_peak;
@@ -590,7 +588,6 @@ final class Military {
             last_logged_threat = 0;
             return;
         }
-        last_threat_time = ai.time();
         base_threat_strength = 0f;
         for (Unit e : at_base)
             base_threat_strength += Combat.value(e);
@@ -2205,7 +2202,6 @@ final class Military {
         attack_kills_start = ai.owner().getUnitsKilled();
         attack_losses_start = ai.owner().getUnitsLost();
         attack_running = true;
-        attack_start = ai.time();
         last_progress_time = ai.time();
         best_target_dist = Integer.MAX_VALUE;
         mode = s > 0 ? Mode.ATTACK : Mode.HOME;
@@ -4355,11 +4351,6 @@ final class Military {
         return staging_y;
     }
 
-    @NonNull
-    Mode mode() {
-        return mode;
-    }
-
     /** s plus the value of each enemy tower within r cells of (x, y) (enemyTowerValue), added in list order. */
     private float withEnemyTowers(float s, int x, int y, int r) {
         for (Building t : ai.intel().enemy_towers)
@@ -4396,13 +4387,6 @@ final class Military {
     int @Nullable [] attackCenter() {
         List<Unit> army = withRole(Role.ATTACK);
         return army.isEmpty() ? null : centroid(army);
-    }
-
-    /** Where the fighting is, for the chieftain: the base threat, else the attacking army. */
-    int @Nullable [] battleFront() {
-        if (threat_level > 0)
-            return new int[]{threat_x, threat_y};
-        return attackCenter();
     }
 
     @NonNull
