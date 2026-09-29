@@ -1367,3 +1367,7 @@ retreat through the same pass (only the attack role is watched).
   sites_parallel=3 (early), hold_early=6, hold_late=12, recall_old_gatherers=false, worn_ratio 0.1/0.35,
   max_armory_distance 200/350, defense_radius 40/90, base_radius 34, shepherd_max_r 30, armory_builders 12. The two
   leads are re-tested on cur6 (decoys compete with towers for the building slots).
+- Tower package (cur6 + tower_wood_drop, time 600, reserve 20) vs cur6: N=13 s1..200 surv60 +0.81 (z 1.6), W 1 -> 1;
+  s201..400 surv60 +0.77 (z 1.6), towers20 +1.13 (z 3.9), arm25 +6 pp (z 1.9), W 2 -> 0, elim -.011; N=14 surv60 +0.26;
+  N=12 W 5 -> 2, surv60 ~0. woodr20 alone vs cur5 at N=14: surv60 +0.70 (z 2.4), towers20 +0.49 (z 2.2). Survival up in
+  4 of 5 blocks, wins undecided: a fresh-seed win count (N=13 and N=14, 600 per arm) is queued.
