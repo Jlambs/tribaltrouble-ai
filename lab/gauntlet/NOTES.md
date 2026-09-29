@@ -1411,3 +1411,16 @@ retreat through the same pass (only the attack role is watched).
   every commit at N=8/11/12/13/14, logged and unlogged, and with 24 off-by-default params on; CPU -1.2 % (24 paired N=13
   games). Lab tools now in lab/gauntlet: board.py (with --median: each arm against the median arm, scaled by its share of
   re-rolled games), pairs.sh, musters.py, cuts.py, chiefs.py. The main checkout's merged build reproduces cur6 (s201, s202).
+- **cur6 benchmark so far** (all default cur6 games, fresh and screened seeds): N=13 10 wins in 1,600 (0.62 %), N=14 8 in
+  2,000 (0.40 %; cur3/cur5 had 1 in 600 each), N=15 0 in 600, N=16 0 in 400. N=15 fishing continues (1,000 more).
+- **cur6 + woodr20 loses the fresh-seed win count** (4001..4600, 600 per arm): N=13 cur6 4 vs 3, N=14 5 vs 1 (all runs:
+  N=13 4 of 1,000, N=14 1 of 800 with the package). tower_wood_drop stays off.
+- On cur6 (N=13, s1..200 / s201..400): chieftain_time=300 surv60 +0.67 / +1.83 (z 2.8), arm25 +2.5 / +7 pp (z 2.0),
+  towers20 +0.5 / +1.03 (z 2.7), W 1 -> 0 / 2 -> 3 (with the cur5 sweep block: positive in all three); confirmations queued
+  (fresh 4001..4600 at N=13-14, N=14 s1..400, N=12). decoys + decoy_free_slots=1 surv60 +0.9 / +0.5, alive40 +1 / +2.5
+  pp, W 1 -> 0 / 2 -> 3: mild, not pursued. cur6 at N=8 (vs cur5, s201..400): W 115 -> 120, alive40 +5.5 pp (z 2.3),
+  towers20 +0.87 (z 4.9). N=11 legacy arms on cur6 all negative: hold_closing=1 W 16 -> 13, stun_patience=false surv60
+  -2.3 (z -2.8), shred strict elim -.030 (z -2.0). wood_reach=110 fires rarely: N=12 W 5 -> 5, N=11 W 16 -> 20 (elim z
+  2.0). Race check on cur6 at N=12: native Hards W 5 -> 2, surv60 -2.5 (z -2.9): vikings stay the easier opponent.
+- The summary step now runs out of heap even on 200-300-game batches (cur6 games last longer): stub summaries written
+  for cur6-vs8-hv-b, woodr20-c6-vs13-f2, cur6-vs14-hv-d, cur6-vs16-hv; results.jsonl complete in each.
