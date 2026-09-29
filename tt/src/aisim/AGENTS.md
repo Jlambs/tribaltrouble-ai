@@ -11,7 +11,8 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 |---|---|---|
 | `aisim` | `Aisim`, `Options`, `UsageException` | The command line: usage text, options checked per command, the jobs of a run. Also what every part shares: the JSON mapper, the `aisim/` root, usage errors (exit 2). |
 | | `Lineup`, `Maps` | The players and teams of a run (`--players`) and their seating by rotation; its maps (seeds and settings drawn per seed, or map codes). |
-| `aisim.play` | `Batch` | A run: the job queue, one driver thread per worker, results.jsonl, progress, STOP and aborts. |
+| `aisim.play` | `Batch` | A run: the job queue, one driver thread per worker slot, results.jsonl, progress, STOP and aborts. |
+| | `Pace` | How many workers a run keeps: `--workers`, `--cpus` and `--memory`, the machine's threads, load and memory, and the registry of the runs on the machine (a folder in the temp directory). |
 | | `WorkerProcess`, `WorkerMain` | A worker JVM as the parent starts and talks to it; the inside of one: boots the engine, plays jobs, the hang watchdog. |
 | | `Match`, `ClientWorld`, `Job` | One game as the client simulates it, its end rules and its result row; its world, built exactly as the client builds it; its settings, as sent to workers and stored in run.json. |
 | | `Replay` | replay and its verification. |
@@ -46,7 +47,7 @@ of `aikit` is the AI toolkit.
     game file events (`GameRecorder`), and run.json.
   Describe every change in the Files section of `docs/aisim.md`.
 - **Keep in sync**:
-  - `Aisim.USAGE` with the Commands section of `docs/aisim.md`;
+  - `Aisim.USAGE` with the Commands section of `docs/aisim.md`, and the worker options with its Workers section;
   - the parent's JVM options in `aisim.sh` (`OPTS`) with `WorkerProcess.command`;
   - the game's JVM options in `aisim.sh` (`GUI_OPTS`) with `application` in `tt/build.gradle.kts`;
   - the lint rules in `Lint` with the Rules section of the AI guide.

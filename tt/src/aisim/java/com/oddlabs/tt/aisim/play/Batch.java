@@ -68,34 +68,37 @@ public final class Batch {
     }
 
     /**
-     * Plays {@code jobs} as run {@code name} on the latest snapshot with up to {@code workers} JVMs, then prints the
-     * summary. Returns 2 if the run was cancelled or aborted, else the summary's exit code.
+     * Plays {@code jobs} as run {@code name} on the latest snapshot with worker JVMs within {@code limits} (see
+     * {@link Pace}), then prints the summary. Returns 2 if the run was cancelled or aborted, else the summary's exit
+     * code.
      */
     public static int run(@NonNull String name, @NonNull Setup setup, @NonNull List<Job> jobs,
-            int workers) throws IOException {
+            Pace.@NonNull Limits limits) throws IOException {
         String snap = Snapshot.latest();
         Path dir = Runs.RUNS.resolve(name);
         Files.createDirectories(dir.resolve("log"));
-        writeRunJson(dir, name, setup, jobs, workers, snap);
-        String counts = jobs.size() + " games | " + workers + " workers";
+        String heap = WorkerProcess.heap(jobs);
+        RunInProgress progress = new RunInProgress(dir, name, snap, jobs, limits, heap, LOGS_LOST.equals(setup.logs()));
+        int slots = progress.pace.slots();
+        writeRunJson(dir, name, setup, jobs, slots, limits, snap);
+        String counts = jobs.size() + " games | " + (progress.pace.automatic() ? "workers auto, up to " + slots : slots + " workers");
         if (setup.logs() != null) {
             counts += setup.logs().equals(LOGS_LOST) ? " | AI logs of the games team A did not win" : " | AI logs";
         }
         System.out.println(
                 "aisim " + name + ": " + setup.players() + " | " + setup.config() + " | " + counts + " | snapshot " + snap);
-        String heap = WorkerProcess.heap(jobs);
-        boolean lost_only = LOGS_LOST.equals(setup.logs());
-        boolean completed = new RunInProgress(dir, snap, jobs, workers, heap, lost_only).playAll();
+        boolean completed = progress.playAll();
         int status = Summary.run(name);
         return completed ? status : 2;
     }
 
     /**
-     * Writes the run's run.json. {@code workers} is the requested count, and {@code jobs} is what a replay later
-     * forwards to the run's own (possibly older) snapshot.
+     * Writes the run's run.json. {@code workers} is the most workers the run may have, {@code limits} what was asked
+     * for, and {@code jobs} is what a replay later forwards to the run's own (possibly older) snapshot.
      */
     private static void writeRunJson(@NonNull Path dir, @NonNull String name, @NonNull Setup setup,
-            @NonNull List<Job> jobs, int workers, @NonNull String snap) throws IOException {
+            @NonNull List<Job> jobs, int workers, Pace.@NonNull Limits limits,
+            @NonNull String snap) throws IOException {
         Job first = jobs.get(0);
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("v", 1);
@@ -104,6 +107,7 @@ public final class Batch {
         meta.put("java", System.getProperty("java.version"));
         meta.put("created", Instant.now().toString());
         meta.put("workers", workers);
+        meta.put("workerLimits", limits.json());
         meta.put("players", setup.players());
         meta.put("a", first.teamPlayers(first.team(first.side())));
         meta.put("lineup", setup.lineup());
@@ -137,7 +141,7 @@ public final class Batch {
         private final @NonNull String snap;
         private final @NonNull String heap;
         private final int expected;
-        private final int workers;
+        private final @NonNull Pace pace;
         /** Delete the AI logs of every game team A won (--logs lost). */
         private final boolean lost_only;
         private final long start_nanos = System.nanoTime();
@@ -162,15 +166,24 @@ public final class Batch {
         private int losses;
         private int draws;
 
-        RunInProgress(@NonNull Path dir, @NonNull String snap, @NonNull List<Job> jobs, int workers,
-                @NonNull String heap, boolean lost_only) {
+        RunInProgress(@NonNull Path dir, @NonNull String name, @NonNull String snap, @NonNull List<Job> jobs,
+                Pace.@NonNull Limits limits, @NonNull String heap, boolean lost_only) {
             this.lost_only = lost_only;
             this.dir = dir;
             this.snap = snap;
             this.heap = heap;
             this.expected = jobs.size();
-            this.workers = Math.min(workers, jobs.size());
             this.queue = new ConcurrentLinkedQueue<>(jobs);
+            this.pace = new Pace(limits, name, WorkerProcess.footprint(heap), jobs.size(), queue::size,
+                    this::liveWorkers);
+        }
+
+        /** The processes of the workers running now. */
+        private @NonNull List<ProcessHandle> liveWorkers() {
+            synchronized (live) {
+                live.removeIf(worker -> !worker.handle().isAlive());
+                return live.stream().map(WorkerProcess::handle).toList();
+            }
         }
 
         /** Plays every job; false if the run was cancelled (STOP file, Ctrl+C) or aborted. */
@@ -178,7 +191,12 @@ public final class Batch {
             Thread hook = new Thread(this::cancel, "aisim-cancel");
             Runtime.getRuntime().addShutdownHook(hook); // Ctrl+C: kill the workers at once
             startDaemon("aisim-stop-watcher", this::watchStopFile);
-            driveWorkers();
+            pace.start();
+            try {
+                driveWorkers();
+            } finally {
+                pace.stop();
+            }
             boolean cancelled = stop.getAndSet(true); // setting it also ends the watcher
             try {
                 Runtime.getRuntime().removeShutdownHook(hook);
@@ -208,7 +226,7 @@ public final class Batch {
             try (Writer results = Files.newBufferedWriter(dir.resolve("results.jsonl"), StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
                 List<Thread> threads = new ArrayList<>();
-                for (int i = 0; i < workers; i++) {
+                for (int i = 0; i < pace.slots(); i++) {
                     int index = i;
                     Thread thread = new Thread(() -> drive(index, results), "aisim-worker-" + i);
                     thread.start();
@@ -220,12 +238,29 @@ public final class Batch {
             }
         }
 
-        /** Plays queued jobs on worker slot {@code index}, starting a fresh JVM whenever the last one was retired. */
+        /**
+         * Plays queued jobs on worker slot {@code index}, starting a fresh JVM whenever the last one was retired. While
+         * the slot is at or above the pace's target, it retires its worker between games and waits.
+         */
         private void drive(int index, @NonNull Writer results) {
             WorkerProcess worker = null;
             try {
-                Job job;
-                while (!stop.get() && (job = queue.poll()) != null) {
+                while (!stop.get()) {
+                    if (index >= pace.target()) {
+                        if (worker != null) {
+                            worker.close();
+                            worker = null;
+                        }
+                        if (queue.isEmpty()) {
+                            break;
+                        }
+                        sleep(500);
+                        continue;
+                    }
+                    Job job = queue.poll();
+                    if (job == null) {
+                        break;
+                    }
                     if (worker == null) {
                         worker = start(index);
                         if (worker == null) {

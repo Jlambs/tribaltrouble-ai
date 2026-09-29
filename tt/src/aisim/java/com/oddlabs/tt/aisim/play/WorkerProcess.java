@@ -64,6 +64,18 @@ final class WorkerProcess {
         return players >= 4 || Job.SIZES.get(size).equals("huge") ? "512m" : "256m";
     }
 
+    /**
+     * The memory a worker with heap cap {@code heap} (such as 512m) typically takes in all: headless, with a collection
+     * before each game, its heap stays near half the cap at most, plus about 128 MB of JVM (measured: 322 MB for 12
+     * players on a large map with 512m). Pacing ({@link Pace}) and --memory count workers at this size.
+     */
+    static long footprint(@NonNull String heap) {
+        char unit = Character.toLowerCase(heap.charAt(heap.length() - 1));
+        long number = Long.parseLong(heap.substring(0, heap.length() - 1));
+        long bytes = number << (unit == 'g' ? 30 : unit == 'm' ? 20 : 10);
+        return bytes / 2 + (128L << 20);
+    }
+
     /** The heap for every game of {@code jobs}: {@link #heap} of the largest. */
     static @NonNull String heap(@NonNull List<Job> jobs) {
         int players = jobs.stream().mapToInt(Job::slots).max().orElse(2);
@@ -133,5 +145,11 @@ final class WorkerProcess {
 
     void kill() {
         process.destroyForcibly();
+    }
+
+    /** The worker's process, while it runs. */
+    @NonNull
+    ProcessHandle handle() {
+        return process.toHandle();
     }
 }
