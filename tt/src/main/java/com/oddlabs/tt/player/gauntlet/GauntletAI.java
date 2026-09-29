@@ -20,7 +20,6 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Random;
 
 /**
  * Computer player built to beat many allied stock Hard AIs at once. It started as a port of the Expert AI (branch
@@ -39,7 +38,6 @@ public final class GauntletAI extends AI {
 
     private final @NonNull AiLog log;
     private final @NonNull Strategy strategy;
-    private final @NonNull Random random;
     private final @NonNull Intel intel;
     private final @NonNull Reflexes reflexes;
     private @Nullable MapAnalysis map;
@@ -78,7 +76,6 @@ public final class GauntletAI extends AI {
             logging = true;
             return "decision log on";
         });
-        random = new Random(7919L * (1 + indexOf(owner)));
         intel = new Intel(owner);
         reflexes = new Reflexes(this, strategy.swing_restart, strategy.stun_cancel, strategy.tower_unstun);
     }
@@ -89,14 +86,6 @@ public final class GauntletAI extends AI {
             if (owner.isEnemy(p))
                 n++;
         return n;
-    }
-
-    private static int indexOf(@NonNull Player owner) {
-        Player[] players = owner.getWorld().getPlayers();
-        for (int i = 0; i < players.length; i++)
-            if (players[i] == owner)
-                return i;
-        return 0;
     }
 
     @Override
@@ -306,11 +295,6 @@ public final class GauntletAI extends AI {
     /** World ticks this AI has seen. */
     int ticks() {
         return ticks;
-    }
-
-    @NonNull
-    Random random() {
-        return random;
     }
 
     @NonNull

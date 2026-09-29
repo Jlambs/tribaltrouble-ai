@@ -74,6 +74,14 @@ final class Combat {
         return sum;
     }
 
+    /** Sum of the units' values, in list order. */
+    static float total(@NonNull List<@NonNull Unit> units) {
+        float sum = 0f;
+        for (Unit u : units)
+            sum += value(u);
+        return sum;
+    }
+
     static int countNear(List<? extends Selectable<?>> units, int x, int y, int radius) {
         int r2 = radius * radius;
         int n = 0;
@@ -82,14 +90,6 @@ final class Combat {
                 n++;
         }
         return n;
-    }
-
-    /**
-     * Lanchester's square law: fighting strength grows with the square of numbers, so compare squared sums when
-     * judging who wins a straight-up fight.
-     */
-    static float advantage(float ours, float theirs) {
-        return ours * ours - theirs * theirs;
     }
 
     private Combat() {

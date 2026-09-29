@@ -2,11 +2,9 @@ package com.oddlabs.tt.player.gauntlet;
 
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
-import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.HuntController;
-import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.player.gauntlet.Intel.PeonState;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -69,13 +67,6 @@ final class Lures {
 
     Lures(@NonNull GauntletAI ai) {
         this.ai = ai;
-    }
-
-    boolean isLure(@NonNull Unit u) {
-        for (Lure l : lures)
-            if (l.peon == u)
-                return true;
-        return false;
     }
 
     /** Every 5 ticks: runs the lures and, once a second, looks for a blob to bait. */
@@ -189,11 +180,6 @@ final class Lures {
         return best;
     }
 
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof IdleController
-                && e.getCurrentController() == e.getPrimaryController();
-    }
-
     private void plan() {
         Strategy strategy = ai.strategy();
         if (lures.size() >= strategy.lure_max || ai.time() < strategy.lure_time)
@@ -215,7 +201,7 @@ final class Lures {
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead())
                 continue;
-            if (!isParked(e)) {
+            if (!Intel.isParked(e)) {
                 awake.add(e);
                 continue;
             }
@@ -411,12 +397,4 @@ final class Lures {
         return best;
     }
 
-    /** For the STAT line. */
-    int active() {
-        return lures.size();
-    }
-
-    static boolean isQuarters(@NonNull Building b) {
-        return b.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS;
-    }
 }

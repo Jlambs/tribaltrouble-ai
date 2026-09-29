@@ -91,13 +91,6 @@ final class Shepherd {
         this.ai = ai;
     }
 
-    boolean isShepherd(@NonNull Unit u) {
-        for (Flock f : flocks)
-            if (f.shepherd == u)
-                return true;
-        return false;
-    }
-
     void tick() {
         Strategy strategy = ai.strategy();
         if (!strategy.shepherd || ai.time() - last_tick < .5f)
@@ -412,29 +405,26 @@ final class Shepherd {
         long ex = 0;
         long ey = 0;
         int n = 0;
-        for (Unit e : intel.enemy_warriors) {
-            if (e.isDead())
+        // The enemies near enough to count: warriors within the square or walking at us from 40 cells, peons within
+        // the square (the sums do not depend on the order).
+        EnemyIndex index = intel.enemyIndex(ai.ticks());
+        int[] candidates = index.queryUnordered(sx, sy, Math.max(40 * 40, 2 * clear * clear));
+        for (int k = 0, m = index.count(); k < m; k++) {
+            byte group = index.group(candidates[k]);
+            Unit e = index.unit(candidates[k]);
+            if (group == EnemyIndex.CHIEFTAIN || e.isDead())
                 continue;
             int dx = e.getGridX() - sx;
             int dy = e.getGridY() - sy;
             boolean near = Math.abs(dx) <= clear && Math.abs(dy) <= clear;
             boolean coming = false;
-            if (!near && e.getPrimaryController() instanceof WalkController w && w.isAgressive()
-                    && dx * dx + dy * dy <= 40 * 40) {
+            if (group == EnemyIndex.WARRIOR && !near && e.getPrimaryController() instanceof WalkController w
+                    && w.isAgressive() && dx * dx + dy * dy <= 40 * 40) {
                 int tx = w.getTarget().getGridX() - sx;
                 int ty = w.getTarget().getGridY() - sy;
                 coming = tx * tx + ty * ty <= 14 * 14;
             }
             if (near || coming) {
-                ex += e.getGridX();
-                ey += e.getGridY();
-                n++;
-            }
-        }
-        for (Unit e : intel.enemy_peons) {
-            if (e.isDead())
-                continue;
-            if (Math.abs(e.getGridX() - sx) <= clear && Math.abs(e.getGridY() - sy) <= clear) {
                 ex += e.getGridX();
                 ey += e.getGridY();
                 n++;
@@ -539,19 +529,17 @@ final class Shepherd {
         return best;
     }
 
-    /** Null when no enemy unit stands within shepherd_clear cells of (x, y), else the findSpot rejection counter. */
+    /**
+     * Null when no enemy unit (dead ones still in Intel's lists included) stands within shepherd_clear cells of (x, y)
+     * along both axes, else the findSpot rejection counter: warriors first, then peons, then chieftains.
+     */
     private @Nullable String enemyNear(@NonNull Intel intel, int x, int y) {
-        int c = ai.strategy().shepherd_clear;
-        for (Unit e : intel.enemy_warriors)
-            if (Math.abs(e.getGridX() - x) <= c && Math.abs(e.getGridY() - y) <= c)
-                return "shepherd_rej_warrior";
-        for (Unit e : intel.enemy_peons)
-            if (Math.abs(e.getGridX() - x) <= c && Math.abs(e.getGridY() - y) <= c)
-                return "shepherd_rej_peon";
-        for (Unit e : intel.enemy_chieftains)
-            if (Math.abs(e.getGridX() - x) <= c && Math.abs(e.getGridY() - y) <= c)
-                return "shepherd_rej_chief";
-        return null;
+        int groups = intel.enemyIndex(ai.ticks()).groupsInBox(x, y, ai.strategy().shepherd_clear);
+        if ((groups & 1 << EnemyIndex.WARRIOR) != 0)
+            return "shepherd_rej_warrior";
+        if ((groups & 1 << EnemyIndex.PEON) != 0)
+            return "shepherd_rej_peon";
+        return (groups & 1 << EnemyIndex.CHIEFTAIN) != 0 ? "shepherd_rej_chief" : null;
     }
 
     /** Base-bound waves seen from a copy so far (front_order 2). */

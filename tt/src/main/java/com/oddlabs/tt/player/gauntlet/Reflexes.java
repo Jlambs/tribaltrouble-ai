@@ -207,7 +207,7 @@ final class Reflexes {
             if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null
                     || t.getUnitContainer().getNumSupplies() == 0)
                 continue;
-            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            Unit gunner = Intel.gunner(t);
             if (gunner == null || gunner.isDead())
                 continue;
             Controller current = gunner.getCurrentController();
@@ -222,10 +222,5 @@ final class Reflexes {
         }
         if (tick % 250 == 0)
             tower_last.keySet().removeIf(Building::isDead);
-    }
-
-    /** Swings in progress, for the log. */
-    int tracked() {
-        return swings.size();
     }
 }

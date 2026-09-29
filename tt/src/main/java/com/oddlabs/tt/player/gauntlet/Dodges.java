@@ -37,10 +37,6 @@ final class Dodges {
         this.ai = ai;
     }
 
-    boolean isRunning(@NonNull Unit u) {
-        return running.containsKey(u);
-    }
-
     /** Whether the chieftain was moved away from hunters in the last 2 s (Chieftain leaves him alone then). */
     boolean chiefBusy() {
         return ai.time() - chief_move < 2f;

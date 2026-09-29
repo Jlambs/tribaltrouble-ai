@@ -5,8 +5,9 @@ import com.oddlabs.tt.aikit.AiParams;
 import org.jspecify.annotations.NonNull;
 
 /**
- * Tunable numbers behind the expert AI's plan. The defaults are tuned for 1v1 on large islands; {@link #forMapSize}
- * adjusts them for other sizes, and new styles of play can subclass or copy this.
+ * Tunable numbers behind the expert AI's plan. The field defaults come from 1v1 on large islands; {@link #forGame}
+ * sets the ones tuned against many Hard copies (for every number of enemies) and the freeze opening from 12 enemies,
+ * {@link #forMapSize} adjusts them for other sizes, and new styles of play can subclass or copy this.
  */
 class Strategy {
     /** Quarters to raise before or alongside the armory. */
@@ -488,6 +489,12 @@ class Strategy {
     float attack_max_strength = 70f;
     /** At the unit cap losses are replaced for free, so attack against this much of the defense. */
     float capped_ratio = .6f;
+    /**
+     * The capped attack needs at least this much army and stock (0: none): during wood locks at the cap it mustered
+     * with nothing ("muster: army 0.0 + stock 0.0 vs defense 0.0", 0 >= 0.6 x 0) and sat in MUSTER, deploying every
+     * weapon, for 45 s at a time (Military.considerAttack).
+     */
+    float capped_min_strength = 0f;
     /** Retreat when the enemy around the army is this much stronger and the chieftain cannot stun. */
     float retreat_ratio = 1.45f;
     /** Units in the staging army sent to hunt enemy peons when the enemy army is elsewhere. */
@@ -1024,6 +1031,7 @@ class Strategy {
         tower_weight = (float) params.getDouble("tower_weight", tower_weight);
         attack_max_strength = (float) params.getDouble("attack_max_strength", attack_max_strength);
         capped_ratio = (float) params.getDouble("capped_ratio", capped_ratio);
+        capped_min_strength = (float) params.getDouble("capped_min_strength", capped_min_strength);
         retreat_ratio = (float) params.getDouble("retreat_ratio", retreat_ratio);
         raid_size = params.getInt("raid_size", raid_size);
         raid_time = (float) params.getDouble("raid_time", raid_time);
@@ -1089,32 +1097,32 @@ class Strategy {
     /** The strategy for a game on a map of the given size against the given number of enemy players. */
     static @NonNull Strategy forGame(int map_size, int enemies) {
         Strategy strategy = forMapSize(map_size);
-        if (enemies > 1) {
-            // Every enemy sends his waves at our nearest building: towers early, and many of them, hold them all,
-            // and the chieftain's stun is wanted sooner.
-            strategy.towers_early = 3;
-            strategy.towers_early_time = Math.min(strategy.towers_early_time, 200f);
-            strategy.towers_mid = 6;
-            strategy.towers_mid_time = Math.min(strategy.towers_mid_time, 330f);
-            strategy.towers_late = 14;
-            strategy.towers_late_time = 600f;
-            strategy.chieftain_time = Math.min(strategy.chieftain_time, 240f);
-            // Against many Hard copies (lab/gauntlet/NOTES.md, 2026-09-28): shepherds leash their waves, so a target's
-            // defense is what stands near it (shepatk-vs7-hn 35 vs 23, shepatk-vs8-hn 12 vs 6), and attacks are
-            // reinforced (rmulti-vs7-hn 27 vs 19).
-            strategy.defense_radius = 60;
-            strategy.project_defense = false;
-            strategy.reinforce_multi = true;
-            // Wins against many copies are long all-in campaigns (lab/gauntlet/campaign.py, camp40-vs8-hv): attack
-            // at even strength, keep attacking with the base under threat, and do not call the army home (vs
-            // hard*8: aggro-vs8-hv-b 43/200 vs 31/200 on fresh seeds 201..400, elim +.077 z 3.4; 19 vs 16 on 1..100).
-            strategy.attack_ratio = 1f;
-            strategy.adaptive_caution = false;
-            strategy.attack_threat_ratio = 1f;
-            // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
-            // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
-            strategy.gate_owner = true;
-        }
+        // For every N (the N>1 gate went on 2026-09-29: 1v1 vs hard on seeds 1..60, duel-before -> duel-allN, W 60 -> 60,
+        // kd30 +9.1 (z 2.5), w15 +10.5, games 10.9 -> 13.1 min).
+        // Every enemy sends his waves at our nearest building: towers early, and many of them, hold them all,
+        // and the chieftain's stun is wanted sooner.
+        strategy.towers_early = 3;
+        strategy.towers_early_time = Math.min(strategy.towers_early_time, 200f);
+        strategy.towers_mid = 6;
+        strategy.towers_mid_time = Math.min(strategy.towers_mid_time, 330f);
+        strategy.towers_late = 14;
+        strategy.towers_late_time = 600f;
+        strategy.chieftain_time = Math.min(strategy.chieftain_time, 240f);
+        // Against many Hard copies (lab/gauntlet/NOTES.md, 2026-09-28): shepherds leash their waves, so a target's
+        // defense is what stands near it (shepatk-vs7-hn 35 vs 23, shepatk-vs8-hn 12 vs 6), and attacks are
+        // reinforced (rmulti-vs7-hn 27 vs 19).
+        strategy.defense_radius = 60;
+        strategy.project_defense = false;
+        strategy.reinforce_multi = true;
+        // Wins against many copies are long all-in campaigns (lab/gauntlet/campaign.py, camp40-vs8-hv): attack
+        // at even strength, keep attacking with the base under threat, and do not call the army home (vs
+        // hard*8: aggro-vs8-hv-b 43/200 vs 31/200 on fresh seeds 201..400, elim +.077 z 3.4; 19 vs 16 on 1..100).
+        strategy.attack_ratio = 1f;
+        strategy.adaptive_caution = false;
+        strategy.attack_threat_ratio = 1f;
+        // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
+        // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
+        strategy.gate_owner = true;
         if (enemies >= 12) {
             // The freeze opening puts the nearest copy out in about a minute; it pays from N=12, where survival under
             // pressure decides (N=12 W 4 -> 13 over 600 seeds, elim +.02 to +.04 on each half; N=13 W 2 -> 4 over 400),

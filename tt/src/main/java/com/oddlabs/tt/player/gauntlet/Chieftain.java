@@ -227,7 +227,7 @@ final class Chieftain {
         if (strategy.shred_strict && blastHere(chief, cx, cy))
             return true;
         for (Unit e : ai.intel().enemy_warriors) {
-            if (e.isDead() || isParked(e))
+            if (e.isDead() || Intel.isParked(e))
                 continue;
             int abort = strategy.shred_strict ? 9 : 13; // strict: only what can see him
             if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= abort * abort) {
@@ -262,7 +262,7 @@ final class Chieftain {
                         for (Unit e : enemies)
                             if (!e.isDead() && Math.abs(e.getGridX() - x) <= 8 && Math.abs(e.getGridY() - y) <= 8) {
                                 int k = ai.intel().enemy_peons.contains(e) ? 0 : ai.intel().enemy_chieftains.contains(
-                                        e) ? 1 : isParked(e) ? 2 : 3;
+                                        e) ? 1 : Intel.isParked(e) ? 2 : 3;
                                 seen_by[k]++;
                                 break;
                             }
@@ -306,8 +306,9 @@ final class Chieftain {
             return true;
         }
         if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
-            int[] stop = nearest > 11 ? towards(cx, cy, blob[0], blob[1], Math.max(2, nearest - 10)) : towards(blob[0],
-                    blob[1], cx, cy, 12);
+            int[] stop = nearest > 11 ? MapAnalysis.towards(cx, cy, blob[0], blob[1], Math.max(2,
+                    nearest - 10)) : MapAnalysis.towards(blob[0],
+                            blob[1], cx, cy, 12);
             ai.landscapeOrder(Selectable.newArray(chief), stop[0], stop[1], Action.MOVE, false);
             last_move = ai.time();
         }
@@ -427,7 +428,7 @@ final class Chieftain {
         enemies.addAll(intel.enemy_peons);
         java.util.List<Unit> parked = new java.util.ArrayList<>();
         for (Unit e : intel.enemy_warriors)
-            if (!e.isDead() && isParked(e))
+            if (!e.isDead() && Intel.isParked(e))
                 parked.add(e);
         java.util.List<Selectable<?>> ours = new java.util.ArrayList<>();
         for (Selectable<?> s : ai.owner().getUnits().getSet())
@@ -465,12 +466,6 @@ final class Chieftain {
         return best;
     }
 
-    /** An enemy warrior standing idle, not hunting: it sees 8 cells and does not react to being hit. */
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                && e.getCurrentController() == e.getPrimaryController();
-    }
-
     /**
      * The best blob of parked enemy warriors within shred_range cells of our armory: {x, y, nearest member's distance
      * from (cx, cy) in cells, members}, with at least shred_min members within 10 cells of its centre, no awake enemy
@@ -487,7 +482,7 @@ final class Chieftain {
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead())
                 continue;
-            (isParked(e) ? parked : awake).add(e);
+            (Intel.isParked(e) ? parked : awake).add(e);
         }
         int[] best = null;
         float best_score = 0f;
@@ -762,7 +757,8 @@ final class Chieftain {
                 tx = chief.getGridX();
                 ty = chief.getGridY();
             } else {
-                int[] stop = towards(chief.getGridX(), chief.getGridY(), at[0], at[1], Math.max(3, nearest - 9));
+                int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), at[0], at[1], Math.max(3,
+                        nearest - 9));
                 tx = stop[0];
                 ty = stop[1];
             }
@@ -778,18 +774,21 @@ final class Chieftain {
                     tx = chief.getGridX();
                     ty = chief.getGridY();
                 } else {
-                    int[] stop = towards(chief.getGridX(), chief.getGridY(), enemies[0], enemies[1], nearest - keep);
+                    int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), enemies[0], enemies[1],
+                            nearest - keep);
                     tx = stop[0];
                     ty = stop[1];
                 }
             }
         } else if (army != null) {
             // March inside the clump, a little behind its middle.
-            int[] back = towards(army[0], army[1], military.stagingX(), military.stagingY(), enemies != null ? 8 : 3);
+            int[] back = MapAnalysis.towards(army[0], army[1], military.stagingX(), military.stagingY(),
+                    enemies != null ? 8 : 3);
             tx = back[0];
             ty = back[1];
         } else if (military.baseThreatLevel() > 0) {
-            int[] back = towards(military.threatX(), military.threatY(), military.stagingX(), military.stagingY(),
+            int[] back = MapAnalysis.towards(military.threatX(), military.threatY(), military.stagingX(),
+                    military.stagingY(),
                     12);
             tx = back[0];
             ty = back[1];
@@ -881,16 +880,6 @@ final class Chieftain {
             if (!Intel.isStunned(e))
                 best = Math.min(best, MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()));
         return best == Integer.MAX_VALUE ? 1000 : (int) Math.sqrt(best);
-    }
-
-    /** The point `cells` away from (x, y) in the direction of (to_x, to_y). */
-    private static int @NonNull [] towards(int x, int y, int to_x, int to_y, int cells) {
-        float dx = to_x - x;
-        float dy = to_y - y;
-        float len = (float) Math.sqrt(dx * dx + dy * dy);
-        if (len <= cells)
-            return new int[]{to_x, to_y};
-        return new int[]{x + (int) (dx / len * cells), y + (int) (dy / len * cells)};
     }
 
     /** Middle of the enemy warriors and manned towers around the nearest one within radius cells, or null. */

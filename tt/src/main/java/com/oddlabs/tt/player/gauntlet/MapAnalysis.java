@@ -6,7 +6,6 @@ import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.RockSupply;
-import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.pathfinder.Movable;
 import com.oddlabs.tt.pathfinder.Occupant;
 import com.oddlabs.tt.pathfinder.UnitGrid;
@@ -43,6 +42,8 @@ final class MapAnalysis {
         this.access = heightmap.getAccessGrid();
         this.size = grid.getGridSize();
         this.tree_sums = new int[(size + 1) * (size + 1)];
+        this.pass_gen = new int[size * size];
+        this.pass_ok = new boolean[size * size];
         this.tree_buckets_side = (size + TREE_BUCKET - 1) / TREE_BUCKET;
         for (int i = 0; i < tree_buckets_side * tree_buckets_side; i++)
             tree_buckets.add(new ArrayList<>());
@@ -184,14 +185,6 @@ final class MapAnalysis {
         return tree_sums[y1 * stride + x1] - tree_sums[y0 * stride + x1] - tree_sums[y1 * stride + x0] + tree_sums[y0 * stride + x0];
     }
 
-    static int countStanding(List<? extends Supply> supplies) {
-        int n = 0;
-        for (Supply s : supplies)
-            if (!s.isEmpty())
-                n++;
-        return n;
-    }
-
     /**
      * Whether units can walk through the cell. Trees, supplies and buildings block it; units do not.
      */
@@ -265,6 +258,7 @@ final class MapAnalysis {
         }
         if (counts[0] == 0)
             return field;
+        int call = ++pass_call;
         int current = 0;
         int empty_rounds = 0;
         while (empty_rounds < 4) {
@@ -281,7 +275,9 @@ final class MapAnalysis {
             // Entries appended to this bucket during the loop belong to later costs (current + 4 or more).
             int n = counts[b];
             counts[b] = 0;
-            int[] work = new int[n];
+            if (field_work.length < n)
+                field_work = new int[Math.max(n, 2 * field_work.length)];
+            int[] work = field_work;
             System.arraycopy(bucket, 0, work, 0, n);
             for (int i = 0; i < n; i++) {
                 int index = work[i];
@@ -295,10 +291,10 @@ final class MapAnalysis {
                             continue;
                         int nx = x + dx;
                         int ny = y + dy;
-                        if (!passable(nx, ny, source_occupant))
+                        if (!passableIn(nx, ny, source_occupant, call))
                             continue;
-                        if (dx != 0 && dy != 0 && (!passable(x + dx, y, source_occupant)
-                                || !passable(x, y + dy, source_occupant)))
+                        if (dx != 0 && dy != 0 && (!passableIn(x + dx, y, source_occupant, call)
+                                || !passableIn(x, y + dy, source_occupant, call)))
                             continue;
                         int step = (dx != 0 && dy != 0) ? 3 : 2;
                         int next = current + step;
@@ -321,10 +317,42 @@ final class MapAnalysis {
         return field;
     }
 
+    /**
+     * computeField's cache of passable(x, y, ignore): the grid does not change while a field is computed, so each cell
+     * is looked up once per call (pass_gen holds the call that filled pass_ok) instead of up to 16 times.
+     */
+    private final int @NonNull [] pass_gen;
+    private final boolean @NonNull [] pass_ok;
+    private int pass_call;
+    /** computeField's copy of the bucket it expands, reused across calls. */
+    private int @NonNull [] field_work = new int[256];
+
+    private boolean passableIn(int x, int y, @Nullable Occupant ignore, int call) {
+        if (!inside(x, y))
+            return false;
+        int i = y * size + x;
+        if (pass_gen[i] == call)
+            return pass_ok[i];
+        boolean ok = passable(x, y, ignore);
+        pass_gen[i] = call;
+        pass_ok[i] = ok;
+        return ok;
+    }
+
     static int dist2(int x0, int y0, int x1, int y1) {
         int dx = x1 - x0;
         int dy = y1 - y0;
         return dx * dx + dy * dy;
+    }
+
+    /** The cell `cells` away from (x, y) in the direction of (to_x, to_y) (truncated), or (to_x, to_y) if nearer. */
+    static int @NonNull [] towards(int x, int y, int to_x, int to_y, int cells) {
+        float dx = to_x - x;
+        float dy = to_y - y;
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len <= cells)
+            return new int[]{to_x, to_y};
+        return new int[]{x + (int) (dx / len * cells), y + (int) (dy / len * cells)};
     }
 
     /** Euclidean distance in meters between two grid cells. */

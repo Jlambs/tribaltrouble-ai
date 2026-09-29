@@ -71,7 +71,6 @@ final class Economy {
     private @Nullable Building expansion;
     private float last_expansion_check = -100f;
     private float last_old_recall = -100f;
-    private boolean chieftain_topup;
     private int project_counter;
     private final List<@NonNull Building> forward_towers = new ArrayList<>();
     private final List<@NonNull Building> sniper_towers = new ArrayList<>();
@@ -311,18 +310,9 @@ final class Economy {
             if (inside == 0)
                 continue;
             int deployed = 0;
-            if (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY) {
-                int c = Math.min(b.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies(), inside);
-                if (c > 0)
-                    owner.deployUnits(b, DeployType.RUBBER_WARRIOR, c);
-                int i = Math.min(b.getSupplyContainer(IronAxeWeapon.class).getNumSupplies(), inside - c);
-                if (i > 0)
-                    owner.deployUnits(b, DeployType.IRON_WARRIOR, i);
-                int r = Math.min(b.getSupplyContainer(RockAxeWeapon.class).getNumSupplies(), inside - c - i);
-                if (r > 0)
-                    owner.deployUnits(b, DeployType.ROCK_WARRIOR, r);
-                deployed = c + i + r;
-            }
+            if (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY)
+                deployed = deployWarriors(b, inside, stock(b, RubberAxeWeapon.class), stock(b, IronAxeWeapon.class),
+                        stock(b, RockAxeWeapon.class));
             int pending = b.getDeployContainer(DeployType.PEON).getNumSupplies();
             int peons = inside - deployed - pending;
             if (peons > 0)
@@ -656,9 +646,7 @@ final class Economy {
         for (Unit e : ai.intel().enemy_warriors) {
             if (e.isDead() || MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) > r * r)
                 continue;
-            boolean parked = e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                    && e.getCurrentController() == e.getPrimaryController();
-            if (!parked)
+            if (!Intel.isParked(e))
                 return true;
         }
         return false;
@@ -827,13 +815,8 @@ final class Economy {
             Site site = ai.planner().findQuartersSite(reservedSites(null), ax, ay, 90, field,
                     ai.planner().getStartX(), ai.planner().getStartY(), ai.strategy().quarters_builders, .25f, .02f);
             if (site != null && strategy.veto_resite > 0f && strategy.veto_resite_quarters
-                    && time >= strategy.veto_resite_time && ai.military().threatNearEcon(site.x, site.y, 16)) {
-                // veto_resite: a site vetoed at birth goes where no threat is, else stays for the veto path.
-                Site clear = clearSite(Race.BUILDING_QUARTERS, site.x, site.y, null);
-                ai.aiLog().count(clear != null ? "veto_resite_born_quarters" : "veto_resite_born_quarters_none");
-                if (clear != null)
-                    site = clear;
-            }
+                    && time >= strategy.veto_resite_time)
+                site = clearAtBirth(site, Race.BUILDING_QUARTERS, "veto_resite_born_quarters");
             if (site != null)
                 addProject(Race.BUILDING_QUARTERS, site, 5);
         }
@@ -888,20 +871,26 @@ final class Economy {
                 Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
                         existing,
                         face[0], face[1]);
-                if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time
-                        && ai.military().threatNearEcon(site.x, site.y, 16)) {
-                    // veto_resite: a site vetoed at birth goes where no threat is, else stays for the veto path.
-                    Site clear = clearSite(Race.BUILDING_TOWER, site.x, site.y, null);
-                    ai.aiLog().count(clear != null ? "veto_resite_born" : "veto_resite_born_none");
-                    if (clear != null)
-                        site = clear;
-                }
+                if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time)
+                    site = clearAtBirth(site, Race.BUILDING_TOWER, "veto_resite_born");
                 if (site != null)
                     addProject(Race.BUILDING_TOWER, site, 8);
             }
             planForwardTower();
             planSniper();
         }
+    }
+
+    /**
+     * veto_resite: a new site that projectMayStart would veto at once (a threat within 16 cells) goes to the nearest
+     * clear site, else it stays for the veto path; counts counter or counter_none.
+     */
+    private @NonNull Site clearAtBirth(@NonNull Site site, int type, @NonNull String counter) {
+        if (!ai.military().threatNearEcon(site.x, site.y, 16))
+            return site;
+        Site clear = clearSite(type, site.x, site.y, null);
+        ai.aiLog().count(clear != null ? counter : counter + "_none");
+        return clear != null ? clear : site;
     }
 
     /** Sniper tower projects, placed or not (their sites are in intel.tower_sites until they stand). */
@@ -911,12 +900,6 @@ final class Economy {
             if (q.sniper)
                 n++;
         return n;
-    }
-
-    /** An enemy warrior standing idle: it sees 8 cells and never answers being hit (IdleController). */
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                && e.getCurrentController() == e.getPrimaryController();
     }
 
     /**
@@ -941,7 +924,7 @@ final class Economy {
         int range2 = strategy.snipe_range * strategy.snipe_range;
         List<Unit> parked = new ArrayList<>();
         for (Unit e : intel.enemy_warriors) {
-            if (e.isDead() || !isParked(e))
+            if (e.isDead() || !Intel.isParked(e))
                 continue;
             for (Building b : own)
                 if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), e.getGridX(),
@@ -1031,7 +1014,7 @@ final class Economy {
                     continue;
                 int dx = Math.abs(e.getGridX() - x);
                 int dy = Math.abs(e.getGridY() - y);
-                if (isParked(e) ? Math.max(dx, dy) <= 9 : dx * dx + dy * dy <= 12 * 12)
+                if (Intel.isParked(e) ? Math.max(dx, dy) <= 9 : dx * dx + dy * dy <= 12 * 12)
                     return false;
             }
         for (Building t : intel.enemy_towers)
@@ -1143,15 +1126,9 @@ final class Economy {
      */
     private boolean armsRace() {
         Strategy strategy = ai.strategy();
-        float ours = 0f;
-        for (Unit w : ai.intel().warriors)
-            ours += Combat.value(w);
         if (!rush_alert || ai.time() > rush_alert_time + strategy.rush_seconds)
             return false;
-        float theirs = 0f;
-        for (Unit w : ai.intel().enemy_warriors)
-            theirs += Combat.value(w);
-        return ours < 1.2f * theirs + 4f;
+        return Combat.total(ai.intel().warriors) < 1.2f * Combat.total(ai.intel().enemy_warriors) + 4f;
     }
 
     /** Early in the game, enemies in the base that our warriors cannot handle. */
@@ -1160,10 +1137,7 @@ final class Economy {
         Military military = ai.military();
         if (!strategy.pressure_response || ai.time() >= strategy.pressure_time || military.baseThreatLevel() == 0)
             return false;
-        float ours = 0f;
-        for (Unit w : ai.intel().warriors)
-            ours += Combat.value(w);
-        return ours < 1.2f * military.threatStrength() + 4f;
+        return Combat.total(ai.intel().warriors) < 1.2f * military.threatStrength() + 4f;
     }
 
     /**
@@ -1591,12 +1565,10 @@ final class Economy {
             noforge_since = -1f;
             return;
         }
-        int wood = stock(a, TreeSupply.class);
         int iron = stock(a, IronSupply.class);
         int rock = stock(a, RockSupply.class);
         boolean rockw = rock_weapons || rock_filler;
-        // drainSecondary's test
-        boolean can_make = wood >= 2 && (iron >= 1 || (rockw && rock >= 1));
+        boolean can_make = canForge(a);
         noforge_since = can_make ? -1f : noforge_since < 0f ? now : noforge_since;
         if (noforge_since >= 0f && now - noforge_since >= st.bank_noforge_s) {
             bank_cap = st.bank_min; // the forge_release clause (K11a-2)
@@ -1692,24 +1664,18 @@ final class Economy {
         int iron = armory.getSupplyContainer(IronAxeWeapon.class).getNumSupplies();
         int chicken = armory.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies();
         int rock = armory.getSupplyContainer(RockAxeWeapon.class).getNumSupplies();
-        int c = Math.min(chicken, workers);
-        if (c > 0)
-            owner.deployUnits(armory, DeployType.RUBBER_WARRIOR, c);
-        int i = Math.min(iron, workers - c);
-        if (i > 0)
-            owner.deployUnits(armory, DeployType.IRON_WARRIOR, i);
-        int r = Math.min(rock, workers - c - i);
-        if (r > 0)
-            owner.deployUnits(armory, DeployType.ROCK_WARRIOR, r);
-        int left = workers - c - i - r;
-        boolean can_make = armory.getSupplyContainer(TreeSupply.class).getNumSupplies() >= 2
-                && (armory.getSupplyContainer(IronSupply.class).getNumSupplies() >= 1
-                        || ((rock_weapons || rock_filler)
-                                && armory.getSupplyContainer(RockSupply.class).getNumSupplies() >= 1));
+        int left = workers - deployWarriors(armory, workers, chicken, iron, rock);
+        boolean can_make = canForge(armory);
         int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
         boolean refuge = armory == refuge_armory && ai.time() < refuge_until;
         if (!can_make && left > 0 && pending == 0 && !refuge)
             owner.deployUnits(armory, DeployType.PEON, left);
+    }
+
+    /** Whether an armory's stock pays for a weapon: two wood and an iron, or a rock while rock axes are made. */
+    private boolean canForge(@NonNull Building armory) {
+        return stock(armory, TreeSupply.class) >= 2 && (stock(armory, IronSupply.class) >= 1
+                || ((rock_weapons || rock_filler) && stock(armory, RockSupply.class) >= 1));
     }
 
     private void orderWeapons(@NonNull Building armory) {
@@ -1768,15 +1734,25 @@ final class Economy {
         deploy = Math.min(deploy, Math.min(stock, workers - keep));
         if (deploy <= 0)
             return;
-        int c = Math.min(chicken, deploy);
+        deployWarriors(armory, deploy, chicken, iron, rock);
+    }
+
+    /**
+     * Deploys up to n warriors from an armory's weapon stock (chicken, iron and rock axes, as read before), chicken
+     * warriors first, then iron, then rock, and returns how many.
+     */
+    private int deployWarriors(@NonNull Building armory, int n, int chicken, int iron, int rock) {
+        Player owner = ai.owner();
+        int c = Math.min(chicken, n);
         if (c > 0)
             owner.deployUnits(armory, DeployType.RUBBER_WARRIOR, c);
-        int i = Math.min(iron, deploy - c);
+        int i = Math.min(iron, n - c);
         if (i > 0)
             owner.deployUnits(armory, DeployType.IRON_WARRIOR, i);
-        int r = Math.min(rock, deploy - c - i);
+        int r = Math.min(rock, n - c - i);
         if (r > 0)
             owner.deployUnits(armory, DeployType.ROCK_WARRIOR, r);
+        return c + i + r;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -2585,7 +2561,6 @@ final class Economy {
         }
 
         // 2. Chieftain training quarters top-up.
-        chieftain_topup = false;
         Building trainer = ai.chieftain().trainingQuarters();
         boolean topup_ok = ai.military().baseThreatLevel() == 0 || (ai.strategy().chief_topup_any && trainer != null
                 && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
@@ -2613,7 +2588,6 @@ final class Economy {
                         topup_sent.put(u, trainer);
                         ai.aiLog().count("topup_sent");
                     }
-                chieftain_topup = true;
             }
         }
 
@@ -3013,8 +2987,7 @@ final class Economy {
             parked_time = ai.time();
             parked_cells.clear();
             for (Unit e : ai.intel().enemy_warriors)
-                if (!e.isDead() && e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                        && e.getCurrentController() == e.getPrimaryController())
+                if (!e.isDead() && Intel.isParked(e))
                     parked_cells.add(new int[]{e.getGridX(), e.getGridY()});
         }
         for (int[] c : parked_cells)
@@ -3109,10 +3082,6 @@ final class Economy {
     }
 
     // ------------------------------------------------------------------------------------------------------------
-
-    int wantWorkers() {
-        return want_workers;
-    }
 
     @NonNull
     String debugStatus() {

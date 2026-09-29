@@ -127,6 +127,30 @@ final class Intel {
     /** Changes whenever update() rebuilds the lists (EnemyIndex caches on it). */
     int version;
 
+    private @Nullable EnemyIndex enemy_index;
+    private int enemy_index_tick = -1;
+    private int enemy_index_version = -1;
+
+    /**
+     * The enemy warriors, chieftains and peons bucketed by where they stand on this tick (EnemyIndex): rebuilt whenever
+     * update() rebuilds the lists, else brought up to the units' current cells once a tick. Units only move between
+     * ticks, so every query of a tick sees what a scan over the lists would.
+     */
+    @NonNull
+    EnemyIndex enemyIndex(int tick) {
+        if (enemy_index == null)
+            enemy_index = new EnemyIndex(owner.getWorld().getUnitGrid().getGridSize());
+        if (enemy_index_version != version) {
+            enemy_index.rebuild(enemy_warriors, enemy_chieftains, enemy_peons);
+            enemy_index_tick = tick;
+            enemy_index_version = version;
+        } else if (enemy_index_tick != tick) {
+            enemy_index.refresh();
+            enemy_index_tick = tick;
+        }
+        return enemy_index;
+    }
+
     void update() {
         version++;
         quarters.clear();
@@ -318,13 +342,27 @@ final class Intel {
         return !unit.isDead() && unit.getCurrentController() instanceof StunController;
     }
 
+    /**
+     * A unit standing idle on its default controller ("parked"): it scans only an 8-cell square and never answers
+     * being hit (IdleController). Check isDead first.
+     */
+    static boolean isParked(@NonNull Unit unit) {
+        return unit.getPrimaryController() instanceof IdleController
+                && unit.getCurrentController() == unit.getPrimaryController();
+    }
+
+    /** The garrison of a finished tower (its unit container is a MountUnitContainer), or null when it has none. */
+    static @Nullable Unit gunner(@NonNull Building tower) {
+        return ((MountUnitContainer) tower.getUnitContainer()).getUnit();
+    }
+
     /** Whether a tower currently has a warrior inside that is not stunned. */
     static boolean isTowerActive(@NonNull Building tower) {
         if (tower.isDead() || !tower.isComplete() || tower.getUnitContainer() == null)
             return false;
         if (tower.getUnitContainer().getNumSupplies() == 0)
             return false;
-        Unit unit = ((MountUnitContainer) tower.getUnitContainer()).getUnit();
+        Unit unit = gunner(tower);
         return unit != null && !isStunned(unit);
     }
 
