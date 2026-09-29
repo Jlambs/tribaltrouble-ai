@@ -103,6 +103,8 @@ final class Military {
 
     /** The copy whose buildings the attacks go after first while it is alive (focus_bonus). */
     private com.oddlabs.tt.player.@Nullable Player focus_owner;
+    /** frozen_last: the frozen copies a choice has passed over at least once (counted once each). */
+    private final List<com.oddlabs.tt.player.@NonNull Player> frozen_deferred = new ArrayList<>();
     private int target_x;
     private int target_y;
     private @Nullable DistanceField target_field;
@@ -1964,6 +1966,8 @@ final class Military {
         }
         Building best_line = null;
         float best_line_score = Float.MAX_VALUE;
+        Building best_frozen = null;
+        float best_frozen_score = Float.MAX_VALUE;
         for (Building b : candidates) {
             if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())) || ai.freeze().isFrozenSite(b))
                 continue;
@@ -1995,6 +1999,13 @@ final class Military {
             if (focus_owner != null && b.getOwner() == focus_owner)
                 score -= strategy.focus_bonus;
             score -= strategy.target_threat_weight * base_threat.getOrDefault(b.getOwner(), 0f);
+            if (strategy.frozen_last && ai.freeze().isFrozen(b.getOwner())) {
+                if (score < best_frozen_score) {
+                    best_frozen_score = score;
+                    best_frozen = b;
+                }
+                continue;
+            }
             if (score < best_score) {
                 best_score = score;
                 best = b;
@@ -2006,6 +2017,15 @@ final class Military {
         }
         if (path != null && best != best_line)
             ai.aiLog().count("retarget_path_changed");
+        if (best_frozen != null) {
+            if (best == null) {
+                best = best_frozen;
+                ai.aiLog().count("frozen_last_target");
+            } else if (!frozen_deferred.contains(best_frozen.getOwner())) {
+                frozen_deferred.add(best_frozen.getOwner());
+                ai.aiLog().count("frozen_deferred");
+            }
+        }
         if (best == null) {
             List<Unit> units = new ArrayList<>(intel.enemy_peons);
             units.addAll(intel.enemy_warriors);

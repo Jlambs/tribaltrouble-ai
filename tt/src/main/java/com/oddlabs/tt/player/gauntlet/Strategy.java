@@ -583,6 +583,12 @@ class Strategy {
      * most freeze_eta seconds away and its quarters is not finished (that strike gives up when its quarters stands).
      */
     boolean freeze_retarget = false;
+    /**
+     * The attack target's choice leaves frozen copies (Freeze) until no other copy is a candidate: a frozen copy never
+     * launches a wave, so its quarters is worth nothing to our survival, while it scores as the easiest target (no
+     * priority, no defense) and took our first attack in 35 of 38 N=13 games (audit13 frozen_last).
+     */
+    boolean frozen_last = false;
 
     /**
      * In a fight, give each warrior its own target: the enemy in range with the best value times hit chance times
@@ -1027,6 +1033,7 @@ class Strategy {
         freeze_fight = params.getBoolean("freeze_fight", freeze_fight);
         freeze_armory_push = params.getBoolean("freeze_armory_push", freeze_armory_push);
         freeze_retarget = params.getBoolean("freeze_retarget", freeze_retarget);
+        frozen_last = params.getBoolean("frozen_last", frozen_last);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
         restore_dodge_gap = (float) params.getDouble("restore_dodge_gap", restore_dodge_gap);
