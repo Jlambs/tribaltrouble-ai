@@ -306,9 +306,15 @@ class Strategy {
     int lure_min = 3;
     int lure_range = 45;
     float lure_time = 420f;
-    /** From tower_parallel_late_time on: tower projects and placed sites at a time (the siege razes towers). */
-    int tower_parallel_late = 1;
-    int sites_parallel_late = 2;
+    /**
+     * From tower_parallel_late_time on: tower projects and placed sites at a time (the siege razes towers). 2 and 3
+     * (were
+     * 1 and 2): two placed sites shared with quarters were the real bound on tower completions in the collapse window
+     * (tower13 audit), so more towers stand; towers20 +0.7 to +1.3 and surv60 +0.3 to +1.3 in every one of 11 blocks at
+     * N=12-14; wins on 1,200 fresh seeds N=13 0 -> 3, N=14 1 -> 2; N=12 over 400 W 15 -> 13.
+     */
+    int tower_parallel_late = 2;
+    int sites_parallel_late = 3;
     float tower_parallel_late_time = 600f;
     /**
      * From tower_parallel_late_time on, a quarters project may not take the last free construction-site slot while a
