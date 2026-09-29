@@ -1944,7 +1944,7 @@ final class Military {
         Building best_line = null;
         float best_line_score = Float.MAX_VALUE;
         for (Building b : candidates) {
-            if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())))
+            if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())) || ai.freeze().isFrozenSite(b))
                 continue;
             float line = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
             float d = line;
@@ -1961,7 +1961,13 @@ final class Military {
                         || strategy.gate_freeze ? 0f : 60f;
                 default -> 120f;
             };
-            float score = d + priority + strategy.target_defense_weight * defenseFor(b);
+            float defense = strategy.target_defense_weight * defenseFor(b);
+            if (ai.freeze().isFrozen(b.getOwner())) {
+                // A frozen copy (Freeze) has nobody outside to defend with, and only its quarters keeps it in.
+                priority = 0f;
+                defense = 0f;
+            }
+            float score = d + priority + defense;
             if (strategy.target_home_weight > 0f)
                 score += strategy.target_home_weight * MapAnalysis.meters(staging_x, staging_y, b.getGridX(),
                         b.getGridY());
