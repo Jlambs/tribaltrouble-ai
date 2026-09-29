@@ -473,6 +473,15 @@ class Strategy {
     float reinforce_ratio = .5f;
     /** Against several enemies, reinforce only at the unit cap: the others would walk into an emptied base. */
     boolean reinforce_multi = false;
+    /**
+     * At the unit cap a home group of 12 may go to the attack whatever its size; with capped_clump > 0 that holds only
+     * while the attack army is within capped_clump_cells of the armory, and a group for a farther army waits until it
+     * is worth max(capped_clump_min, capped_clump x the army) (audit13 military 4: capped trickles to an army 100+
+     * cells out lost 0.38-0.46 per unit sent, clumps 0.18-0.28). 0: off.
+     */
+    float capped_clump = 0f;
+    float capped_clump_min = 24f;
+    int capped_clump_cells = 100;
     /** How much more an enemy manned tower counts than Combat.TOWER when judging an attack or retreat. */
     float tower_weight = 1f;
     /** Army strength that attacks regardless of the odds. */
@@ -1009,6 +1018,9 @@ class Strategy {
         reinforce = params.getBoolean("reinforce", reinforce);
         reinforce_ratio = (float) params.getDouble("reinforce_ratio", reinforce_ratio);
         reinforce_multi = params.getBoolean("reinforce_multi", reinforce_multi);
+        capped_clump = (float) params.getDouble("capped_clump", capped_clump);
+        capped_clump_min = (float) params.getDouble("capped_clump_min", capped_clump_min);
+        capped_clump_cells = params.getInt("capped_clump_cells", capped_clump_cells);
         tower_weight = (float) params.getDouble("tower_weight", tower_weight);
         attack_max_strength = (float) params.getDouble("attack_max_strength", attack_max_strength);
         capped_ratio = (float) params.getDouble("capped_ratio", capped_ratio);

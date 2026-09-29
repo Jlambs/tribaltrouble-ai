@@ -3396,13 +3396,33 @@ final class Military {
         Player owner = ai.owner();
         boolean capped = owner.getUnitCountContainer().getNumSupplies() >= owner.getWorld().getMaxUnitCount() - 10;
         // Reinforcements go as a clump: a trickle of a few at a time is picked off on the way.
-        if (home < Math.max(12f, ai.strategy().reinforce_ratio * away) && !(capped && home >= 12f))
+        float capped_need = capped ? cappedNeed(away) : 12f;
+        if (home < Math.max(12f, ai.strategy().reinforce_ratio * away) && !(capped && home >= capped_need)) {
+            if (capped && home >= 12f)
+                ai.aiLog().count("capped_clump_wait");
             return;
+        }
         if (!capped && ai.enemiesAlive() > 1 && !ai.strategy().reinforce_multi)
             return;
         for (Unit u : group)
             roles.put(u, Role.REINFORCE);
         ai.log(String.format("reinforcing the attack (%.1f) with %.1f", away, home));
+    }
+
+    /**
+     * capped_clump: the strength a home group needs to go at the unit cap, 12 while the attack army is near the
+     * armory, and a clump of max(capped_clump_min, capped_clump x the army) for an army capped_clump_cells or farther.
+     */
+    private float cappedNeed(float away) {
+        Strategy strategy = ai.strategy();
+        if (strategy.capped_clump <= 0f)
+            return 12f;
+        int[] front = attackCenter();
+        Building armory = ai.intel().armory();
+        if (front == null || armory == null || MapAnalysis.dist2(front[0], front[1], armory.getGridX(),
+                armory.getGridY()) < strategy.capped_clump_cells * strategy.capped_clump_cells)
+            return 12f;
+        return Math.max(12f, Math.max(strategy.capped_clump_min, strategy.capped_clump * away));
     }
 
     /**
