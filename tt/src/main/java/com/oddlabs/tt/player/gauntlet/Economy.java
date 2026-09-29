@@ -850,16 +850,26 @@ final class Economy {
     // Building plan
 
     private void planBuildings() {
+        if (!planArmory())
+            return;
+        Building armory = ai.intel().armory();
+        planQuarters(armory);
+        planTowers(armory);
+    }
+
+    /**
+     * An armory project when we have none (placed, planned or standing), else the expansion check. Returns false, and
+     * nothing else is planned this round, when a lost armory's new site has a threat within 25 cells.
+     */
+    private boolean planArmory() {
         Intel intel = ai.intel();
-        Strategy strategy = ai.strategy();
-        float time = ai.time();
         int armory_count = intel.armories.size() + intel.armory_sites.size() + countProjects(Race.BUILDING_ARMORY,
                 false);
         if (armory_count == 0) {
             // A lost armory goes up again next to the quarters furthest from the fighting, not back where it fell.
             Site site = had_armory ? safeArmorySite() : ai.planner().findArmorySite(reservedSites(null));
             if (site != null && ai.military().threatNear(site.x, site.y, 25))
-                return;
+                return false;
             if (site == null)
                 site = ai.planner().findArmorySite(reservedSites(null));
             if (site == null && !intel.peons.isEmpty()) {
@@ -874,7 +884,14 @@ final class Economy {
         } else if (armory_count == 1 && intel.armories.size() == 1) {
             considerExpansion();
         }
-        Building armory = intel.armory();
+        return true;
+    }
+
+    /** A quarters project while we have fewer than the target (initial_quarters, then max_quarters) and none waits. */
+    private void planQuarters(@Nullable Building armory) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        float time = ai.time();
         int quarters_count = intel.quarters.size() + intel.quarters_sites.size() + countProjects(
                 Race.BUILDING_QUARTERS, false);
         int target_quarters = strategy.initial_quarters;
@@ -896,77 +913,88 @@ final class Economy {
             if (site != null)
                 addProject(Race.BUILDING_QUARTERS, site, 5);
         }
-        if (armory != null && intel.quarters.size() < strategy.tower_min_quarters)
+    }
+
+    /**
+     * Tower projects up to the target of the hour (towers_early, _mid, _late, plus the front bonus), once the armory
+     * and tower_min_quarters finished quarters stand; then the forward and sniper towers.
+     */
+    private void planTowers(@Nullable Building armory) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        float time = ai.time();
+        if (armory == null)
+            return;
+        if (intel.quarters.size() < strategy.tower_min_quarters) {
             ai.aiLog().count("tower_gate_quarters"); // plan ticks the quarters gate keeps towers off (A3)
-        if (armory != null && intel.quarters.size() >= strategy.tower_min_quarters) {
-            int target_towers = 0;
-            if (time >= strategy.towers_early_time)
-                target_towers = strategy.towers_early;
-            if (time >= strategy.towers_mid_time)
-                target_towers = strategy.towers_mid;
-            if (time >= strategy.towers_late_time)
-                target_towers = strategy.towers_late;
-            if (ai.military().baseThreatLevel() > 0 && target_towers < 2)
-                target_towers = Math.max(target_towers, 1);
-            int enemies = ai.enemiesAlive();
-            boolean fronts = enemies > 1 && strategy.multi_front_towers;
-            if (fronts && target_towers > 0)
-                target_towers += Math.min(enemies - 1, strategy.front_tower_bonus_max);
-            if (strategy.tower_cap)
-                // Leave room under the building cap for every quarters, two armories and a spare site.
-                target_towers = Math.min(target_towers,
-                        ai.owner().getWorld().getMaxBuildingCount() - strategy.max_quarters - 3);
-            forward_towers.removeIf(Building::isDead);
-            sniper_towers.removeIf(Building::isDead);
-            int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
-                    false) - forward_towers.size() - countForward() - ai.military().creepTowerCount() - sniper_towers.size() - countSniper();
-            int tower_parallel = time >= strategy.tower_parallel_late_time ? strategy.tower_parallel_late : strategy.tower_parallel;
-            if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < tower_parallel
-                    && ai.owner().canBuild(Race.BUILDING_TOWER) && time >= tower_hold_until) {
-                List<int[]> existing = existingTowers();
-                int[] center = towerAnchor(tower_count);
-                int[] face = {ai.planner().getEnemyX(), ai.planner().getEnemyY()};
-                float[] live = strategy.tower_face_place ? ai.liveEnemyCenter() : null;
-                if (live != null)
-                    face = new int[]{Math.round(live[0]), Math.round(live[1])};
-                int min_cells = 7;
-                int max_cells = 15;
-                if (fronts && tower_count % 2 == 1) {
-                    int[][] front = enemyFront(tower_count / 2);
-                    if (front != null) {
-                        center = front[0];
-                        face = front[1];
-                        live = null;
-                        // Front towers further out leave room for decoys in front of them (Decoys).
-                        min_cells = ai.strategy().front_tower_min;
-                        max_cells = ai.strategy().front_tower_max;
-                    }
-                }
-                if (live != null)
-                    ai.aiLog().count("tower_face_place");
-                Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
-                        existing,
-                        face[0], face[1]);
-                if (site == null) {
-                    ai.aiLog().count("tower_nosite"); // plan ticks with room for a tower and no site on its ring
-                    if (strategy.tower_site_fallback && time >= fallback_next) {
-                        site = fallbackTowerSite(center, face, existing);
-                        if (site != null) {
-                            ai.aiLog().count("tower_site_fallback");
-                        } else {
-                            ai.aiLog().count("tower_site_fallback_none");
-                            fallback_next = time + 15f;
-                        }
-                    }
-                }
-                if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time)
-                    site = clearAtBirth(site, Race.BUILDING_TOWER, "veto_resite_born");
-                if (site != null)
-                    addProject(Race.BUILDING_TOWER, site, 8);
-            }
-            planForwardTower();
-            planSniper();
+            return;
         }
+        int target_towers = 0;
+        if (time >= strategy.towers_early_time)
+            target_towers = strategy.towers_early;
+        if (time >= strategy.towers_mid_time)
+            target_towers = strategy.towers_mid;
+        if (time >= strategy.towers_late_time)
+            target_towers = strategy.towers_late;
+        if (ai.military().baseThreatLevel() > 0 && target_towers < 2)
+            target_towers = Math.max(target_towers, 1);
+        int enemies = ai.enemiesAlive();
+        boolean fronts = enemies > 1 && strategy.multi_front_towers;
+        if (fronts && target_towers > 0)
+            target_towers += Math.min(enemies - 1, strategy.front_tower_bonus_max);
+        if (strategy.tower_cap)
+            // Leave room under the building cap for every quarters, two armories and a spare site.
+            target_towers = Math.min(target_towers,
+                    ai.owner().getWorld().getMaxBuildingCount() - strategy.max_quarters - 3);
+        forward_towers.removeIf(Building::isDead);
+        sniper_towers.removeIf(Building::isDead);
+        int tower_count = intel.towers.size() + intel.tower_sites.size() + countProjects(Race.BUILDING_TOWER,
+                false) - forward_towers.size() - countForward() - ai.military().creepTowerCount() - sniper_towers.size() - countSniper();
+        int tower_parallel = time >= strategy.tower_parallel_late_time ? strategy.tower_parallel_late : strategy.tower_parallel;
+        if (tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < tower_parallel
+                && ai.owner().canBuild(Race.BUILDING_TOWER) && time >= tower_hold_until) {
+            List<int[]> existing = existingTowers();
+            int[] center = towerAnchor(tower_count);
+            int[] face = {ai.planner().getEnemyX(), ai.planner().getEnemyY()};
+            float[] live = strategy.tower_face_place ? ai.liveEnemyCenter() : null;
+            if (live != null)
+                face = new int[]{Math.round(live[0]), Math.round(live[1])};
+            int min_cells = 7;
+            int max_cells = 15;
+            if (fronts && tower_count % 2 == 1) {
+                int[][] front = enemyFront(tower_count / 2);
+                if (front != null) {
+                    center = front[0];
+                    face = front[1];
+                    live = null;
+                    // Front towers further out leave room for decoys in front of them (Decoys).
+                    min_cells = ai.strategy().front_tower_min;
+                    max_cells = ai.strategy().front_tower_max;
+                }
+            }
+            if (live != null)
+                ai.aiLog().count("tower_face_place");
+            Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
+                    existing, face[0], face[1]);
+            if (site == null) {
+                ai.aiLog().count("tower_nosite"); // plan ticks with room for a tower and no site on its ring
+                if (strategy.tower_site_fallback && time >= fallback_next) {
+                    site = fallbackTowerSite(center, face, existing);
+                    if (site != null) {
+                        ai.aiLog().count("tower_site_fallback");
+                    } else {
+                        ai.aiLog().count("tower_site_fallback_none");
+                        fallback_next = time + 15f;
+                    }
+                }
+            }
+            if (site != null && strategy.veto_resite > 0f && time >= strategy.veto_resite_time)
+                site = clearAtBirth(site, Race.BUILDING_TOWER, "veto_resite_born");
+            if (site != null)
+                addProject(Race.BUILDING_TOWER, site, 8);
+        }
+        planForwardTower();
+        planSniper();
     }
 
     /**
@@ -2826,6 +2854,16 @@ final class Economy {
         if (missing <= 0 || !carriers.isEmpty() || p.wood_sent >= st.tower_wood_max
                 || ai.time() - p.wood_last < 6f || ai.military().threatNearEcon(p.site.x, p.site.y, 16))
             return;
+        orderWood(p, missing);
+    }
+
+    /**
+     * tower_wood_drop, with no idle carrier left for the project: the nearest armory within tower_wood_reach that can
+     * spare wood and workers now deploys up to `missing` wood transporters (the next round sends them to the site),
+     * else the reason none could is counted.
+     */
+    private void orderWood(@NonNull Project p, int missing) {
+        Strategy st = ai.strategy();
         // The nearest armory within reach that can spare wood and workers now: the nearest one may be an old armory
         // the economy has moved its workers out of, with a primary one close behind (smoke-wood s2001).
         Building armory = null;
@@ -2836,7 +2874,7 @@ final class Economy {
         int workers = 0;
         String why = "tower_wood_noarmory";
         int why_d = Integer.MAX_VALUE;
-        for (Building a : intel.armories) {
+        for (Building a : ai.intel().armories) {
             if (a.isDead() || !a.isComplete() || evacuating.containsKey(a))
                 continue;
             int d = MapAnalysis.dist2(a.getGridX(), a.getGridY(), p.site.x, p.site.y);
