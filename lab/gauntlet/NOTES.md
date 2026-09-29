@@ -1442,3 +1442,14 @@ retreat through the same pass (only the attack role is watched).
   the optimum is broad; 240 trained him too early (training takes a quarters' breeding in the opening).
 - N=15 fishing on cur6: 0 wins in 1,000 more games (0 in 1,600 in all). N=16: 0 in 400.
 - cur7 benchmark on fresh seeds (6001+) running: N=14 2,000, N=15 2,000, N=13 1,000.
+- **N=15 audit on cur6 (audit15: 4 lenses, verifiers, judge; scratchpad/audit15/judge.md):** no lever it found is
+  expected to be worth a step in N. The largest gaps (copies neutralized by 10-12 min, warriors at 12 min, the third of
+  N=15 games that fall behind from minute 3) have no lever that survived checking. Ranked, all small: decoys with
+  decoy_free_slots=1 (positive survival in 3 of 3 N=13 blocks, never run at N>=14); defend at posts near towers
+  (hold_multi + hold_ratio, never screened at N>1: 74-89 % of the home army's uncovered losses at N=15 are 15-30 cells
+  from a finished tower, i.e. defenders chasing out of tower reach); keep the before-contact turn-back out of mid-battle
+  (precontact_calm); recall for the last buildings. Not levers: campaign target choice and timing (home fights trade 7.5:1,
+  field fights 1.5-2.5:1; a 45-s earlier campaign adds +0.14-0.18 neutralizations), peon rules after 12 min (no iron),
+  the opening (does not change with N), rock_stream, more towers to save armories (armory fall times do not move with
+  tower count), wider shepherd rings for far copies, focusing fire on enemy chieftains (30 throws for ~0.8 fewer base
+  waves), sweeping parked blobs, recalls. The no-code arms are queued after the cur7 benchmark, on its seeds.
