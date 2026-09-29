@@ -70,6 +70,7 @@ public final class Export {
                     out.println(String.join(",", line));
                     lines++;
                 }
+                game.forget(); // a run's game files do not all fit in memory at once
             }
         }
         return lines;
@@ -85,6 +86,7 @@ public final class Export {
             for (Map<String, Object> event : exportedEvents(game)) {
                 members.addAll(event.keySet());
             }
+            game.forget();
         }
         members.removeAll(List.of("ev", "t", "s"));
         int lines = 0;
@@ -105,6 +107,7 @@ public final class Export {
                     out.println(String.join(",", line));
                     lines++;
                 }
+                game.forget(); // a run's game files do not all fit in memory at once
             }
         }
         return lines;

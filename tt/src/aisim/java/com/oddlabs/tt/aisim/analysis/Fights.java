@@ -334,6 +334,7 @@ public final class Fights {
                 }
                 all.add(new FightInGame(game, fight));
             }
+            game.forget(); // a run's game files do not all fit in memory at once
         }
         int n = games.size();
         long won = games.stream().filter(game -> game.result().equals("win")).count();
