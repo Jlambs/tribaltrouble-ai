@@ -898,37 +898,19 @@ final class Military {
      */
     void dodgeSpells() {
         float now = ai.time();
-        dodges.values().removeIf(d -> d.until() < now);
+        if (!dodges.isEmpty())
+            dodges.values().removeIf(d -> d.until() < now);
         // The horn stays up for a while after the spell: a wind-up is over once he stops casting.
-        windups.entrySet().removeIf(w -> w.getValue() < now && (w.getKey().isDead()
-                || !(w.getKey().getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)));
+        if (!windups.isEmpty())
+            windups.entrySet().removeIf(w -> w.getValue() < now && (w.getKey().isDead()
+                    || !(w.getKey().getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)));
         updateFogs(now);
         Intel intel = ai.intel();
-        com.oddlabs.tt.model.Race vikings = ai.owner().getWorld().getRacesResources().getRace(
-                com.oddlabs.tt.model.RacesResources.RACE_VIKINGS);
-        List<Unit> casters = new ArrayList<>(intel.enemy_chieftains);
+        // Enemy chieftains, then ours.
+        for (Unit e : intel.enemy_chieftains)
+            watchCaster(e, now);
         if (intel.chieftain != null)
-            casters.add(intel.chieftain);
-        for (Unit e : casters) {
-            if (e.isDead() || windups.containsKey(e)
-                    || !(e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController))
-                continue;
-            windups.put(e, now + STUN_WINDUP);
-            if (e.getOwner().getRace() != vikings) {
-                // Fog and lightning look alike until they come down: clear out at once, the fog gives 5.6 s.
-                if (ai.strategy().dodge_fog)
-                    fogs.add(new Fog(e, e.getPositionX() + FOG_OFFSET * e.getDirectionX(),
-                            e.getPositionY() + FOG_OFFSET * e.getDirectionY(), now));
-            } else if (e != intel.chieftain && ai.strategy().dodge_stun) {
-                // With the stun cancel (Reflexes) a stun costs nothing: only the sonic blast, which hits the same
-                // 36 m, is worth running from. The spell's index is set on the tick the horn is raised.
-                boolean blast = e.getLastMagicIndex() == com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_BLAST;
-                if (blast)
-                    ai.aiLog().count("enemy_blast");
-                if (!ai.strategy().dodge_blast_only || !ai.strategy().stun_cancel || blast)
-                    dodgeStun(e, now);
-            }
-        }
+            watchCaster(intel.chieftain, now);
         for (Fog f : fogs)
             keepOutOf(f, now);
         keepHuntingCasters(now);
@@ -943,6 +925,30 @@ final class Military {
                     && MapAnalysis.dist2(w.getTarget().getGridX(), w.getTarget().getGridY(), d.x(), d.y()) <= 3 * 3)
                 continue;
             ai.landscapeOrder(Selectable.newArray(u), d.x(), d.y(), Action.MOVE, false);
+        }
+    }
+
+    /** A chieftain seen raising his horn this tick: a fog to keep out of, or an enemy stun or blast to run from. */
+    private void watchCaster(@NonNull Unit e, float now) {
+        if (e.isDead() || windups.containsKey(e)
+                || !(e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController))
+            return;
+        windups.put(e, now + STUN_WINDUP);
+        com.oddlabs.tt.model.Race vikings = ai.owner().getWorld().getRacesResources().getRace(
+                com.oddlabs.tt.model.RacesResources.RACE_VIKINGS);
+        if (e.getOwner().getRace() != vikings) {
+            // Fog and lightning look alike until they come down: clear out at once, the fog gives 5.6 s.
+            if (ai.strategy().dodge_fog)
+                fogs.add(new Fog(e, e.getPositionX() + FOG_OFFSET * e.getDirectionX(),
+                        e.getPositionY() + FOG_OFFSET * e.getDirectionY(), now));
+        } else if (e != ai.intel().chieftain && ai.strategy().dodge_stun) {
+            // With the stun cancel (Reflexes) a stun costs nothing: only the sonic blast, which hits the same
+            // 36 m, is worth running from. The spell's index is set on the tick the horn is raised.
+            boolean blast = e.getLastMagicIndex() == com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_BLAST;
+            if (blast)
+                ai.aiLog().count("enemy_blast");
+            if (!ai.strategy().dodge_blast_only || !ai.strategy().stun_cancel || blast)
+                dodgeStun(e, now);
         }
     }
 
@@ -4033,20 +4039,25 @@ final class Military {
         return gunner == null || gunner.isDead() || Intel.isStunned(gunner) ? null : gunner;
     }
 
-    /** The tower's current target while it lives and stands within r2 of the garrison's origin o, else null. */
-    private @Nullable Unit liveTarget(@NonNull Building t, int @NonNull [] o, int r2) {
+    /** The tower's current target while it lives and stands within r2 of the garrison's origin (ox, oy), else null. */
+    private @Nullable Unit liveTarget(@NonNull Building t, int ox, int oy, int r2) {
         Unit current = tower_targets.get(t);
         return current != null && !current.isDead()
-                && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2 ? current : null;
+                && MapAnalysis.dist2(ox, oy, current.getGridX(), current.getGridY()) <= r2 ? current : null;
     }
 
     /**
      * Where a garrison throws from: the grid cell it entered by, on the ring two cells around the tower (Unit.mount
      * moves only the world position; range checks and scans use the grid cell), so the reach disc is shifted 2-2.8
-     * cells towards the entry side. With tower_gunner_reach reach is measured from there, else from the centre.
+     * cells towards the entry side. With tower_gunner_reach reach is measured from there, else from the centre
+     * (originX, originY).
      */
-    private int @NonNull [] towerOrigin(@NonNull Building t, @NonNull Unit gunner) {
-        return ai.strategy().tower_gunner_reach ? new int[]{gunner.getGridX(), gunner.getGridY()} : new int[]{t.getGridX(), t.getGridY()};
+    private int originX(@NonNull Building t, @NonNull Unit gunner) {
+        return ai.strategy().tower_gunner_reach ? gunner.getGridX() : t.getGridX();
+    }
+
+    private int originY(@NonNull Building t, @NonNull Unit gunner) {
+        return ai.strategy().tower_gunner_reach ? gunner.getGridY() : t.getGridY();
     }
 
     /** tower_self_first: enemies attacking this tower count double for it. */
@@ -4075,12 +4086,13 @@ final class Military {
             Unit gunner = readyGunner(t);
             if (gunner == null)
                 continue;
-            int[] o = towerOrigin(t, gunner);
-            if (strategy.tower_prequeue && prequeue(t, gunner, o, r2))
+            int ox = originX(t, gunner);
+            int oy = originY(t, gunner);
+            if (strategy.tower_prequeue && prequeue(t, gunner, ox, oy, r2))
                 continue;
-            if (!strategy.tower_reflex || liveTarget(t, o, r2) != null)
+            if (!strategy.tower_reflex || liveTarget(t, ox, oy, r2) != null)
                 continue;
-            Unit best = bestTowerTarget(t, gunner, o, r2, null);
+            Unit best = bestTowerTarget(t, gunner, ox, oy, r2, null);
             if (best == null) {
                 tower_targets.remove(t);
                 continue;
@@ -4103,7 +4115,7 @@ final class Military {
      * the axe in flight will kill. On the tick a throw starts at a 1-HP enemy it will hit, the next target is queued:
      * the order waits under the running throw and is taken up the moment it ends. True if it queued one.
      */
-    private boolean prequeue(@NonNull Building t, @NonNull Unit gunner, int @NonNull [] o, int r2) {
+    private boolean prequeue(@NonNull Building t, @NonNull Unit gunner, int ox, int oy, int r2) {
         com.oddlabs.tt.model.behaviour.Behaviour b = gunner.getCurrentBehaviour();
         if (!(b instanceof com.oddlabs.tt.model.behaviour.AttackBehaviour)) {
             tower_throws.remove(t);
@@ -4131,7 +4143,7 @@ final class Military {
         int queued = tower_queued.getOrDefault(t, 0);
         if (queued >= 20)
             return false; // each queued order stays on the garrison's controller stack until the fight ends
-        Unit next = bestTowerTarget(t, gunner, o, r2, x);
+        Unit next = bestTowerTarget(t, gunner, ox, oy, r2, x);
         if (next == null)
             return false;
         tower_queued.put(t, queued + 1);
@@ -4142,12 +4154,12 @@ final class Military {
     }
 
     /** The best enemy in reach for this tower, skipping one and any already doomed by an axe in flight. */
-    private @Nullable Unit bestTowerTarget(@NonNull Building t, @NonNull Unit gunner, int @NonNull [] o, int r2,
+    private @Nullable Unit bestTowerTarget(@NonNull Building t, @NonNull Unit gunner, int ox, int oy, int r2,
             @Nullable Unit skip) {
         Unit best = null;
         float best_score = 0f;
         EnemyIndex index = enemyIndex();
-        int[] near = index.query(o[0], o[1], r2);
+        int[] near = index.query(ox, oy, r2);
         for (int k = 0, n = index.count(); k < n; k++) {
             Unit e = index.unit(near[k]);
             if (e == skip || e.isDead() || inflight.containsKey(e))
@@ -4184,9 +4196,10 @@ final class Military {
             Unit gunner = Intel.gunner(t);
             if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
-            int[] o = towerOrigin(t, gunner);
+            int ox = originX(t, gunner);
+            int oy = originY(t, gunner);
             Unit current = tower_targets.get(t);
-            if (current != null && MapAnalysis.dist2(o[0], o[1], current.getGridX(), current.getGridY()) <= r2) {
+            if (current != null && MapAnalysis.dist2(ox, oy, current.getGridX(), current.getGridY()) <= r2) {
                 survive.merge(current, 1f - towerHitChance(gunner, t, current), (a, b) -> a * b);
                 continue;
             }
@@ -4194,7 +4207,7 @@ final class Military {
             float best_score = 0f;
             float best_p = 0f;
             EnemyIndex index = enemyIndex();
-            int[] near = index.query(o[0], o[1], r2);
+            int[] near = index.query(ox, oy, r2);
             for (int k = 0, n = index.count(); k < n; k++) {
                 Unit e = index.unit(near[k]);
                 if (e.isDead() || inflight.containsKey(e))
@@ -4228,14 +4241,15 @@ final class Military {
     @Nullable
     Unit towerTargetFor(@NonNull Building t, @NonNull Unit gunner) {
         int r2 = towerReach2();
-        int[] o = towerOrigin(t, gunner);
-        Unit current = liveTarget(t, o, r2);
+        int ox = originX(t, gunner);
+        int oy = originY(t, gunner);
+        Unit current = liveTarget(t, ox, oy, r2);
         if (current != null)
             return current;
         Unit best = null;
         float best_score = 0f;
         EnemyIndex index = enemyIndex();
-        int[] near = index.query(o[0], o[1], r2);
+        int[] near = index.query(ox, oy, r2);
         for (int k = 0, n = index.count(); k < n; k++) {
             Unit e = index.unit(near[k]);
             if (e.isDead())
