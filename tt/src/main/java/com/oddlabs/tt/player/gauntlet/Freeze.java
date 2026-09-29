@@ -9,6 +9,7 @@ import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.AttackController;
 import com.oddlabs.tt.model.behaviour.Controller;
 import com.oddlabs.tt.model.behaviour.HuntController;
+import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
 import org.jspecify.annotations.NonNull;
@@ -38,6 +39,12 @@ import java.util.List;
  *
  * <p>The squad's peons are kept in Intel.strikers until the strike ends, so the economy and the military leave them
  * alone; then they walk home and the economy takes them back.
+ *
+ * <p>Follow-ups, each off by default: freeze_unfreeze lets a copy go from the frozen set once its frozen armory site
+ * is gone or it has a finished armory; freeze_fight lets the staged squad fight the copy's units that come near it,
+ * outside its defense circle, instead of walking back to the stage point every 6 s; after a path-(a) out,
+ * freeze_armory_push moves our first armory up the build order and sends the squad to build it, and freeze_retarget
+ * strikes one more copy within freeze_eta of the squad whose quarters is not finished.
  */
 final class Freeze {
     enum Phase {
@@ -70,6 +77,10 @@ final class Freeze {
     private static final float STRIKE_LIMIT = 100f;
     /** Seconds the squad waits in path (c) for a new armory site when the old one is gone. */
     private static final float SITE_GONE_LIMIT = 60f;
+    /** freeze_fight: cells from a squad peon within which the staged squad takes on the copy's units. */
+    private static final int FIGHT_CELLS = 6;
+    /** freeze_fight: cells from the copy's finished quarters or armory the squad keeps out of (30 m and a cell). */
+    private static final int DEFENSE_CELLS = 16;
 
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Unit> squad = new ArrayList<>();
@@ -77,6 +88,12 @@ final class Freeze {
     private final List<@NonNull Unit> seen = new ArrayList<>();
     /** Copies whose armory builders all died with the site standing: nothing of ours touches their armory site. */
     private final List<@NonNull Player> frozen = new ArrayList<>();
+    /** The armory site each frozen copy was frozen with, by the index of the copy in frozen (freeze_unfreeze). */
+    private final List<@NonNull Building> frozen_sites = new ArrayList<>();
+    /** Whether a path-(a) strike put its copy out (freeze_armory_push, freeze_retarget). */
+    private boolean a_out;
+    /** Whether the squad already looked for a second copy to strike (freeze_retarget). */
+    private boolean retargeted;
     private @Nullable Player target;
     private int start_x;
     private int start_y;
@@ -158,6 +175,8 @@ final class Freeze {
     }
 
     void tick() {
+        if (ai.strategy().freeze_unfreeze && !frozen.isEmpty())
+            unfreeze();
         if (phase == Phase.DONE || target == null)
             return;
         Player t = target;
@@ -170,6 +189,11 @@ final class Freeze {
                 ai.aiLog().count("freeze_target_out");
             }
             log(() -> name(t) + " is out at " + (int) now + "s (" + phase + ", " + squad.size() + " peons left)");
+            if (phase == Phase.WALK || phase == Phase.STRIKE) {
+                a_out = true;
+                if (ai.strategy().freeze_retarget && !retargeted && squad.size() >= MIN_SQUAD && retarget(now))
+                    return;
+            }
             goHome();
             return;
         }
@@ -196,7 +220,10 @@ final class Freeze {
         Player t = target;
         assert t != null;
         if (quartersStands(t)) {
-            fallback("its quarters stood before the squad arrived");
+            if (retargeted)
+                abort("its quarters stood before the squad arrived");
+            else
+                fallback("its quarters stood before the squad arrived");
             return;
         }
         if (now - phase_time > ai.strategy().freeze_eta + STRIKE_LIMIT) {
@@ -223,7 +250,10 @@ final class Freeze {
         Player t = target;
         assert t != null;
         if (quartersStands(t)) {
-            fallback("its quarters stood during the strike");
+            if (retargeted)
+                abort("its quarters stood during the strike");
+            else
+                fallback("its quarters stood during the strike");
             return;
         }
         if (now - phase_time > STRIKE_LIMIT) {
@@ -234,6 +264,67 @@ final class Freeze {
         // None left and no finished quarters: the engine takes it out, and the next tick sees it.
         if (!prey.isEmpty())
             assign(prey);
+    }
+
+    /**
+     * freeze_retarget: after a path-(a) out the squad strikes once more, at the living copy with the least walking time
+     * from it, if that is at most freeze_eta seconds of peon walk and its quarters is not finished. Returns whether it
+     * did; either way there is no third look.
+     */
+    private boolean retarget(float now) {
+        Player done = target;
+        assert done != null;
+        retargeted = true;
+        Player me = ai.owner();
+        float limit = ai.strategy().freeze_eta;
+        int[] c = centre(squad);
+        DistanceField field = ai.map().computeField(c[0], c[1], (int) Math.ceil(limit * PEON_SPEED) + 10);
+        Player best = null;
+        float best_eta = Float.MAX_VALUE;
+        // The nearest living copy whatever its quarters, to tell why there is no second strike.
+        Player nearest = null;
+        float nearest_eta = Float.MAX_VALUE;
+        // World order breaks ties, as in plan.
+        for (Player p : me.getWorld().getPlayers()) {
+            if (p == done || !me.isEnemy(p) || !p.isAlive())
+                continue;
+            int walk = field.getAround(UnitGrid.toGridCoordinate(p.getStartX()),
+                    UnitGrid.toGridCoordinate(p.getStartY()), 3);
+            if (walk == DistanceField.UNREACHABLE)
+                continue;
+            float eta = walk / PEON_SPEED;
+            if (eta < nearest_eta) {
+                nearest_eta = eta;
+                nearest = p;
+            }
+            if (eta < best_eta && !quartersStands(p)) {
+                best_eta = eta;
+                best = p;
+            }
+        }
+        if (best == null || best_eta > limit) {
+            if (nearest != null && nearest_eta <= limit)
+                ai.aiLog().count("freeze_retarget_quartered");
+            Player n = nearest;
+            float n_eta = nearest_eta;
+            log(() -> "no second strike: nearest living copy " + (n == null ? "none within reach" : name(
+                    n) + " at " + (int) n_eta + "s" + (quartersStands(
+                            n) ? ", its quarters stands" : "")) + ", freeze_eta " + (int) limit + "s");
+            return false;
+        }
+        target = best;
+        start_x = UnitGrid.toGridCoordinate(best.getStartX());
+        start_y = UnitGrid.toGridCoordinate(best.getStartY());
+        out_counted = false;
+        seen.clear();
+        setPhase(Phase.WALK);
+        ai.aiLog().count("freeze_retarget");
+        float eta = best_eta;
+        Player t = best;
+        log(() -> "second strike on " + name(
+                t) + " at " + start_x + "," + start_y + " with " + squad.size() + " peons, eta " + (int) eta + "s");
+        walk(now);
+        return true;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -281,10 +372,79 @@ final class Freeze {
             return;
         }
         stagePoint(t);
+        if (ai.strategy().freeze_fight) {
+            fight(t);
+            return;
+        }
         if (now - last_order >= 6f) {
             last_order = now;
             ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), stage_x, stage_y, Action.MOVE, false);
         }
+    }
+
+    /**
+     * freeze_fight, while waiting: the squad takes on the copy's units within FIGHT_CELLS of a squad peon that stand
+     * outside the defense circle of the copy's finished quarters or armory (its drafted peons hunted the squad down at
+     * the stage point while it walked back there without fighting). A peon inside the circle walks back to the stage
+     * point, and so does one that hunts nothing near or idles away from it; the others are left where they are.
+     */
+    private void fight(@NonNull Player t) {
+        List<Building> guards = new ArrayList<>();
+        for (Selectable<?> sel : t.getUnits().getSet())
+            if (sel instanceof Building b && !b.isDead() && b.isComplete()
+                    && (b.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS
+                            || b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY))
+                guards.add(b);
+        List<Unit> prey = new ArrayList<>();
+        for (Unit u : outsideUnits(t))
+            if (!guarded(guards, u) && nearSquad(u))
+                prey.add(u);
+        List<Unit> fighters = new ArrayList<>();
+        List<Unit> back = new ArrayList<>();
+        for (Unit u : squad) {
+            // Already walking back (a MOVE without fighting): leave it be.
+            boolean walking = u.getPrimaryController() instanceof WalkController w && !w.isAgressive()
+                    && u.getCurrentController() == w;
+            Selectable<?> hunted = huntTarget(u);
+            boolean hunting = hunted != null && !hunted.isDead();
+            boolean away = MapAnalysis.dist2(u.getGridX(), u.getGridY(), stage_x, stage_y) > 7 * 7;
+            if (guarded(guards, u)) {
+                if (!walking)
+                    back.add(u);
+            } else if (!prey.isEmpty()) {
+                fighters.add(u);
+            } else if (!walking && (hunting || away)) {
+                back.add(u);
+            }
+        }
+        if (!fighters.isEmpty()) {
+            ai.aiLog().count("freeze_fight");
+            assign(fighters, prey);
+        }
+        if (!back.isEmpty()) {
+            ai.aiLog().count("freeze_fight_back");
+            ai.landscapeOrder(back.toArray(new Selectable<?>[0]), stage_x, stage_y, Action.MOVE, false);
+        }
+    }
+
+    /** freeze_fight: whether the unit stands within FIGHT_CELLS of a squad peon. */
+    private boolean nearSquad(@NonNull Unit u) {
+        for (Unit s : squad) {
+            int d = MapAnalysis.dist2(s.getGridX(), s.getGridY(), u.getGridX(), u.getGridY());
+            if (d <= FIGHT_CELLS * FIGHT_CELLS)
+                return true;
+        }
+        return false;
+    }
+
+    /** freeze_fight: whether the unit stands within DEFENSE_CELLS of one of the buildings. */
+    private static boolean guarded(@NonNull List<@NonNull Building> guards, @NonNull Unit u) {
+        for (Building b : guards) {
+            int d = MapAnalysis.dist2(b.getGridX(), b.getGridY(), u.getGridX(), u.getGridY());
+            if (d <= DEFENSE_CELLS * DEFENSE_CELLS)
+                return true;
+        }
+        return false;
     }
 
     /**
@@ -325,6 +485,7 @@ final class Freeze {
             }
             if (!frozen.contains(t)) {
                 frozen.add(t);
+                frozen_sites.add(armory);
                 ai.aiLog().count("freeze_frozen");
                 log(() -> "froze " + name(
                         t) + " at " + (int) now + "s, armory site at " + armory.getGridX() + "," + armory.getGridY());
@@ -389,17 +550,21 @@ final class Freeze {
 
     /** Every squad peon without a live target goes for the nearest prey that has fewer than three hunters. */
     private void assign(@NonNull List<@NonNull Unit> prey) {
+        assign(squad, prey);
+    }
+
+    /** Every one of the peons without a live target goes for the nearest prey that has fewer than three hunters. */
+    private void assign(@NonNull List<@NonNull Unit> peons, @NonNull List<@NonNull Unit> prey) {
         List<Unit> busy = new ArrayList<>();
         List<Unit> targets = new ArrayList<>();
-        for (Unit u : squad) {
-            Controller c = u.getCurrentController();
-            Selectable<?> t = c instanceof HuntController h ? h.getTarget() : c instanceof AttackController a ? a.getTarget() : null;
+        for (Unit u : peons) {
+            Selectable<?> t = huntTarget(u);
             if (t instanceof Unit tu && !tu.isDead() && prey.contains(tu)) {
                 busy.add(u);
                 targets.add(tu);
             }
         }
-        for (Unit u : squad) {
+        for (Unit u : peons) {
             if (busy.contains(u))
                 continue;
             Unit best = null;
@@ -421,6 +586,36 @@ final class Freeze {
                 best = prey.getFirst();
             ai.owner().setTarget(Selectable.newArray(u), best, Action.ATTACK, false);
             targets.add(best);
+        }
+    }
+
+    /** What the unit hunts or attacks right now, or null. */
+    private static @Nullable Selectable<?> huntTarget(@NonNull Unit u) {
+        Controller c = u.getCurrentController();
+        return c instanceof HuntController h ? h.getTarget() : c instanceof AttackController a ? a.getTarget() : null;
+    }
+
+    /**
+     * freeze_unfreeze: a copy whose frozen armory site is gone (razed, or finished) or that has a finished armory
+     * rebuilds with a crew from its quarters, so it is frozen no more and the attack target's choice treats it as any
+     * other copy.
+     */
+    private void unfreeze() {
+        for (int i = frozen.size() - 1; i >= 0; i--) {
+            Player p = frozen.get(i);
+            Building site = frozen_sites.get(i);
+            Building armory = building(p, Race.BUILDING_ARMORY);
+            boolean armed = armory != null && armory.isComplete();
+            if (p.isAlive() && !site.isDead() && !site.isComplete() && !armed)
+                continue;
+            frozen.remove(i);
+            frozen_sites.remove(i);
+            if (!p.isAlive())
+                continue; // out: nothing of it is left to treat as frozen
+            ai.aiLog().count("freeze_unfrozen");
+            float now = ai.time();
+            String why = armed ? "its armory stands" : "its frozen armory site is gone";
+            log(() -> name(p) + " unfrozen at " + (int) now + "s: " + why);
         }
     }
 
@@ -462,9 +657,19 @@ final class Freeze {
             intel.strikers.remove(u);
         setPhase(Phase.DONE);
         seen.clear();
+        // freeze_armory_push: after a path-(a) out our first armory moves up the build order, and the squad builds it.
+        Building push = a_out && ai.strategy().freeze_armory_push ? ai.economy().pushArmory() : null;
         if (squad.isEmpty())
             return;
         Selectable<?>[] units = squad.toArray(new Selectable<?>[0]);
+        if (push != null) {
+            ai.owner().setTarget(units, push, Action.DEFAULT, false);
+            for (int i = 0; i < units.length; i++)
+                ai.aiLog().count("freeze_push_builders");
+            log(() -> units.length + " peons walk to build our armory at " + push.getGridX() + "," + push.getGridY());
+            squad.clear();
+            return;
+        }
         int[] c = centre(squad);
         List<Building> homes = new ArrayList<>(intel.quarters);
         homes.addAll(intel.armories);

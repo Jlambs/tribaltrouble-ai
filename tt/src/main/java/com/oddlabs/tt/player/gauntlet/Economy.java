@@ -185,6 +185,38 @@ final class Economy {
         }
     }
 
+    /**
+     * freeze_armory_push (Freeze, after a path-(a) out): our first armory goes right after the first quarters in the
+     * build order (priority 1), so free builders reach it before the later quarters (buildersWanted already asks
+     * MAX_BUILDERS of it once the first quarters stands). Returns its placed site for the returning squad to build, or
+     * null (no armory project, one already finished, or the site not placed yet).
+     */
+    @Nullable
+    Building pushArmory() {
+        if (!ai.intel().armories.isEmpty())
+            return null;
+        Project armory = null;
+        for (Project p : projects)
+            if (p.type == Race.BUILDING_ARMORY) {
+                armory = p;
+                break;
+            }
+        if (armory == null)
+            return null;
+        if (armory.priority > 1) {
+            projects.remove(armory);
+            armory.priority = 1;
+            int i = 0;
+            while (i < projects.size() && projects.get(i).priority <= armory.priority)
+                i++;
+            projects.add(i, armory);
+            ai.aiLog().count("freeze_push_priority");
+            ai.log("freeze push: " + armory.describe() + " moves up to priority 1");
+        }
+        Building site = armory.building;
+        return armory.isPlaced() && site != null && !site.isComplete() ? site : null;
+    }
+
     // ------------------------------------------------------------------------------------------------------------
     // Periodic work
 

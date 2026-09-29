@@ -555,6 +555,26 @@ class Strategy {
     int freeze_squad = 10;
     float freeze_eta = 40f;
     boolean freeze_raze = false;
+    /**
+     * A frozen copy stops counting as frozen (in the attack target's choice) once its frozen armory site is gone or it
+     * has a finished armory: off, the frozen state never cleared.
+     */
+    boolean freeze_unfreeze = false;
+    /**
+     * Path (c): once staged, the squad no longer walks back to the stage point every 6 s but fights the copy's units
+     * within 6 cells of it, keeping out of the 30 m defense circle of its finished quarters or armory.
+     */
+    boolean freeze_fight = false;
+    /**
+     * After a path-(a) out our first armory moves up the build order to right after the first quarters, and the
+     * returning squad builds its site (smoke: our first armory came 64-102 s later with the strike than without).
+     */
+    boolean freeze_armory_push = false;
+    /**
+     * After a path-(a) out the squad strikes once more: the living copy with the least walking time from it, if at
+     * most freeze_eta seconds away and its quarters is not finished (that strike gives up when its quarters stands).
+     */
+    boolean freeze_retarget = false;
 
     /**
      * In a fight, give each warrior its own target: the enemy in range with the best value times hit chance times
@@ -994,6 +1014,10 @@ class Strategy {
         freeze_squad = params.getInt("freeze_squad", freeze_squad);
         freeze_eta = (float) params.getDouble("freeze_eta", freeze_eta);
         freeze_raze = params.getBoolean("freeze_raze", freeze_raze);
+        freeze_unfreeze = params.getBoolean("freeze_unfreeze", freeze_unfreeze);
+        freeze_fight = params.getBoolean("freeze_fight", freeze_fight);
+        freeze_armory_push = params.getBoolean("freeze_armory_push", freeze_armory_push);
+        freeze_retarget = params.getBoolean("freeze_retarget", freeze_retarget);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
         restore_dodge_gap = (float) params.getDouble("restore_dodge_gap", restore_dodge_gap);
