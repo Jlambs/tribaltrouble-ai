@@ -1292,3 +1292,9 @@ retreat through the same pass (only the attack role is watched).
   towers20 +0.42 (z 1.6), alive40 +2.5 pp (z 1.5), wp +0.5 pp (z 1.6); N=12 s1..200 surv60 +1.1 (z 2.1), alive40 +4.5 pp
   (z 2.1), W 9 -> 4, elim -.013. A pattern across the tower arms: survival up, N=12 wins down (tower_parallel_late 15 ->
   10 of 400), elim slightly down; at 15 min the tower arms field 2-5 fewer warriors (for +0.4-0.5 towers).
+- **slots32 = sites_parallel_late=3 + tower_parallel_late=2, confirmations:** towers20 +0.87 (z 3.4) / +1.06 (z 4.5) /
+  +0.67 (z 2.4) / +1.16 (z 4.0) on N=13 s201..400 / N=14 s1..200 / N=14 s201..400 / N=12 s1..200; surv60 +0.43 / +0.61
+  (z 1.9) / +0.37 / +1.29 (z 2.2); elim ~0 at N=13-14; W 2 -> 2, 0 -> 0, 0 -> 0, 9 -> 5. Survival rises in all five
+  blocks (N=13 pooled 400: surv60 +0.53, alive40 +1.75 pp; N=14 pooled 400: surv60 +0.49). N=12 wins fall again (the
+  third tower-adding change to do so). A win-count comparison on fresh seeds (N=13 and N=14, 600 per arm) and the fresh
+  N=12 half are queued before adopting.
