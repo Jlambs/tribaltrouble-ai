@@ -103,6 +103,12 @@ N>=7:
   wins. On base-expert-vs5 + vs6 (200 games, 40 wins): elim r=+0.96 (trivial: wins are 1), lsr20 r=+0.57, lsr15
   r=+0.46, lsr10 r=+0.39, kd r=+0.49; by lsr15 tercile the win rate is 0% / 0% / 60%. So lsr15/lsr20 and elim are
   the continuous scores to decide on beside wins.
+- `lab/gauntlet/board.py BASE PREFIX [--median]`: a sweep's scoreboard, every finished arm against one base
+  (winproxy --pair per arm, cached in aisim/board_cache.json); `--median` reads each arm against the median arm that
+  changes play, which takes the shared base's own draw out (see "Method: one base shared by many arms").
+  `lab/gauntlet/pairs.sh "BASE ARM" ...`: one line per pair.
+- Logged-game readers: `lab/gauntlet/musters.py RUN` (campaign target choices), `lab/gauntlet/cuts.py RUN` (freeze
+  path-(c) cuts and how they ended); `lab/gauntlet/chiefs.py RUN...` (enemy chieftain gating, from game records).
 
 ## Log
 
