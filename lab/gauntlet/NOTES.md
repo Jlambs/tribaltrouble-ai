@@ -1358,3 +1358,12 @@ retreat through the same pass (only the attack role is watched).
   never end (more tower placements after 25 min), wood lock 2.75 % vs 1.7 % (z ~2, post hoc). Seven of slots32's eight
   N=13-14 wins last over 90 min, so long-game conversion there is fine. The one variant (end the late slots at 1500 s,
   tower_parallel_late_end) expects ~0 and is not built.
+- **N=13 sweep, the rest** (vs freeze-squad6-c3-vs13-hv; read against the median arm): bit-identical, never bind at N=13:
+  expand_time 240/400, forward_towers 2/4 (plus attack_max_strength, capped_ratio, towers_late, towers_mid above). Best:
+  decoys=true + decoy_free_slots=1 alive40 +5.5 pp (z 2.4), surv60 +0.7, W 0 -> 3 (decoys alone ~0: the free-slot rule
+  kept them from being placed); chieftain_time=300 W 0 -> 3, elim +.013, surv60 +0.7. Negative: opening_near_start surv60
+  -2.0 (z -3.5), elim -.023 (z -3.1); expansion=false surv60 -1.3 (z -3.0), towers20 -1.0; home_guard=8 elim -.018 (z
+  -3.0); max_quarters=5 towers20 -1.3 (z -4.0); chieftain_time=180 surv60 -0.8; hold_mid=12 towers20 -0.9. Neutral:
+  sites_parallel=3 (early), hold_early=6, hold_late=12, recall_old_gatherers=false, worn_ratio 0.1/0.35,
+  max_armory_distance 200/350, defense_radius 40/90, base_radius 34, shepherd_max_r 30, armory_builders 12. The two
+  leads are re-tested on cur6 (decoys compete with towers for the building slots).
