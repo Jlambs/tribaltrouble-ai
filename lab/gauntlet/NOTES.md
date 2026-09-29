@@ -1177,3 +1177,6 @@ retreat through the same pass (only the attack role is watched).
 - ore_scan (refresh the iron/rock lists from the start's ore cells every 5 s instead of the 30-s full scan; tried and
   reverted, not committed): N=13 s1..10 iron harvested at 10/15/20 min identical in 8 of 10 games, results identical
   in 8. Respawned nodes near us are found anyway (or are too few to matter); the 30-s scan is not what starves us.
+- chief_safe on cur4 N=12 s1..200: 7 W 9 -> 6, surv60 +1.3 (z 2.4); 10 W 9 -> 11, surv60 +0.9; 14 W 9 -> 4, elim -.023
+  (z -2.2); 10 on s201..400 and at N=13 neutral: no consistent gain, not adopted. quarters_first=true at N=13: surv60
+  -0.7 (z -1.3), towers20 -0.5 (z -1.7); one game (s158) became a 360-min draw: no.
