@@ -1193,3 +1193,8 @@ retreat through the same pass (only the attack role is watched).
 - Freeze reach with squad 6 at N=11: freeze_eta=50 W 15 -> 13, wp -0.9 pp (z -1.8); freeze_eta=35 W 15 -> 21, elim
   +.011, wp +0.85 pp (z 0.9) with strikes in 55 games instead of 164; N=12/13 and the fresh N=11 half queued.
   reinforce=false and reinforce_intercept are in the N=13 sweep.
+- freeze_eta stays 40: eta 35 at N=12 W 9 -> 8, surv60 -1.1 (z -1.9), towers20 -0.5 (z -2.0); at N=13 elim -.006 (z
+  -2.1); eta 50 at N=12 all ~0. The N=11 eta-35 gain does not carry to N>=12, and one rule for every N is the goal.
+- N=13 sweep, first arms (vs freeze-squad6-c3-vs13-hv): reinforce=false elim -.058 (z -10.0), surv60 -1.9 (z -3.9):
+  reinforcing the campaign is essential; reinforce_intercept towers20 -0.7 (z -2.3), surv60 -0.8; target_defense_weight
+  2 and quarters_first neutral.
