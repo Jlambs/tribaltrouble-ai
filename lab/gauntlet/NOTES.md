@@ -1283,3 +1283,8 @@ retreat through the same pass (only the attack role is watched).
 - tower_parallel_late=2 at N=14 s201..400 (own cur5 base cur5-vs14-hv-b): towers20 +0.30, surv60 +0.05, alive40 -1 pp,
   W 0 -> 0: the s1..200 survival gain did not repeat. Not adopted alone; to be retried on top of the fallback and
   wood drop (the judge: the levers are not additive under the building cap).
+- Tower audit, no-code arms (N=13 s1..200): tower_cooldown=true towers20 -0.65 (z -2.7), surv60 -0.6: no (so no
+  tower_hot_clear, per the judge's gate). sites_parallel_late=3 alone towers20 +0.38, the rest ~0.
+  **sites_parallel_late=3 + tower_parallel_late=2** (both construction limits raised): towers20 +0.75 (z 2.9), alive40
+  +3.5 pp (z 2.1), surv60 +0.63 (z 1.5), wp +0.35 pp (z 1.5); against the median sweep arm still towers +1.05, alive40
+  +2.8 pp. Confirmations queued (N=13 s201..400, N=14 both blocks, N=12).
