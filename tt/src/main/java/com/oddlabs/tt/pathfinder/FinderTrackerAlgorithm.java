@@ -21,7 +21,7 @@ public final class FinderTrackerAlgorithm<O extends Occupant> implements Tracker
 
     @Override
     public boolean acceptRegion(@NonNull Region region) {
-        return filter.getOccupantFromRegion(region, true) != null;
+        return filter.hasOccupantInRegion(region);
     }
 
     @Override

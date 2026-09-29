@@ -16,7 +16,7 @@ final class RegionPathFinder extends AStarAlgorithm {
     }
 
     @Override
-    protected boolean isPathComplete(int dist_squared, Node node) {
+    protected boolean isPathComplete(int dist_squared, Node node, Region region) {
         return node == dst_region;
     }
 }

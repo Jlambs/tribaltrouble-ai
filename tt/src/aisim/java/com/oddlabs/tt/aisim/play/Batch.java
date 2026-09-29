@@ -78,8 +78,10 @@ public final class Batch {
         Path dir = Runs.RUNS.resolve(name);
         Files.createDirectories(dir.resolve("log"));
         String heap = WorkerProcess.heap(jobs);
+        Order.Ordered queue = Order.longestFirst(jobs, setup.lineup(), setup.config(), name);
         Path profile_dir = profile ? dir.resolve("prof") : null;
-        RunInProgress progress = new RunInProgress(dir, name, snap, jobs, limits, heap, LOGS_LOST.equals(setup.logs()),
+        RunInProgress progress = new RunInProgress(dir, name, snap, queue.jobs(), limits, heap, LOGS_LOST.equals(
+                setup.logs()),
                 profile_dir);
         int slots = progress.pace.slots();
         writeRunJson(dir, name, setup, jobs, slots, limits, profile, snap);
@@ -92,6 +94,9 @@ public final class Batch {
         }
         System.out.println(
                 "aisim " + name + ": " + setup.players() + " | " + setup.config() + " | " + counts + " | snapshot " + snap);
+        if (queue.note() != null) {
+            System.out.println(queue.note());
+        }
         boolean completed = progress.playAll();
         int status = Summary.run(name);
         if (profile) {

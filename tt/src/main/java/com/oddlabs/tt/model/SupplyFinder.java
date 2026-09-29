@@ -8,7 +8,6 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 public final class SupplyFinder<S extends Supply> implements FinderFilter<S> {
@@ -52,18 +51,43 @@ public final class SupplyFinder<S extends Supply> implements FinderFilter<S> {
         return null;
     }
 
+    /** The region holds a supply of the class: getOccupantFromRegion(region, true) returns its closest, never null. */
+    @Override
+    public boolean hasOccupantInRegion(@NonNull Region region) {
+        return !region.getObjects(supply_class).isEmpty();
+    }
+
     @Override
     public S getBest() {
         return findClosest();
     }
 
+    // Loops rather than streams, with the same answer: the first of the closest (Stream.min keeps the first of equals).
     private @Nullable S findClosest(@NonNull List<S> supplies) {
-        return supplies.stream().min(Comparator.comparingInt(this::distanceSquared)).orElse(null);
+        S closest = null;
+        int closest_distance = Integer.MAX_VALUE;
+        for (S supply : supplies) {
+            int distance = distanceSquared(supply);
+            if (closest == null || distance < closest_distance) {
+                closest = supply;
+                closest_distance = distance;
+            }
+        }
+        return closest;
     }
 
     private @Nullable S findClosest() {
-        S closest = region_list.stream().flatMap(List::stream).min(Comparator.comparingInt(
-                this::distanceSquared)).orElse(null);
+        S closest = null;
+        int closest_distance = Integer.MAX_VALUE;
+        for (List<S> supplies : region_list) {
+            for (S supply : supplies) {
+                int distance = distanceSquared(supply);
+                if (closest == null || distance < closest_distance) {
+                    closest = supply;
+                    closest_distance = distance;
+                }
+            }
+        }
         region_list.clear();
         return closest;
     }
