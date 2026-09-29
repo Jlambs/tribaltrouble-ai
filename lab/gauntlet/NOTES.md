@@ -1149,3 +1149,16 @@ retreat through the same pass (only the attack role is watched).
   pp (z 2.2), wp +0.9 pp (z 1.3): confirming (N=12 s201..400, N=13, safe 7 and 14). tower_home_anchor=true with
   tower_q_anchor=false W 9 -> 1, surv60 -3.0 (z -3.8), towers20 -2.4 (z -6.6): no. recall_old_gatherers=false W 9 -> 5,
   surv60 +1.2 (z 1.9), wp -0.7 pp: no. tower_min_quarters=1 W 9 -> 9, all ~0: no.
+
+### cur5: the freeze at every N (2026-09-29 morning)
+
+- **Adopted: freeze_open for all N** (Strategy.forGame; the enemies >= 12 gate removed). With squad 6: N=11 s201..400 W
+  12 -> 20, elim +.049 (z 2.8), surv60 +3.3 min (z 3.4), alive40 +9.5 pp (z 2.6), wp +5.5 pp (z 4.0); with s1..200 (W 19
+  -> 15, surv60 +1.3) pooled over 400: W 31 -> 35, elim +.032, surv60 +2.3. N=8 s201..400 W 111 -> 115, elim +.016 (z
+  1.8). freeze_eta (40 s of peon walk) keeps it off where copies start far away. The default reproduces
+  freeze-squad6-c3-vs11-hv (N=11 s1-s3) and cur4 at N=12. The user's no-N-gate preference, now backed by the data:
+  the N=11 exception was squad 10's cost, not the freeze's.
+- ring_sweep=true at N=13: elim -.033 (z -7.2), surv60 -0.9 (z -2.8), wp z -2.9: no (an early recall forfeits outs,
+  as the audit warned).
+- chief_safe=10 on N=12 s201..400: W 6 -> 7, surv60 -0.4, alive40 -2.5 pp, wp 0 (pooled 400: W 15 -> 18, surv60 +0.2,
+  wp +0.45 pp): not confirmed yet; N=13 and safe 7/14 pending.
