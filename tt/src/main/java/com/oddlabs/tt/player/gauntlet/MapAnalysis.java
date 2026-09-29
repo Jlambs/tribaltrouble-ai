@@ -286,38 +286,38 @@ final class MapAnalysis {
                 field_work = new int[Math.max(n, 2 * field_work.length)];
             int[] work = field_work;
             System.arraycopy(bucket, 0, work, 0, n);
+            // The four straight neighbours first: a diagonal step needs both straight cells beside it open, so each
+            // cell is looked up at most eight times per expansion instead of sixteen. The order in which neighbours
+            // are relaxed changes nothing: every cell up to max_cost ends at its least cost either way, and every
+            // cell beyond at the least over its expanded neighbours.
+            int straight = current + 2;
+            int diagonal = current + 3;
             for (int i = 0; i < n; i++) {
                 int index = work[i];
                 if (cost[index] != current)
                     continue;
                 int x = index % size;
                 int y = index / size;
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dx = -1; dx <= 1; dx++) {
-                        if (dx == 0 && dy == 0)
-                            continue;
-                        int nx = x + dx;
-                        int ny = y + dy;
-                        if (!passableIn(nx, ny, source_occupant, call))
-                            continue;
-                        if (dx != 0 && dy != 0 && (!passableIn(x + dx, y, source_occupant, call)
-                                || !passableIn(x, y + dy, source_occupant, call)))
-                            continue;
-                        int step = (dx != 0 && dy != 0) ? 3 : 2;
-                        int next = current + step;
-                        int nindex = ny * size + nx;
-                        if (next < cost[nindex]) {
-                            cost[nindex] = next;
-                            int nb = next & 3;
-                            if (counts[nb] == buckets[nb].length) {
-                                int[] grown = new int[buckets[nb].length * 2];
-                                System.arraycopy(buckets[nb], 0, grown, 0, counts[nb]);
-                                buckets[nb] = grown;
-                            }
-                            buckets[nb][counts[nb]++] = nindex;
-                        }
-                    }
-                }
+                boolean west = passableIn(x - 1, y, source_occupant, call);
+                boolean east = passableIn(x + 1, y, source_occupant, call);
+                boolean north = passableIn(x, y - 1, source_occupant, call);
+                boolean south = passableIn(x, y + 1, source_occupant, call);
+                if (west)
+                    relax(cost, buckets, counts, index - 1, straight);
+                if (east)
+                    relax(cost, buckets, counts, index + 1, straight);
+                if (north)
+                    relax(cost, buckets, counts, index - size, straight);
+                if (south)
+                    relax(cost, buckets, counts, index + size, straight);
+                if (north && west && passableIn(x - 1, y - 1, source_occupant, call))
+                    relax(cost, buckets, counts, index - size - 1, diagonal);
+                if (north && east && passableIn(x + 1, y - 1, source_occupant, call))
+                    relax(cost, buckets, counts, index - size + 1, diagonal);
+                if (south && west && passableIn(x - 1, y + 1, source_occupant, call))
+                    relax(cost, buckets, counts, index + size - 1, diagonal);
+                if (south && east && passableIn(x + 1, y + 1, source_occupant, call))
+                    relax(cost, buckets, counts, index + size + 1, diagonal);
             }
             current++;
         }
@@ -333,6 +333,18 @@ final class MapAnalysis {
     private int pass_call;
     /** computeField's copy of the bucket it expands, reused across calls. */
     private int @NonNull [] field_work = new int[256];
+
+    /** computeField: lowers the cell's cost to next if that is less, and queues it in next's bucket. */
+    private static void relax(int @NonNull [] cost, int @NonNull [] @NonNull [] buckets, int @NonNull [] counts,
+            int index, int next) {
+        if (next >= cost[index])
+            return;
+        cost[index] = next;
+        int b = next & 3;
+        if (counts[b] == buckets[b].length)
+            buckets[b] = java.util.Arrays.copyOf(buckets[b], counts[b] * 2);
+        buckets[b][counts[b]++] = index;
+    }
 
     private boolean passableIn(int x, int y, @Nullable Occupant ignore, int call) {
         if (!inside(x, y))
