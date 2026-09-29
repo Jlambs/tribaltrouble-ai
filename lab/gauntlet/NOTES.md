@@ -1212,3 +1212,9 @@ retreat through the same pass (only the attack role is watched).
   builders are common, but outcomes do not move: N=11 s1..200 W 15 -> 19, elim +.023 (z 1.8); s201..400 W 20 -> 17, wp
   -1.8 pp (z -2.5); pooled W 35 -> 36; N=13 W 0 -> 1, all ~0. With walk_select=300: N=11 W 15 -> 18, elim +.016 (z 1.1);
   N=13 ~0. Kept off (a correct fix of a silly behaviour, but no measurable gain).
+- **Long games at N=11 carry the grind pathologies** (quirks.py on cur5 N=11, 400 games): 50-61 of 200 games last over
+  40 min but only 15-20 are won; among the long games tower decay 52-61 %, dry spells ~60 %, peon trap 30-41 %, wood
+  lock 13-18 %. On the 7 wood-locked games of veto-resite-vs11-hv, wood_reach=150 turned s106, s188, s177 from losses
+  into wins, s97 (a 316-min win, fragile under every change) into a loss, and won s172 in 81 min instead of 154. Since
+  the rare wins at N=13-14 are long games (s169: 261 min), a bundle of the long-game fixes (wood_reach=150, unjam=8,
+  stall_peons, unstick_builders=30) is queued at N=11 and N=12 over 400 seeds each, judged on wins.
