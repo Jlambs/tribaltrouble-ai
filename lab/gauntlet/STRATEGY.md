@@ -6,8 +6,8 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 
 ## How a game against N copies goes
 
-1. **0-4 min, the opening.** Four quarters and an armory (about 3.5 min), towers from ~4.5 min. From N=12 the freeze
-   opening sends 6 starting peons to kill the nearest copy's quarters builders: that copy is out in about a minute
+1. **0-4 min, the opening.** Four quarters and an armory (about 3.5 min), towers from ~4.5 min. The freeze opening
+   (whenever a copy starts within 40 s of peon walk) sends 6 starting peons to kill the nearest copy's quarters builders: that copy is out in about a minute
    (path a, ~55-75 % of strikes), or frozen for good when its quarters stood first and the squad kills its armory
    builders (path c: the site keeps the copy's "armory under construction" flag, so it never builds another).
 2. **2-8 min, the first waves.** Each copy launches a wave when it has enough idle warriors, at our nearest building (or
@@ -38,6 +38,7 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 | re-site vetoed tower projects | a project vetoed by a nearby threat was never moved: towers stopped being replaced | survival +1-2 min at every N |
 | freeze opening from N=12 | one copy fewer from minute 1 relieves the collapse window | N=12 W 4 -> 13 over 600 |
 | freeze squad 6 (was 10) | four more peons at home; a frozen copy is worth nearly an out | N=12 W 8 -> 15 over 400 |
+| freeze at every N (gate at 12 removed) | the N=11 loss was squad 10's cost | N=11 W 31 -> 35 over 400 |
 
 ## What did not (and why, briefly)
 
@@ -48,7 +49,9 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
 - **More quarters / bigger crews / earlier towers / tower rings / tower_mutual**: the legacy values are near their best.
 - **Rock warriors** (rock_stream): twice the rock harvested, but rock warriors die too fast to matter.
 - **Hysteresis and N-keyed rules**: the flips that happen are cheap; the costly moments are one-way decisions (retreats,
-  recalls). Effects keep their sign across N, so tune once and check at N=8 and N=12.
+  recalls). Effects keep their sign across N, so tune once and check at N=8 and N=12 (the freeze's apparent N=11
+  exception was the squad size).
+- **Calling the army home** (recall, ring_sweep): survival can move, outs always drop (ring_sweep elim z -7).
 - **Late-acting tweaks judged by early metrics**: finishers and endgame fixes need wins, not the 15-25-min win proxy.
 - **More or different freeze strikes**: a second strike at the next copy converts 80 % of the time but final
   eliminations barely move (that copy falls to the campaign around 9 min anyway, and 12 peons away cost later outs);
