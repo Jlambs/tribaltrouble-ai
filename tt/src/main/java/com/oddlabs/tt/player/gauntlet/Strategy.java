@@ -611,6 +611,34 @@ class Strategy {
     int shepherd_max_r = 22;
     /** Chebyshev cells a shepherd's spot keeps from every enemy unit (idle and walking units scan 8). */
     int shepherd_clear = 12;
+    /**
+     * shepherd_lead (seconds, 0 = off; maxn K4): until a copy's first launch, and while it has no idle warrior, its
+     * shepherd is recruited only once it would reach its spot shepherd_lead_margin s before the copy's armory time
+     * plus shepherd_lead (walking shepherd_speed cells/s, plus 5 s), never before shepherd_time. Flocks then watch for
+     * the copies' armories from 90 s, and far copies are tended first (Shepherd.tend).
+     */
+    float shepherd_lead = 0f;
+    float shepherd_lead_margin = 15f;
+    /** Cells per second a shepherd walks, for shepherd_lead (2.1 until the K2 "at spot" logs measure it). */
+    float shepherd_speed = 2.1f;
+    /**
+     * A gunner with no enemy warrior within 45 cells of its tower enters from the side of the living copies' mean
+     * start blended with outward from our core, not from the side of the nearest start (Military.frontCell; maxn K3).
+     */
+    boolean tower_face_live = false;
+    /** Armory and quarters towers face the living copies' mean start, recomputed at every plan (Economy; K3). */
+    boolean tower_face_place = false;
+    /** Armory towers anchor on the home armory (the finished armory nearest our start), not the primary (K8). */
+    boolean tower_home_anchor = false;
+    /** Every third tower covers the most exposed quarters; false: it anchors on the home armory (K8). */
+    boolean tower_q_anchor = true;
+    /**
+     * The copies odd front towers face in turn (Economy.enemyFront; maxn K9): 0 in slot order, 1 farthest start first,
+     * 2 most base-bound waves first (Shepherd), ties farthest first.
+     */
+    int front_order = 0;
+    /** Finished quarters needed beside a finished armory before towers are planned (Economy; archaeology A3). */
+    int tower_min_quarters = 2;
     /** Seconds a shepherd waits without a spot before it goes home (large: never). */
     float shepherd_patience = 100000f;
     /** Weight of a spot's distance from the copy's own quarters and armory, beside its distance from our start. */
@@ -652,6 +680,15 @@ class Strategy {
         shepherd_until = (float) params.getDouble("shepherd_until", shepherd_until);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
         shepherd_clear = params.getInt("shepherd_clear", shepherd_clear);
+        shepherd_lead = (float) params.getDouble("shepherd_lead", shepherd_lead);
+        shepherd_lead_margin = (float) params.getDouble("shepherd_lead_margin", shepherd_lead_margin);
+        shepherd_speed = (float) params.getDouble("shepherd_speed", shepherd_speed);
+        tower_face_live = params.getBoolean("tower_face_live", tower_face_live);
+        tower_face_place = params.getBoolean("tower_face_place", tower_face_place);
+        tower_home_anchor = params.getBoolean("tower_home_anchor", tower_home_anchor);
+        tower_q_anchor = params.getBoolean("tower_q_anchor", tower_q_anchor);
+        front_order = params.getInt("front_order", front_order);
+        tower_min_quarters = params.getInt("tower_min_quarters", tower_min_quarters);
         shepherd_patience = (float) params.getDouble("shepherd_patience", shepherd_patience);
         shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
