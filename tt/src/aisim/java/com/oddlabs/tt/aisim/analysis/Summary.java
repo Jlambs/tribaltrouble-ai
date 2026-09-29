@@ -57,10 +57,7 @@ public final class Summary {
             printTeams(out, counted, games.get(0));
             printMeans(out, counted);
             printHealth(out, counted, games.get(0));
-            List<Curves.Series> series = Curves.teamSeries(games);
-            out.println("curves (mean over games still running; " + Curves.labels(series) + "):");
-            Curves.table(series, Curves.FIELDS, Curves.MINUTES).forEach(out::println);
-            out.println(milestones(games, series));
+            printCurves(out, games);
             printWorstGames(out, run, counted);
             result_line += headline.resultFields();
         }
@@ -350,6 +347,24 @@ public final class Summary {
     }
 
     /**
+     * The curve table and the milestones, from the game files. They are the only part of the summary that reads every
+     * game file, so should they fail, the summary says so and goes on: the rest, and the RESULT line, still print.
+     */
+    private static void printCurves(@NonNull PrintWriter out, @NonNull List<Game> games) {
+        try {
+            List<Curves.Series> series = Curves.teamSeries(games);
+            List<String> table = Curves.table(series, Curves.FIELDS, Curves.MINUTES);
+            String milestones = milestones(games, series);
+            out.println("curves (mean over games still running; " + Curves.labels(series) + "):");
+            table.forEach(out::println);
+            out.println(milestones);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            games.forEach(Game::forget);
+            out.println("!!! no curves or milestones: reading the game files failed (" + e + ")");
+        }
+    }
+
+    /**
      * Median time of each milestone for the teams of {@code series} (a team's first player to reach it), over the
      * games.
      */
@@ -380,6 +395,7 @@ public final class Summary {
                 Map<Milestone, List<Double>> by_milestone = times.get(i);
                 first.get(i).forEach((milestone, t) -> by_milestone.get(milestone).add(t));
             }
+            game.forget(); // a run's game files do not all fit in memory at once
         }
         String labels = Curves.labels(series);
         StringBuilder line = new StringBuilder("milestones (median seconds " + labels + ", and in how many games):");

@@ -6,7 +6,9 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -36,24 +38,6 @@ public final class Curves {
      * {@link #A_TEAM} or {@link #OTHER_TEAMS} (every team but A's, the sum divided by their number).
      */
     record Series(@NonNull String label, @NonNull List<Game> games, int team) {
-        /** How many of the games are still running at game second {@code t}. */
-        int running(double t) {
-            return (int) games.stream().filter(game -> t <= game.lastSample()).count();
-        }
-
-        /** The mean of {@code field} over the games still running at {@code t}; 0 when none is. */
-        double mean(@NonNull String field, double t) {
-            double sum = 0;
-            int running = 0;
-            for (Game game : games) {
-                Double value = value(game, team, field, t);
-                if (value != null) {
-                    sum += value;
-                    running++;
-                }
-            }
-            return running == 0 ? 0 : sum / running;
-        }
     }
 
     /**
@@ -154,25 +138,71 @@ public final class Curves {
 
     /**
      * The table: a line per minute while every series has a game running, with how many are, then a column per
-     * field. Each cell holds the series' means, joined with "/".
+     * field. Each cell holds the series' means over the games still running then, joined with "/".
+     *
+     * <p>It reads each game once, adds it to every cell, and forgets it ({@link Game#forget}), so a run of any size
+     * fits in memory: holding every game's file at once ran out of heap past ~150 MB of game files.
      */
     static @NonNull List<String> table(@NonNull List<Series> series, @NonNull List<String> fields,
             @NonNull List<Integer> minutes) {
+        int[][] running = new int[series.size()][minutes.size()];
+        double[][][] sums = new double[series.size()][minutes.size()][fields.size()];
+        int[][][] counts = new int[series.size()][minutes.size()][fields.size()];
+        // each game once, with every series that holds it; per series the games are added in the series' order
+        Map<Game, List<Integer>> series_of = new IdentityHashMap<>();
+        List<Game> games = new ArrayList<>();
+        for (int s = 0; s < series.size(); s++) {
+            for (Game game : series.get(s).games()) {
+                List<Integer> holders = series_of.computeIfAbsent(game, g -> {
+                    games.add(g);
+                    return new ArrayList<>();
+                });
+                holders.add(s);
+            }
+        }
+        for (Game game : games) {
+            for (int s : series_of.get(game)) {
+                int team = series.get(s).team();
+                for (int m = 0; m < minutes.size(); m++) {
+                    double t = minutes.get(m) * 60.0;
+                    if (t <= game.lastSample()) {
+                        running[s][m]++;
+                    }
+                    for (int f = 0; f < fields.size(); f++) {
+                        Double value = value(game, team, fields.get(f), t);
+                        if (value != null) {
+                            sums[s][m][f] += value;
+                            counts[s][m][f]++;
+                        }
+                    }
+                }
+            }
+            game.forget();
+        }
         List<List<String>> rows = new ArrayList<>();
         List<String> header = new ArrayList<>(List.of("min", "games"));
         header.addAll(fields);
         rows.add(header);
-        for (int minute : minutes) {
-            double t = minute * 60.0;
-            List<Integer> running = series.stream().map(s -> s.running(t)).toList();
-            if (running.contains(0)) {
+        for (int m = 0; m < minutes.size(); m++) {
+            int minute = m;
+            List<Integer> running_now = new ArrayList<>();
+            for (int[] by_minute : running) {
+                running_now.add(by_minute[m]);
+            }
+            if (running_now.contains(0)) {
                 break;
             }
-            List<String> row = new ArrayList<>(List.of(String.valueOf(minute)));
-            boolean all_equal = running.stream().distinct().count() == 1;
-            row.add(all_equal ? String.valueOf(running.get(0)) : joined(running, String::valueOf));
-            for (String field : fields) {
-                row.add(joined(series, s -> Table.number(s.mean(field, t))));
+            List<String> row = new ArrayList<>(List.of(String.valueOf(minutes.get(m))));
+            boolean all_equal = running_now.stream().distinct().count() == 1;
+            row.add(all_equal ? String.valueOf(running_now.get(0)) : joined(running_now, String::valueOf));
+            for (int f = 0; f < fields.size(); f++) {
+                int field = f;
+                List<Integer> indices = new ArrayList<>();
+                for (int s = 0; s < series.size(); s++) {
+                    indices.add(s);
+                }
+                row.add(joined(indices, s -> Table.number(
+                        counts[s][minute][field] == 0 ? 0 : sums[s][minute][field] / counts[s][minute][field])));
             }
             rows.add(row);
         }

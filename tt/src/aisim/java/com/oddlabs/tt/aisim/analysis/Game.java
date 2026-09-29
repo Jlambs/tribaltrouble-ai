@@ -266,6 +266,16 @@ public final class Game {
         return events;
     }
 
+    /**
+     * Drops the game file's lines read so far; the next call that needs them reads the file again. A game file holds
+     * up to a few MB of parsed lines, so going through a big run's games, forget each one when done with it.
+     */
+    public void forget() {
+        events = null;
+        census_by_slot.clear();
+        last_sample = -1;
+    }
+
     /** The events named {@code ev} (such as deaths or built), in time order. */
     public @NonNull List<Map<String, Object>> events(@NonNull String ev) {
         return events().stream().filter(event -> ev.equals(event.get("ev"))).toList();
