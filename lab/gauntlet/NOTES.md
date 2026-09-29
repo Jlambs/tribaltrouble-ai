@@ -934,3 +934,74 @@ and failed rebuilds (62 % never complete another armory after the first falls). 
 than 10 field warriors alive, so a recall would not have saved them. Being built: veto_resite (move or drop a vetoed
 tower project), bank_guard (cap the armory's idle bank; the rest wait in the safest quarters), wood_reach (the endgame
 wood lock of the 360-min draws).
+
+### Army jams at a choke: what wedges them, and unjam (2026-09-29)
+
+Question (late/endgame.md 2.1, spec S6): why does the attack army sit for hours at a choke (s98 at N=11 from 47.5 min
+at 178,53; s97 with `weapon_sync=true,veto_resite=0` from 60 min at 410-424 x 258-266, the stall rule firing 236
+times)? Hypotheses were a column jam behind a pass, or a stale target field.
+
+Tool: jam pictures (Military.describeJam, log only). At a warrior jam of 12 or more (Jams), at most every 150 s, the
+log gets a 65 x 45-cell picture around it: terrain (#), buildings (B), trees and supplies (T), our attack units
+(b blocked walking, w walking, i idle, f other), the march waypoint (W), and a head line comparing the target field
+with one computed at that moment. `grep jampic` in any logged game.
+
+What wedges the army (logged reproductions jam-s97-base, jam-s98-base at the gauntlet HEAD, and their pictures):
+- **Not a stale field.** In 22 pictures (s97, s98 and four screen replays) the stored field and a fresh one agree at
+  the jam and at the waypoint. setTarget's field computed once is fine.
+- **Engine: idle and blocked units are walls.** IdleBehaviour.isBlocking() is true, and a WalkBehaviour in state
+  BLOCKED makes Unit.getPenalty() return Occupant.STATIC, so the grid pathfinder (GridNode.addNeighbour) routes around
+  them like around a tree. PathTracker's deadlock solver only frees cycles of walking units, not a queue that ends at
+  an idle one. MapAnalysis fields count units as passable, so no field sees this.
+- **The plug.** The march waypoint (a lead, ~60-67 m, past the pivot) lies inside (s97) or at the exit (s98) of a 1-3
+  cell pass, and setLandscapeTarget spreads the group over cells around it. The first units through reach their cells
+  at the exit and go idle: a wall across the pass. Everyone behind turns BLOCKED (more walls). The pivot, a third back
+  from the front, is inside the queue, so the waypoint never moves on; and the idle plug is never re-ordered
+  (attackGround skips an idle unit within 4 cells of the same spot, and the pivot hold skips units 24+ m ahead).
+  - s97 at 3755 s: 102 of 150 attack units blocked in the corridor at 418-424 x 245-265 (3-6 cells wide with trees),
+    3 idle at its north exit, waypoint 428,236 just past it.
+  - s98 at 2795 s: 54 blocked in the 2-cell pass along the map's north edge (164-175 x 46-47), 5 idle at its exit
+    around the waypoint 178,48. The base game stalls there 5 times (1345, 2795, 3740, 4820, 5920 s).
+  - The stall rule (75 calm s) then bans the target and retargets, often to one behind the same pass (s97: 47 stalls in
+    120 min, alternating fields from 459,154 and 352,142).
+
+**unjam** (default 0 = off; arm `unjam=8`): Jams hands every scan's blocked warriors to Military.noteBlocked. With at
+least `unjam` attack units blocked on every scan for `unjam_after` (15) s, no enemy warrior, chieftain or tower within
+30 cells of them, and the pivot less than `unjam_progress` (10) m closer to the target over that window, the attack
+marches as a column until `unjam_time` (30) s after the last jammed scan: no pivot hold, and each unit is ordered to
+its own point a lead further along the target field (the front no farther than two leads past the pivot).
+`unjam_from` (s) delays it, for replaying a jammed game unchanged up to its jam. Counters: unjam_column (starts),
+unjam_through (the pivot 30+ m closer to the same target at the end, or the target fell), unjam_still, unjam_retarget,
+unjam_ended (the attack ended during a column), unjam_moving (a jam window vetoed because the army still moved). Log:
+"unjam: N of M attack units blocked around x,y, pivot d m ...: column march" and "unjam: column march over (outcome)".
+
+How the trigger got its guards (first version: 8 blocked on two scans, nothing else): paired N=11 1..40 (60 min) had 6
+firings, 4 of them in a crowded march that was still moving (s13, s16, s31) or in a melee (s48). The column strung the
+army out and it met the enemy piecemeal: s31 had 39 of 147 units left at 1000 s against 102 in the base game. Hence the
+progress test and the enemy-fighter test (enemy peons do not count: the stuck s98 army cut down gatherers all the
+time), and the cap on the column's front (uj3-s98: 45 of 75 units far from the centre after a column, 20 lost to a
+tower).
+
+Results (snapshot of the final code; reference checksums re-recorded first from the unchanged HEAD 66cf27d5: N=11
+25 min s2 571072128, s3 1709397488, s4 1142615447; N=12 20 min s3 -1648123377; the flags arm at N=11 20 min s3
+-1478054063):
+- Default: all five references reproduced. `unjam=8` on the same five games: identical (it never fires).
+- s97 (`weapon_sync=true,veto_resite=0,unjam=8`, from the start or with unjam_from=3500: the same game, identical to the
+  base until 3640 s): column at 3640 s (77 of 150 blocked, pivot 248 m for 15 s); 30 s later the pivot is at 165 m and
+  the army at 431,235, past the corridor; the target at 459,154 falls at ~3715 s and the game is **won at 3814 s**. Base:
+  a 120-min draw with ~210 warriors stuck in the corridor.
+- s98 with unjam_from=2700 (identical to the base until 2805 s): column at 2805 s (55 of 69 blocked, pivot 200 m); 35 s
+  later the pivot is at 88 m, s7's quarters at 252,56 falls at ~2910 s; a second column at 2985 s (the way back west
+  through the same pass) also gets through; **won at 4416 s** (base: won at 6408 s after 5 stalls at the pass).
+- s98 with unjam from the start: column at 1360 s (64 of 85 blocked), through (206 -> 46 m); **won at 3505 s**.
+- Paired screens against the default (identical games where unjam never fired, and only there):
+
+| screen | games | fired | identical | outcome changes |
+|---|---|---|---|---|
+| N=11, 1..120, 60 min | 120 | 4 (s22, s91, s97, s98) | 116 | s22 and s98 draw -> win (W 3 vs 1); s91 (column 5 s before the end), s97 draws |
+| N=12, 1..80, 45 min | 80 | 2 (s16, s63) | 78 | none (s16 out 5 s earlier) |
+
+So the jam is rare (about 1 game in 30 at N=11 and 40 at N=12 within these limits) and unjam leaves every other game
+alone. Not measured: longer games (the s98-type draws run to 360 min), and adoption. Next: an N=11 1..400 360-min pair
+(or the draw seeds of all 65 s98 configs) before making unjam=8 the default. Not done: jams of reinforcements or of a
+retreat through the same pass (only the attack role is watched).
