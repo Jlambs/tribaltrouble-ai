@@ -4027,8 +4027,8 @@ final class Military {
 
     /** The squared reach tower targets are chosen within: the garrison's full reach, or 15 cells. */
     private int towerReach2() {
-        return ai.strategy().tower_full_reach || ai.strategy().tower_gunner_reach ? GARRISON_REACH2
-                : TOWER_CELLS * TOWER_CELLS;
+        return ai.strategy().tower_full_reach
+                || ai.strategy().tower_gunner_reach ? GARRISON_REACH2 : TOWER_CELLS * TOWER_CELLS;
     }
 
     /** A tower's garrison when it can throw now: the tower finished and standing, the garrison alive and awake. */

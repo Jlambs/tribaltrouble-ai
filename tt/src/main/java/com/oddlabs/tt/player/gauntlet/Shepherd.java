@@ -535,9 +535,11 @@ final class Shepherd {
      */
     private @Nullable String enemyNear(@NonNull Intel intel, int x, int y) {
         int groups = intel.enemyIndex(ai.ticks()).groupsInBox(x, y, ai.strategy().shepherd_clear);
-        return (groups & 1 << EnemyIndex.WARRIOR) != 0 ? "shepherd_rej_warrior"
-                : (groups & 1 << EnemyIndex.PEON) != 0 ? "shepherd_rej_peon"
-                        : (groups & 1 << EnemyIndex.CHIEFTAIN) != 0 ? "shepherd_rej_chief" : null;
+        if ((groups & 1 << EnemyIndex.WARRIOR) != 0)
+            return "shepherd_rej_warrior";
+        if ((groups & 1 << EnemyIndex.PEON) != 0)
+            return "shepherd_rej_peon";
+        return (groups & 1 << EnemyIndex.CHIEFTAIN) != 0 ? "shepherd_rej_chief" : null;
     }
 
     /** Base-bound waves seen from a copy so far (front_order 2). */

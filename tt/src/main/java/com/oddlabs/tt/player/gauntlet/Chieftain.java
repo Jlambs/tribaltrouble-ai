@@ -306,8 +306,9 @@ final class Chieftain {
             return true;
         }
         if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
-            int[] stop = nearest > 11 ? MapAnalysis.towards(cx, cy, blob[0], blob[1], Math.max(2, nearest - 10)) : MapAnalysis.towards(blob[0],
-                    blob[1], cx, cy, 12);
+            int[] stop = nearest > 11 ? MapAnalysis.towards(cx, cy, blob[0], blob[1], Math.max(2,
+                    nearest - 10)) : MapAnalysis.towards(blob[0],
+                            blob[1], cx, cy, 12);
             ai.landscapeOrder(Selectable.newArray(chief), stop[0], stop[1], Action.MOVE, false);
             last_move = ai.time();
         }
@@ -756,7 +757,8 @@ final class Chieftain {
                 tx = chief.getGridX();
                 ty = chief.getGridY();
             } else {
-                int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), at[0], at[1], Math.max(3, nearest - 9));
+                int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), at[0], at[1], Math.max(3,
+                        nearest - 9));
                 tx = stop[0];
                 ty = stop[1];
             }
@@ -772,18 +774,21 @@ final class Chieftain {
                     tx = chief.getGridX();
                     ty = chief.getGridY();
                 } else {
-                    int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), enemies[0], enemies[1], nearest - keep);
+                    int[] stop = MapAnalysis.towards(chief.getGridX(), chief.getGridY(), enemies[0], enemies[1],
+                            nearest - keep);
                     tx = stop[0];
                     ty = stop[1];
                 }
             }
         } else if (army != null) {
             // March inside the clump, a little behind its middle.
-            int[] back = MapAnalysis.towards(army[0], army[1], military.stagingX(), military.stagingY(), enemies != null ? 8 : 3);
+            int[] back = MapAnalysis.towards(army[0], army[1], military.stagingX(), military.stagingY(),
+                    enemies != null ? 8 : 3);
             tx = back[0];
             ty = back[1];
         } else if (military.baseThreatLevel() > 0) {
-            int[] back = MapAnalysis.towards(military.threatX(), military.threatY(), military.stagingX(), military.stagingY(),
+            int[] back = MapAnalysis.towards(military.threatX(), military.threatY(), military.stagingX(),
+                    military.stagingY(),
                     12);
             tx = back[0];
             ty = back[1];
