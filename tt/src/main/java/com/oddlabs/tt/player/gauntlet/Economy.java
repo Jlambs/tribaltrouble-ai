@@ -1062,11 +1062,24 @@ final class Economy {
             return strategy.hold_chieftain;
         if (ai.intel().armories.isEmpty() && !ai.intel().quarters.isEmpty() && needsBuilders())
             return Math.min(2, strategy.hold_early);
+        int hold;
         if (pop > max * 7 / 10)
-            return strategy.hold_late;
-        int hold = ai.time() < strategy.hold_mid_time ? strategy.hold_early : strategy.hold_mid;
-        return armsRace() ? Math.min(2, hold) : hold;
+            hold = strategy.hold_late;
+        else {
+            hold = ai.time() < strategy.hold_mid_time ? strategy.hold_early : strategy.hold_mid;
+            if (armsRace())
+                hold = Math.min(2, hold);
+        }
+        if (strategy.hold_backlog > 0 && backlog_on && hold > strategy.hold_early) {
+            hold = strategy.hold_early;
+            ai.aiLog().count("hold_backlog_ticks");
+        }
+        return hold;
     }
+
+    /** hold_backlog: ore waits in the main armory for workers; since when. */
+    private boolean backlog_on;
+    private float backlog_since;
 
     private boolean needsBuilders() {
         for (Project p : projects)
@@ -1096,8 +1109,12 @@ final class Economy {
                 ai.aiLog().count("hold_danger");
                 continue;
             }
-            if (inside > hold)
+            if (inside > hold) {
                 ai.owner().deployUnits(q, DeployType.PEON, inside - hold);
+                if (backlog_on)
+                    for (int i = 0; i < inside - hold; i++)
+                        ai.aiLog().count("hold_backlog_deployed");
+            }
         }
     }
 
@@ -1389,6 +1406,17 @@ final class Economy {
         // iron weapons still take every piece of iron that comes in, since both are made side by side.
         int iron_stock = armory.getSupplyContainer(IronSupply.class).getNumSupplies();
         int armory_workers = armory.getUnitContainer().getNumSupplies();
+        if (ai.strategy().hold_backlog > 0 && armory.isComplete()) {
+            int forge = Math.min(iron_stock, armory.getSupplyContainer(TreeSupply.class).getNumSupplies() / 2);
+            float until = ai.strategy().hold_backlog_until;
+            if (!backlog_on && forge >= ai.strategy().hold_backlog && (until <= 0f || ai.time() < until)) {
+                backlog_on = true;
+                backlog_since = ai.time();
+                ai.aiLog().count("backlog_on");
+            } else if (backlog_on && ((forge <= 1 && ai.time() - backlog_since >= 30f)
+                    || (until > 0f && ai.time() >= until)))
+                backlog_on = false;
+        }
         if (!rock_filler && iron_stock <= 1 && armory_workers >= ai.strategy().rock_filler_min_workers
                 && iron_cycle > 45f)
             rock_filler = true;

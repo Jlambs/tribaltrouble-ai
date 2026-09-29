@@ -276,6 +276,14 @@ class Strategy {
     int hold_mid = 14;
     int hold_late = 8;
     float hold_mid_time = 240f;
+    /**
+     * While the main armory could forge at least hold_backlog weapons (0 = off), quarters hold only hold_early: a held
+     * peon above 4 buys ~8 peons per 1000 s, a worker with ore ~12.5 weapons (Economy.holdFor). Off again once 1 or
+     * fewer
+     * can be forged and 30 s have passed; hold_backlog_until > 0 limits it to the early game.
+     */
+    int hold_backlog = 0;
+    float hold_backlog_until = 0f;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -748,6 +756,8 @@ class Strategy {
         pressure_time = (float) params.getDouble("pressure_time", pressure_time);
         hold_early = params.getInt("hold_early", hold_early);
         hold_mid = params.getInt("hold_mid", hold_mid);
+        hold_backlog = params.getInt("hold_backlog", hold_backlog);
+        hold_backlog_until = (float) params.getDouble("hold_backlog_until", hold_backlog_until);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);
