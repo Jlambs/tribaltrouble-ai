@@ -1333,3 +1333,14 @@ retreat through the same pass (only the attack role is watched).
   towers20 +0.41, w15 57.5 -> 58.0 (25 carried pieces a game). site_towers_first: surv60 -0.3 (z -1.7), no. Queued:
   woodr20 confirmations and the tower package slots32 + woodr20 at N=12-14.
 - **Second N=14 win:** cur5-vs14-w1 s3275 (default cur5), 151:44, replay VERIFIED (checksum 324272624).
+
+### cur6: two tower projects and three sites after 10 min (2026-09-29 afternoon)
+
+- **Adopted (commit 19e12bbb): tower_parallel_late 1 -> 2, sites_parallel_late 2 -> 3.** Found by the tower13 audit (the
+  two placed-site slots, shared with quarters, bounded completions). Every block: towers20 +0.75 / +0.87 / +1.06 / +0.67
+  / +1.16 / +1.12 (N=13 s1..200, s201..400, N=14 s1..200, s201..400, N=12 s1..200, s201..400) and on fresh seeds +1.28 /
+  +0.68 / +0.82 / +0.95 (N=13 s3001..3300, s3301..3600, N=14 same); surv60 +0.3 to +1.3 in all 10 (z up to 2.9);
+  arm25 +5.3 pp (z 3.0) on N=14 s3301..3600. Wins: fresh seeds N=13 0 -> 3 of 600, N=14 1 -> 2 of 600; all N=13-14
+  blocks 8 vs 3; N=12 W 9 -> 5 and 6 -> 8 (15 -> 13 of 400). elim ~0 to +.014.
+- The win-count comparison (cur5-vs1x-w1/w2 vs slots32-vs1x-w1/w2, 300 games each) also gave the default cur5 an N=14 win
+  (s3275, above) and slots32 N=14 wins s3484, s3549 and N=13 wins s3077, s3287, s3521.
