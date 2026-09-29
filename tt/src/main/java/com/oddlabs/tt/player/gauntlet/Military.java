@@ -287,7 +287,7 @@ final class Military {
         for (Unit u : threats) {
             if (u.isDead() || MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) > r2)
                 continue;
-            if (isParked(u) && Math.max(Math.abs(u.getGridX() - x), Math.abs(u.getGridY() - y)) > box) {
+            if (Intel.isParked(u) && Math.max(Math.abs(u.getGridX() - x), Math.abs(u.getGridY() - y)) > box) {
                 exempt = true;
                 continue;
             }
@@ -296,12 +296,6 @@ final class Military {
         if (exempt)
             ai.aiLog().count("parked_exempt_econ");
         return false;
-    }
-
-    /** An enemy standing idle: it sees 8 cells and never answers being hit (IdleController). Check isDead first. */
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                && e.getCurrentController() == e.getPrimaryController();
     }
 
     float enemyStrengthNear(int x, int y, int radius) {
@@ -531,7 +525,7 @@ final class Military {
         for (Unit e : enemies) {
             if (ai.decoys().caged(e))
                 continue;
-            int box = parked_scan > 0 && !e.isDead() && isParked(e) ? parked_scan : Integer.MAX_VALUE;
+            int box = parked_scan > 0 && !e.isDead() && Intel.isParked(e) ? parked_scan : Integer.MAX_VALUE;
             boolean exempt = false;
             boolean near_base = false;
             for (Building b : own) {
@@ -1457,9 +1451,7 @@ final class Military {
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead())
                 continue;
-            boolean parked = e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                    && e.getCurrentController() == e.getPrimaryController();
-            (parked ? idle : awake).add(e);
+            (Intel.isParked(e) ? idle : awake).add(e);
         }
         if (idle.isEmpty())
             return;
@@ -1470,7 +1462,7 @@ final class Military {
             Float last = reaimed.get(t);
             if (last != null && ai.time() - last < 30f)
                 continue;
-            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            Unit gunner = Intel.gunner(t);
             if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
             int tx = t.getGridX();
@@ -1599,7 +1591,7 @@ final class Military {
         for (Building tower : intel.towers) {
             if (!Intel.isTowerManned(tower))
                 continue;
-            Unit inside = ((com.oddlabs.tt.model.MountUnitContainer) tower.getUnitContainer()).getUnit();
+            Unit inside = Intel.gunner(tower);
             if (inside == null || Intel.warriorType(inside) == WarriorType.CHICKEN)
                 continue;
             if (enemyStrengthNear(tower.getGridX(), tower.getGridY(), chickens ? 20 : 30) > 0)
@@ -2969,7 +2961,7 @@ final class Military {
                     u.getGridY()) > 8 * 8)
                 continue;
             n++;
-            if (isParked(u))
+            if (Intel.isParked(u))
                 parked++;
         }
         return parked * 2 < n;
@@ -4110,7 +4102,7 @@ final class Military {
         for (Building t : intel.towers) {
             if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
                 continue;
-            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            Unit gunner = Intel.gunner(t);
             if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
             int[] o = towerOrigin(t, gunner);
@@ -4223,7 +4215,7 @@ final class Military {
         for (Building t : intel.towers) {
             if (!t.isComplete() || t.getUnitCount() == 0)
                 continue;
-            Unit gunner = ((com.oddlabs.tt.model.MountUnitContainer) t.getUnitContainer()).getUnit();
+            Unit gunner = Intel.gunner(t);
             if (gunner == null || gunner.isDead() || Intel.isStunned(gunner))
                 continue;
             int[] o = towerOrigin(t, gunner);

@@ -656,9 +656,7 @@ final class Economy {
         for (Unit e : ai.intel().enemy_warriors) {
             if (e.isDead() || MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) > r * r)
                 continue;
-            boolean parked = e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                    && e.getCurrentController() == e.getPrimaryController();
-            if (!parked)
+            if (!Intel.isParked(e))
                 return true;
         }
         return false;
@@ -913,12 +911,6 @@ final class Economy {
         return n;
     }
 
-    /** An enemy warrior standing idle: it sees 8 cells and never answers being hit (IdleController). */
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                && e.getCurrentController() == e.getPrimaryController();
-    }
-
     /**
      * Sniper towers: waves that razed a building of ours stand idle where it was, 16-45 cells from the rest of the
      * base and out of our towers' reach (STAT pb/pt, play-park9b-s11). Idle units see 8 cells and never answer being
@@ -941,7 +933,7 @@ final class Economy {
         int range2 = strategy.snipe_range * strategy.snipe_range;
         List<Unit> parked = new ArrayList<>();
         for (Unit e : intel.enemy_warriors) {
-            if (e.isDead() || !isParked(e))
+            if (e.isDead() || !Intel.isParked(e))
                 continue;
             for (Building b : own)
                 if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), e.getGridX(),
@@ -1031,7 +1023,7 @@ final class Economy {
                     continue;
                 int dx = Math.abs(e.getGridX() - x);
                 int dy = Math.abs(e.getGridY() - y);
-                if (isParked(e) ? Math.max(dx, dy) <= 9 : dx * dx + dy * dy <= 12 * 12)
+                if (Intel.isParked(e) ? Math.max(dx, dy) <= 9 : dx * dx + dy * dy <= 12 * 12)
                     return false;
             }
         for (Building t : intel.enemy_towers)
@@ -3013,8 +3005,7 @@ final class Economy {
             parked_time = ai.time();
             parked_cells.clear();
             for (Unit e : ai.intel().enemy_warriors)
-                if (!e.isDead() && e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                        && e.getCurrentController() == e.getPrimaryController())
+                if (!e.isDead() && Intel.isParked(e))
                     parked_cells.add(new int[]{e.getGridX(), e.getGridY()});
         }
         for (int[] c : parked_cells)

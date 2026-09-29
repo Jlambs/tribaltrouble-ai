@@ -6,7 +6,6 @@ import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.HuntController;
-import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.player.gauntlet.Intel.PeonState;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -189,11 +188,6 @@ final class Lures {
         return best;
     }
 
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof IdleController
-                && e.getCurrentController() == e.getPrimaryController();
-    }
-
     private void plan() {
         Strategy strategy = ai.strategy();
         if (lures.size() >= strategy.lure_max || ai.time() < strategy.lure_time)
@@ -215,7 +209,7 @@ final class Lures {
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead())
                 continue;
-            if (!isParked(e)) {
+            if (!Intel.isParked(e)) {
                 awake.add(e);
                 continue;
             }

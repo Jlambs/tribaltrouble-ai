@@ -227,7 +227,7 @@ final class Chieftain {
         if (strategy.shred_strict && blastHere(chief, cx, cy))
             return true;
         for (Unit e : ai.intel().enemy_warriors) {
-            if (e.isDead() || isParked(e))
+            if (e.isDead() || Intel.isParked(e))
                 continue;
             int abort = strategy.shred_strict ? 9 : 13; // strict: only what can see him
             if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= abort * abort) {
@@ -262,7 +262,7 @@ final class Chieftain {
                         for (Unit e : enemies)
                             if (!e.isDead() && Math.abs(e.getGridX() - x) <= 8 && Math.abs(e.getGridY() - y) <= 8) {
                                 int k = ai.intel().enemy_peons.contains(e) ? 0 : ai.intel().enemy_chieftains.contains(
-                                        e) ? 1 : isParked(e) ? 2 : 3;
+                                        e) ? 1 : Intel.isParked(e) ? 2 : 3;
                                 seen_by[k]++;
                                 break;
                             }
@@ -427,7 +427,7 @@ final class Chieftain {
         enemies.addAll(intel.enemy_peons);
         java.util.List<Unit> parked = new java.util.ArrayList<>();
         for (Unit e : intel.enemy_warriors)
-            if (!e.isDead() && isParked(e))
+            if (!e.isDead() && Intel.isParked(e))
                 parked.add(e);
         java.util.List<Selectable<?>> ours = new java.util.ArrayList<>();
         for (Selectable<?> s : ai.owner().getUnits().getSet())
@@ -465,12 +465,6 @@ final class Chieftain {
         return best;
     }
 
-    /** An enemy warrior standing idle, not hunting: it sees 8 cells and does not react to being hit. */
-    private static boolean isParked(@NonNull Unit e) {
-        return e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.IdleController
-                && e.getCurrentController() == e.getPrimaryController();
-    }
-
     /**
      * The best blob of parked enemy warriors within shred_range cells of our armory: {x, y, nearest member's distance
      * from (cx, cy) in cells, members}, with at least shred_min members within 10 cells of its centre, no awake enemy
@@ -487,7 +481,7 @@ final class Chieftain {
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead())
                 continue;
-            (isParked(e) ? parked : awake).add(e);
+            (Intel.isParked(e) ? parked : awake).add(e);
         }
         int[] best = null;
         float best_score = 0f;

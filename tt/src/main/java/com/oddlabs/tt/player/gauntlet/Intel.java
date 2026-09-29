@@ -318,13 +318,27 @@ final class Intel {
         return !unit.isDead() && unit.getCurrentController() instanceof StunController;
     }
 
+    /**
+     * A unit standing idle on its default controller ("parked"): it scans only an 8-cell square and never answers
+     * being hit (IdleController). Check isDead first.
+     */
+    static boolean isParked(@NonNull Unit unit) {
+        return unit.getPrimaryController() instanceof IdleController
+                && unit.getCurrentController() == unit.getPrimaryController();
+    }
+
+    /** The garrison of a finished tower (its unit container is a MountUnitContainer), or null when it has none. */
+    static @Nullable Unit gunner(@NonNull Building tower) {
+        return ((MountUnitContainer) tower.getUnitContainer()).getUnit();
+    }
+
     /** Whether a tower currently has a warrior inside that is not stunned. */
     static boolean isTowerActive(@NonNull Building tower) {
         if (tower.isDead() || !tower.isComplete() || tower.getUnitContainer() == null)
             return false;
         if (tower.getUnitContainer().getNumSupplies() == 0)
             return false;
-        Unit unit = ((MountUnitContainer) tower.getUnitContainer()).getUnit();
+        Unit unit = gunner(tower);
         return unit != null && !isStunned(unit);
     }
 
