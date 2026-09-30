@@ -1458,3 +1458,10 @@ retreat through the same pass (only the attack role is watched).
   Replays running.
 - **N=15 beaten, replay VERIFIED** (snapshot 81b6277e74, cur7 defaults): cur7-bench-vs15-a s6022 won at 305:00 (checksum
   -90583123) and s6303 at 204:20 (checksum -833116341). Also verified: N=14 s6409 (115:48), s6415 (288:26).
+- **cur7 benchmark, final** (fresh seeds 6001-8000, default cur7, snapshot 81b6277e74): N=13 12 of 1,000 (1.2 %), N=14 4
+  of 2,000 (0.20 %), N=15 3 of 2,000 (0.15 %: s6022 305 min, s6303 204 min, s7282 59 min), N=16 0 of 1,000. Median game
+  24.2 / 22.6 / 21.5 / 20.4 min. N=14 is within noise of cur6 (8 of 2,000 on mixed seeds). Highest N beaten: 15.
+- **Why the wins are long: dry spells.** After 3-5 copies are out by ~30 min, many wins stall with no elimination for
+  100-220 min, then the rest fall in 15-60 min (s6415: 4 out by 13 min, nothing until 232, the other 10 by 288; s6022:
+  146-min gap then 5 outs in 15 min); the short wins (59-116 min) have no gap over 23 min. A dry-spell diagnosis workflow
+  is running (replay logs of s6022, s6303, s6415, s6409 and the long N=13 wins).
