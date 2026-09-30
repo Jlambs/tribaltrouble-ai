@@ -1480,3 +1480,16 @@ retreat through the same pass (only the attack role is watched).
   N=14 W 0 -> 3 (s6207, s6215, s6257), wp z 1.7, the rest ~0; N=15 ~0, W 1 -> 0. hold_ratio=1.0 N=14 slightly negative
   (W 0 -> 1), N=15 wp z 2.1 within the base's draw. precontact_ratio=0 N=14 elim z 2.2, N=15 surv60 z 2.1, W 0 -> 0 / 1
   -> 1. Confirmations of decoyfs1 and hold05 on fresh seeds (6301..6800 at N=14, plus N=13 and the pair combined) queued.
+- **Dry spells diagnosed** (workflow: 3 lenses over the replay logs of the long wins and 53 long losses, check, judge;
+  scratchpad dryspell/judge.md): the long wins are short wins with 1-3 h holes in the middle. In the holes our army is
+  absent, mainly because the home armory's 60-cell tree ring is cut out after 45-150 min (**wood lock**: 42-56 % of gap
+  time; tree cycle 91 s, wood 0-1, 150-200 peons banked, iron full at 200, 1.4-1.6 warriors/min against 9.5-13 when
+  copies fall; trees 43-122 cells away in every lock); short of wood otherwise 17 %, of iron 15 % (early in the gaps),
+  an army of 50+ that turns back 16 %. Moving is blocked by the threat gate and the building cap in 96-100 % of locked
+  minutes, and relocated armories are fragile (5 of 17 completed after 60 min razed within 2 min). A gap ends when
+  wood reaches a standing armory; the first out follows 7-32 min later, then the rest fall at 3-8 min each. The copies
+  left are static (warriors flat). Long losses: the usual end is an armory razed with its peons inside (39 of 53 lost
+  100+ units in one razing, median 163; units 235 -> 42; the loss a median 21 min later); the lock itself is a fairly
+  safe state (9 % lost within 30 min vs 46 % with <= 10 warriors). Fixes queued on the 171 cur7 benchmark games alive
+  at 40 min (late-acting, identical before; lab/gauntlet/late.py scores them): wood_reach=150, bank_guard from 2400 s,
+  and both. lock_relocate (relocate on the lock with a reserved slot) is folded into the relocation design.
