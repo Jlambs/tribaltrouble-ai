@@ -1520,3 +1520,15 @@ retreat through the same pass (only the attack role is watched).
   0.15 %. Against two Experts we reach every milestone first (Q1 37 vs 51 s, armory 193 vs 241, first tower 255 vs 487)
   and kill more (kd30 +160), but two economies out-produce one (workers 120 vs 244 at 10 min, warriors 52 vs 156 at 15).
   14-16 % draws at 360 min in both lineups: the long-game finishing problem (dry spells) shows against Expert too.
+- **Late fixes, N=13** (the 83 cur7 benchmark games alive at 40 min, lab/gauntlet/late.py; checksums agree to 2400 s in
+  83 of 83): **wood_reach=150** wins 12 -> 16 (gained s6028 (the 225-warrior stuck draw), s6068, s6514, s6856; lost
+  none); long wins shorter: s6029 244 -> 107 min, s6189 319 -> 113, s6709 175 -> 109, s6789 221 -> 182, s6490 195 -> 231
+  (mean -34 min). bank_guard from 2400 s 12 -> 13 (lost s6029); both 12 -> 16 (lost s6029, 4 new draws): the peon
+  parking adds nothing on top of the wider tree reach. N=14/15 and the N=16 games pending.
+- **Stuck army against Expert** (vs-expert2 s9041, a draw at 360 with 227 warriors 75 cells from a 10-warrior Expert):
+  the replay shows 176 warriors wedged in a cliff pocket from ~41 min ("jam: 26 warriors blocked", attack stalled).
+  unjam=8 with unjam_from=2400: a column march at 2500 s (91 of 115 blocked), through at 2555 s, win at 43.4 min.
+  The benchmark has the same case (s6028 N=13, 225 warriors against 3 copies with 3 warriors, draw); unjam from 40 min
+  is queued on the games alive at 40 min at N=13-16.
+- Confirmations on fresh seeds (6301..6500, N=14, vs cur7-bench-vs14-a): decoys + decoy_free_slots=1 W 2 -> 0, elim z
+  -1.7; hold_multi + hold_ratio 0.5 W 2 -> 0. Neither lead holds.
