@@ -1465,3 +1465,12 @@ retreat through the same pass (only the attack role is watched).
   100-220 min, then the rest fall in 15-60 min (s6415: 4 out by 13 min, nothing until 232, the other 10 by 288; s6022:
   146-min gap then 5 outs in 15 min); the short wins (59-116 min) have no gap over 23 min. A dry-spell diagnosis workflow
   is running (replay logs of s6022, s6303, s6415, s6409 and the long N=13 wins).
+- **Winning from k copies left** (lab/gauntlet/remaining.py over 9,400 cur6/cur7 games at N=13-15): reaching 8 left
+  (alive) wins 19 % / 41 % / 30 % at N=13 / 14 / 15 (125 / 34 / 10 games) against 60 % for a fresh N=8; 9 left 5-11 %,
+  10 left 2 %; 7 left 57 % / 88 % / 50 %; 6 or fewer 77-100 %. The state differs from a fresh start: 8 left is reached at
+  19-23 min, when the survivors hold 430-470 warriors and 1,200-1,300 units against our ~60 warriors and 12 towers, our
+  iron gone, theirs still respawning (the opening lead that wins fresh N=8 games is spent). At N=15 only 10 of 3,600 games
+  reach 8 left alive: the bottleneck is 11 -> 7 inside the collapse window. From 7 left the endgame wins but slowly (N=14:
+  7 left at 52 min, 5 at 81, 4 at 109; 15-30 min a copy): the dry spells.
+- Replays VERIFIED: N=15 s7282 (59 min), N=14 s7104 (83 min), and the long N=13 wins s6029, s6189, s6490 (logs for the
+  dry-spell diagnosis).
