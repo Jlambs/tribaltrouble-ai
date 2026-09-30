@@ -29,6 +29,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -362,6 +363,8 @@ final class Economy {
         @Nullable
         Unit placer;
         boolean evac_skipped;
+        /** rearm_placer: since when a lost armory's project has found no placer at all (-1: it has one). */
+        float noplacer_since = -1f;
 
         Project(int type, int id, @NonNull Site site, int priority) {
             this.type = type;
@@ -478,8 +481,15 @@ final class Economy {
             }
             p.veto_since = -1f;
             Unit placer = choosePlacer(p);
-            if (placer == null)
+            if (placer == null) {
+                if (p.noplacer_since >= 0f && ai.time() - p.noplacer_since > REARM_WAIT) {
+                    // rearm_placer: a lost armory's site with no safe way to it is planned afresh.
+                    it.remove();
+                    ai.aiLog().count("rearm_placer_timeout");
+                    ai.log("drop " + p.describe() + ": no safe placer for " + (int) REARM_WAIT + "s");
+                }
                 continue;
+            }
             place(p, List.of(placer));
             if (p.building != null)
                 intel.builder_sites.put(placer, p.building);
@@ -862,12 +872,8 @@ final class Economy {
             }
             return scout;
         }
-        if (p.type == Race.BUILDING_ARMORY && ai.strategy().rearm_placer) {
-            rearm_waiting = false;
-            Unit safe = safePlacer(p);
-            if (safe != null || rearm_waiting)
-                return safe;
-        }
+        if (p.type == Race.BUILDING_ARMORY && ai.strategy().rearm_placer)
+            return safePlacer(p);
         Unit best = null;
         int best_d = Integer.MAX_VALUE;
         for (Unit peon : intel.peons) {
@@ -882,9 +888,6 @@ final class Economy {
                 best = peon;
             }
         }
-        boolean rearm = p.type == Race.BUILDING_ARMORY && ai.strategy().rearm_placer;
-        if (rearm && best != null)
-            ai.aiLog().count("rearm_placer_unsafe");
         if (best == null && p.type == Race.BUILDING_ARMORY) {
             for (Unit peon : intel.peons) {
                 if (intel.peon_states.get(peon) == PeonState.BUILD) {
@@ -892,14 +895,10 @@ final class Economy {
                     break;
                 }
             }
-            if (rearm)
-                ai.aiLog().count(best != null ? "rearm_placer_build" : "rearm_placer_none");
         }
         return best;
     }
 
-    /** rearm_placer: safePlacer returned null only to wait for the peon it had a quarters deploy. */
-    private boolean rearm_waiting;
     /** rearm_placer: the quarters that deployed a placer, until when that peon is reserved, and the next deploy. */
     private @Nullable Building reserve_quarters;
     private float reserve_until = -1f;
@@ -909,17 +908,35 @@ final class Economy {
     private static final int RESERVE_CELLS = 10;
 
     /**
-     * rearm_placer: the placer for an armory project. The peon a quarters deployed for it (while reserved), else the
-     * nearest idle, walking or tree-gathering peon (tree gatherers count 40 cells further, as in the old rule), else
-     * the nearest one walking into a building, that has no threat within 11 cells (evacuatePeons would pull it at once)
-     * and no enemy warrior within 12 cells of its straight way to the site. With none, the complete quarters nearest
-     * the site with a peon inside, no threat within 12 cells and a clear way deploys one (at most every 5 s), which is
-     * reserved for RESERVE_SECONDS; null then with rearm_waiting set. Null without it when nothing qualifies (the old
-     * rule follows).
+     * rearm_placer: the placer for an armory project, in this order: the peon a quarters deployed for it (while
+     * reserved); the nearest idle, walking or tree-gathering peon (tree gatherers count 40 cells further, as in the old
+     * rule); the nearest one walking into a building; each with no threat within 11 cells (evacuatePeons would pull it
+     * at once) and no enemy warrior within 12 cells of its straight way to the site. With none, the complete quarters
+     * nearest the site with a peon inside, no threat within 12 cells and a clear way deploys one (at most every 5 s),
+     * reserved for RESERVE_SECONDS, and null is returned meanwhile. With no such quarters: the nearest builder of
+     * another site passing the same tests, else the nearest idle, walking, gathering, transit or building peon with no
+     * threat within 11 cells and no enemy within 8 cells (an idle enemy's scan) of the way, else (no armory standing,
+     * a quarters left) the nearest safe shepherd, which Shepherd.giveUp lets go, else null: the project waits rather
+     * than send a placer that is pulled back or killed within seconds (s6001 smoke: 7 in 7 s).
      */
     private @Nullable Unit safePlacer(@NonNull Project p) {
         Intel intel = ai.intel();
         float now = ai.time();
+        Unit u = safePlacerOf(p, now);
+        // A lost armory (no armory standing, not a hop) starts its REARM_WAIT clock while nothing qualifies.
+        boolean rebuild = had_armory && intel.armories.isEmpty() && !p.reloc;
+        if (u != null || !rebuild || now < rearm_deploy_next)
+            p.noplacer_since = -1f;
+        else if (p.noplacer_since < 0f)
+            p.noplacer_since = now;
+        return u;
+    }
+
+    /** rearm_placer: seconds a lost armory's project may find no placer before it is planned afresh. */
+    private static final float REARM_WAIT = 30f;
+
+    private @Nullable Unit safePlacerOf(@NonNull Project p, float now) {
+        Intel intel = ai.intel();
         int sx = p.site.x;
         int sy = p.site.y;
         Building rq = reserve_quarters;
@@ -935,7 +952,7 @@ final class Economy {
                 if (s != PeonState.IDLE && s != PeonState.TRANSIT && s != PeonState.MOVE)
                     continue;
                 int d = MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), rq.getGridX(), rq.getGridY());
-                if (d < best_d && safeWay(peon, sx, sy)) {
+                if (d < best_d && safeWay(peon, sx, sy, 12)) {
                     best_d = d;
                     mine = peon;
                 }
@@ -947,40 +964,117 @@ final class Economy {
             }
         }
         // The nearest safe peon: idle, walking or gathering wood first, then those walking into a building.
-        for (int pass = 0; pass < 2; pass++) {
-            List<Unit> candidates = new ArrayList<>();
-            List<Integer> dists = new ArrayList<>();
-            for (Unit peon : intel.peons) {
-                PeonState s = intel.peon_states.get(peon);
-                boolean ok = pass == 0 ? s == PeonState.IDLE || s == PeonState.MOVE
-                        || s == PeonState.GATHER_TREE : s == PeonState.TRANSIT;
-                if (!ok)
-                    continue;
-                int d = MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), sx, sy);
-                if (s == PeonState.GATHER_TREE)
-                    d += 40 * 40;
-                int i = 0;
-                while (i < dists.size() && dists.get(i) <= d)
-                    i++;
-                candidates.add(i, peon);
-                dists.add(i, d);
-            }
-            for (Unit peon : candidates)
-                if (safeWay(peon, sx, sy)) {
-                    ai.aiLog().count(pass == 0 ? "rearm_placer_safe" : "rearm_placer_transit");
-                    return peon;
-                }
+        Unit safe = nearestSafe(p, EnumSet.of(PeonState.IDLE, PeonState.MOVE, PeonState.GATHER_TREE), 12);
+        if (safe == null)
+            safe = nearestSafe(p, EnumSet.of(PeonState.TRANSIT), 12);
+        if (safe != null) {
+            boolean transit = intel.peon_states.get(safe) == PeonState.TRANSIT;
+            ai.aiLog().count(transit ? "rearm_placer_transit" : "rearm_placer_safe");
+            return safe;
         }
-        if (rq != null) {
-            rearm_waiting = true;
+        if (rq != null || now < rearm_deploy_next) {
             ai.aiLog().count("rearm_placer_wait"); // economy ticks (1 s)
             return null;
         }
-        if (now < rearm_deploy_next) {
-            rearm_waiting = true;
-            ai.aiLog().count("rearm_placer_wait");
+        Building from = deployQuarters(sx, sy);
+        if (from != null) {
+            ai.owner().deployUnits(from, DeployType.PEON, 1);
+            reserve_quarters = from;
+            reserve_until = now + RESERVE_SECONDS;
+            rearm_deploy_next = now + 5f;
+            ai.aiLog().count("rearm_placer_deploy");
+            if (ai.logging())
+                ai.log("armory placer for " + p.describe() + ": one peon out of the quarters at " + from.getGridX() + "," + from.getGridY());
             return null;
         }
+        safe = nearestSafe(p, EnumSet.of(PeonState.BUILD), 12);
+        if (safe != null) {
+            ai.aiLog().count("rearm_placer_build");
+            return safe;
+        }
+        safe = nearestSafe(p, EnumSet.of(PeonState.IDLE, PeonState.MOVE, PeonState.GATHER_TREE, PeonState.GATHER_IRON,
+                PeonState.GATHER_ROCK, PeonState.TRANSIT, PeonState.BUILD), 8);
+        if (safe != null) {
+            ai.aiLog().count("rearm_placer_relaxed");
+            return safe;
+        }
+        // The last resort with no armory standing but a quarters to recover with: a shepherd (stall.md: in every
+        // no-placer episode all the peons outside were shepherds, lures or dodgers). Its copy goes unleashed a while.
+        if (intel.armories.isEmpty() && !intel.quarters.isEmpty()) {
+            Unit shepherd = null;
+            int best_d = Integer.MAX_VALUE;
+            for (Unit u : intel.shepherds) {
+                if (u.isDead() || u.isMounted() || Intel.isStunned(u))
+                    continue;
+                int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), sx, sy);
+                if (d < best_d && safeWay(u, sx, sy, 12)) {
+                    best_d = d;
+                    shepherd = u;
+                }
+            }
+            if (shepherd != null && ai.shepherd().giveUp(shepherd)) {
+                ai.aiLog().count("rearm_placer_shepherd");
+                return shepherd;
+            }
+        }
+        if (!intel.peons.isEmpty()) {
+            ai.aiLog().count("rearm_placer_none"); // economy ticks (1 s) with peons but no placer
+            if (ai.logging() && now >= rearm_none_log) {
+                rearm_none_log = now + 15f;
+                Map<PeonState, Integer> states = new java.util.EnumMap<>(PeonState.class);
+                for (PeonState s : intel.peon_states.values())
+                    states.merge(s, 1, Integer::sum);
+                StringBuilder q = new StringBuilder();
+                for (Building b : intel.quarters)
+                    q.append(' ').append(b.getUnitContainer().getNumSupplies()).append(
+                            ai.military().threatNearEcon(b.getGridX(), b.getGridY(), 12) ? "t" : "").append(
+                                    pathClear(b.getGridX(), b.getGridY(), sx, sy, 12) ? "" : "p");
+                ai.aiLog().log("REARM",
+                        () -> "no placer for " + p.describe() + ": peons " + states + ", quarters inside" + q + ", shepherds " + intel.shepherds.size());
+            }
+        }
+        return null;
+    }
+
+    /** rearm_placer (log only): the next "no placer" log line. */
+    private float rearm_none_log;
+
+    /**
+     * rearm_placer: the peon in one of the states nearest the project's site (tree gatherers 40 cells further) with no
+     * threat within 11 cells and no enemy warrior within way_clear cells of its straight way there, or null.
+     */
+    private @Nullable Unit nearestSafe(@NonNull Project p, @NonNull EnumSet<PeonState> states, int way_clear) {
+        Intel intel = ai.intel();
+        int sx = p.site.x;
+        int sy = p.site.y;
+        List<Unit> candidates = new ArrayList<>();
+        List<Integer> dists = new ArrayList<>();
+        for (Unit peon : intel.peons) {
+            PeonState s = intel.peon_states.get(peon);
+            if (s == null || !states.contains(s))
+                continue;
+            int d = MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), sx, sy);
+            if (s == PeonState.GATHER_TREE)
+                d += 40 * 40;
+            // Insertion by distance: ties keep the list order.
+            int i = 0;
+            while (i < dists.size() && dists.get(i) <= d)
+                i++;
+            candidates.add(i, peon);
+            dists.add(i, d);
+        }
+        for (Unit peon : candidates)
+            if (safeWay(peon, sx, sy, way_clear))
+                return peon;
+        return null;
+    }
+
+    /**
+     * rearm_placer: the complete quarters nearest (x, y) with a peon inside, not being evacuated, no threat within 12
+     * cells and no enemy warrior within 12 cells of the way, or null.
+     */
+    private @Nullable Building deployQuarters(int sx, int sy) {
+        Intel intel = ai.intel();
         Building from = null;
         int best_d = Integer.MAX_VALUE;
         for (Building q : intel.quarters) {
@@ -994,23 +1088,13 @@ final class Economy {
             best_d = d;
             from = q;
         }
-        if (from == null)
-            return null;
-        ai.owner().deployUnits(from, DeployType.PEON, 1);
-        reserve_quarters = from;
-        reserve_until = now + RESERVE_SECONDS;
-        rearm_deploy_next = now + 5f;
-        rearm_waiting = true;
-        ai.aiLog().count("rearm_placer_deploy");
-        if (ai.logging())
-            ai.log("armory placer for " + p.describe() + ": one peon out of the quarters at " + from.getGridX() + "," + from.getGridY());
-        return null;
+        return from;
     }
 
-    /** rearm_placer: no threat within 11 cells of the peon and no enemy warrior within 12 of its way to (x, y). */
-    private boolean safeWay(@NonNull Unit peon, int x, int y) {
+    /** rearm_placer: no threat within 11 cells of the peon and no enemy warrior within r cells of its way to (x, y). */
+    private boolean safeWay(@NonNull Unit peon, int x, int y, int r) {
         return !ai.military().threatNear(peon.getGridX(), peon.getGridY(), 11)
-                && pathClear(peon.getGridX(), peon.getGridY(), x, y, 12);
+                && pathClear(peon.getGridX(), peon.getGridY(), x, y, r);
     }
 
     /**
@@ -2213,7 +2297,12 @@ final class Economy {
                 ai.aiLog().count("reloc_completed");
                 ai.log("reloc: hop armory at " + b.getGridX() + "," + b.getGridY() + " completed");
             } else if (p.reloc) {
+                // Why: its site razed, its placers lost (manageProjects gives up after 6), or waited too long.
+                String why = b != null && b.isDead() ? "razed" : p.failures > 6 ? "placer" : "other";
                 ai.aiLog().count("reloc_dropped");
+                ai.aiLog().count("reloc_dropped_" + why);
+                ai.aiLog().log("RELOC",
+                        () -> "hop project " + p.describe() + " dropped (" + why + ", " + p.failures + " placer failures, " + (int) (now - p.added) + "s after planning)");
             }
         }
         Building a = reloc_armory;

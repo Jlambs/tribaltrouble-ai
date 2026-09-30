@@ -238,6 +238,24 @@ final class Shepherd {
         f.leader = null;
     }
 
+    /**
+     * rearm_placer: lets the economy take shepherd u as the placer of a lost armory (its flock recruits again), and
+     * whether u was one of ours.
+     */
+    boolean giveUp(@NonNull Unit u) {
+        for (Flock f : flocks)
+            if (f.shepherd == u) {
+                ai.intel().shepherds.remove(u);
+                f.shepherd = null;
+                f.spot_x = -1;
+                f.leader = null;
+                f.lost_at = ai.time();
+                ai.aiLog().count("shepherd_given_up");
+                return true;
+            }
+        return false;
+    }
+
     private void sendHome(@NonNull Unit u) {
         Building home = ai.intel().armory();
         if (home == null && !ai.intel().quarters.isEmpty())

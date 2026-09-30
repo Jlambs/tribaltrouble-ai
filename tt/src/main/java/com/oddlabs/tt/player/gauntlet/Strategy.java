@@ -439,11 +439,13 @@ class Strategy {
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
      * warrior within 12 cells of its straight way to the site; with none, one peon leaves the quarters nearest the site
      * (a peon inside, no threat within 12, a clear way) at most every 5 s, reserved for 3 s so Shepherd, Lures,
-     * Dodges, Decoys and the sappers (which run first) leave it; only then the old rule. The placer carrying an armory
-     * site is left out of Military.evacuatePeons while no threat is within 6 cells. A lost armory's new site with a
-     * threat within 25 cells gives way to a site by another quarters with none, instead of waiting. In 15 logged N=14
-     * games 45 rebuild placements failed: 21 placers killed on the way, 24 re-ordered into buildings (28 of the placers
-     * sent were already walking into one), and in the end every peon outside was a shepherd (stall.md).
+     * Dodges, Decoys and the sappers (which run first) leave it; then a safe builder of another site, then a peon with
+     * only 8 clear cells along the way, then (no armory standing, a quarters left) a shepherd; else the project waits
+     * rather than send a placer into a threat. The placer carrying an armory site is left out of
+     * Military.evacuatePeons while no threat is within 6 cells. A lost armory's new site with a threat within 25 cells
+     * gives way to a site by another quarters with none, instead of waiting. In 15 logged N=14 games 45 rebuild
+     * placements failed: 21 placers killed on the way, 24 re-ordered into buildings (28 of the placers sent were
+     * already walking into one), and in the end every peon outside was a shepherd (stall.md).
      */
     boolean rearm_placer = false;
     /**
