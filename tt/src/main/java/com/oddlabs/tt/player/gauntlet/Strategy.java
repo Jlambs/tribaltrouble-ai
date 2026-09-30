@@ -487,6 +487,49 @@ class Strategy {
      * cap binds in 33 % (8-13 min) and 58 % (13-20) of censuses (capstate.py), and towers fall at ~1.3/min then.
      */
     boolean reloc_slot = false;
+    /**
+     * raid_bank (expand/critique #4, D3): from raid_bank_time, a forward primary armory (not the finished armory
+     * nearest our start, Economy.homeArmory) keeps only the workers its measured iron income can keep forging
+     * (bank_margin x income x 80 s a weapon) plus a backlog of min(raid_bank_extra, its iron, + half its rock while
+     * rock axes are made), bank_min once it has been unable to forge for bank_noforge_s; the rest wait in the quarters
+     * farthest from the threat (bank_guard's machinery: Economy.guardBank, reserveQuarters, the reserve kept above the
+     * quarters' hold). The expansion was razed in all 850 of 1,000 N=14 games that built it, a median 6.0 min after
+     * completion, and our units dropped a median 60 in that census step with 81 inside just before (raze.md);
+     * drainSecondary moves the home armory's bank into the forward one as soon as the home one cannot forge, and each
+     * hop (reloc) does it again. raid_bank_extra is bank_guard's fixed backlog of 12 as a param (the dry-spell judge's
+     * caveat: 12 keeps an armory small when wood comes back to a full iron bank). Arm raid_bank_time=0: the first
+     * expansion from its completion (~7-8 min) too.
+     */
+    boolean raid_bank = false;
+    float raid_bank_time = 600f;
+    int raid_bank_extra = 12;
+    /**
+     * reloc_draw (copies, 0 = off; arm 2; expand/critique #5): a hop site (Economy.considerRelocation) is turned down
+     * when it would be our nearest building for the oldest idle warriors of at least this many copies (Economy.drawOf):
+     * a Hard copy aims each wave from its oldest idle warrior at our building nearest to it, with no range limit
+     * (AdvancedAI.findTarget), and our razings follow where idle warriors stand, not the copies' starts (razed_rank.py:
+     * 63 % of razed buildings were in the outer third of those standing, with a start-exposure rank of 0.49, as
+     * random). The 30-cell quiet test does not model that: in the reloc1 smokes most hop sites were razed as sites or
+     * within a minute. With reloc on, every hop check logs its site's draw whether or not this is on.
+     */
+    int reloc_draw = 0;
+    /**
+     * raid_evac (expand/critique #6, D3): when Shepherd sees a copy launch (its oldest idle warrior walks off
+     * aggressively to a cell more than 20 cells away) a wave of at least raid_evac_min warriors (the copy's warriors
+     * walking to within 12 cells of that cell) at a cell within 20 cells of a complete armory of ours, and the wave's
+     * strength is at least raid_evac_ratio x the armory's defence (manned towers within 16 cells, our warriors within
+     * 20), the armory is emptied once the wave's front is 45 s out (at 2.5 cells/s; not under 10 s, which would send
+     * the evacuees into it): weapons leave as warriors and the rest as peons, towards the home armory's cell when that
+     * is another armory with no threat within 16 (the peons wait inside it for the window), else into the quarters
+     * farthest from the threat (held there above its hold for the window), else 18 cells away from the wave. For 60 s
+     * nothing is sent into it and no gatherer out for it, then its rally point is cleared. The old evacuate waited for
+     * HP < evac_hp (kd -.068, z -3.7: evacuees walked out into the attackers). The expansion falls with a median 81 of
+     * our units inside; an armory lets ~2 peons out a second, 40 in 20 s, while a wave walks 100 cells in 35-40 s
+     * (raze.md). Needs shepherd (the launch detection).
+     */
+    boolean raid_evac = false;
+    int raid_evac_min = 12;
+    float raid_evac_ratio = 1f;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -1198,6 +1241,13 @@ class Strategy {
         reloc_reach = params.getInt("reloc_reach", reloc_reach);
         reloc_nodes = params.getInt("reloc_nodes", reloc_nodes);
         reloc_slot = params.getBoolean("reloc_slot", reloc_slot);
+        raid_bank = params.getBoolean("raid_bank", raid_bank);
+        raid_bank_time = (float) params.getDouble("raid_bank_time", raid_bank_time);
+        raid_bank_extra = params.getInt("raid_bank_extra", raid_bank_extra);
+        reloc_draw = params.getInt("reloc_draw", reloc_draw);
+        raid_evac = params.getBoolean("raid_evac", raid_evac);
+        raid_evac_min = params.getInt("raid_evac_min", raid_evac_min);
+        raid_evac_ratio = (float) params.getDouble("raid_evac_ratio", raid_evac_ratio);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);

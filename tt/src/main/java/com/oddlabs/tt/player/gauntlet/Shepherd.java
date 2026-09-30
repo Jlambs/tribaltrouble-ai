@@ -322,6 +322,9 @@ final class Shepherd {
                     ai.aiLog().count("wave_to_shepherd");
                 if (ai.logging())
                     logLaunch(f, tx, ty);
+                // raid_evac: an armory of ours the wave goes for may empty before it arrives.
+                if (strategy.raid_evac)
+                    ai.economy().waveLaunched(f.copy, tx, ty);
                 f.prev_wave = f.leader;
             }
         }

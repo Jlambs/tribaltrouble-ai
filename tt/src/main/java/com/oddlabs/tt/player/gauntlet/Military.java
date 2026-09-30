@@ -1318,6 +1318,9 @@ final class Military {
         }
         // bank_guard: a main armory at its cap shelters peons only when no quarters can (Economy.guardBank).
         boolean bank_full = !evacuate.isEmpty() && ai.economy().bankFull(armory);
+        // raid_evac: nor one being emptied ahead of a wave.
+        if (!evacuate.isEmpty() && ai.economy().raidEvacuating(armory))
+            armory = null;
         for (Unit p : evacuate) {
             Building shelter = null;
             int best = Integer.MAX_VALUE;
