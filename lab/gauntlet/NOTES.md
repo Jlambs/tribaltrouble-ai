@@ -1575,3 +1575,6 @@ retreat through the same pass (only the attack role is watched).
   wins a median 138 -> 112 min (s8130 238 -> 121). With unjam the same wins as wood_reach alone. Over both blocks: 9
   gained, 1 lost. cur8 defaults reproduce the arm games 6 of 6 (short and long). Merged cur8 bases (cur7 rows before
   40 min + cur8 late re-plays; lab/gauntlet/mergebase.py) are being made for pairing the next screens.
+- **cur8 benchmark** (merged bases cur8-bench-vs13..16: cur7 rows, with cur8 re-plays of every game alive at 40 min;
+  checksums agree to 2400 s in all 178 + 48): N=13 25 of 1,500 (1.7 %; seeds 6001-7000 + 8001-8500), N=14 9 of 2,500
+  (0.36 %; 6001-8500), N=15 5 of 2,000 (0.25 %), N=16 0 of 1,000. Pair later arms with cur8-bench-vsN.
