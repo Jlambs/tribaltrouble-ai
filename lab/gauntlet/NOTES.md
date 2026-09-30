@@ -1597,3 +1597,6 @@ retreat through the same pass (only the attack role is watched).
   s8130 (299). N=15 on 8001..8500: 1 of 500 (s8112, 42 min). Spawn check: s8959 has one likely stuck copy (s13:
   quarters at 59 s, no armory, no contact, out at 8 min); s8662 one late copy (s3: armory at 371 s, recovered);
   s8130 none beyond the freeze target and campaign victims. Replays running.
+- **N=16 beaten, replay VERIFIED** (snapshot d6cab35db1, cur8 defaults): cur8-bench-vs16-e s8959 won at 102:41 (checksum
+  -1399051910), s8662 at 186:10 (-312080853), s8130 at 299:11 (1257346320); N=15 s8112 at 42:06 (-516647408).
+  Highest N beaten: 16.
