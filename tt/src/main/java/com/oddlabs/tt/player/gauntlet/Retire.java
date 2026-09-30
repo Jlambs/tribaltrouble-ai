@@ -24,22 +24,26 @@ import java.util.Set;
  * that has waited unplaced retire_wait s at the cap, by razing one building of ours with the explicit attack order,
  * as a human does with the attack button and a click on it (Unit.setTarget attacks a friendly target on
  * Action.ATTACK; raze.md). The slot frees on the tick of the razing; nothing is refunded and units inside vanish, so
- * the
- * building is emptied first. It looks, in this order, for a stalled site (placed, no builders, SITE_AGE s old), a
- * stranded tower (no quarters or armory within 25 cells), a quiet drained armory (not primary, nobody inside, no stock
- * or gatherers, no threat within 30) and a far quarters (retire_quarters_dist cells from the main armory, units >=
- * retire_pop, another quarters within 25 cells, not training the chieftain), never one with a threat within 20 cells.
- * While it empties and falls the building is doomed: tower manning, peon filling and shelter, repairs, the primary
- * armory and the chieftain's training leave it alone (isDoomed), and no armory site goes within RETIRED_CELLS of it for
- * RETIRED_MEMORY s after (retiredNear). At most one retirement every GAP s.
+ * the building is emptied first. It looks, in this order, for a stalled site (placed, no builders, SITE_AGE s old), a
+ * stranded tower (no quarters or armory within COVER_CELLS), a quiet drained armory (not primary, nobody inside, no
+ * stock or gatherers, no threat within 30), a far quarters (retire_quarters_dist cells from the main armory, units >=
+ * retire_pop, another quarters within 25 cells, not training the chieftain) and, with retire_any_tower, any tower,
+ * never one with a threat within 20 cells. While it empties and falls the building is doomed: tower manning, peon
+ * filling and shelter, repairs, the primary armory and the chieftain's training leave it alone (isDoomed), and no
+ * armory site goes within RETIRED_CELLS of it for RETIRED_MEMORY s after (retiredNear). At most one retirement every
+ * GAP s.
  */
 final class Retire {
     /** The kinds of building retired, in the order they are looked for (counter and log names). */
-    private static final String @NonNull [] KINDS = {"site", "tower", "armory", "quarters"};
+    private static final String @NonNull [] KINDS = {"site", "tower", "armory", "quarters", "anytower"};
     private static final int SITE = 0;
     private static final int TOWER = 1;
     private static final int ARMORY = 2;
     private static final int QUARTERS = 3;
+    /** retire_any_tower: the last resort, any quiet tower. */
+    private static final int ANY_TOWER = 4;
+    /** A tower with a finished quarters or armory within this many cells covers it (not stranded). */
+    private static final int COVER_CELLS = 25;
     /** A placed site this old with no builders is stalled. */
     private static final float SITE_AGE = 120f;
     /** At most one retirement per GAP s (from its order); another try RETRY s after one called off or given up. */
@@ -70,6 +74,10 @@ final class Retire {
     private final Map<@NonNull Building, Float> site_seen = new LinkedHashMap<>();
     /** {x, y, time} of the buildings retired in the last RETIRED_MEMORY s. */
     private final List<float @NonNull []> retired = new ArrayList<>();
+    /** Buildings passed over until the time given: no razers could be found for them (nounits). */
+    private final Map<@NonNull Building, Float> passed = new LinkedHashMap<>();
+    /** Seconds a building no razers came for is passed over. */
+    private static final float PASS_OVER = 120f;
 
     /**
      * The retirement under way: its building and kind, whether it is being razed yet (else emptied), and since when.
@@ -121,6 +129,7 @@ final class Retire {
         float now = ai.time();
         trackSites(now);
         retired.removeIf(r -> now - r[2] > RETIRED_MEMORY);
+        passed.entrySet().removeIf(e -> e.getKey().isDead() || now >= e.getValue());
         if (target != null) {
             follow(now);
             return;
@@ -144,7 +153,7 @@ final class Retire {
         Building b = stalledSite(now, why[SITE]);
         int k = SITE;
         if (b == null) {
-            b = strandedTower(why[TOWER]);
+            b = quietTower(why[TOWER], COVER_CELLS);
             k = TOWER;
         }
         if (b == null) {
@@ -154,6 +163,10 @@ final class Retire {
         if (b == null) {
             b = farQuarters(why[QUARTERS]);
             k = QUARTERS;
+        }
+        if (b == null && ai.strategy().retire_any_tower) {
+            b = quietTower(why[ANY_TOWER], 0);
+            k = ANY_TOWER;
         }
         if (b == null) {
             ai.aiLog().count("retire_none"); // searches (every SEARCH_EVERY s) that found nothing to retire
@@ -185,7 +198,7 @@ final class Retire {
         float oldest = Float.MAX_VALUE;
         for (Map.Entry<Building, Float> e : site_seen.entrySet()) {
             Building b = e.getKey();
-            if (b.isDead() || now - e.getValue() < SITE_AGE)
+            if (b.isDead() || now - e.getValue() < SITE_AGE || passed.containsKey(b))
                 continue;
             if (economy.buildersOn(b) > 0) {
                 why[1]++;
@@ -195,31 +208,35 @@ final class Retire {
                 why[0]++;
                 continue;
             }
-            if (e.getValue() < oldest) {
-                oldest = e.getValue();
-                best = b;
+            if (e.getValue() >= oldest)
+                continue;
+            if (!razersAt(b, 1)) {
+                why[1]++;
+                continue;
             }
+            oldest = e.getValue();
+            best = b;
         }
         return best;
     }
 
     /**
-     * The finished tower with no finished quarters or armory within 25 cells and no threat within 20 cells farthest
-     * from the main armory (else from our start), or null.
+     * The finished tower with no finished quarters or armory within cover cells (0: any) and no threat within 20
+     * cells farthest from the main armory (else from our start), or null.
      */
-    private @Nullable Building strandedTower(int @NonNull [] why) {
+    private @Nullable Building quietTower(int @NonNull [] why, int cover) {
         Intel intel = ai.intel();
         int[] from = anchor();
         Building best = null;
         int best_d = -1;
         for (Building t : intel.towers) {
-            if (t.isDead())
+            if (t.isDead() || passed.containsKey(t))
                 continue;
             boolean covers = false;
             for (List<Building> group : List.of(intel.quarters, intel.armories))
                 for (Building b : group)
-                    covers |= !b.isDead() && MapAnalysis.dist2(t.getGridX(), t.getGridY(), b.getGridX(),
-                            b.getGridY()) <= 25 * 25;
+                    covers |= cover > 0 && !b.isDead() && MapAnalysis.dist2(t.getGridX(), t.getGridY(),
+                            b.getGridX(), b.getGridY()) <= cover * cover;
             if (covers) {
                 why[1]++;
                 continue;
@@ -229,10 +246,14 @@ final class Retire {
                 continue;
             }
             int d = MapAnalysis.dist2(t.getGridX(), t.getGridY(), from[0], from[1]);
-            if (d > best_d) {
-                best_d = d;
-                best = t;
+            if (d <= best_d)
+                continue;
+            if (!razersAt(t, 4)) {
+                why[1]++;
+                continue;
             }
+            best_d = d;
+            best = t;
         }
         return best;
     }
@@ -246,7 +267,7 @@ final class Retire {
         Building best = null;
         int best_d = -1;
         for (Building a : intel.armories) {
-            if (a == primary || a.isDead())
+            if (a == primary || a.isDead() || passed.containsKey(a))
                 continue;
             if (!economy.isDrained(a)) {
                 why[1]++;
@@ -257,10 +278,14 @@ final class Retire {
                 continue;
             }
             int d = MapAnalysis.dist2(a.getGridX(), a.getGridY(), primary.getGridX(), primary.getGridY());
-            if (d > best_d) {
-                best_d = d;
-                best = a;
+            if (d <= best_d)
+                continue;
+            if (!razersAt(a, 8)) {
+                why[1]++;
+                continue;
             }
+            best_d = d;
+            best = a;
         }
         return best;
     }
@@ -280,7 +305,7 @@ final class Retire {
         Building best = null;
         int best_d = st.retire_quarters_dist * st.retire_quarters_dist;
         for (Building q : intel.quarters) {
-            if (q.isDead())
+            if (q.isDead() || passed.containsKey(q))
                 continue;
             int d = MapAnalysis.dist2(q.getGridX(), q.getGridY(), primary.getGridX(), primary.getGridY());
             if (d <= best_d)
@@ -296,6 +321,10 @@ final class Retire {
             }
             if (ai.military().threatNear(q.getGridX(), q.getGridY(), 20)) {
                 why[0]++;
+                continue;
+            }
+            if (!razersAt(q, 8)) {
+                why[1]++;
                 continue;
             }
             best_d = d;
@@ -338,7 +367,7 @@ final class Retire {
         int in = inside(b);
         if (in == 0)
             return;
-        if (kind == TOWER) {
+        if (kind == TOWER || kind == ANY_TOWER) {
             Unit gunner = Intel.gunner(b);
             if (gunner != null && !Intel.isStunned(gunner))
                 ai.owner().exitTower(b);
@@ -364,10 +393,11 @@ final class Retire {
         if (!razing) {
             if (inside(b) > 0) {
                 empty(b);
-                float wait = kind == TOWER ? EMPTY_WAIT_TOWER : EMPTY_WAIT;
+                boolean tower = kind == TOWER || kind == ANY_TOWER;
+                float wait = tower ? EMPTY_WAIT_TOWER : EMPTY_WAIT;
                 if (now - started < wait)
                     return;
-                if (kind != TOWER) {
+                if (!tower) {
                     stop(b, "giveup_empty", now);
                     return;
                 }
@@ -465,15 +495,12 @@ final class Retire {
      */
     private @NonNull List<@NonNull Unit> peons(@NonNull Building b, int n, int min) {
         Intel intel = ai.intel();
-        EnumSet<PeonState> ok = EnumSet.of(PeonState.IDLE, PeonState.MOVE, PeonState.GATHER_TREE, PeonState.GATHER_IRON,
-                PeonState.GATHER_ROCK, PeonState.TRANSIT);
         int bx = b.getGridX();
         int by = b.getGridY();
         List<Unit> candidates = new ArrayList<>();
         List<Integer> dists = new ArrayList<>();
         for (Unit p : intel.peons) {
-            PeonState s = intel.peon_states.get(p);
-            if (p.isDead() || s == null || !ok.contains(s) || economy.reservedPlacer(p))
+            if (!razerPeon(p))
                 continue;
             int d = MapAnalysis.dist2(bx, by, p.getGridX(), p.getGridY());
             if (d > UNIT_CELLS * UNIT_CELLS)
@@ -520,6 +547,36 @@ final class Retire {
                 intel.peon_states.put(u, PeonState.FIGHT);
     }
 
+    /** Peon states a razer may be taken from. */
+    private static final EnumSet<PeonState> RAZER_STATES = EnumSet.of(PeonState.IDLE, PeonState.MOVE,
+            PeonState.GATHER_TREE, PeonState.GATHER_IRON, PeonState.GATHER_ROCK, PeonState.TRANSIT);
+
+    /** A peon that may raze: idle, walking, gathering or walking into a building, not a reserved armory placer. */
+    private boolean razerPeon(@NonNull Unit p) {
+        PeonState s = ai.intel().peon_states.get(p);
+        return !p.isDead() && s != null && RAZER_STATES.contains(s) && !economy.reservedPlacer(p);
+    }
+
+    /**
+     * Whether razers can be had for the building: min peons (razerPeon) within UNIT_CELLS, or a complete armory there
+     * that can let min + 4 out. A candidate that fails is passed over (s6189 smoke: the farthest towers had no peons
+     * within reach, 12 retirements called off for no units, each after its gunner came out).
+     */
+    private boolean razersAt(@NonNull Building b, int min) {
+        Intel intel = ai.intel();
+        int n = 0;
+        for (Unit p : intel.peons)
+            if (razerPeon(p) && MapAnalysis.dist2(b.getGridX(), b.getGridY(), p.getGridX(),
+                    p.getGridY()) <= UNIT_CELLS * UNIT_CELLS && ++n >= min)
+                return true;
+        for (Building a : intel.armories)
+            if (!a.isDead() && !isDoomed(a) && a.getUnitContainer().getNumSupplies() >= min + 4
+                    && MapAnalysis.dist2(b.getGridX(), b.getGridY(), a.getGridX(),
+                            a.getGridY()) <= UNIT_CELLS * UNIT_CELLS)
+                return true;
+        return false;
+    }
+
     /** The building fell: the slot is free (Player.canBuild on this tick). */
     private void done(@NonNull Building b, float now) {
         ai.aiLog().count("retire_done_" + KINDS[kind]);
@@ -538,6 +595,9 @@ final class Retire {
 
     /** The retirement is called off (why: threat, giveup_empty, giveup_raze, nounits). */
     private void stop(@NonNull Building b, @NonNull String why, float now) {
+        // No razers within reach: another building is taken next time (s6189 smoke: the same far tower 4 times).
+        if (why.equals("nounits"))
+            passed.put(b, now + PASS_OVER);
         ai.aiLog().count("retire_stop_" + why);
         next_allowed = now + RETRY;
         int hp = b.getHitPoints();

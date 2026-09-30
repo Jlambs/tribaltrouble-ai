@@ -541,14 +541,14 @@ class Strategy {
      * The project is added at the 20-building cap too: its placer waits for a slot, and while it waits unplaced with
      * the count at the cap less one no tower is planned or started (reloc_slot's reserve). An unplaced lock project
      * whose slot has stood open for 90 s is dropped and planned afresh. Its placer is chosen by rearm_placer's safe
-     * rule
-     * (and left out of evacuatePeons while no threat is within 6 cells) with rearm_placer off too: in the s6415 smoke 4
-     * of 8 lock projects were dropped after 7 placer failures in 7-15 s. Its builders may come out of the locked armory
-     * above want_workers + 5. Once it stands (and becomes primary), the locked armory keeps its workers inside until
-     * the new one holds 2 wood and has no threat within 16 cells. Why: the lock was 42 % of the gap minutes of the
-     * long wins (150-200 peons waiting inside, iron at the 200 cap, 1.4-1.6 warriors/min against 9.5-13), usable trees
-     * stood 43-122 cells away in every lock, moving was blocked in 96-100 % of locked minutes by the threat gate and
-     * the cap (55-88 %), and wood reaching an armory again ended 7 of 12 long locks, the first out ~12 min later.
+     * rule (and left out of evacuatePeons while no threat is within 6 cells) with rearm_placer off too: in the s6415
+     * smoke 4 of 8 lock projects were dropped after 7 placer failures in 7-15 s. Its builders may come out of the
+     * locked armory above want_workers + 5. Once it stands (and becomes primary), the locked armory keeps its workers
+     * inside until the new one holds 2 wood and has no threat within 16 cells. Why: the lock was 42 % of the gap
+     * minutes of the long wins (150-200 peons waiting inside, iron at the 200 cap, 1.4-1.6 warriors/min against
+     * 9.5-13), usable trees stood 43-122 cells away in every lock, moving was blocked in 96-100 % of locked minutes by
+     * the threat gate and the cap (55-88 %), and wood reaching an armory again ended 7 of 12 long locks, the first out
+     * ~12 min later.
      */
     int reloc_lock = 0;
     float reloc_lock_time = 2400f;
@@ -574,6 +574,13 @@ class Strategy {
     float retire_wait = 60f;
     int retire_quarters_dist = 80;
     int retire_pop = 245;
+    /**
+     * retire_any_tower (with retire; arm true): with none of retire's buildings to raze, the tower with no threat
+     * within 20 cells farthest from the main armory goes (its gunner out first, 4-8 peons): in the s6189 and s6709
+     * smokes a lock move waited 19 and 31 min at the cap with 15-16 towers, every one within 25 cells of a quarters or
+     * the armory, and no stalled site, drained armory or far quarters.
+     */
+    boolean retire_any_tower = false;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -1298,6 +1305,7 @@ class Strategy {
         retire_wait = (float) params.getDouble("retire_wait", retire_wait);
         retire_quarters_dist = params.getInt("retire_quarters_dist", retire_quarters_dist);
         retire_pop = params.getInt("retire_pop", retire_pop);
+        retire_any_tower = params.getBoolean("retire_any_tower", retire_any_tower);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);
