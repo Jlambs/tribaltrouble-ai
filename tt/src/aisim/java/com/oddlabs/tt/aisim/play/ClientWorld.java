@@ -14,6 +14,7 @@ import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.landscape.WorldParameters;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.player.PlayerInfo;
+import com.oddlabs.tt.player.UnitInfo;
 import com.oddlabs.tt.procedural.Landscape;
 import com.oddlabs.tt.render.RenderQueues;
 import com.oddlabs.tt.resource.BlendInfo;
@@ -33,10 +34,10 @@ import org.lwjgl.system.MemoryUtil;
  * TerrainMenu and IslandGenerator make it, the world and its players as Client makes them. When upstream changes
  * those, follow it here. Closing it frees the world's GL textures, which it has only when not headless.
  */
-record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implements AutoCloseable {
+public record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implements AutoCloseable {
 
     /** Each player's starting units: the skirmish menu's default. */
-    static final int STARTING_UNITS = Game.DEFAULT_INITIAL_UNIT_COUNT;
+    public static final int STARTING_UNITS = Game.DEFAULT_INITIAL_UNIT_COUNT;
 
     // Loaded once per worker JVM by boot(), and shared by its games.
     private static @Nullable LandscapeResources landscape_resources;
@@ -48,7 +49,7 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
      * it (-Dcom.oddlabs.tt.headless=false in AISIM_JAVA_OPTS) they are the client's, in a hidden GL context, with
      * OpenAL.
      */
-    static void boot() {
+    public static void boot() {
         Settings settings = new Settings();
         settings.play_sfx = false;
         settings.play_music = false;
@@ -83,7 +84,7 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
     }
 
     /** A new world for {@code job} with its players and their starting units, but no AIs yet. */
-    static @NonNull ClientWorld create(@NonNull Job job) {
+    public static @NonNull ClientWorld create(@NonNull Job job) {
         Landscape landscape = newLandscape(job);
         return new ClientWorld(newWorld(job, landscape), landscape);
     }
@@ -108,8 +109,21 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
                 landscape.getIron(), landscape.getPlants(), landscape.getAccessGrid(), landscape.getDockGrid(),
                 landscape.getWaterGrid(), landscape.getBuildGrid(), landscape.getIslandIds(),
                 landscape.getIslandInfos(), landscape.getStartingLocations(), landscape.getBlendInfos());
+        PlayerInfo[] players = new PlayerInfo[job.slots()];
+        for (int slot = 0; slot < players.length; slot++) {
+            players[slot] = playerInfo(job, slot);
+        }
+        NotificationListener no_notifications = new NotificationListener() {
+        };
+        return World.newWorld(silentAudio(), landscape_resources, races_resources, no_notifications,
+                parameters(job), info, job.terrainType(), players, Landscape.getFogInfo(job.terrainType(), meters),
+                colors(players.length));
+    }
+
+    /** The world's parameters, as the skirmish menu passes its default advanced settings, without ships. */
+    public static @NonNull WorldParameters parameters(@NonNull Job job) {
         // spotless:off
-        WorldParameters parameters = WorldParameters.builder()
+        return WorldParameters.builder()
                 .initialGameSpeed(Game.GAMESPEED_NORMAL)
                 .mapcode(job.mapcode())
                 .initialUnitCount(STARTING_UNITS)
@@ -119,16 +133,17 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
                 .ships(false)
                 .build();
         // spotless:on
-        PlayerInfo[] players = new PlayerInfo[job.slots()];
-        for (int slot = 0; slot < players.length; slot++) {
-            players[slot] = playerInfo(job, slot);
-        }
-        AudioImplementation silent_audio = params -> new AbstractAudioPlayer(null, params) {
+    }
+
+    /** Each AI's starting units, as Client creates them for every slot. */
+    public static @NonNull UnitInfo startingUnits() {
+        return new UnitInfo(false, false, 0, false, STARTING_UNITS, 0, 0, 0);
+    }
+
+    /** Audio that plays nothing: sounds never change the simulation. */
+    public static @NonNull AudioImplementation silentAudio() {
+        return params -> new AbstractAudioPlayer(null, params) {
         };
-        NotificationListener no_notifications = new NotificationListener() {
-        };
-        return World.newWorld(silent_audio, landscape_resources, races_resources, no_notifications, parameters, info,
-                job.terrainType(), players, Landscape.getFogInfo(job.terrainType(), meters), colors(players.length));
     }
 
     /**
@@ -163,7 +178,7 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
     /**
      * The player of {@code slot}, its team and race as the job seats it, named as the game file and AI logs show it.
      */
-    private static @NonNull PlayerInfo playerInfo(@NonNull Job job, int slot) {
+    public static @NonNull PlayerInfo playerInfo(@NonNull Job job, int slot) {
         int race = job.vikings(slot) ? RacesResources.RACE_VIKINGS : RacesResources.RACE_NATIVES;
         String name = "s" + slot + ":" + job.spec(slot);
         return new PlayerInfo(job.team(slot), race, name);
