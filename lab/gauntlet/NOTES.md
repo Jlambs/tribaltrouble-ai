@@ -1553,3 +1553,12 @@ retreat through the same pass (only the attack role is watched).
   copies help by sending no waves in the 10-25-min danger window (+1.8 min survival each in losses), not by early
   outs; our target choice already leaves them alone. Lead for an audit: games where the freeze took path (c) (633)
   have 0 wins against 3.7 expected (p ~0.02, post hoc; aborted strikes, 873 games, are uninformative).
+- **wood_reach=150 late, N=15** (33 games alive at 40 min): W 3 -> 5 (gained s6652, s7499, lost none; s6022 305 -> 117
+  min, s6303 204 -> 260). **N=13-15 together: 19 -> 26 wins, none lost.** With the late bank_guard: N=15 3 -> 6 but
+  N=13-14 lose s6029 and s6409; bank_guard alone N=14 4 -> 5, N=15 3 -> 3 (lost s6022). unjam=8 from 2400 s, N=13: 12 ->
+  13 (s6028, the stuck draw, now a win), every other game unchanged (it only acts in a jam). Candidate cur8 = wood_reach
+  150 + late unjam, pending the fresh block (8001..8500) and N=14-16.
+- hold05 (hold_multi + hold_ratio 0.5) N=13 6001..6300: W 4 -> 9, elim z 2.0, wp z 1.6; across N=13-15 so far 7 -> 13.
+  Fresh N=13 block queued. seed_quarters=30 N=13: W 4 -> 3, alive40 z -1.5 (seeds 5.3 peons per game in half the
+  games): no gain.
+- Freeze re-check queued (freeze_open=false at N=13/14, 300 games each; user doubts the opening investment).
