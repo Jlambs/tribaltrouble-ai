@@ -1578,3 +1578,18 @@ retreat through the same pass (only the attack role is watched).
 - **cur8 benchmark** (merged bases cur8-bench-vs13..16: cur7 rows, with cur8 re-plays of every game alive at 40 min;
   checksums agree to 2400 s in all 178 + 48): N=13 25 of 1,500 (1.7 %; seeds 6001-7000 + 8001-8500), N=14 9 of 2,500
   (0.36 %; 6001-8500), N=15 5 of 2,000 (0.25 %), N=16 0 of 1,000. Pair later arms with cur8-bench-vsN.
+- **Relocation build** (workflow: 3 builders, review, verify, fix; branch reloc-impl at ac170444 in worktree
+  .claude/worktrees/wf_6f471724-ebb-1, off gauntlet 93b5eff8; not merged yet): all off by default, 11 of 11 identity
+  games match (cur7), and with cur8's params given explicitly it replays cur8 (3 of 3). Params: rearm_placer (safe
+  armory placer: idle/tree peons first, threat and path checks, a reserved peon deployed from a quarters, evacuation
+  exemption, alternative rebuild site), rearm_reach (quiet rebuild site by iron and trees), reloc (the hop: drained
+  second armory ignored, local quietness instead of the global gate, triggers iron_cycle / cost / < reloc_nodes live
+  nodes within 30 cells, sites >= 40 cells out with reloc_nodes nodes, hysteresis on the primary), reloc_slot (the hop
+  holds a building slot), raid_bank (bank cap in a forward armory), reloc_draw (reject sites that would draw >= k
+  copies' waves), raid_evac (+ raid_evac_time; empty an armory ahead of a launched wave), reloc_lock (+ time 2400;
+  relocate on the wood lock), retire (+ retire_any_tower; raze a stalled site, stranded tower, drained armory or far
+  quarters with an explicit ATTACK when a flagged project waits at the cap). Smokes (8 N=14 games): hops are placed
+  but mostly razed as sites (20 placed, 7 completed); raid_evac without a time gate costs 19 % of 8-13-min iron (16 of
+  24 evacuations were false alarms of the home armory); lock + retire turned the long wins s6029 / s6415 / s6189 /
+  s6709 into wins at 136 / 158 / 100 / 140 min (base 244 / 288 / 319 / 175). Screens running from the worktree
+  (track A on 6001..6300 at N=14/13 vs cur8-bench; track B late on the games alive at 40 min vs cur8-bench).
