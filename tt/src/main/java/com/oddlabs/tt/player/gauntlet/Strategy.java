@@ -369,6 +369,15 @@ class Strategy {
     int hold_late = 8;
     float hold_mid_time = 240f;
     /**
+     * seed_quarters (seconds, 0 = off): once the first armory stands, a quarters finished less than this long ago takes
+     * its hold from idle peons within seed_quarters_reach cells (the builders at its door) instead of breeding it up
+     * from empty: breeding is n^(1/3) / 11 a second with an empty quarters counted as 0.5, so filling 0 -> 10 takes
+     * ~77 s and a seeded quarters breeds ~5 more peons meanwhile. Before the first armory, idle peons already fill
+     * quarters below their hold.
+     */
+    float seed_quarters = 0f;
+    int seed_quarters_reach = 12;
+    /**
      * While the main armory could forge at least hold_backlog weapons (0 = off), quarters hold only hold_early: a held
      * peon above 4 buys ~8 peons per 1000 s, a worker with ore ~12.5 weapons (Economy.holdFor). Off again once 1 or
      * fewer can be forged and 30 s have passed; hold_backlog_until > 0 limits it to the early game.
@@ -1107,6 +1116,8 @@ class Strategy {
         pressure_time = (float) params.getDouble("pressure_time", pressure_time);
         hold_early = params.getInt("hold_early", hold_early);
         hold_mid = params.getInt("hold_mid", hold_mid);
+        seed_quarters = (float) params.getDouble("seed_quarters", seed_quarters);
+        seed_quarters_reach = params.getInt("seed_quarters_reach", seed_quarters_reach);
         hold_backlog = params.getInt("hold_backlog", hold_backlog);
         hold_backlog_until = (float) params.getDouble("hold_backlog_until", hold_backlog_until);
         veto_resite = (float) params.getDouble("veto_resite", veto_resite);

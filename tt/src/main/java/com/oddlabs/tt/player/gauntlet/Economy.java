@@ -2710,6 +2710,9 @@ final class Economy {
             }
         }
 
+        if (ai.strategy().seed_quarters > 0f)
+            seedQuarters(free, armory != null);
+
         if (armory == null) {
             // Nothing to gather for yet: spare peons speed up a quarters that is below its reserve.
             for (Unit u : free) {
@@ -2990,6 +2993,53 @@ final class Economy {
 
     /** chief_trainer_near: peons ordered into the chieftain's training quarters, and which one. */
     private final Map<@NonNull Unit, @NonNull Building> topup_sent = new LinkedHashMap<>();
+
+    /** seed_quarters: when each quarters was first seen complete, and the idle peons sent into one (and when). */
+    private final Map<@NonNull Building, Float> quarters_done = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, @NonNull Building> seed_sent = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, Float> seed_sent_time = new LinkedHashMap<>();
+
+    /**
+     * seed_quarters: a quarters finished less than seed_quarters seconds ago that holds fewer than its hold (counting
+     * peons already sent) takes idle peons within seed_quarters_reach cells, nearest first. Completion times are
+     * tracked from the start; seeding waits for the first armory (before it, idle peons fill quarters anyway).
+     */
+    private void seedQuarters(@NonNull List<@NonNull Unit> free, boolean seed) {
+        Strategy st = ai.strategy();
+        float now = ai.time();
+        seed_sent.keySet().removeIf(u -> u.isDead() || now - seed_sent_time.getOrDefault(u, now) > 30f);
+        seed_sent_time.keySet().retainAll(seed_sent.keySet());
+        int reach2 = st.seed_quarters_reach * st.seed_quarters_reach;
+        for (Building q : ai.intel().quarters) {
+            if (q.isDead() || !q.isComplete() || evacuating.containsKey(q))
+                continue;
+            float done = quarters_done.computeIfAbsent(q, b -> now);
+            if (!seed || now - done > st.seed_quarters)
+                continue;
+            int sent = 0;
+            for (Building b : seed_sent.values())
+                if (b == q)
+                    sent++;
+            int need = holdFor(q) - q.getUnitContainer().getNumSupplies() - sent;
+            if (need <= 0)
+                continue;
+            List<Unit> near = new ArrayList<>();
+            for (Unit u : free)
+                if (u != scout && MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(), q.getGridY()) <= reach2)
+                    near.add(u);
+            List<Unit> chosen = new ArrayList<>();
+            takeNearest(near, chosen, need, q.getGridX(), q.getGridY());
+            if (chosen.isEmpty())
+                continue;
+            free.removeAll(chosen);
+            order(chosen, q, Action.DEFAULT);
+            for (Unit u : chosen) {
+                seed_sent.put(u, q);
+                seed_sent_time.put(u, now);
+                ai.aiLog().count("seed_quarters_sent");
+            }
+        }
+    }
 
     /** chief_trainer_near: peons we sent to this trainer that are still walking there. */
     private int countSentTo(@NonNull Building trainer) {
