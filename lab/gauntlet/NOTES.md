@@ -1600,3 +1600,5 @@ retreat through the same pass (only the attack role is watched).
 - **N=16 beaten, replay VERIFIED** (snapshot d6cab35db1, cur8 defaults): cur8-bench-vs16-e s8959 won at 102:41 (checksum
   -1399051910), s8662 at 186:10 (-312080853), s8130 at 299:11 (1257346320); N=15 s8112 at 42:06 (-516647408).
   Highest N beaten: 16.
+- reloc-impl merged into gauntlet (a8ec6a51, user OK). Merged build (snapshot 2738481522) at defaults reproduces cur8 6
+  of 6 (N=14 s6001, s6002, s6409, s6777; N=15 s8112; N=13 s6029: checksum and length).
