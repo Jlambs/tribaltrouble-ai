@@ -4,6 +4,10 @@ A map of the AI's plan against 1 vs N allied stock Hard AIs (viking Hards, large
 supplies 10), written from the measurements in NOTES.md. The goal is the highest N beaten at least a few times on
 random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired screens unless noted.
 
+Status (2026-09-30, cur8): N=16 beaten 3 times in 1,000 fresh seeds (replay verified); N=13 1.7 %, N=14 0.36 %, N=15
+0.25 %. The relocation options (rearm_placer, reloc, reloc_slot, raid_bank, reloc_draw, raid_evac, reloc_lock, retire)
+are merged and off; the hopdraw stack raises survival and armory uptime in every block but is not yet adopted.
+
 ## How a game against N copies goes
 
 1. **0-4 min, the opening.** Four quarters and an armory (about 3.5 min), towers from ~4.5 min. The freeze opening

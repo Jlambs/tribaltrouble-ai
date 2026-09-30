@@ -1607,3 +1607,23 @@ retreat through the same pass (only the attack role is watched).
   +0.56 (z 1.5), towers20 +0.54 (z 2.1), arm25 +4.3 pp (z 1.9), wp z 2.3; + reloc_draw=2 0 -> 3, elim z 1.7, surv60
   +0.61, wp z 2.0**; raid_evac from 780 s 0 -> 1, surv60 +0.26. Against the median arm (surv60 ~+0.25, towers ~+0.14)
   the raid_bank stacks stand out. Queued: raid_bank alone, and both stacks on the fresh block 8001..8500.
+- **Relocation screen, N=13 and fresh N=14** (vs cur8-bench; W base -> arm, win flips gained / lost):
+  | arm | N=14 6001..6300 | N=14 fresh 8001..8500 | N=13 6001..6300 |
+  |---|---|---|---|
+  | rearm_placer | 0 -> 2 | | 6 -> 7, surv60 +0.51, arm25 z 2.0 |
+  | + reloc (hop) | 0 -> 1 | | 6 -> 5, surv60 +0.45 |
+  | + reloc_slot | 0 -> 1 | | 6 -> 6 |
+  | + raid_bank ("hopbank") | 0 -> 2, surv60 +0.56, towers20 z 2.1 | 4 -> 1, towers20 +0.46 (z 2.3), arm25 z 2.3, wp z -1.6 | 6 -> 10, surv60 +1.27 (z 2.5), arm25 +7.3 pp (z 2.8) |
+  | + reloc_draw=2 ("hopdraw") | 0 -> 3, surv60 +0.61, wp z 2.0 | 4 -> 4, surv60 +0.40 (z 1.5), towers20 z 2.3, arm25 z 2.4, wp z -1.1 | 6 -> 9, surv60 +1.32 (z 2.5), arm25 z 2.5 |
+  | raid_bank alone | 0 -> 2, towers20 +0.27 | 4 -> 3, elim z -2.3, towers20 z 2.5 | |
+  | raid_evac from 780 s | 0 -> 1 | | 6 -> 6 |
+  | rearm_placer + rearm_reach 260 | 0 -> 3, arm25 z 2.3 | | 6 -> 6, surv60 +0.87 (z 1.9), arm25 +8 pp (z 3.1) |
+  hopdraw over 1,100 games: wins 10 -> 16 (12 gained, 6 lost); hopbank 10 -> 13 (9 / 6). Every block has survival and
+  armory uptime up (the relocation lever works on the state it targets); wins are not yet clear (the fresh N=14 block
+  is flat and its wp proxy negative), so **not adopted yet**: next, hopdraw on a fresh N=13 block (8001..8500 vs
+  cur8-bench-vs13) and at N=15-16. reloc_lock on top of cur8 (78 of the 83 N=13 games alive at 40 min): identical
+  wins and times: wood_reach 150 already removes the lock, so the lock move never fires; retire stays untested there.
+- **State at wrap-up (2026-09-30):** defaults cur8 (wood_reach 150 + unjam from 2400 s, on cur7); relocation code merged,
+  all off. Highest N beaten: 16 (3 of 1,000 fresh seeds, replay VERIFIED). cur8 benchmark: N=13 1.7 %, N=14 0.36 %, N=15
+  0.25 % (plus 1 of 500 fresh), N=16 0.3 % on 8001..9000. Open leads: hopdraw adoption; freeze path (c) audit (0 of 633
+  wins); the field-speed finding (wins cluster on slow fields: nothing to exploit found yet).
