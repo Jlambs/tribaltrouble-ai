@@ -1562,3 +1562,11 @@ retreat through the same pass (only the attack role is watched).
   Fresh N=13 block queued. seed_quarters=30 N=13: W 4 -> 3, alive40 z -1.5 (seeds 5.3 peons per game in half the
   games): no gain.
 - Freeze re-check queued (freeze_open=false at N=13/14, 300 games each; user doubts the opening investment).
+- **Freeze re-check on cur7: keep it.** freeze_open=false vs cur7-bench (6001..6300): N=13 W 4 -> 2, elim -.040 (z
+  -4.8), surv60 -1.7 min (z -3.0), towers20 -1.5 (z -4.7), arm25 -8 pp (z -2.8); N=14 W 0 -> 0, elim -.026 (z -4.3),
+  surv60 -1.3 (z -2.9), towers20 -0.9 (z -2.8). The opening investment pays by a wide margin.
+- unjam from 2400 s at N=14 / 15 / 16 (55 / 33 / 7 games alive at 40 min): no change (no late jams there). wood_reach
+  150 late at N=16 (7 games): W 0 -> 0. hold05 on the fresh N=13 block (8001..8300 vs cur7-bench-vs13-e): W 4 -> 4, wp
+  z -1.4: the lead does not hold. seed_quarters=30 at N=14: W 0 -> 2, proxies ~0 / slightly negative: not adopted.
+- Fresh cur7 block 8001..8500: N=13 8 of 500 (1.6 %), N=14 4 of 500 (0.8 %; 4 of 2,000 on 6001..8000). The cur8
+  candidate is being confirmed on its games alive at 40 min (32 at N=13, 16 at N=14).
