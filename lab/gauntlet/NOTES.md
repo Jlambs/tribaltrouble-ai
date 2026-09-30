@@ -1493,3 +1493,24 @@ retreat through the same pass (only the attack role is watched).
   safe state (9 % lost within 30 min vs 46 % with <= 10 warriors). Fixes queued on the 171 cur7 benchmark games alive
   at 40 min (late-acting, identical before; lab/gauntlet/late.py scores them): wood_reach=150, bank_guard from 2400 s,
   and both. lock_relocate (relocate on the lock with a reserved slot) is folded into the relocation design.
+- **Relocation audit** (workflow: stall, iron, raze and value analysts, design, critique; scratchpad expand/*.md; all
+  instrumented runs identical to cur7-bench): the armory moves once because (1) planArmory checks for an expansion only
+  while exactly one armory stands, and the drained home armory stands on after the expansion (66 % of 8-13-min
+  windows), and (2) any base threat stops the check (100 % of checks at 13-20 min, although the cost test would pass
+  92-95 % of the time: best site 0.49 of the current cost). Other gates (cap, cost, no site) are <= 3.5 %. After the last
+  armory falls a replacement is placed in 52 % and finished in 26 % (placers killed or re-ordered into buildings,
+  sites razed as sites, no free peon because all are shepherds/lures/dodgers, treeless sites). 85 % of armory-less
+  time is the final death spiral (0 warriors, 1 quarters, 4 towers). **Iron correction:** the late iron is initial
+  stock in the middle (STRATEGY.md, facts), the respawn starts at a median 21 min, and out copies' homes are empty, so
+  "move to the fields of out copies" gains nothing. The expansion's income by age: 30 / 20 / 6 / 1 iron/min at 0-2 /
+  2-4 / 4-6 / 6-8 min; at expansion age 3 min a site 40-80 cells deeper holds a median 158 loads within 30 cells: a
+  **second hop** is the dynamic-expansion lever. Model estimate of the value: +5 iron/min from 13 min takes N=13 wins
+  1.2 % -> 1.6-2.0 %, +10 -> 2.1-3.2 % (at most half an N step; late warriors die fast: 13-20 min we make 31, lose 98).
+  **Razing our own buildings** is a legal UI order (select, A, click own building: Unit.canAttack with kill_friendly
+  on ATTACK); the slot frees the same tick; 10 iron warriors raze a tower in ~14 s, quarters/armory in ~28 s; peons do
+  3 HP/s on towers; units inside vanish, nothing is refunded; waves in flight do not retarget (snapshot cell).
+  **Far quarters:** keep them (the expansion falls in 100 % of games and the home quarters are the fallback: 7.5 vs 27
+  razings per quarters-hour after the fall, and where a lost armory is rebuilt); one narrow case (both caps bind, a
+  slot for a tower in long games) goes into `retire`. Being built in a worktree (critique's order, all off): rearm
+  (placer fixes), reloc (the hop, local quietness, drained-armory gate, hysteresis), reloc_slot, raid_bank,
+  reloc_draw, raid_evac, rearm_reach, reloc_lock + retire (late track).

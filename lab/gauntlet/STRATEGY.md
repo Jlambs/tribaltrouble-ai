@@ -71,8 +71,12 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
   unit stands within 30 m of that quarters or armory, with its armory stock, idle warriors and gatherers.
 - Idle units react only through their 8-cell scan; being hit does not wake them (Unit.hit). A tower garrison reaches
   ~15.5 cells.
-- Late iron is a global respawn trickle (one random empty node regrows every 10 s once 75 % are empty): ~44 iron/min
-  mined map-wide at 15-20 min at N=14, about one field's share per copy (4.1/min), 1.8/min for us.
+- Iron (N=14, 30 probed games): 143 nodes of 10 loads, 29 % of them within 60 cells of a start (~2 near ours), ~40
+  within 50 cells of one central point a median 172 cells from our start. Half the stock still stands at 12 min, so
+  the ~44 iron/min mined map-wide at 15-20 min is initial stock walked in from the middle, not respawns: the respawn
+  (one random empty spot every 10 s once at most 35 of the 143 nodes hold iron) first fires at 16-28 min (median 21),
+  and uncollected full piles then hold it at 2-4 per minute instead of 6. The homes of copies that are out hold
+  almost nothing (10-17 loads). Our expansion is a raid on one fresh stock (~30 iron/min for 2 min, ~1 by 6-8 min).
 
 ## How to measure
 
@@ -99,7 +103,8 @@ random seeds (N=13-14 as of 2026-09). Numbers are from 200-600-game paired scree
    peon bank in exposed armories is the direction.
 2. **Silly behaviour at high N.** Every big gain so far was a misevaluation that only showed in crowded or long games
    (militia, recall, vetoed towers, wood lock, empty-army musters at the cap, jams). Look at logged N=12-14 games.
-3. **Iron.** The binding resource from ~9 min; the engine respawns nodes at old spots once 75 % are empty. Our share
-   after 14 min is ~12 %.
+3. **Iron.** The binding resource from ~9 min; after 13 min it is in the middle of the map, which our one-shot
+   expansion reaches only once (relocation audit: the two-armory gate and the global threat gate stop every later
+   check). Our share after 14 min is ~12 %.
 4. **Fewer enemies from the start** (the freeze opening shows removing one copy early is worth an N step): cheaper or
    additional early strikes may pay more as N grows.
