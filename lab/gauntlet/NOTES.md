@@ -1602,3 +1602,8 @@ retreat through the same pass (only the attack role is watched).
   Highest N beaten: 16.
 - reloc-impl merged into gauntlet (a8ec6a51, user OK). Merged build (snapshot 2738481522) at defaults reproduces cur8 6
   of 6 (N=14 s6001, s6002, s6409, s6777; N=15 s8112; N=13 s6029: checksum and length).
+- **Relocation screen, N=14** (6001..6300 vs cur8-bench-vs14, which won 0 there, so every arm reads a little high):
+  rearm_placer W 0 -> 2, wp z 0.8; + reloc 0 -> 1, surv60 +0.23; + reloc_slot 0 -> 1; **+ raid_bank 0 -> 2, surv60
+  +0.56 (z 1.5), towers20 +0.54 (z 2.1), arm25 +4.3 pp (z 1.9), wp z 2.3; + reloc_draw=2 0 -> 3, elim z 1.7, surv60
+  +0.61, wp z 2.0**; raid_evac from 780 s 0 -> 1, surv60 +0.26. Against the median arm (surv60 ~+0.25, towers ~+0.14)
+  the raid_bank stacks stand out. Queued: raid_bank alone, and both stacks on the fresh block 8001..8500.
