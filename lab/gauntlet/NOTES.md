@@ -1570,3 +1570,8 @@ retreat through the same pass (only the attack role is watched).
   z -1.4: the lead does not hold. seed_quarters=30 at N=14: W 0 -> 2, proxies ~0 / slightly negative: not adopted.
 - Fresh cur7 block 8001..8500: N=13 8 of 500 (1.6 %), N=14 4 of 500 (0.8 %; 4 of 2,000 on 6001..8000). The cur8
   candidate is being confirmed on its games alive at 40 min (32 at N=13, 16 at N=14).
+- **cur8 adopted** (commit 870a4cba): wood_reach 150 and unjam 8 from 2400 s by default. Fresh block confirmation (games
+  alive at 40 min of cur7-bench-vs13-e / vs14-e): N=13 W 8 -> 9 (gained s8222, s8231, lost s8130), N=14 4 -> 4 with the
+  wins a median 138 -> 112 min (s8130 238 -> 121). With unjam the same wins as wood_reach alone. Over both blocks: 9
+  gained, 1 lost. cur8 defaults reproduce the arm games 6 of 6 (short and long). Merged cur8 bases (cur7 rows before
+  40 min + cur8 late re-plays; lab/gauntlet/mergebase.py) are being made for pairing the next screens.
