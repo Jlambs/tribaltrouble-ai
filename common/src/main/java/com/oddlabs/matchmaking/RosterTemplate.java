@@ -24,6 +24,8 @@ public final class RosterTemplate implements Serializable {
         EASY_AI,
         NORMAL_AI,
         HARD_AI,
+        /** Our gauntlet AI (com.oddlabs.tt.player.gauntlet), offered after Hard. */
+        GAUNTLET_AI,
     }
 
     public static final class Slot implements Serializable {

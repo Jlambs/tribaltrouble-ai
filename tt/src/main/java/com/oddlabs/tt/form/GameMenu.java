@@ -71,6 +71,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
     private static final int COMPUTER_EASY_INDEX = 2;
     private static final int COMPUTER_NORMAL_INDEX = 3;
     private static final int COMPUTER_HARD_INDEX = 4;
+    private static final int COMPUTER_GAUNTLET_INDEX = 5;
 
     private static final int SEND_BUTTON_WIDTH = 60;
 
@@ -212,8 +213,20 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 case EASY_AI -> applyAi(server, i, race, team, PlayerSlot.AI_EASY);
                 case NORMAL_AI -> applyAi(server, i, race, team, PlayerSlot.AI_NORMAL);
                 case HARD_AI -> applyAi(server, i, race, team, PlayerSlot.AI_HARD);
+                case GAUNTLET_AI -> applyAi(server, i, race, team, PlayerSlot.AI_GAUNTLET);
             }
         }
+    }
+
+    /**
+     * The AI difficulty of a slot menu item: Easy, Normal and Hard follow Closed in PlayerSlot order, Gauntlet last.
+     */
+    private static int difficultyOfIndex(int index) {
+        return index == COMPUTER_GAUNTLET_INDEX ? PlayerSlot.AI_GAUNTLET : index - 1;
+    }
+
+    private static int indexOfDifficulty(int difficulty) {
+        return difficulty == PlayerSlot.AI_GAUNTLET ? COMPUTER_GAUNTLET_INDEX : difficulty + 1;
     }
 
     private void applyAi(@NonNull GameServerInterface server, int slot, int race, int team, int difficulty) {
@@ -230,7 +243,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
         int index = slot_buttons[player_slot].getMenu().getChosenItemIndex();
         int race_index = race_buttons[player_slot].getMenu().getChosenItemIndex();
         int team_index = team_buttons[player_slot].getMenu().getChosenItemIndex();
-        int difficulty_index = slot_buttons[player_slot].getMenu().getChosenItemIndex() - 1;
+        int difficulty_index = difficultyOfIndex(index);
         boolean race_changed = player.getInfo() == null || race_index != player.getInfo().getRace();
         boolean team_changed = player.getInfo() == null || team_index != player.getInfo().getTeam();
         boolean ready_changed = ready != player.isReady();
@@ -258,6 +271,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
             case COMPUTER_EASY_INDEX:
             case COMPUTER_NORMAL_INDEX:
             case COMPUTER_HARD_INDEX:
+            case COMPUTER_GAUNTLET_INDEX:
                 assert !rated;
                 boolean new_ai = player.getType() != PlayerSlot.AI;
                 if (new_ai || race_changed || team_changed || difficulty_changed) {
@@ -331,7 +345,7 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
                 switch (player.getType()) {
                     case PlayerSlot.AI:
                         assert !rated;
-                        slot_button.setSelected(player.getAIDifficulty() + 1);
+                        slot_button.setSelected(indexOfDifficulty(player.getAIDifficulty()));
                         race_button.setDisabled(!canControlSlot(i));
                         team_button.setDisabled(!canControlSlot(i));
                         break;
@@ -411,12 +425,14 @@ public final class GameMenu extends Panel implements ConfigurationListener, Chat
         PulldownItem<Void> computer_easy_item = new PulldownItem<>(i18n("easy_ai"));
         PulldownItem<Void> computer_normal_item = new PulldownItem<>(i18n("normal_ai"));
         PulldownItem<Void> computer_hard_item = new PulldownItem<>(i18n("hard_ai"));
+        PulldownItem<Void> computer_gauntlet_item = new PulldownItem<>(i18n("gauntlet_ai"));
         pulldown_menu.addItem(open_item);
         pulldown_menu.addItem(closed_item);
         if (!rated) {
             pulldown_menu.addItem(computer_easy_item);
             pulldown_menu.addItem(computer_normal_item);
             pulldown_menu.addItem(computer_hard_item);
+            pulldown_menu.addItem(computer_gauntlet_item);
         }
         PulldownButton<?> pulldown_button = new PulldownButton<>(gui_root, pulldown_menu, CLOSED_INDEX, 150);
         slot_buttons[index] = pulldown_button;

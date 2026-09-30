@@ -19,6 +19,8 @@ public final class PlayerSlot implements Serializable {
     public static final int AI_BATTLE_TUTORIAL = 6;
     public static final int AI_PASSIVE_CAMPAIGN = 7;
     public static final int AI_NEUTRAL_CAMPAIGN = 8;
+    /** The gauntlet AI (com.oddlabs.tt.player.gauntlet.GauntletAI) at its default settings, listed after Hard. */
+    public static final int AI_GAUNTLET = 9;
 
     public static final int OPEN = 1;
     public static final int CLOSED = 2;

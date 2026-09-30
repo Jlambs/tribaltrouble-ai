@@ -698,7 +698,7 @@ public final class TerrainMenu extends Group {
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("human")));
             } else {
                 // MP slots can wait for a human joiner; SP has no joiners so it omits Open. Adding Open shifts the MP
-                // slot indices (Open 0, Closed 1, AI 2-4). See fillToDifficultyIndex / difficultyIndexToFill.
+                // slot indices (Open 0, Closed 1, AI 2-5). See fillToDifficultyIndex / difficultyIndexToFill.
                 if (multiplayer) {
                     difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("open")));
                 }
@@ -706,6 +706,7 @@ public final class TerrainMenu extends Group {
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("easy_ai")));
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("normal_ai")));
                 difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("hard_ai")));
+                difficulty_pulldown_menus[i].addItem(new PulldownItem<>(i18n("gauntlet_ai")));
             }
 
             difficulty_pulldown_buttons[i] = new PulldownButton<>(gui_root, difficulty_pulldown_menus[i], 0, 115);
@@ -1118,7 +1119,7 @@ public final class TerrainMenu extends Group {
         return new RosterTemplate(slots);
     }
 
-    // MP slot menu order: Open 0, Closed 1, Easy 2, Normal 3, Hard 4. SP omits Open, so its indices are one lower.
+    // MP slot menu order: Open 0, Closed 1, Easy 2, Normal 3, Hard 4, Gauntlet 5. SP omits Open, so its indices are one lower.
     private RosterTemplate.@NonNull Fill difficultyIndexToFill(int slot_index, int difficulty_index) {
         if (slot_index == 0) {
             return RosterTemplate.Fill.HOST;
@@ -1128,6 +1129,7 @@ public final class TerrainMenu extends Group {
             case 2 -> RosterTemplate.Fill.EASY_AI;
             case 3 -> RosterTemplate.Fill.NORMAL_AI;
             case 4 -> RosterTemplate.Fill.HARD_AI;
+            case 5 -> RosterTemplate.Fill.GAUNTLET_AI;
             default -> RosterTemplate.Fill.OPEN;
         };
     }
@@ -1169,6 +1171,7 @@ public final class TerrainMenu extends Group {
             case EASY_AI -> 2;
             case NORMAL_AI -> 3;
             case HARD_AI -> 4;
+            case GAUNTLET_AI -> 5;
         };
         return multiplayer ? index : Math.max(0, index - 1);
     }

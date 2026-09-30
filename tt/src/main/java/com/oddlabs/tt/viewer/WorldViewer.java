@@ -42,6 +42,7 @@ import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInfo;
 import com.oddlabs.tt.player.UnitInfo;
 import com.oddlabs.tt.player.VikingChieftainAI;
+import com.oddlabs.tt.player.gauntlet.GauntletAI;
 import com.oddlabs.tt.render.DefaultRenderer;
 import com.oddlabs.tt.render.LandscapeRenderer;
 import com.oddlabs.tt.render.MatrixStack;
@@ -329,6 +330,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
                 }
                 case PlayerSlot.AI_PASSIVE_CAMPAIGN -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_NEUTRAL_CAMPAIGN -> ai = new PassiveAI(player, unit_info, false);
+                case PlayerSlot.AI_GAUNTLET -> ai = new GauntletAI(player, unit_info, "");
                 default -> throw new IllegalArgumentException("unexpected difficulty: " + slot.getAIDifficulty());
             }
             player.setAI(ai);
