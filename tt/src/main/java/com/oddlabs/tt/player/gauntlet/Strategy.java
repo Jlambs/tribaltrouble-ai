@@ -408,12 +408,16 @@ class Strategy {
      * engine's pathfinder treats idle and blocked units as walls, so the column behind them blocks, the pivot in it
      * never moves the waypoint on, and the idle plug, "already there" and ahead of the pivot, is never re-ordered.
      */
-    int unjam = 0;
+    int unjam = 8;
     float unjam_after = 15f;
     int unjam_progress = 10;
     float unjam_time = 30f;
-    /** unjam acts only from this game time (s): for replaying a jammed game unchanged up to its jam. */
-    float unjam_from = 0f;
+    /**
+     * unjam acts only from this game time (s). 2400 (cur8; was 0 with unjam off): from 40 min it only acts in a jam;
+     * on the cur7 benchmark games alive at 40 min it changed nothing but s6028 (N=13, 225 warriors wedged in a cliff
+     * pocket against 3 copies with 3 warriors: draw at 360 -> win), and it freed the same wedge against two Experts.
+     */
+    float unjam_from = 2400f;
     /**
      * bank_guard (late/spec S2): from bank_guard_time the main armory keeps only the workers its measured iron income
      * and stock can keep forging (bank_min once it cannot forge for bank_noforge_s); the rest wait in the quarters
@@ -430,9 +434,12 @@ class Strategy {
     /**
      * wood_reach (cells, 0 = off; late/spec S3): from wood_reach_time, when the main armory's 60-cell tree ring is
      * exhausted (tree cycle >= 90 s) or a 60-cell tree search finds nothing, trees up to this far are gathered
-     * (Economy.pickSupply): the wood lock that left ~200 peons idle in the armory in s63, s60 and s315.
+     * (Economy.pickSupply): the wood lock that left ~200 peons idle in the armory in s63, s60 and s315. 150 (cur8; was
+     * 0): the lock is 42-56 % of the 1-3-h gaps in the long wins (trees 43-122 cells away in every lock); on the cur7
+     * benchmark games alive at 40 min wins 19 -> 26 at N=13-15 with none lost, fresh block N=13-14 12 -> 13, long wins
+     * 30-190 min shorter (s6189 319 -> 113 min, s6022 305 -> 117).
      */
-    int wood_reach = 0;
+    int wood_reach = 150;
     float wood_reach_time = 2400f;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
