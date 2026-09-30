@@ -30,8 +30,9 @@ import java.util.Set;
  * retire_pop, another quarters within 25 cells, not training the chieftain) and, with retire_any_tower, any tower,
  * never one with a threat within 20 cells. While it empties and falls the building is doomed: tower manning, peon
  * filling and shelter, repairs, the primary armory and the chieftain's training leave it alone (isDoomed), and no
- * armory site goes within RETIRED_CELLS of it for RETIRED_MEMORY s after (retiredNear). At most one retirement every
- * GAP s.
+ * armory site goes within RETIRED_CELLS of it for RETIRED_MEMORY s after (retiredNear). A retirement is called off
+ * when a threat comes, when the slot is no longer wanted, or when the building has become our main or last armory or
+ * our last quarters. At most one retirement every GAP s.
  */
 final class Retire {
     /** The kinds of building retired, in the order they are looked for (counter and log names). */
@@ -258,7 +259,10 @@ final class Retire {
         return best;
     }
 
-    /** The drained armory (Economy.drained) with no threat within 30 cells farthest from the main one, or null. */
+    /**
+     * The drained armory (Economy.drained) with no threat within 30 cells and 8 warriors the military can lend within
+     * WARRIOR_CELLS, farthest from the main one, or null.
+     */
     private @Nullable Building drainedArmory(int @NonNull [] why) {
         Intel intel = ai.intel();
         Building primary = intel.armory();
@@ -280,7 +284,8 @@ final class Retire {
             int d = MapAnalysis.dist2(a.getGridX(), a.getGridY(), primary.getGridX(), primary.getGridY());
             if (d <= best_d)
                 continue;
-            if (!razersAt(a, 8)) {
+            // Lent warriors only: peons take ~100 s over 200 HP (0.1 HP/s each) and 20 of them are 20 gatherers.
+            if (ai.military().lendable(a.getGridX(), a.getGridY(), WARRIOR_CELLS) < 8) {
                 why[1]++;
                 continue;
             }
@@ -357,6 +362,29 @@ final class Retire {
         empty(b);
     }
 
+    /**
+     * Whether a doomed armory has become the main armory or the last finished one standing, or a doomed quarters the
+     * last finished quarters.
+     */
+    private boolean lastOfItsKind(@NonNull Building b) {
+        Intel intel = ai.intel();
+        if (kind == ARMORY) {
+            if (b == intel.armory())
+                return true;
+            for (Building a : intel.armories)
+                if (a != b && !a.isDead() && a.isComplete())
+                    return false;
+            return true;
+        }
+        if (kind == QUARTERS) {
+            for (Building q : intel.quarters)
+                if (q != b && !q.isDead() && q.isComplete())
+                    return false;
+            return true;
+        }
+        return false;
+    }
+
     /** Units inside the building: a tower's gunner, a quarters' or armory's units (0 for a site). */
     private static int inside(@NonNull Building b) {
         return b.isComplete() && b.getUnitContainer() != null ? b.getUnitContainer().getNumSupplies() : 0;
@@ -383,6 +411,18 @@ final class Retire {
         assert b != null;
         if (b.isDead()) {
             done(b, now);
+            return;
+        }
+        // The slot is no longer wanted: the flagged project was placed or dropped, or a slot came free another way (an
+        // enemy razed a building of ours). Else a hop dropped meanwhile cost a building for nothing.
+        if (economy.flaggedWaiting() == null || ai.owner().canBuild(Race.BUILDING_ARMORY)) {
+            stop(b, "unneeded", now);
+            return;
+        }
+        // Never our main or last armory, nor our last quarters: the enemy may raze the others meanwhile, and then this
+        // one is where the economy sends every worker (the primary is chosen again when the old one falls).
+        if (lastOfItsKind(b)) {
+            stop(b, "last", now);
             return;
         }
         // Never a besieged building: it absorbs waves for free.
@@ -449,8 +489,8 @@ final class Retire {
     /**
      * Orders the razers: towers and tower sites (6 HP a peon swing, 3 HP/s) to 2-8 peons by their hit points; quarters
      * and armories, and their sites, to 2-12 idle iron or chicken warriors lent by the military (0.75 HP/s each) when
-     * it has enough, else to 2-20 peons. Returns false when too few units are at hand (peons are then let out of an
-     * armory for the next try).
+     * it has enough, else (not an armory) to 2-20 peons. Returns false when too few units are at hand (peons are then
+     * let out of an armory for the next try).
      */
     private boolean beginRaze(@NonNull Building b, float now) {
         int hp = b.getHitPoints();
@@ -463,7 +503,8 @@ final class Retire {
             int n = Math.clamp((int) Math.ceil(hp / 20f), 2, 12);
             units = ai.military().lend(b.getGridX(), b.getGridY(), n, Math.min(n, 8), WARRIOR_CELLS, 240f);
             lent = !units.isEmpty();
-            if (!lent) {
+            // An armory only goes down to lent warriors (drainedArmory); a quarters, else to peons.
+            if (!lent && kind != ARMORY) {
                 int np = Math.clamp((int) Math.ceil(hp / 10f), 2, 20);
                 units = peons(b, np, Math.min(np, 8));
             }

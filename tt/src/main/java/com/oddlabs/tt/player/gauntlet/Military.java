@@ -271,9 +271,7 @@ final class Military {
         List<Integer> dists = new ArrayList<>();
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             Unit u = e.getKey();
-            if (e.getValue() != Role.ARMY || u.isDead() || u.isMounted()
-                    || ai.intel().warrior_states.get(u) != WarriorState.IDLE
-                    || Intel.warriorType(u) == WarriorType.ROCK)
+            if (!lendable(u, e.getValue()))
                 continue;
             int d = MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY());
             if (d > r * r)
@@ -296,6 +294,25 @@ final class Military {
             out.add(u);
         }
         return out;
+    }
+
+    /** retire: how many warriors lend(x, y, ..., r, ...) could take now (0 while it would lend none). */
+    int lendable(int x, int y, int r) {
+        if (mode != Mode.HOME || wantsEverything())
+            return 0;
+        int n = 0;
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            if (lendable(u, e.getValue()) && MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) <= r * r)
+                n++;
+        }
+        return n;
+    }
+
+    /** retire: an idle iron or chicken warrior of the home army. */
+    private boolean lendable(@NonNull Unit u, @NonNull Role role) {
+        return role == Role.ARMY && !u.isDead() && !u.isMounted()
+                && ai.intel().warrior_states.get(u) == WarriorState.IDLE && Intel.warriorType(u) != WarriorType.ROCK;
     }
 
     /** retire: lent warriors come back to the home army (updateRoles gives them the ARMY role again). */

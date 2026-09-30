@@ -68,6 +68,8 @@ final class Economy {
     private int want_workers;
     private float tree_cycle = 14f;
     private float iron_cycle = 22f;
+    /** reloc: the armory iron_cycle was last worked out for (considerRelocation skips a stale one). */
+    private @Nullable Building iron_cycle_armory;
     private boolean rock_weapons;
     private boolean rock_filler;
     private @Nullable Project expansion_project;
@@ -383,10 +385,12 @@ final class Economy {
     private static final float RAID_LATE = 10f;
     /** raid_evac: a launch aimed within this many cells of an armory goes for it. */
     private static final int RAID_CELLS = 20;
+    /** raid_evac: the least wave followed (the copy's warriors walking to within 12 cells of the launch's cell). */
+    private static final int RAID_WAVE_MIN = 12;
 
     /**
      * raid_evac (Shepherd, on a launch it saw): the copy's wave walks to (tx, ty). Aimed within RAID_CELLS of a
-     * complete armory of ours with at least raid_evac_min warriors (the copy's warriors walking aggressively to within
+     * complete armory of ours with at least RAID_WAVE_MIN warriors (the copy's warriors walking aggressively to within
      * 12 cells of that cell), it is followed (raidEvacuate) until its front is RAID_LEAD s from the target.
      */
     void waveLaunched(@NonNull Player copy, int tx, int ty) {
@@ -414,7 +418,7 @@ final class Economy {
                             ty) <= 12 * 12)
                 wave.add(e);
         ai.aiLog().count("raid_wave_seen");
-        if (wave.size() < st.raid_evac_min) {
+        if (wave.size() < RAID_WAVE_MIN) {
             ai.aiLog().count("raid_wave_small");
             return;
         }
@@ -437,10 +441,11 @@ final class Economy {
 
     /**
      * raid_evac, every economy tick: follows the waves launched at our armories. A wave whose front (its nearest
-     * warrior still walking or fighting on the way) is within RAID_LEAD s of its target empties the armory when it
-     * outweighs the armory's defence (manned towers within 16 cells and our warriors within 20) by raid_evac_ratio;
-     * under RAID_LATE s it is too late (the evacuees would walk into it). Then every armory being emptied lets its
-     * units out.
+     * warrior still walking, or fighting on the way, to within 12 cells of the launch's cell: a warrior sent elsewhere
+     * since no longer counts) is within RAID_LEAD s of its target empties the armory when it holds at least
+     * raid_evac_min units, it is raid_evac_time or later, and the wave outweighs the armory's defence (manned towers
+     * within 16 cells and our warriors within 20) by raid_evac_ratio; under RAID_LATE s it is too late (the evacuees
+     * would walk into it). Then every armory being emptied lets its units out.
      */
     private void raidEvacuate() {
         Strategy st = ai.strategy();
@@ -454,12 +459,18 @@ final class Economy {
             }
             List<Unit> moving = new ArrayList<>();
             int front = Integer.MAX_VALUE;
-            for (Unit u : r.wave)
-                if (!u.isDead() && !(u.getPrimaryController() instanceof IdleController)) {
-                    moving.add(u);
-                    front = Math.min(front, MapAnalysis.dist2(u.getGridX(), u.getGridY(), r.tx, r.ty));
-                }
-            if (moving.isEmpty() || 2 * moving.size() < st.raid_evac_min) {
+            for (Unit u : r.wave) {
+                // Still on its way there, fighting on the way included; a warrior sent elsewhere since drops out.
+                if (u.isDead() || !(u.getPrimaryController() instanceof WalkController w))
+                    continue;
+                int tx = w.getTarget().getGridX();
+                int ty = w.getTarget().getGridY();
+                if (MapAnalysis.dist2(tx, ty, r.tx, r.ty) > 12 * 12)
+                    continue;
+                moving.add(u);
+                front = Math.min(front, MapAnalysis.dist2(u.getGridX(), u.getGridY(), r.tx, r.ty));
+            }
+            if (moving.isEmpty() || 2 * moving.size() < RAID_WAVE_MIN) {
                 it.remove();
                 ai.aiLog().count("raid_evac_gone"); // the wave stopped or died on its way
                 continue;
@@ -470,6 +481,16 @@ final class Economy {
             it.remove();
             if (eta < RAID_LATE) {
                 ai.aiLog().count("raid_evac_late");
+                continue;
+            }
+            // Nothing much to save: a minute of forging and gathering lost for a few units (the verify smoke emptied
+            // armories holding 0-11 in 9 of 24 evacuations).
+            if (a.getUnitContainer().getNumSupplies() < st.raid_evac_min) {
+                ai.aiLog().count("raid_evac_empty");
+                continue;
+            }
+            if (ai.time() < st.raid_evac_time) {
+                ai.aiLog().count("raid_evac_early");
                 continue;
             }
             int ax = a.getGridX();
@@ -635,7 +656,8 @@ final class Economy {
         boolean reloc;
         float added = -1f;
         /**
-         * reloc_lock: an armory moved to trees out of the wood lock (lockRelocate), since when its slot stands open.
+         * reloc_lock: an armory moved to trees out of the wood lock (lockRelocate); it and a hop under reloc_slot:
+         * since when its slot stands open.
          */
         boolean lock;
         float open_since = -1f;
@@ -643,7 +665,7 @@ final class Economy {
         @Nullable
         Unit placer;
         boolean evac_skipped;
-        /** rearm_placer: since when a lost armory's project has found no placer at all (-1: it has one). */
+        /** rearm_placer: since when this armory project has found no placer at all (-1: it has one). */
         float noplacer_since = -1f;
 
         Project(int type, int id, @NonNull Site site, int priority) {
@@ -766,7 +788,7 @@ final class Economy {
             p.veto_since = -1f;
             Unit placer = choosePlacer(p);
             if (placer == null) {
-                if (p.noplacer_since >= 0f && ai.time() - p.noplacer_since > REARM_WAIT) {
+                if (p.noplacer_since >= 0f && ai.time() - p.noplacer_since > REARM_WAIT && isRebuild(p)) {
                     // rearm_placer: a lost armory's site with no safe way to it is planned afresh.
                     it.remove();
                     ai.aiLog().count("rearm_placer_timeout");
@@ -815,10 +837,12 @@ final class Economy {
             last_veto = VETO_SITES;
             return false;
         }
-        // reloc_slot, reloc_lock: the next freed slot is the waiting armory's.
-        Project waiter = p.type == Race.BUILDING_TOWER ? slotWaiter() : null;
+        // reloc_slot, reloc_lock: the next freed slot is the waiting armory's, not a tower's, a quarters' or a sniper
+        // tower's.
+        Project waiter = !p.reloc && !p.lock ? slotWaiter() : null;
         if (waiter != null) {
-            ai.aiLog().count(waiter.lock ? "lock_slot_tower_wait" : "reloc_slot_tower_wait"); // economy ticks (1 s)
+            String what = p.type == Race.BUILDING_TOWER ? "tower" : "other";
+            ai.aiLog().count((waiter.lock ? "lock_slot_" : "reloc_slot_") + what + "_wait"); // economy ticks (1 s)
             last_veto = VETO_SITES;
             return false;
         }
@@ -1147,7 +1171,6 @@ final class Economy {
     }
 
     private @Nullable Unit choosePlacer(@NonNull Project p) {
-        Intel intel = ai.intel();
         if (p.use_scout && scout != null && !scout.isDead()) {
             // The scout places sites in priority order; it only takes the next once the previous one stands.
             for (Project q : projects) {
@@ -1161,6 +1184,15 @@ final class Economy {
         // reloc_lock: a lock move's placer is chosen by the same rule (lock moves come only late, so it stays late).
         if (p.type == Race.BUILDING_ARMORY && (ai.strategy().rearm_placer || p.lock))
             return safePlacer(p);
+        return plainPlacer(p);
+    }
+
+    /**
+     * The nearest idle, walking or tree-gathering peon (tree gatherers count 40 cells further), or one walking into a
+     * building; for an armory with none of those, any builder.
+     */
+    private @Nullable Unit plainPlacer(@NonNull Project p) {
+        Intel intel = ai.intel();
         Unit best = null;
         int best_d = Integer.MAX_VALUE;
         for (Unit peon : intel.peons) {
@@ -1186,10 +1218,14 @@ final class Economy {
         return best;
     }
 
-    /** rearm_placer: the quarters that deployed a placer, until when that peon is reserved, and the next deploy. */
+    /**
+     * rearm_placer: the quarters that deployed a placer, until when that peon is reserved, the next deploy, and the
+     * peons already by that quarters then (the deployed one is the peon by it that is not among them).
+     */
     private @Nullable Building reserve_quarters;
     private float reserve_until = -1f;
     private float rearm_deploy_next = -1f;
+    private final List<@NonNull Unit> reserve_known = new ArrayList<>();
     /** Seconds a peon deployed for a placer stays reserved, and the cells around its quarters it is looked for in. */
     private static final float RESERVE_SECONDS = 3f;
     private static final int RESERVE_CELLS = 10;
@@ -1207,19 +1243,36 @@ final class Economy {
      * than send a placer that is pulled back or killed within seconds (s6001 smoke: 7 in 7 s).
      */
     private @Nullable Unit safePlacer(@NonNull Project p) {
-        Intel intel = ai.intel();
         float now = ai.time();
         Unit u = safePlacerOf(p, now);
-        // A lost armory (no armory standing, not a hop) starts its REARM_WAIT clock while nothing qualifies.
-        boolean rebuild = had_armory && intel.armories.isEmpty() && !p.reloc;
-        if (u != null || !rebuild || now < rearm_deploy_next)
+        // A lost armory's project (no armory standing, not a hop) starts its REARM_WAIT clock while nothing qualifies,
+        // and so does any other armory project but a hop or a lock move (those have RELOC_WAIT).
+        boolean timed = !p.reloc && !p.lock;
+        if (u != null || !timed || now < rearm_deploy_next)
             p.noplacer_since = -1f;
         else if (p.noplacer_since < 0f)
             p.noplacer_since = now;
+        if (u == null && !isRebuild(p) && p.noplacer_since >= 0f && now - p.noplacer_since > REARM_WAIT) {
+            // The first armory or an expansion (considerExpansion) is not left waiting for good: with it unplaced no
+            // other expansion is planned. After REARM_WAIT s it takes a placer by the old rule.
+            u = plainPlacer(p);
+            if (u != null) {
+                p.noplacer_since = -1f;
+                ai.aiLog().count("rearm_placer_fallback");
+            }
+        }
         return u;
     }
 
-    /** rearm_placer: seconds a lost armory's project may find no placer before it is planned afresh. */
+    /** rearm_placer: a lost armory's project (no armory standing, not a hop or a lock move). */
+    private boolean isRebuild(@NonNull Project p) {
+        return had_armory && ai.intel().armories.isEmpty() && !p.reloc && !p.lock;
+    }
+
+    /**
+     * rearm_placer: seconds an armory project may find no placer before a lost armory's is planned afresh and any
+     * other's (not a hop or a lock move) takes one by the old rule.
+     */
     private static final float REARM_WAIT = 30f;
 
     private @Nullable Unit safePlacerOf(@NonNull Project p, float now) {
@@ -1236,7 +1289,8 @@ final class Economy {
             int best_d = RESERVE_CELLS * RESERVE_CELLS + 1;
             for (Unit peon : intel.peons) {
                 PeonState s = intel.peon_states.get(peon);
-                if (s != PeonState.IDLE && s != PeonState.TRANSIT && s != PeonState.MOVE)
+                if ((s != PeonState.IDLE && s != PeonState.TRANSIT && s != PeonState.MOVE)
+                        || reserve_known.contains(peon))
                     continue;
                 int d = MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), rq.getGridX(), rq.getGridY());
                 if (d < best_d && safeWay(peon, sx, sy, 12)) {
@@ -1266,6 +1320,11 @@ final class Economy {
         Building from = deployQuarters(sx, sy);
         if (from != null) {
             ai.owner().deployUnits(from, DeployType.PEON, 1);
+            reserve_known.clear();
+            for (Unit peon : intel.peons)
+                if (MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), from.getGridX(),
+                        from.getGridY()) <= RESERVE_CELLS * RESERVE_CELLS)
+                    reserve_known.add(peon);
             reserve_quarters = from;
             reserve_until = now + RESERVE_SECONDS;
             rearm_deploy_next = now + 5f;
@@ -1387,13 +1446,14 @@ final class Economy {
     /**
      * rearm_placer: whether the peon is the one a quarters just deployed as an armory placer (Shepherd, Lures, Dodges,
      * Decoys and the sappers, which run before the economy, leave it alone): within RESERVE_CELLS of that quarters
-     * while the reservation lasts.
+     * while the reservation lasts, and not one of the peons already by it at the deploy.
      */
     boolean reservedPlacer(@NonNull Unit u) {
         Building q = reserve_quarters;
         return q != null && ai.time() <= reserve_until && !q.isDead()
                 && MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(),
-                        q.getGridY()) <= RESERVE_CELLS * RESERVE_CELLS;
+                        q.getGridY()) <= RESERVE_CELLS * RESERVE_CELLS
+                && !reserve_known.contains(u);
     }
 
     /**
@@ -1497,7 +1557,7 @@ final class Economy {
                 // rearm_reach: the best quiet armory site within reach of the start, by iron and trees.
                 rearm_next = ai.time() + 10f;
                 site = ai.planner().findArmorySite(reservedSites(null), st.rearm_reach, ai.planner().getStartField(),
-                        this::quietOk);
+                        this::quietOk, rearm_search, ai.time());
                 quiet = site != null;
                 ai.aiLog().count(quiet ? "rearm_site_quiet" : "rearm_site_none");
                 if (quiet && ai.logging())
@@ -1538,6 +1598,10 @@ final class Economy {
 
     /** rearm_reach: no quiet rebuild search before this time; rearm_placer: no calm alternative before this time. */
     private float rearm_next = -1f;
+    /** rearm_reach, reloc, reloc_lock: each one's armory site search, reused for a minute (SitePlanner.Search). */
+    private final SitePlanner.@NonNull Search rearm_search = new SitePlanner.Search();
+    private final SitePlanner.@NonNull Search reloc_search = new SitePlanner.Search();
+    private final SitePlanner.@NonNull Search lock_search = new SitePlanner.Search();
     private float rearm_alt_next = -1f;
 
     /**
@@ -2446,7 +2510,10 @@ final class Economy {
     private int reloc_armory_iron;
     /** reloc: whether each other armory was drained at the last gate test (drained() flicker counter). */
     private final Map<@NonNull Building, Boolean> was_drained = new LinkedHashMap<>();
-    /** reloc: seconds a hop project may wait unplaced with no placer out before it is dropped. */
+    /**
+     * reloc, reloc_lock: seconds a hop project may wait unplaced with no placer out before it is dropped (with
+     * reloc_slot, and a lock move: seconds with a slot open).
+     */
     private static final float RELOC_WAIT = 90f;
 
     /**
@@ -2502,11 +2569,14 @@ final class Economy {
     /**
      * reloc: the hop. Every 30 s and reloc_gap s after the last expansion ended, when the primary is poor (the
      * expansion rule: iron cycle >= 70 s or cost >= 110) or has fewer than reloc_nodes live iron nodes within 30 cells,
-     * a new armory goes to the best site within reloc_reach m of the primary that is at least 40 cells from it, quiet
-     * (quietOk) and has no enemy warrior within 12 cells of the straight way there, if it costs at most 0.75 of the
-     * current armory (desperate_expansion from desperate_iron_cycle). No global threat gate: it blocked 100 % of the
-     * checks after 13 min at N=14 while the cost test passed in 92-95 % (stall.md). At the building cap it waits, or
-     * with reloc_slot is planned anyway and the next slot kept for it.
+     * a new armory goes to the best site within reloc_reach m of the primary that is at least 40 cells from it (tested
+     * in SitePlanner's pass over every cell, so the candidates by the primary, which the walk term ranks first, take
+     * none of its 200 rejections), quiet (quietOk), with at least reloc_nodes live iron nodes within 30 cells (a hop
+     * is for a fresh pile: the verify smokes accepted sites with 0 nodes against 0 on the cost ratio alone) and no
+     * enemy warrior within 12 cells of the straight way there, if it costs at most 0.75 of the current armory
+     * (desperate_expansion from desperate_iron_cycle). No global threat gate: it blocked 100 % of the checks after 13
+     * min at N=14 while the cost test passed in 92-95 % (stall.md). At the building cap it waits, or with reloc_slot is
+     * planned anyway and the next slot kept for it.
      */
     private void considerRelocation() {
         Strategy st = ai.strategy();
@@ -2517,6 +2587,11 @@ final class Economy {
         boolean capped = !ai.owner().canBuild(Race.BUILDING_ARMORY);
         if (capped && !st.reloc_slot) {
             ai.aiLog().count("reloc_cap_blocked"); // plan ticks (3 s)
+            return;
+        }
+        // The iron cycle is worked out after planBuildings: right after a primary switch it is still the old one's.
+        if (iron_cycle_armory != primary) {
+            ai.aiLog().count("reloc_cycle_stale"); // plan ticks (3 s) the check waits for the new primary's cycle
             return;
         }
         reloc_next = now + 30f;
@@ -2535,19 +2610,19 @@ final class Economy {
         Military m = ai.military();
         // reloc_draw: where each copy's next wave starts from, and how far our nearest building is from there.
         List<int[]> origins = drawOrigins();
-        // Why candidates were turned down: too near the primary, enemies by the site, a razing by it, the way there,
-        // and (reloc_draw) the waves it would draw.
+        // Why candidates were turned down: enemies by the site, a razing by it, too few live iron nodes by it, the way
+        // there, and (reloc_draw) the waves it would draw.
         int[] why = new int[5];
         SitePlanner.CellOk ok = (x, y) -> {
-            if (MapAnalysis.dist2(x, y, ax, ay) < 40 * 40) {
+            if (m.threatNear(x, y, 30) || m.enemyStrengthNear(x, y, 30) > 0f) {
                 why[0]++;
                 return false;
             }
-            if (m.threatNear(x, y, 30) || m.enemyStrengthNear(x, y, 30) > 0f) {
+            if (razedNear(x, y) || retire.retiredNear(x, y)) {
                 why[1]++;
                 return false;
             }
-            if (razedNear(x, y) || retire.retiredNear(x, y)) {
+            if (st.reloc_nodes > 0 && liveIronNear(x, y, 30) < st.reloc_nodes) {
                 why[2]++;
                 return false;
             }
@@ -2561,24 +2636,29 @@ final class Economy {
             }
             return true;
         };
-        Site site = ai.planner().findArmorySite(reservedSites(null), st.reloc_reach, from, ok);
+        Site site = ai.planner().findArmorySite(reservedSites(null), st.reloc_reach, from, 40, ok, 0f, reloc_search,
+                now);
+        if (ai.planner().lastSearchGaveUp())
+            ai.aiLog().count("reloc_search_gaveup"); // searches that stopped at 200 rejected candidates
         if (site == null) {
             int k = 0;
             for (int i = 1; i < why.length; i++)
                 if (why[i] > why[k])
                     k = i;
-            ai.aiLog().count("reloc_nosite_" + new String[]{"near", "enemy", "razed", "path", "draw"}[k]);
+            ai.aiLog().count("reloc_nosite_" + new String[]{"enemy", "razed", "nodes", "path", "draw"}[k]);
             if (why[4] > 0)
                 ai.aiLog().count("reloc_draw_nosite"); // checks with no site where draw turned some down
             if (ai.logging())
                 ai.log(String.format(
-                        "reloc check: armory %d,%d, no quiet site (turned down: near %d, enemy %d, razed %d, path %d, draw %d; %d copies with an idle warrior)",
+                        "reloc check: armory %d,%d, no quiet site (turned down: enemy %d, razed %d, nodes %d, path %d, draw %d; %d copies with an idle warrior)",
                         ax, ay, why[0], why[1], why[2], why[3], why[4], origins.size()));
             return;
         }
         if (why[4] > 0)
             ai.aiLog().count("reloc_draw_filtered"); // checks where draw turned down a better site
-        float better = ai.planner().warriorGatherCost(ai.map().computeField(site.x, site.y, 220));
+        float[] known = ai.planner().searched(reloc_search, site.x, site.y);
+        float better = known != null ? known[0] : ai.planner().warriorGatherCost(ai.map().computeField(site.x, site.y,
+                220));
         float gain = iron_cycle >= st.desperate_iron_cycle ? st.desperate_expansion : .75f;
         int dist = (int) Math.sqrt(MapAnalysis.dist2(ax, ay, site.x, site.y));
         int site_nodes = liveIronNear(site.x, site.y, 30);
@@ -2652,25 +2732,27 @@ final class Economy {
 
     /**
      * reloc, reloc_lock, every economy tick after manageProjects: notes when the expansion project ends (completed or
-     * dropped: reloc_gap counts from then), drops a hop project that has waited RELOC_WAIT s with no placer out (its
-     * quiet site went bad, or no slot came free) and a lock move whose slot has stood open that long with no placer
-     * out (at the cap it waits for a slot, retire's to free), and follows the last hop and lock armories to their
-     * razing.
+     * dropped: reloc_gap counts from then), drops a lock move, or a hop under reloc_slot, whose slot has stood open
+     * RELOC_WAIT s with no placer out (its quiet site went bad; at the cap it waits for a slot, the reserve's or
+     * retire's: a clock running from planning dropped hops while retire razed a building for them), a hop without
+     * reloc_slot RELOC_WAIT s after planning, and follows the last hop and lock armories to their razing.
      */
     private void watchReloc() {
         float now = ai.time();
         Project p = expansion_project;
-        if (p != null && p.reloc && projects.contains(p) && p.building == null && now - p.added > RELOC_WAIT) {
+        if (p != null && p.reloc && !ai.strategy().reloc_slot && projects.contains(p) && p.building == null
+                && now - p.added > RELOC_WAIT) {
             projects.remove(p);
             ai.aiLog().count("reloc_stale_drop");
             ai.log("reloc: drop " + p.describe() + ", unplaced for " + (int) (now - p.added) + "s");
         }
-        if (p != null && p.lock && projects.contains(p) && p.building == null) {
+        if (p != null && (p.lock || (p.reloc && ai.strategy().reloc_slot)) && projects.contains(p)
+                && p.building == null) {
             p.open_since = !ai.owner().canBuild(Race.BUILDING_ARMORY) ? -1f : p.open_since < 0f ? now : p.open_since;
             if (p.open_since >= 0f && now - p.open_since > RELOC_WAIT) {
                 projects.remove(p);
-                ai.aiLog().count("lock_stale_drop");
-                ai.aiLog().log("LOCK",
+                ai.aiLog().count(p.lock ? "lock_stale_drop" : "reloc_stale_drop");
+                ai.aiLog().log(p.lock ? "LOCK" : "RELOC",
                         () -> "drop " + p.describe() + ": no placer out with a slot open for " + (int) (now - p.open_since) + "s, " + (int) (now - p.added) + "s after planning");
             }
         }
@@ -2761,6 +2843,8 @@ final class Economy {
     /** reloc_lock: a lock site's own tree cycle must be under this (s); the lock's is at the 60-cell ceiling, ~91 s. */
     private static final float LOCK_SITE_TREE = 60f;
     private static final float LOCK_TREE = 90f;
+    /** reloc_lock: the most seconds the locked armory keeps its workers once the new one stands (lockHold). */
+    private static final float LOCK_HOLD = 120f;
     /** reloc_lock: seconds between lock site searches after a miss (each evaluates up to 24 sites). */
     private static final float LOCK_RETRY = 10f;
 
@@ -2824,13 +2908,15 @@ final class Economy {
     }
 
     /**
-     * reloc_lock: while the lock is armed, the armory moves to trees. Of the 5 best armory sites by gathering cost
-     * within reloc_reach m of the locked armory (SitePlanner.findExpansionSites; the cost is 2 x tree + iron: the
-     * banked iron stays behind, so the new armory needs fresh iron too), the first that is quiet (quietOk), not by a
-     * building retire just razed, has no enemy warrior within 12 cells of the straight way there and a tree cycle of
-     * its own under LOCK_SITE_TREE s. No global threat gate and no 30-s cadence (LOCK_RETRY after a miss). The project
-     * is added at the cap too (its placer waits in projectMayStart, the slot is kept from towers by slotWaiter, and
-     * retire may free one).
+     * reloc_lock: while the lock is armed, the armory moves to trees: to the best armory site by gathering cost within
+     * reloc_reach m of the locked armory (SitePlanner.findArmorySite; the cost is 2 x tree + iron: the banked iron
+     * stays behind, so the new armory needs fresh iron too) that is quiet (quietOk), not by a building retire just
+     * razed and has no enemy warrior within 12 cells of the straight way there, tested lazily down the ranked
+     * candidates (testing only the 5 cheapest sites, which lie within ~15 cells of each other, found all 5 not quiet
+     * in 20 of 26 checks of an s6415 lock game), and whose own tree cycle is under LOCK_SITE_TREE s. No global threat
+     * gate and no 30-s cadence (LOCK_RETRY after a miss; the search is reused for a minute). The project is added at
+     * the cap too (its placer waits in projectMayStart, the slot is kept from towers by slotWaiter, and retire may free
+     * one).
      */
     private void lockRelocate() {
         Strategy st = ai.strategy();
@@ -2843,42 +2929,36 @@ final class Economy {
         int ax = primary.getGridX();
         int ay = primary.getGridY();
         DistanceField from = st.reloc_reach <= 400 ? armory_field : ai.map().computeField(ax, ay, st.reloc_reach);
-        List<Site> top = ai.planner().findExpansionSites(reservedSites(null), st.reloc_reach, from, 5);
-        // Why the top sites were turned down: enemies or a razing by it, the way there, too few trees.
-        int[] why = new int[3];
-        Site site = null;
-        float site_tree = 0f;
-        for (Site s : top) {
-            if (!quietOk(s.x, s.y) || retire.retiredNear(s.x, s.y)) {
+        // Why candidates were turned down: enemies or a razing by it, the way there (and, from the search, trees).
+        int[] why = new int[2];
+        SitePlanner.CellOk ok = (x, y) -> {
+            if (!quietOk(x, y) || retire.retiredNear(x, y)) {
                 why[0]++;
-                continue;
+                return false;
             }
-            if (!pathClear(ax, ay, s.x, s.y, 12)) {
+            if (!pathClear(ax, ay, x, y, 12)) {
                 why[1]++;
-                continue;
+                return false;
             }
-            float tree = SitePlanner.gatherSeconds(ai.map().computeField(s.x, s.y, 220), ai.map().getTrees(), 60, 10,
-                    120, st.harvest_seconds);
-            if (tree >= LOCK_SITE_TREE) {
-                why[2]++;
-                continue;
-            }
-            site = s;
-            site_tree = tree;
-            break;
-        }
+            return true;
+        };
+        SitePlanner planner = ai.planner();
+        Site site = planner.findArmorySite(reservedSites(null), st.reloc_reach, from, 0, ok, LOCK_SITE_TREE,
+                lock_search, now);
+        if (planner.lastSearchGaveUp())
+            ai.aiLog().count("lock_search_gaveup"); // searches that stopped at 200 rejected candidates
         if (site == null) {
+            int trees = planner.lastTreeFailed();
             ai.aiLog().count("lock_nosite");
-            if (!top.isEmpty()) {
-                int k = why[0] >= why[1] && why[0] >= why[2] ? 0 : why[1] >= why[2] ? 1 : 2;
-                ai.aiLog().count("lock_nosite_" + new String[]{"quiet", "path", "trees"}[k]);
-            }
-            int n = top.size();
+            int k = trees > why[0] && trees > why[1] ? 2 : why[0] >= why[1] ? 0 : 1;
+            ai.aiLog().count("lock_nosite_" + new String[]{"quiet", "path", "trees"}[k]);
             ai.aiLog().log("LOCK", () -> String.format(
-                    "no lock site for the armory at %d,%d: of the %d best, %d not quiet, %d with enemies on the way, %d short of trees",
-                    ax, ay, n, why[0], why[1], why[2]));
+                    "no lock site for the armory at %d,%d: %d candidates not quiet, %d with enemies on the way, %d quiet ones short of trees",
+                    ax, ay, why[0], why[1], trees));
             return;
         }
+        float[] known = planner.searched(lock_search, site.x, site.y);
+        float site_tree = known != null ? known[2] : -1f;
         boolean capped = !ai.owner().canBuild(Race.BUILDING_ARMORY);
         Project p = addProject(Race.BUILDING_ARMORY, site, 1);
         p.lock = true;
@@ -2900,8 +2980,9 @@ final class Economy {
 
     /**
      * reloc_lock: whether the locked armory keeps its workers inside (drainSecondary): while the lock move goes up,
-     * and once it stands until it holds 2 wood (a weapon's) and has no threat within 16 cells. Else they would walk
-     * out to an armory with nothing to forge from, and be what a wave on the way finds.
+     * and once it stands until it holds 2 wood (a weapon's) and has no threat within 16 cells, LOCK_HOLD s at most
+     * (then 150-200 workers would sit in a secondary armory for good, lost with it if it is razed). Else they would
+     * walk out to an armory with nothing to forge from, and be what a wave on the way finds.
      */
     private boolean lockHold(@NonNull Building old) {
         Building nu = lock_new;
@@ -2913,11 +2994,12 @@ final class Economy {
             lock_new = null;
             return false;
         }
-        if (nu != null && stock(nu, TreeSupply.class) >= 2
-                && !ai.military().threatNear(nu.getGridX(), nu.getGridY(), 16)) {
+        boolean timeout = nu != null && ai.time() - lock_armory_done > LOCK_HOLD;
+        if (nu != null && (timeout || (stock(nu, TreeSupply.class) >= 2
+                && !ai.military().threatNear(nu.getGridX(), nu.getGridY(), 16)))) {
             lock_old = null;
             lock_new = null;
-            ai.aiLog().count("lock_bank_released");
+            ai.aiLog().count(timeout ? "lock_bank_timeout" : "lock_bank_released");
             int workers = old.getUnitContainer().getNumSupplies();
             ai.aiLog().log("LOCK",
                     () -> "the locked armory at " + old.getGridX() + "," + old.getGridY() + " lets its " + workers + " workers go to the new one");
@@ -2929,8 +3011,10 @@ final class Economy {
 
     /**
      * reloc_slot, reloc_lock: the flagged armory project (a hop with reloc_slot, a lock move) that waits unplaced
-     * while the engine's building count (buildings and placed sites) is at the cap less one, so no tower may take the
-     * next slot; else null.
+     * while the engine's building count (buildings and placed sites), with the sites other placers are carrying, is at
+     * the cap less one, so no other project may take the next slot; else null. Carried sites count because each takes
+     * a slot when placed: in a forced retire smoke (s6012, N=13) two towers, one already on its way, took the two slots
+     * a razing and an enemy had freed, and the hop's placer arrived at the cap.
      */
     private @Nullable Project slotWaiter() {
         Strategy st = ai.strategy();
@@ -2944,8 +3028,12 @@ final class Economy {
             }
         if (waiting == null)
             return null;
+        int carried = 0;
+        for (Project q : projects)
+            if (q != waiting && q.building != null && !q.building.isDead() && !q.isPlaced())
+                carried++;
         Player owner = ai.owner();
-        return owner.getBuildingCountContainer().getNumSupplies() >= owner.getWorld().getMaxBuildingCount() - 1 ? waiting : null;
+        return owner.getBuildingCountContainer().getNumSupplies() + carried >= owner.getWorld().getMaxBuildingCount() - 1 ? waiting : null;
     }
 
     /** retire: the flagged armory project (a hop or a lock move) waiting unplaced, or null. */
@@ -3867,6 +3955,7 @@ final class Economy {
             ai.aiLog().count("wood_starved"); // plan ticks (3 s)
         }
         iron_cycle = SitePlanner.gatherSeconds(armory_field, map.getIron(), 30, 10, 400, harvest);
+        iron_cycle_armory = armory;
         int iron_left = countReachable(map.getIron(), 400);
         // Rock warriors are a poor use of a peon; make them only once iron is out of reach.
         rock_weapons = (iron_left == 0 || iron_cycle > 200f)
