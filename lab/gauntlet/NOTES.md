@@ -1474,3 +1474,9 @@ retreat through the same pass (only the attack role is watched).
   7 left at 52 min, 5 at 81, 4 at 109; 15-30 min a copy): the dry spells.
 - Replays VERIFIED: N=15 s7282 (59 min), N=14 s7104 (83 min), and the long N=13 wins s6029, s6189, s6490 (logs for the
   dry-spell diagnosis).
+- **audit15 no-code arms on cur7** (seeds 6001..6300, paired with cur7-bench-vs14-a / -vs15-a; W base -> arm; the
+  base drew poorly at N=15, every arm is up there): decoys + decoy_free_slots=1 N=14 wp +0.39 pp (z 2.0), alive40 +2.3
+  pp (z 2.1), surv60 +0.7, W 0 -> 0; N=15 alive40 +1.3 pp, arm25 +3 pp (z 1.7), W 1 -> 0. hold_multi + hold_ratio=0.5
+  N=14 W 0 -> 3 (s6207, s6215, s6257), wp z 1.7, the rest ~0; N=15 ~0, W 1 -> 0. hold_ratio=1.0 N=14 slightly negative
+  (W 0 -> 1), N=15 wp z 2.1 within the base's draw. precontact_ratio=0 N=14 elim z 2.2, N=15 surv60 z 2.1, W 0 -> 0 / 1
+  -> 1. Confirmations of decoyfs1 and hold05 on fresh seeds (6301..6800 at N=14, plus N=13 and the pair combined) queued.
