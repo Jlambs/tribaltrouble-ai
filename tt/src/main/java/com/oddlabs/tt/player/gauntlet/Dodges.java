@@ -76,7 +76,8 @@ final class Dodges {
     private void dodgePeon(@NonNull Unit p, @NonNull List<@NonNull Unit> hunters) {
         Intel intel = ai.intel();
         if (!p.getAbilities().hasAbilities(Abilities.BUILD) || p.isMounted() || running.containsKey(p)
-                || intel.lures.contains(p) || intel.shepherds.contains(p) || Intel.isStunned(p))
+                || intel.lures.contains(p) || intel.shepherds.contains(p) || Intel.isStunned(p)
+                || ai.economy().reservedPlacer(p))
             return;
         int px = p.getGridX();
         int py = p.getGridY();

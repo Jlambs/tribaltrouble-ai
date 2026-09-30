@@ -147,6 +147,21 @@ final class SitePlanner {
 
     private @Nullable Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance,
             @NonNull DistanceField from_field) {
+        return findArmorySite(reserved, max_distance, from_field, null);
+    }
+
+    /** Candidates findArmorySite(..., ok) may reject before it gives up (reloc, rearm_reach). */
+    private static final int MAX_REJECTED = 200;
+
+    /**
+     * findArmorySite over the candidates that also pass ok (reloc, rearm_reach: a quiet site). The test runs lazily in
+     * the evaluation loop, over candidates already sorted by the quick score, not in the loop over every cell: it scans
+     * the enemies. Candidates within 8 cells of a rejected one are skipped too (the enemies near one are near the
+     * other), and the search stops after 24 evaluated or MAX_REJECTED rejected. With ok null, exactly the plain search.
+     */
+    @Nullable
+    Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance, @NonNull DistanceField from_field,
+            @Nullable CellOk ok) {
         BuildingTemplate armory = template(Race.BUILDING_ARMORY);
         int size = map.getSize();
         List<Site> candidates = new ArrayList<>();
@@ -175,6 +190,7 @@ final class SitePlanner {
         Site best = null;
         float best_cost = Float.MAX_VALUE;
         List<Site> evaluated = new ArrayList<>();
+        List<Site> rejected = ok != null ? new ArrayList<>() : List.of();
         for (Site c : candidates) {
             if (evaluated.size() >= 24)
                 break;
@@ -184,6 +200,18 @@ final class SitePlanner {
                 near |= MapAnalysis.dist2(e.x, e.y, c.x, c.y) < 5 * 5;
             if (near)
                 continue;
+            if (ok != null) {
+                for (Site r : rejected)
+                    near |= MapAnalysis.dist2(r.x, r.y, c.x, c.y) < 8 * 8;
+                if (near)
+                    continue;
+                if (!ok.test(c.x, c.y)) {
+                    rejected.add(c);
+                    if (rejected.size() >= MAX_REJECTED)
+                        break;
+                    continue;
+                }
+            }
             evaluated.add(c);
             DistanceField field = map.computeField(c.x, c.y, 220);
             int d = from_field.get(c.x, c.y);

@@ -434,6 +434,57 @@ class Strategy {
      */
     int wood_reach = 0;
     float wood_reach_time = 2400f;
+    /**
+     * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
+     * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
+     * warrior within 12 cells of its straight way to the site; with none, one peon leaves the quarters nearest the site
+     * (a peon inside, no threat within 12, a clear way) at most every 5 s, reserved for 3 s so Shepherd, Lures,
+     * Dodges, Decoys and the sappers (which run first) leave it; only then the old rule. The placer carrying an armory
+     * site is left out of Military.evacuatePeons while no threat is within 6 cells. A lost armory's new site with a
+     * threat within 25 cells gives way to a site by another quarters with none, instead of waiting. In 15 logged N=14
+     * games 45 rebuild placements failed: 21 placers killed on the way, 24 re-ordered into buildings (28 of the placers
+     * sent were already walking into one), and in the end every peon outside was a shepherd (stall.md).
+     */
+    boolean rearm_placer = false;
+    /**
+     * rearm_reach (m of walking from the start, 0 = off; arms 260 and 400; expand/critique #7, D1b): a lost last armory
+     * goes up again at the best armory site (gathering cost: iron and trees, walk and exposure) within this reach that
+     * is quiet: no threat and no enemy warrior within 30 cells, no building of ours razed within 25 cells in the last
+     * 180 s (Economy.quietOk); searched at most every 10 s, else the old site next to the quarters with the least enemy
+     * strength (safeArmorySite, which ignores iron and nearly wood: 30 % of rebuild sites had no tree within 7 cells,
+     * and s6010's stood unfinished for 318 s with 6 builders, stall.md).
+     */
+    int rearm_reach = 0;
+    /**
+     * reloc (expand/critique #2, the hop): from reloc_time, the expansion check no longer needs a quiet base and a lone
+     * armory. With no armory site or project, a primary armory and every other armory drained (not primary, nobody
+     * inside, iron + rock <= 1, no gatherers linked, not evacuating), every 30 s and reloc_gap s after the last
+     * expansion ended (completed or dropped), Economy.considerRelocation moves the armory when the current one is poor
+     * (iron cycle >= 70 s or cost >= 110, the expansion rule) or has fewer than reloc_nodes live iron nodes within 30
+     * cells, to the best site within reloc_reach m of the primary that is quiet (quietOk), at least 40 cells from it,
+     * with no enemy warrior within 12 cells of the straight way, and costs at most 0.75 of the current armory (0.9 from
+     * desperate_iron_cycle). One armory project at a time; a hop project unplaced for 90 s is dropped. Its builders may
+     * come out of the primary above want_workers + 5. Once the hop falls, the primary is chosen once (no threat within
+     * 16 cells, lowest gathering cost, newest on ties) and switched only after 20 s with a threat within 16 and at
+     * least 60 s after the last switch, since every switch recalls the old armory's gatherers. Why: the global threat
+     * gate stopped 100 % of the one-armory checks after 13 min at N=14, the two-armory gate 66 % of 8-13-min plan ticks
+     * (stall.md); the expansion mines out its 25-cell pile 2-6 min after completion (34 -> 3 -> 0 loads) while a site
+     * 40-80 cells deeper holds a median 158 loads within 30 cells (critique hop.py), and expansion=false cost surv60
+     * -1.3 min (z -3.0).
+     */
+    boolean reloc = false;
+    float reloc_time = 600f;
+    float reloc_gap = 120f;
+    int reloc_reach = 260;
+    /** reloc: the node trigger, fewer than this many live iron nodes within 30 cells of the primary (0 = off). */
+    int reloc_nodes = 3;
+    /**
+     * reloc_slot (expand/critique #3): a hop is planned at the 20-building cap too, and while its project waits
+     * unplaced with the engine's count (buildings and placed sites) at the cap less one, no new tower project is
+     * planned and no tower project starts, so the next freed slot goes to the armory: with two armories standing the
+     * cap binds in 33 % (8-13 min) and 58 % (13-20) of censuses (capstate.py), and towers fall at ~1.3/min then.
+     */
+    boolean reloc_slot = false;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -1137,6 +1188,14 @@ class Strategy {
         bank_reserve_max = params.getInt("bank_reserve_max", bank_reserve_max);
         wood_reach = params.getInt("wood_reach", wood_reach);
         wood_reach_time = (float) params.getDouble("wood_reach_time", wood_reach_time);
+        rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
+        rearm_reach = params.getInt("rearm_reach", rearm_reach);
+        reloc = params.getBoolean("reloc", reloc);
+        reloc_time = (float) params.getDouble("reloc_time", reloc_time);
+        reloc_gap = (float) params.getDouble("reloc_gap", reloc_gap);
+        reloc_reach = params.getInt("reloc_reach", reloc_reach);
+        reloc_nodes = params.getInt("reloc_nodes", reloc_nodes);
+        reloc_slot = params.getBoolean("reloc_slot", reloc_slot);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);

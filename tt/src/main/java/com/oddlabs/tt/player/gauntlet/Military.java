@@ -1311,6 +1311,9 @@ final class Military {
                 continue;
             if (!threatNear(p.getGridX(), p.getGridY(), 11))
                 continue;
+            // rearm_placer: a peon carrying an armory site walks on while no threat is within 6 cells.
+            if (ai.economy().evacExempt(p))
+                continue;
             evacuate.add(p);
         }
         // bank_guard: a main armory at its cap shelters peons only when no quarters can (Economy.guardBank).
@@ -2286,8 +2289,8 @@ final class Military {
         List<Unit> pool = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
-            if (s == PeonState.IDLE || s == PeonState.GATHER_TREE || s == PeonState.GATHER_ROCK
-                    || s == PeonState.GATHER_IRON || s == PeonState.MOVE)
+            if ((s == PeonState.IDLE || s == PeonState.GATHER_TREE || s == PeonState.GATHER_ROCK
+                    || s == PeonState.GATHER_IRON || s == PeonState.MOVE) && !ai.economy().reservedPlacer(p))
                 pool.add(p);
         }
         if (pool.size() < want + 15)

@@ -367,7 +367,7 @@ final class Lures {
             if (st != PeonState.IDLE && st != PeonState.GATHER_TREE && st != PeonState.GATHER_ROCK
                     && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
                 continue;
-            if (intel.shepherds.contains(p) || intel.lures.contains(p) || p.isDead())
+            if (intel.shepherds.contains(p) || intel.lures.contains(p) || p.isDead() || ai.economy().reservedPlacer(p))
                 continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), x, y);
             if (d >= best_d)

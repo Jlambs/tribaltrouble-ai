@@ -510,7 +510,7 @@ final class Shepherd {
             if (st != PeonState.IDLE && st != PeonState.GATHER_TREE && st != PeonState.GATHER_ROCK
                     && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
                 continue;
-            if (intel.shepherds.contains(p))
+            if (intel.shepherds.contains(p) || ai.economy().reservedPlacer(p))
                 continue;
             int danger = nearestEnemy(intel.enemy_warriors, p.getGridX(), p.getGridY());
             if (danger >= 0 && danger <= 14)
