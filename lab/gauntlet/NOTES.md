@@ -1514,3 +1514,9 @@ retreat through the same pass (only the attack role is watched).
   slot for a tower in long games) goes into `retire`. Being built in a worktree (critique's order, all off): rearm
   (placer fixes), reloc (the hop, local quietness, drained-armory gate, hysteresis), reloc_slot, raid_bank,
   reloc_draw, raid_evac, rearm_reach, reloc_lock + retire (late track).
+- **Against the old Expert** (frozen @expert, benchmark map, seeds 9001-9050, current build): 1v1 W 40 L 3 D 7 (score
+  .87); against 2 allied Experts W 9 L 33 D 8 (.26; losses a median 28 min, wins 22-138 min). For scale, Expert on the
+  benchmark beat 3 / 4 / 5 / 6 Hards 92 / 70 / 33 / 4 % (expert-exam runs); we beat 8 / 11 / 13 / 15 Hards 60 / 8 / 1.2 /
+  0.15 %. Against two Experts we reach every milestone first (Q1 37 vs 51 s, armory 193 vs 241, first tower 255 vs 487)
+  and kill more (kd30 +160), but two economies out-produce one (workers 120 vs 244 at 10 min, warriors 52 vs 156 at 15).
+  14-16 % draws at 360 min in both lineups: the long-game finishing problem (dry spells) shows against Expert too.
