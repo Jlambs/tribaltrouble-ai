@@ -10,7 +10,9 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Picks building sites. The armory goes where iron and trees can be gathered fastest, weighed against the walk from
@@ -147,34 +149,116 @@ final class SitePlanner {
 
     private @Nullable Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance,
             @NonNull DistanceField from_field) {
+        return findArmorySite(reserved, max_distance, from_field, 0, null, 0f, null, 0f);
+    }
+
+    /** Candidates findArmorySite(..., ok) may reject before it gives up (reloc, rearm_reach, reloc_lock). */
+    private static final int MAX_REJECTED = 200;
+    /** Seconds a Search keeps its ranked candidates and each evaluated cell's costs. */
+    private static final float SEARCH_SECONDS = 60f;
+    /**
+     * Whether the last findArmorySite with an ok test stopped at MAX_REJECTED, and how many evaluated sites its
+     * max_tree turned down (callers count them).
+     */
+    private boolean gave_up;
+    private int tree_failed;
+
+    boolean lastSearchGaveUp() {
+        return gave_up;
+    }
+
+    int lastTreeFailed() {
+        return tree_failed;
+    }
+
+    /**
+     * One caller's armory site search kept for SEARCH_SECONDS (reloc, rearm_reach and reloc_lock run theirs every
+     * 10-30 s for tens of minutes; one search cost ~20 ms, 0.7 % of a 158-min lock game's CPU at 26 searches, mostly
+     * the pass over every cell and the 24 walking fields): the ranked candidates for one from_field, max_distance and
+     * min_cells, and each evaluated cell's gathering cost, construction time and tree cycle. The ok test still runs
+     * afresh every time; a reused candidate is checked again against the buildings and sites placed since.
+     */
+    static final class Search {
+        private @Nullable DistanceField from;
+        private int max_distance;
+        private int min_cells;
+        private float time = -1000f;
+        private final List<@NonNull Site> candidates = new ArrayList<>();
+        /** Cell (y * size + x) -> {gathering cost, construction seconds, tree cycle, when worked out}. */
+        private final Map<Integer, float @NonNull []> costs = new LinkedHashMap<>();
+    }
+
+    /**
+     * findArmorySite over the candidates that also pass ok (reloc, rearm_reach: a quiet site). The test runs lazily in
+     * the evaluation loop, over candidates already sorted by the quick score, not in the loop over every cell: it scans
+     * the enemies. Candidates within 8 cells of a rejected one are skipped too (the enemies near one are near the
+     * other), and the search stops after 24 evaluated or MAX_REJECTED rejected. With ok null, exactly the plain search.
+     */
+    @Nullable
+    Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance, @NonNull DistanceField from_field,
+            @Nullable CellOk ok, @Nullable Search search, float now) {
+        return findArmorySite(reserved, max_distance, from_field, 0, ok, 0f, search, now);
+    }
+
+    /**
+     * findArmorySite with two more tests and a Search to reuse (reloc, reloc_lock): min_cells from the field's source,
+     * tested in the pass over every cell (a candidate by the primary, which the walk term ranks first, is never ranked
+     * and so takes none of MAX_REJECTED: reloc's 40 cells); max_tree (0: none), a tree cycle (60 units of wood within
+     * 60 cells, the economy's tree_cycle) under which an evaluated site must stand to be returned (it still counts
+     * among the 24 evaluated: reloc_lock). With min_cells 0, ok null, max_tree 0 and search null, the plain search.
+     */
+    @Nullable
+    Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance, @NonNull DistanceField from_field,
+            int min_cells, @Nullable CellOk ok, float max_tree, @Nullable Search search, float now) {
         BuildingTemplate armory = template(Race.BUILDING_ARMORY);
         int size = map.getSize();
-        List<Site> candidates = new ArrayList<>();
-        List<IronSupply> iron = map.getIron();
-        for (int y = 2; y < size - 2; y += 2) {
-            for (int x = 2; x < size - 2; x += 2) {
-                int d = from_field.get(x, y);
-                if (d > max_distance)
-                    continue;
-                if (!map.canPlace(armory, x, y) || conflicts(reserved, x, y, RaceSizes.ARMORY))
-                    continue;
-                // A rough version of the full cost below, with distances as the crow flies, to pick which sites are
-                // worth the exact evaluation.
-                float iron_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
-                        1.25f * averageDistance(iron, x, y, 15) - 5f);
-                float tree_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
-                        1.25f * map.averageTreeDistance(x, y, 30, 60, 150f) - 5f);
-                float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d / 5f + strategy.armory_distance_weight * d + threat_weight * Math.max(
-                        0f, exposure(x, y) - .42f);
-                candidates.add(new Site(x, y, -quick));
+        gave_up = false;
+        tree_failed = 0;
+        boolean reuse = search != null && search.from == from_field && search.max_distance == max_distance
+                && search.min_cells == min_cells && now - search.time <= SEARCH_SECONDS;
+        List<Site> candidates = reuse ? search.candidates : new ArrayList<>();
+        if (!reuse) {
+            int sx = from_field.getSourceX();
+            int sy = from_field.getSourceY();
+            List<IronSupply> iron = map.getIron();
+            for (int y = 2; y < size - 2; y += 2) {
+                for (int x = 2; x < size - 2; x += 2) {
+                    int d = from_field.get(x, y);
+                    if (d > max_distance)
+                        continue;
+                    if (min_cells > 0 && MapAnalysis.dist2(x, y, sx, sy) < min_cells * min_cells)
+                        continue;
+                    if (!map.canPlace(armory, x, y) || conflicts(reserved, x, y, RaceSizes.ARMORY))
+                        continue;
+                    // A rough version of the full cost below, with distances as the crow flies, to pick which sites
+                    // are worth the exact evaluation.
+                    float iron_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
+                            1.25f * averageDistance(iron, x, y, 15) - 5f);
+                    float tree_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
+                            1.25f * map.averageTreeDistance(x, y, 30, 60, 150f) - 5f);
+                    float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d / 5f + strategy.armory_distance_weight * d + threat_weight * Math.max(
+                            0f, exposure(x, y) - .42f);
+                    candidates.add(new Site(x, y, -quick));
+                }
+            }
+            candidates.sort((a, b) -> Float.compare(b.score, a.score));
+            if (search != null) {
+                search.from = from_field;
+                search.max_distance = max_distance;
+                search.min_cells = min_cells;
+                search.time = now;
+                search.candidates.clear();
+                search.candidates.addAll(candidates);
             }
         }
+        if (search != null)
+            search.costs.values().removeIf(c -> now - c[3] > SEARCH_SECONDS);
         if (candidates.isEmpty())
             return null;
-        candidates.sort((a, b) -> Float.compare(b.score, a.score));
         Site best = null;
         float best_cost = Float.MAX_VALUE;
         List<Site> evaluated = new ArrayList<>();
+        List<Site> rejected = ok != null ? new ArrayList<>() : List.of();
         for (Site c : candidates) {
             if (evaluated.size() >= 24)
                 break;
@@ -184,23 +268,67 @@ final class SitePlanner {
                 near |= MapAnalysis.dist2(e.x, e.y, c.x, c.y) < 5 * 5;
             if (near)
                 continue;
+            // A reused candidate: a building or site may stand there since.
+            if (reuse && (!map.canPlace(armory, c.x, c.y) || conflicts(reserved, c.x, c.y, RaceSizes.ARMORY)))
+                continue;
+            if (ok != null) {
+                for (Site r : rejected)
+                    near |= MapAnalysis.dist2(r.x, r.y, c.x, c.y) < 8 * 8;
+                if (near)
+                    continue;
+                if (!ok.test(c.x, c.y)) {
+                    rejected.add(c);
+                    if (rejected.size() >= MAX_REJECTED) {
+                        gave_up = true;
+                        break;
+                    }
+                    continue;
+                }
+            }
             evaluated.add(c);
-            DistanceField field = map.computeField(c.x, c.y, 220);
+            float[] known = search != null ? search.costs.get(c.y * size + c.x) : null;
+            float gather;
+            float build;
+            float tree = 0f;
+            if (known != null) {
+                gather = known[0];
+                build = known[1];
+                tree = known[2];
+            } else {
+                DistanceField field = map.computeField(c.x, c.y, 220);
+                gather = warriorGatherCost(field);
+                build = constructionSeconds(c.x, c.y, QUARTERS_WOOD, strategy.armory_builders);
+                if (search != null || max_tree > 0f)
+                    tree = gatherSeconds(field, map.getTrees(), 60, 10, 120, strategy.harvest_seconds);
+                if (search != null)
+                    search.costs.put(c.y * size + c.x, new float[]{gather, build, tree, now});
+            }
             int d = from_field.get(c.x, c.y);
-            float gather = warriorGatherCost(field);
-            float build = constructionSeconds(c.x, c.y, QUARTERS_WOOD, strategy.armory_builders);
             // Delays to the armory hold back the whole economy; weigh them against gathering speed, which pays off
             // on every warrior of the game.
             float delay = strategy.armory_delay_weight * (build + d / 5f);
             float threat = threat_weight * Math.max(0f, exposure(c.x, c.y) - .42f);
             float cost = gather + delay + strategy.armory_distance_weight * d + threat + (hasNear(map.getRocks(), c.x,
                     c.y, 45) ? 0f : 4f);
+            if (max_tree > 0f && tree >= max_tree) {
+                tree_failed++;
+                continue;
+            }
             if (cost < best_cost) {
                 best_cost = cost;
                 best = new Site(c.x, c.y, -cost);
             }
         }
         return best;
+    }
+
+    /**
+     * What a Search last worked out for the cell (x, y): {gathering cost (warriorGatherCost), construction seconds,
+     * tree cycle}, or null.
+     */
+    float @Nullable [] searched(@NonNull Search search, int x, int y) {
+        float[] c = search.costs.get(y * map.getSize() + x);
+        return c != null ? new float[]{c[0], c[1], c[2]} : null;
     }
 
     /** Average straight-line meters to the nearest count standing supplies; missing ones count as 400 m. */

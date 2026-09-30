@@ -456,7 +456,7 @@ final class Decoys {
                     && s != PeonState.GATHER_ROCK && s != PeonState.GATHER_IRON)
                 continue;
             if (isRunner(p) || intel.shepherds.contains(p) || intel.lures.contains(p)
-                    || enemyNear(intel, p.getGridX(), p.getGridY(), 10))
+                    || enemyNear(intel, p.getGridX(), p.getGridY(), 10) || ai.economy().reservedPlacer(p))
                 continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), x, y);
             if (d < best_d) {

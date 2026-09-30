@@ -238,6 +238,24 @@ final class Shepherd {
         f.leader = null;
     }
 
+    /**
+     * rearm_placer: lets the economy take shepherd u as the placer of a lost armory (its flock recruits again), and
+     * whether u was one of ours.
+     */
+    boolean giveUp(@NonNull Unit u) {
+        for (Flock f : flocks)
+            if (f.shepherd == u) {
+                ai.intel().shepherds.remove(u);
+                f.shepherd = null;
+                f.spot_x = -1;
+                f.leader = null;
+                f.lost_at = ai.time();
+                ai.aiLog().count("shepherd_given_up");
+                return true;
+            }
+        return false;
+    }
+
     private void sendHome(@NonNull Unit u) {
         Building home = ai.intel().armory();
         if (home == null && !ai.intel().quarters.isEmpty())
@@ -304,6 +322,9 @@ final class Shepherd {
                     ai.aiLog().count("wave_to_shepherd");
                 if (ai.logging())
                     logLaunch(f, tx, ty);
+                // raid_evac: an armory of ours the wave goes for may empty before it arrives.
+                if (strategy.raid_evac)
+                    ai.economy().waveLaunched(f.copy, tx, ty);
                 f.prev_wave = f.leader;
             }
         }
@@ -510,7 +531,7 @@ final class Shepherd {
             if (st != PeonState.IDLE && st != PeonState.GATHER_TREE && st != PeonState.GATHER_ROCK
                     && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
                 continue;
-            if (intel.shepherds.contains(p))
+            if (intel.shepherds.contains(p) || ai.economy().reservedPlacer(p))
                 continue;
             int danger = nearestEnemy(intel.enemy_warriors, p.getGridX(), p.getGridY());
             if (danger >= 0 && danger <= 14)

@@ -441,6 +441,175 @@ class Strategy {
      */
     int wood_reach = 150;
     float wood_reach_time = 2400f;
+    /**
+     * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
+     * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
+     * warrior within 12 cells of its straight way to the site; with none, one peon leaves the quarters nearest the site
+     * (a peon inside, no threat within 12, a clear way) at most every 5 s, reserved for 3 s so Shepherd, Lures, Dodges,
+     * Decoys and the sappers (which run first) leave it; then a safe builder of another site, then a peon with only 8
+     * clear cells along the way, then (no armory standing, a quarters left) a shepherd; else the project waits rather
+     * than send a placer into a threat: a lost armory's for 30 s, then it is planned afresh; the first armory's or an
+     * expansion's for 30 s, then its placer is chosen by the old rule (unplaced, it would stop every later expansion
+     * check); a hop's and a lock move's until reloc's drop. The placer carrying an armory site is left out of
+     * Military.evacuatePeons while no threat is within 6 cells. A lost armory's new site with a threat within 25 cells
+     * gives way to a site by another quarters with none, instead of waiting. In 15 logged N=14 games 45 rebuild
+     * placements failed: 21 placers killed on the way, 24 re-ordered into buildings (28 of the placers sent were
+     * already walking into one), and in the end every peon outside was a shepherd (stall.md).
+     */
+    boolean rearm_placer = false;
+    /**
+     * rearm_reach (m of walking from the start, 0 = off; arms 260 and 400; expand/critique #7, D1b): a lost last armory
+     * goes up again at the best armory site (gathering cost: iron and trees, walk and exposure) within this reach that
+     * is quiet: no threat and no enemy warrior within 30 cells, no building of ours razed within 25 cells in the last
+     * 180 s (Economy.quietOk); searched at most every 10 s, else the old site next to the quarters with the least enemy
+     * strength (safeArmorySite, which ignores iron and nearly wood: 30 % of rebuild sites had no tree within 7 cells,
+     * and s6010's stood unfinished for 318 s with 6 builders, stall.md).
+     */
+    int rearm_reach = 0;
+    /**
+     * reloc (expand/critique #2, the hop): from reloc_time, the expansion check no longer needs a quiet base and a lone
+     * armory. With no armory site or project, a primary armory and every other armory drained (not primary, nobody
+     * inside, iron + rock <= 1, no gatherers linked, not evacuating), every 30 s and reloc_gap s after the last
+     * expansion ended (completed or dropped), Economy.considerRelocation moves the armory when the current one is poor
+     * (iron cycle >= 70 s or cost >= 110, the expansion rule) or has fewer than reloc_nodes live iron nodes within 30
+     * cells, to the best site within reloc_reach m of the primary (a Search reused for a minute; reloc_reach above 400
+     * computes a field per check) that is quiet (quietOk), at least 40 cells from it (tested in the pass over every
+     * cell, so the candidates by the primary take none of the 200 rejections), with at least reloc_nodes live iron
+     * nodes within 30 cells (the verify smokes moved to sites with 0 nodes against 0 on the cost ratio alone) and no
+     * enemy warrior within 12 cells of the straight way, and costs at most 0.75 of the current armory (0.9 from
+     * desperate_iron_cycle). One armory project at a time; a hop project unplaced for 90 s (with reloc_slot: 90 s with
+     * a slot open) is dropped. Its builders may come out of the primary above want_workers + 5. Once the hop falls, the
+     * primary is chosen once (no threat within 16 cells, lowest gathering cost, newest on ties) and switched only after
+     * 20 s with a threat within 16 and at least 60 s after the last switch, since every switch recalls the old armory's
+     * gatherers. Why: the global threat gate stopped 100 % of the one-armory checks after 13 min at N=14, the
+     * two-armory gate 66 % of 8-13-min plan ticks (stall.md); the expansion mines out its 25-cell pile 2-6 min after
+     * completion (34 -> 3 -> 0 loads) while a site 40-80 cells deeper holds a median 158 loads within 30 cells
+     * (critique hop.py), and expansion=false cost surv60 -1.3 min (z -3.0).
+     */
+    boolean reloc = false;
+    float reloc_time = 600f;
+    float reloc_gap = 120f;
+    int reloc_reach = 260;
+    /**
+     * reloc: the node trigger, fewer than this many live iron nodes within 30 cells of the primary, and the least a hop
+     * site needs within 30 cells (0 = both off).
+     */
+    int reloc_nodes = 3;
+    /**
+     * reloc_slot (expand/critique #3): a hop is planned at the 20-building cap too, and while its project waits
+     * unplaced with the engine's count (buildings and placed sites), and the sites other placers carry, at the cap less
+     * one, no new tower project is planned and no other project (tower, quarters, sniper tower) starts, so the next
+     * freed slot goes to the armory: with two armories standing the cap binds in 33 % (8-13 min) and 58 % (13-20) of
+     * censuses (capstate.py), and towers fall at ~1.3/min then. The hop's 90-s drop then counts only while a slot
+     * stands open.
+     */
+    boolean reloc_slot = false;
+    /**
+     * raid_bank (expand/critique #4, D3): from raid_bank_time, a forward primary armory (not the finished armory
+     * nearest our start, Economy.homeArmory) keeps only the workers its measured iron income can keep forging
+     * (bank_margin x income x 80 s a weapon) plus a backlog of min(raid_bank_extra, its iron, + half its rock while
+     * rock axes are made), bank_min once it has been unable to forge for bank_noforge_s; the rest wait in the quarters
+     * farthest from the threat (bank_guard's machinery: Economy.guardBank, reserveQuarters, the reserve kept above the
+     * quarters' hold). The expansion was razed in all 850 of 1,000 N=14 games that built it, a median 6.0 min after
+     * completion, and our units dropped a median 60 in that census step with 81 inside just before (raze.md);
+     * drainSecondary moves the home armory's bank into the forward one as soon as the home one cannot forge, and each
+     * hop (reloc) does it again. raid_bank_extra is bank_guard's fixed backlog of 12 as a param (the dry-spell judge's
+     * caveat: 12 keeps an armory small when wood comes back to a full iron bank). Arm raid_bank_time=0: the first
+     * expansion from its completion (~7-8 min) too.
+     */
+    boolean raid_bank = false;
+    float raid_bank_time = 600f;
+    int raid_bank_extra = 12;
+    /**
+     * reloc_draw (copies, 0 = off; arm 2; expand/critique #5): a hop site (Economy.considerRelocation) is turned down
+     * when it would be our nearest building for the oldest idle warriors of at least this many copies (Economy.drawOf):
+     * a Hard copy aims each wave from its oldest idle warrior at our building nearest to it, with no range limit
+     * (AdvancedAI.findTarget), and our razings follow where idle warriors stand, not the copies' starts (razed_rank.py:
+     * 63 % of razed buildings were in the outer third of those standing, with a start-exposure rank of 0.49, as
+     * random). The 30-cell quiet test does not model that: in the reloc1 smokes most hop sites were razed as sites or
+     * within a minute. With reloc on, every hop check logs its site's draw whether or not this is on.
+     */
+    int reloc_draw = 0;
+    /**
+     * raid_evac (expand/critique #6, D3): when Shepherd sees a copy launch (its oldest idle warrior walks off
+     * aggressively to a cell more than 20 cells away) a wave of at least 12 warriors (the copy's warriors walking to
+     * within 12 cells of that cell; one sent elsewhere since drops out) at a cell within 20 cells of a complete armory
+     * of ours holding at least raid_evac_min units (from raid_evac_time), and the wave's strength is at least
+     * raid_evac_ratio x the armory's defence (manned towers within 16 cells, our warriors within 20), the armory is
+     * emptied once the wave's front is 45 s out (at 2.5 cells/s; not under 10 s, which would send the evacuees into
+     * it): weapons leave as warriors and the rest as peons, towards the home armory's cell when that is another armory
+     * with no threat within 16 (the peons wait inside it for the window), else into the quarters farthest from the
+     * threat (held there above its hold for the window), else 18 cells away from the wave. For 60 s nothing is sent
+     * into it and no gatherer out for it, then its rally point is cleared. The old evacuate waited for HP < evac_hp (kd
+     * -.068, z -3.7: evacuees walked out into the attackers). The expansion falls with a median 81 of our units inside;
+     * an armory lets ~2 peons out a second, 40 in 20 s, while a wave walks 100 cells in 35-40 s (raze.md). Needs
+     * shepherd (the launch detection).
+     */
+    boolean raid_evac = false;
+    int raid_evac_min = 12;
+    float raid_evac_ratio = 1f;
+    /**
+     * raid_evac (arms 780, and 2400 for the late track, where an arm must not act before 40 min): no armory is emptied
+     * before this time (s; 0 = from the start). An evacuation stops the armory's forge and every gatherer sent for it
+     * for 60 s: in the verify smoke (8 N=14 games) raid_evac alone cut our iron at 8-13 min 833 -> 674, and 10 of its
+     * 12 evacuations before 13 min were false alarms (the armory stood), against 6 of the 12 later ones, which fell
+     * with up to 115 inside; the big falls come late (39 of 53 long losses lost 100+ units in one armory razing, 34 of
+     * them after 40 min, dryspell judge).
+     */
+    float raid_evac_time = 0f;
+    /**
+     * reloc_lock (seconds held, 0 = off; arm 120; expand/critique #8, dryspell/judge.md fix 3): from reloc_lock_time,
+     * once the wood lock has held this long (Economy.trackLock: the primary armory's tree cycle >= 90 s, i.e. no usable
+     * tree within its 60-cell ring, its wood < 2 and its workers >= want_workers + 20), the armory moves to trees
+     * (Economy.lockRelocate): with no armory site or project, and no global threat gate, the best armory site by
+     * gathering cost (2 x tree + iron: the banked iron stays behind) within reloc_reach m that is quiet (quietOk: no
+     * threat and no enemy within 30 cells, no razing of ours within 25 in 180 s) and has no enemy warrior within 12
+     * cells of the straight way, both tested down the ranked candidates, and a tree cycle of its own under 60 s; after
+     * a miss it looks again in 10 s (the search reused for a minute). The project is added at the 20-building cap too:
+     * its placer waits for a slot, and while it waits unplaced with the count at the cap less one no tower is planned
+     * or started (reloc_slot's reserve). An unplaced lock project whose slot has stood open for 90 s is dropped and
+     * planned afresh. Its placer is chosen by rearm_placer's safe rule (and left out of evacuatePeons while no threat
+     * is within 6 cells) with rearm_placer off too: in the s6415 smoke 4 of 8 lock projects were dropped after 7 placer
+     * failures in 7-15 s. Its builders may come out of the locked armory above want_workers + 5. Once it stands (and
+     * becomes primary), the locked armory keeps its workers inside until the new one holds 2 wood and has no threat
+     * within 16 cells, 120 s at most. Why: the lock was 42 % of the gap minutes of the long wins (150-200 peons waiting
+     * inside, iron at the 200 cap, 1.4-1.6 warriors/min against 9.5-13), usable trees stood 43-122 cells away in every
+     * lock, moving was blocked in 96-100 % of locked minutes by the threat gate and the cap (55-88 %), and wood
+     * reaching an armory again ended 7 of 12 long locks, the first out ~12 min later.
+     */
+    int reloc_lock = 0;
+    float reloc_lock_time = 2400f;
+    /**
+     * retire (expand/critique #8, D5 retire; quarters.md, the skeptic's narrow case): when a flagged armory project (a
+     * reloc hop, which waits at the cap only with reloc_slot, or a reloc_lock move) has waited unplaced retire_wait s
+     * at the 20-building cap, one slot is freed by razing a building of ours with the explicit attack order (the attack
+     * button and a click on it), at most one every 120 s, taking the first of: a stalled site (placed, no builders,
+     * 120 s old); a stranded tower (no quarters or armory within 25 cells; its gunner out first, 4-8 peons at 3 HP/s
+     * each); a quiet drained armory (not primary, nobody inside, no stock or gatherers, no threat within 30); a far
+     * quarters (more than retire_quarters_dist cells from the main armory, units >= retire_pop so breeding is off,
+     * another quarters within 25 cells, emptied first, not training the chieftain). Never a besieged building (a threat
+     * within 20 cells, 30 for an armory; a razing is called off when one comes), and it is called off too once the slot
+     * is not wanted (the project placed or dropped, or a slot freed another way) or the building has become our main or
+     * last armory or our last quarters. Quarters and armories go down to up to 12 idle iron or chicken warriors the
+     * military lends (0.75 HP/s each, 10 for 200 HP) when 8 are at hand, a quarters else to up to 20 peons (1 HP a
+     * swing on a 20 % roll, 0.1 HP/s each: ~100 s for 200 HP; an armory never, D5). The building is doomed meanwhile:
+     * no tower manning, no peons sent in, no repairs, never primary, and no armory site within 12 cells of it for 60 s
+     * after. Why: the cap blocks 55-88 % of wood-locked minutes and s6189's new armory waited 112 min for a slot
+     * (dryspell judge); the slot frees on the tick of the razing, and our own AI fought the test razings (18 of 19
+     * gunners died in their tower, quarters refilled, repairers stayed on; raze.md). Far quarters hold a slot at the
+     * cap 8.6-10.3 min in wins, 9.5 of them above 187 units in the N=13 wins (quarters.md skeptic).
+     */
+    boolean retire = false;
+    float retire_wait = 60f;
+    int retire_quarters_dist = 80;
+    int retire_pop = 245;
+    /**
+     * retire_any_tower (with retire; arm true): with none of retire's buildings to raze, the tower with no threat
+     * within 20 cells farthest from the main armory goes (its gunner out first, 4-8 peons): in the s6189 and s6709
+     * smokes a lock move waited 19 and 31 min at the cap with 15-16 towers, every one within 25 cells of a quarters or
+     * the armory, and no stalled site, drained armory or far quarters.
+     */
+    boolean retire_any_tower = false;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -1144,6 +1313,29 @@ class Strategy {
         bank_reserve_max = params.getInt("bank_reserve_max", bank_reserve_max);
         wood_reach = params.getInt("wood_reach", wood_reach);
         wood_reach_time = (float) params.getDouble("wood_reach_time", wood_reach_time);
+        rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
+        rearm_reach = params.getInt("rearm_reach", rearm_reach);
+        reloc = params.getBoolean("reloc", reloc);
+        reloc_time = (float) params.getDouble("reloc_time", reloc_time);
+        reloc_gap = (float) params.getDouble("reloc_gap", reloc_gap);
+        reloc_reach = params.getInt("reloc_reach", reloc_reach);
+        reloc_nodes = params.getInt("reloc_nodes", reloc_nodes);
+        reloc_slot = params.getBoolean("reloc_slot", reloc_slot);
+        raid_bank = params.getBoolean("raid_bank", raid_bank);
+        raid_bank_time = (float) params.getDouble("raid_bank_time", raid_bank_time);
+        raid_bank_extra = params.getInt("raid_bank_extra", raid_bank_extra);
+        reloc_draw = params.getInt("reloc_draw", reloc_draw);
+        raid_evac = params.getBoolean("raid_evac", raid_evac);
+        raid_evac_min = params.getInt("raid_evac_min", raid_evac_min);
+        raid_evac_ratio = (float) params.getDouble("raid_evac_ratio", raid_evac_ratio);
+        raid_evac_time = (float) params.getDouble("raid_evac_time", raid_evac_time);
+        reloc_lock = params.getInt("reloc_lock", reloc_lock);
+        reloc_lock_time = (float) params.getDouble("reloc_lock_time", reloc_lock_time);
+        retire = params.getBoolean("retire", retire);
+        retire_wait = (float) params.getDouble("retire_wait", retire_wait);
+        retire_quarters_dist = params.getInt("retire_quarters_dist", retire_quarters_dist);
+        retire_pop = params.getInt("retire_pop", retire_pop);
+        retire_any_tower = params.getBoolean("retire_any_tower", retire_any_tower);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);

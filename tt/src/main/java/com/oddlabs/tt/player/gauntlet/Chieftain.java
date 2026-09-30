@@ -605,7 +605,7 @@ final class Chieftain {
         float best_score = -Float.MAX_VALUE;
         for (Building q : intel.quarters) {
             if (!q.canBuildChieftain() || ai.military().enemyStrengthNear(q.getGridX(), q.getGridY(), 30) > 0f
-                    || q.getHitPoints() < q.getTemplate().getMaxHitPoints())
+                    || q.getHitPoints() < q.getTemplate().getMaxHitPoints() || ai.economy().isDoomed(q))
                 continue;
             float d = armory == null ? 0f : (float) Math.sqrt(MapAnalysis.dist2(q.getGridX(), q.getGridY(),
                     armory.getGridX(), armory.getGridY()));
@@ -623,7 +623,7 @@ final class Chieftain {
             return null;
         int best_d = -1;
         for (Building q : intel.quarters) {
-            if (!q.canBuildChieftain())
+            if (!q.canBuildChieftain() || ai.economy().isDoomed(q))
                 continue;
             int nearest = Integer.MAX_VALUE;
             for (Unit e : intel.enemy_warriors)
@@ -659,7 +659,8 @@ final class Chieftain {
                 return;
         } else
             for (Building q : intel.quarters) {
-                if (!q.canBuildChieftain())
+                // retire: never in a quarters being razed.
+                if (!q.canBuildChieftain() || ai.economy().isDoomed(q))
                     continue;
                 float score = q.getUnitContainer().getNumSupplies() - 20f * ai.planner().exposure(q.getGridX(),
                         q.getGridY());
