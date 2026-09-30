@@ -1532,3 +1532,9 @@ retreat through the same pass (only the attack role is watched).
   is queued on the games alive at 40 min at N=13-16.
 - Confirmations on fresh seeds (6301..6500, N=14, vs cur7-bench-vs14-a): decoys + decoy_free_slots=1 W 2 -> 0, elim z
   -1.7; hold_multi + hold_ratio 0.5 W 2 -> 0. Neither lead holds.
+- wood_reach=150 late at N=14 (55 games alive at 40 min): W 4 -> 5 (gained s6777, lost none; s6415 288 -> 137 min);
+  with the late bank_guard 4 -> 5 but lost s6409. N=13+14 together: +5 wins, 0 lost. Fresh block 8001..8500 at N=13-14
+  queued (base first, then the arm on its games alive at 40 min). More audit15 confirmations: decoys N=14 6501..6800 W
+  0 -> 1, N=13 6001..6300 W 4 -> 7 (elim z 2.1, towers20 -0.7 z -2.4); hold05 N=14 6501..6800 W 0 -> 1 (alive40 z 2.4);
+  decoys + hold05 N=14 6001..6300 W 0 -> 3 (wp z 2.7, the same block where hold05 alone gave 0 -> 3). Totals at N=14
+  over 800 fresh-ish seeds: decoys W 2 -> 1, hold05 2 -> 4: not adopted.
