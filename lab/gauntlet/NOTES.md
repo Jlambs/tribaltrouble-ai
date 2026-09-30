@@ -1538,3 +1538,18 @@ retreat through the same pass (only the attack role is watched).
   0 -> 1, N=13 6001..6300 W 4 -> 7 (elim z 2.1, towers20 -0.7 z -2.4); hold05 N=14 6501..6800 W 0 -> 1 (alive40 z 2.4);
   decoys + hold05 N=14 6001..6300 W 0 -> 3 (wp z 2.7, the same block where hold05 alone gave 0 -> 3). Totals at N=14
   over 800 fresh-ish seeds: decoys W 2 -> 1, hold05 2 -> 4: not adopted.
+- **Broken spawns and the wins** (workflow: census of 85,000 copies, vanilla same-seed replays "hard vs hard*N" on all
+  6,000 benchmark seeds (same map code and starts in 6,000 of 6,000), log-only geometry probe; judge and critic;
+  scratchpad broken/judge.md): about 1 copy in 300 is stuck for good by its spawn (0.35 %: never finishes its quarters
+  or its armory; 4-5 % of games; 3x as often on hilly maps). Causes: a wood-poor site (the crew loops between site and
+  trees and never delivers; median 3 trees within 30 cells of walk vs 27) and the user's cliff case (the stock AI
+  picks its armory site by straight-line ring scan: ~0.6 % of copies get one 150-700 m of walk from a quarters 30-60 m
+  away; ~23 % of stuck armories); permanent because AdvancedAI never places a new site while one stands (the lock our
+  freeze path (c) uses). **5 of the 19 wins had a stuck copy vs 0.75 expected** (p 0.0006; odds x9, CI 1.9-25; in
+  vanilla 4 of the 5 were dead too). Corrected effective N: s6037, s6709, s6996 (N=13) were N=12 fields; s6415 (N=14) 13;
+  s6022 (N=15) ~14. Clean wins left: N=13 9, N=14 3, N=15 2 (s6303, s7282): the highest N beaten stands. **Field speed
+  is the larger driver:** by quartile of the field's median armory time (fastest to slowest) wins are 0 / 3 / 6 / 10
+  (p 0.0004; 0 / 2 / 4 / 7 without any stuck, late or slow copy); measured before contact, so it is the map. Broken
+  copies help by sending no waves in the 10-25-min danger window (+1.8 min survival each in losses), not by early
+  outs; our target choice already leaves them alone. Lead for an audit: games where the freeze took path (c) (633)
+  have 0 wins against 3.7 expected (p ~0.02, post hoc; aborted strikes, 873 games, are uninformative).
