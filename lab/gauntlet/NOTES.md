@@ -1593,3 +1593,7 @@ retreat through the same pass (only the attack role is watched).
   24 evacuations were false alarms of the home armory); lock + retire turned the long wins s6029 / s6415 / s6189 /
   s6709 into wins at 136 / 158 / 100 / 140 min (base 244 / 288 / 319 / 175). Screens running from the worktree
   (track A on 6001..6300 at N=14/13 vs cur8-bench; track B late on the games alive at 40 min vs cur8-bench).
+- **First N=16 wins** (cur8, fresh block 8001..9000, snapshot d6cab35db1): 3 of 1,000: s8959 (103 min), s8662 (186),
+  s8130 (299). N=15 on 8001..8500: 1 of 500 (s8112, 42 min). Spawn check: s8959 has one likely stuck copy (s13:
+  quarters at 59 s, no armory, no contact, out at 8 min); s8662 one late copy (s3: armory at 371 s, recovered);
+  s8130 none beyond the freeze target and campaign victims. Replays running.
