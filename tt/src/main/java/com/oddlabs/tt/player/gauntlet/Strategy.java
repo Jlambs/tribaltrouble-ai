@@ -530,6 +530,50 @@ class Strategy {
     boolean raid_evac = false;
     int raid_evac_min = 12;
     float raid_evac_ratio = 1f;
+    /**
+     * reloc_lock (seconds held, 0 = off; arm 120; expand/critique #8, dryspell/judge.md fix 3): from reloc_lock_time,
+     * once the wood lock has held this long (Economy.trackLock: the primary armory's tree cycle >= 90 s, i.e. no usable
+     * tree within its 60-cell ring, its wood < 2 and its workers >= want_workers + 20), the armory moves to trees
+     * (Economy.lockRelocate): with no armory site or project, and no global threat gate, the best of the top 5 armory
+     * sites by gathering cost (2 x tree + iron: the banked iron stays behind) within reloc_reach m that is quiet
+     * (quietOk: no threat and no enemy within 30 cells, no razing of ours within 25 in 180 s), has no enemy warrior
+     * within 12 cells of the straight way and a tree cycle of its own under 60 s; after a miss it looks again in 10 s.
+     * The project is added at the 20-building cap too: its placer waits for a slot, and while it waits unplaced with
+     * the count at the cap less one no tower is planned or started (reloc_slot's reserve). An unplaced lock project
+     * whose slot has stood open for 90 s is dropped and planned afresh. Its placer is chosen by rearm_placer's safe
+     * rule
+     * (and left out of evacuatePeons while no threat is within 6 cells) with rearm_placer off too: in the s6415 smoke 4
+     * of 8 lock projects were dropped after 7 placer failures in 7-15 s. Its builders may come out of the locked armory
+     * above want_workers + 5. Once it stands (and becomes primary), the locked armory keeps its workers inside until
+     * the new one holds 2 wood and has no threat within 16 cells. Why: the lock was 42 % of the gap minutes of the
+     * long wins (150-200 peons waiting inside, iron at the 200 cap, 1.4-1.6 warriors/min against 9.5-13), usable trees
+     * stood 43-122 cells away in every lock, moving was blocked in 96-100 % of locked minutes by the threat gate and
+     * the cap (55-88 %), and wood reaching an armory again ended 7 of 12 long locks, the first out ~12 min later.
+     */
+    int reloc_lock = 0;
+    float reloc_lock_time = 2400f;
+    /**
+     * retire (expand/critique #8, D5 retire; quarters.md, the skeptic's narrow case): when a flagged armory project (a
+     * reloc hop or a reloc_lock move) has waited unplaced retire_wait s at the 20-building cap, one slot is freed by
+     * razing a building of ours with the explicit attack order (the attack button and a click on it), at most one every
+     * 120 s, taking the first of: a stalled site (placed, no builders, 120 s old); a stranded tower (no quarters or
+     * armory within 25 cells; its gunner out first, 4-8 peons at 3 HP/s each); a quiet drained armory (not primary,
+     * nobody inside, no stock or gatherers, no threat within 30); a far quarters (more than retire_quarters_dist cells
+     * from the main armory, units >= retire_pop so breeding is off, another quarters within 25 cells, emptied first,
+     * not training the chieftain). Never a besieged building (a threat within 20 cells, 30 for an armory; a razing is
+     * called off when one comes). Quarters and armories go down to up to 12 idle iron or chicken warriors the military
+     * lends (0.75 HP/s each, 10 for 200 HP) when 8 are at hand, else to up to 20 peons (1 HP a swing on a 20 % roll,
+     * 0.1 HP/s each: ~100 s for 200 HP). The building is doomed meanwhile: no tower manning, no
+     * peons sent in, no repairs, never primary, and no armory site within 12 cells of it for 60 s after. Why: the cap
+     * blocks 55-88 % of wood-locked minutes and s6189's new armory waited 112 min for a slot (dryspell judge); the slot
+     * frees on the tick of the razing, and our own AI fought the test razings (18 of 19 gunners died in their tower,
+     * quarters refilled, repairers stayed on; raze.md). Far quarters hold a slot at the cap 8.6-10.3 min in wins,
+     * 9.5 of them above 187 units in the N=13 wins (quarters.md skeptic).
+     */
+    boolean retire = false;
+    float retire_wait = 60f;
+    int retire_quarters_dist = 80;
+    int retire_pop = 245;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
 
@@ -1248,6 +1292,12 @@ class Strategy {
         raid_evac = params.getBoolean("raid_evac", raid_evac);
         raid_evac_min = params.getInt("raid_evac_min", raid_evac_min);
         raid_evac_ratio = (float) params.getDouble("raid_evac_ratio", raid_evac_ratio);
+        reloc_lock = params.getInt("reloc_lock", reloc_lock);
+        reloc_lock_time = (float) params.getDouble("reloc_lock_time", reloc_lock_time);
+        retire = params.getBoolean("retire", retire);
+        retire_wait = (float) params.getDouble("retire_wait", retire_wait);
+        retire_quarters_dist = params.getInt("retire_quarters_dist", retire_quarters_dist);
+        retire_pop = params.getInt("retire_pop", retire_pop);
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);

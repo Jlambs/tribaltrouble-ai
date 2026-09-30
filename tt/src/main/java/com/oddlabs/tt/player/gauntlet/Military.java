@@ -55,6 +55,8 @@ final class Military {
     private final Map<@NonNull Unit, int @NonNull []> last_spots = new LinkedHashMap<>();
     private final Map<Long, List<@NonNull Unit>> pending_orders = new LinkedHashMap<>();
     private final java.util.ArrayDeque<float @NonNull []> enemy_history = new java.util.ArrayDeque<>();
+    /** retire: warriors lent to the economy to raze a building of ours, out of every role until when given. */
+    private final Map<@NonNull Unit, Float> lent = new LinkedHashMap<>();
 
     private @NonNull Mode mode = Mode.HOME;
     private int staging_x;
@@ -254,6 +256,54 @@ final class Military {
         return threat_level;
     }
 
+    /**
+     * retire: up to n idle iron or chicken warriors of the home army within r cells of (x, y), nearest first (ties in
+     * role order), taken out of every role, and so out of defence, musters and tower manning, until released or for
+     * seconds at most. None when fewer than min are at hand, while an attack is on or musters, or while the base is
+     * under threat (level 2).
+     */
+    @NonNull
+    List<@NonNull Unit> lend(int x, int y, int n, int min, int r, float seconds) {
+        List<Unit> out = new ArrayList<>();
+        if (mode != Mode.HOME || wantsEverything())
+            return out;
+        List<Unit> candidates = new ArrayList<>();
+        List<Integer> dists = new ArrayList<>();
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            if (e.getValue() != Role.ARMY || u.isDead() || u.isMounted()
+                    || ai.intel().warrior_states.get(u) != WarriorState.IDLE
+                    || Intel.warriorType(u) == WarriorType.ROCK)
+                continue;
+            int d = MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY());
+            if (d > r * r)
+                continue;
+            int i = 0;
+            while (i < dists.size() && dists.get(i) <= d)
+                i++;
+            candidates.add(i, u);
+            dists.add(i, d);
+        }
+        if (candidates.size() < min)
+            return out;
+        for (int i = 0; i < Math.min(n, candidates.size()); i++) {
+            Unit u = candidates.get(i);
+            roles.remove(u);
+            tower_assignments.remove(u);
+            front_entry.remove(u);
+            last_order.remove(u);
+            lent.put(u, ai.time() + seconds);
+            out.add(u);
+        }
+        return out;
+    }
+
+    /** retire: lent warriors come back to the home army (updateRoles gives them the ARMY role again). */
+    void release(@NonNull List<@NonNull Unit> units) {
+        for (Unit u : units)
+            lent.remove(u);
+    }
+
     /** A warrior's military role in lower case, or null when it has none (for logs: Shepherd's launch lines). */
     @Nullable
     String roleOf(@NonNull Unit u) {
@@ -313,7 +363,7 @@ final class Military {
     int towerSeatsFree() {
         int n = 0;
         for (Building t : ai.intel().towers)
-            if (!Intel.isTowerManned(t) && !tower_assignments.containsValue(t))
+            if (!Intel.isTowerManned(t) && !tower_assignments.containsValue(t) && !ai.economy().isDoomed(t))
                 n++;
         return n;
     }
@@ -480,15 +530,21 @@ final class Military {
             Map.Entry<Unit, Building> e = it.next();
             Unit u = e.getKey();
             Building t = e.getValue();
-            if (u.isDead() || u.isMounted() || t.isDead() || Intel.isTowerManned(t)
+            boolean doomed = ai.economy().isDoomed(t);
+            if (u.isDead() || u.isMounted() || t.isDead() || doomed || Intel.isTowerManned(t)
                     || (intel.warrior_states.get(u) != WarriorState.ENTER && !front_entry.containsKey(u))) {
                 if (!u.isDead() && !u.isMounted() && roles.get(u) == Role.TOWER)
                     roles.put(u, Role.ARMY);
+                // retire: a gunner on its way into a tower being razed stops where it is.
+                if (doomed && !u.isDead() && !u.isMounted())
+                    ai.landscapeOrder(Selectable.newArray(u), u.getGridX(), u.getGridY(), Action.MOVE, false);
                 it.remove();
             }
         }
+        if (!lent.isEmpty())
+            lent.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() > e.getValue());
         for (Unit w : intel.warriors) {
-            if (!roles.containsKey(w))
+            if (!roles.containsKey(w) && !lent.containsKey(w))
                 roles.put(w, Role.ARMY);
         }
     }
@@ -1327,7 +1383,8 @@ final class Military {
             if (armory != null && !bank_full && !threatNear(armory.getGridX(), armory.getGridY(), 6))
                 shelter = armory;
             for (Building q : intel.quarters) {
-                if (threatNear(q.getGridX(), q.getGridY(), 6))
+                // retire: not into a quarters being razed (the main armory never is).
+                if (threatNear(q.getGridX(), q.getGridY(), 6) || ai.economy().isDoomed(q))
                     continue;
                 int d = MapAnalysis.dist2(q.getGridX(), q.getGridY(), p.getGridX(), p.getGridY());
                 int da = shelter == armory && armory != null ? MapAnalysis.dist2(armory.getGridX(),
@@ -1470,7 +1527,7 @@ final class Military {
         if (idle.isEmpty())
             return;
         for (Building t : intel.towers) {
-            if (tower_assignments.containsValue(t))
+            if (tower_assignments.containsValue(t) || ai.economy().isDoomed(t))
                 continue;
             Unit gunner = readyGunner(t);
             if (gunner == null)
@@ -1547,7 +1604,7 @@ final class Military {
             Map.Entry<Unit, float[]> e = it.next();
             Unit u = e.getKey();
             Building t = tower_assignments.get(u);
-            if (u.isDead() || t == null || t.isDead() || Intel.isTowerManned(t)) {
+            if (u.isDead() || t == null || t.isDead() || Intel.isTowerManned(t) || ai.economy().isDoomed(t)) {
                 it.remove();
                 continue;
             }
@@ -1559,7 +1616,8 @@ final class Military {
             }
         }
         for (Building tower : intel.towers) {
-            if (Intel.isTowerManned(tower) || tower_assignments.containsValue(tower))
+            // retire: a tower being razed is left empty.
+            if (Intel.isTowerManned(tower) || tower_assignments.containsValue(tower) || ai.economy().isDoomed(tower))
                 continue;
             Unit best = null;
             int best_score = Integer.MAX_VALUE;

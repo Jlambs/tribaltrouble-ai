@@ -162,6 +162,26 @@ final class SitePlanner {
     @Nullable
     Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance, @NonNull DistanceField from_field,
             @Nullable CellOk ok) {
+        return findArmorySite(reserved, max_distance, from_field, ok, null);
+    }
+
+    /**
+     * reloc_lock: the k best armory sites of findArmorySite's evaluation (up to 24, spread at least 5 cells apart),
+     * cheapest first (ties in evaluation order), each with its score (minus its cost).
+     */
+    @NonNull
+    List<@NonNull Site> findExpansionSites(@NonNull List<@NonNull Site> reserved, int max_distance,
+            @NonNull DistanceField from_field, int k) {
+        List<Site> evaluated = new ArrayList<>();
+        findArmorySite(reserved, max_distance, from_field, null, evaluated);
+        // A stable sort: ties stay in evaluation order.
+        evaluated.sort((a, b) -> Float.compare(b.score, a.score));
+        return new ArrayList<>(evaluated.subList(0, Math.min(k, evaluated.size())));
+    }
+
+    /** findArmorySite, adding every site it evaluates (with minus its cost as the score) to out when out is given. */
+    private @Nullable Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance,
+            @NonNull DistanceField from_field, @Nullable CellOk ok, @Nullable List<@NonNull Site> out) {
         BuildingTemplate armory = template(Race.BUILDING_ARMORY);
         int size = map.getSize();
         List<Site> candidates = new ArrayList<>();
@@ -223,6 +243,8 @@ final class SitePlanner {
             float threat = threat_weight * Math.max(0f, exposure(c.x, c.y) - .42f);
             float cost = gather + delay + strategy.armory_distance_weight * d + threat + (hasNear(map.getRocks(), c.x,
                     c.y, 45) ? 0f : 4f);
+            if (out != null)
+                out.add(new Site(c.x, c.y, -cost));
             if (cost < best_cost) {
                 best_cost = cost;
                 best = new Site(c.x, c.y, -cost);
