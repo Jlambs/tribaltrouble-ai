@@ -40,8 +40,11 @@ first opponent to beat.
   a decision log line (only in `play`, `replay` and GUI play-tests; otherwise it costs one field check).
   `log.count(key)` adds to a counter that shows in every result row and batch summary. `log.error(where, e)` records
   an exception you caught; the game goes on and the count shows in every row.
-- `AiLog`, `AiParams` and `GameTime` are the AI's toolkit, `com.oddlabs.tt.aikit`. Its subpackage `aikit.harness`
-  is the harness's.
+- **`AiView`** (optional, the template has it): what your AI shows of its thinking when its game is watched in the
+  client, as marks, lines and circles on the map and status lines. It must only read; see
+  [Showing your AI's thinking](#showing-your-ais-thinking).
+- `AiLog`, `AiParams`, `GameTime` and `AiView` are the AI's toolkit, `com.oddlabs.tt.aikit`. Its subpackage
+  `aikit.harness` is the harness's.
 - **Ships**: harness games never have ships. GUI games have them only on Archipelago maps or with the Ships advanced
   setting, so ship orders matter only for play-tests there.
 
@@ -136,6 +139,35 @@ The game has no fog of war (humans see the whole map), so an AI may read any sta
 - **Scans**: `getUnitGrid().scan(filter, gx, gy)`, with `new FindOccupantFilter<>(x, y, radius, null, Unit.class)`
   for units within `radius` meters of `(x, y)`, or `BuildingSiteScanFilter` for legal building sites.
 
+## Showing your AI's thinking
+
+`./aisim.sh watch RUN KEY` plays a recorded game again in the game client, exactly as the harness played it
+(`docs/aisim.md`, Watching a game). An AI that implements `com.oddlabs.tt.aikit.AiView` shows there what it thinks,
+over the game; the template does, so a new AI starts with a small example.
+
+- `paint(Canvas canvas)` shows what the AI intends now. `canvas.status(key, value)` adds a line to the viewer's AI
+  panel (keys keep the order they were first painted in); `canvas.mark(layer, x, y, rgb, label)`,
+  `line(layer, x0, y0, x1, y1, rgb)` and `circle(layer, x, y, radius, rgb)` draw on the map, in grid cells (as
+  `getGridX()` and the AI log use them), with colours `0xRRGGBB`. A layer is a short name that groups related shapes
+  (`army`, `economy`, `threat`): the viewer's `A` key shows all layers, none, or one at a time.
+- `describe(Selectable<?>)` says in one line what one of your own units or buildings is for (a role, a task, an
+  assignment); the viewer's inspector shows it under the engine's facts. Null for nothing to add.
+- The viewer alone calls them: between two ticks, never during one; `paint` at most once per rendered frame, only for
+  the player the viewer follows and only while the overlay shows; `describe` while the inspector shows one of your
+  objects. Nothing calls them in harness games, so they cost nothing there. Never call them yourself.
+- **Both must only read.** Call nothing that changes anything: no orders, no `AiLog` (its counters are part of the
+  result row), no draws from the world's random generator, no fields of your AI changed, no caches filled, not even
+  lazily (compute what you show from your state, or keep it in fields that `animate` fills). Lint does not check
+  this. The viewer does: a painter that changes anything makes the watched game another game, and the viewer, which
+  compares the world's checksum with the recording every 30 game seconds, shows it as `DIVERGED` from the first
+  census the change reaches (`chaos:paint=cheat` draws one random number per paint, and its game diverges within a
+  minute). Keep no reference to the canvas: it is only valid during the call.
+- Engine getters assert on objects that just died. The viewer catches what `paint` and `describe` throw (exceptions,
+  assertion and linkage errors): it drops that paint, counts it, and shows `paint failed: ...` with where it was
+  thrown. The game goes on.
+- Limits: 5,000 shapes and 20 status lines per paint, 72 characters per label and status text. The AI panel shows
+  how long a paint takes; keep it well under a millisecond, as it runs on every frame the game moves.
+
 ## Recipes
 
 Sketches of common tasks, not a complete AI. `me` is `getOwner()`. `gx, gy` is a grid cell. `quarters` and `armory`
@@ -222,7 +254,7 @@ An AI may do exactly what a human player can do through the UI, and nothing more
   - creating another AI (`new AdvancedAI(...)`) or a `UnitInfo`. Either would give your player a second set of
     starting units;
   - the harness's part of the toolkit, `com.oddlabs.tt.aikit.harness` (`AiSpec`, `GameRecorder`, ...): an AI uses
-    only `com.oddlabs.tt.aikit` (`AiLog`, `AiParams` and `GameTime`);
+    only `com.oddlabs.tt.aikit` (`AiLog`, `AiParams`, `GameTime` and `AiView`);
   - another AI's package: an AI is one package (`freeze` copies only that one), so copy what you need into yours.
 - **Never give orders through another player's `Player`**. The engine would accept them for that player's units, and
   lint cannot see whose `Player` an order goes to.

@@ -13,6 +13,7 @@ import java.util.Collection;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -108,9 +109,9 @@ final class Checkpoints implements Rewinder {
         Checkpoint checkpoint;
         try {
             checkpoint = take();
-        } catch (Copier.CopyException e) {
+        } catch (RuntimeException e) { // a CopyException, or anything else a copy hits: the earlier ones stay usable
             failure = "no checkpoints after " + clock(tick) + ": " + e.getMessage();
-            logger.warning(failure);
+            logger.log(Level.WARNING, failure, e);
             return;
         }
         checkpoints.add(checkpoint);

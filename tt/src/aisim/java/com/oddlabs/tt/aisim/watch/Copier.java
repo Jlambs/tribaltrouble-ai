@@ -246,15 +246,17 @@ final class Copier {
         } catch (Unsupported e) {
             throw new CopyException(e.object, pathTo(e.object), e.reason);
         }
-        for (Object[] anchor : anchors) {
-            commit(anchor[1], (Object[]) anchor[2]);
-        }
+        // Everything that can still fail runs before the anchors are written, so a failed restore leaves the live
+        // world as it was. The rebuilt collections are new objects, and no anchor hashes by its fields.
         // backwards: a hash collection reached from another one's keys is filled before them
         for (int i = rebuilds.size() - 1; i >= 0; i--) {
             rebuilds.get(i).run();
         }
         for (Object node : nodes) {
             setBoolean(rules.node_visited, node, false);
+        }
+        for (Object[] anchor : anchors) {
+            commit(anchor[1], (Object[]) anchor[2]);
         }
         rules.expected_objects = Math.max(rules.expected_objects, copies.size());
         return new Result(out, objects, bytes, System.nanoTime() - start, classes);
@@ -527,11 +529,22 @@ final class Copier {
             shared(src, "record of shared values");
             return src;
         }
+        Object record;
         try {
-            return made(src, plan.canonical().newInstance(values), plan, plan.shallow);
+            record = plan.canonical().newInstance(values);
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
-            throw new IllegalStateException("cannot construct record " + plan.type.getName(), e);
+            Throwable cause = e instanceof InvocationTargetException target ? target.getCause() : e;
+            throw new Unsupported(src, "a record whose constructor fails on its copied components (" + cause + ")");
         }
+        // The components are copied but not yet filled: only a constructor that stores them as given (the default
+        // one, or one that only checks nulls) makes a faithful copy. One that copies or wraps them would keep their
+        // empty state, so refuse it.
+        for (int i = 0; i < values.length; i++) {
+            if (plan.slots[i].type == 'L' && get(plan.slots[i].field, record) != values[i]) {
+                throw new Unsupported(src, "a record whose constructor transforms its components");
+            }
+        }
+        return made(src, record, plan, plan.shallow);
     }
 
     // ---------------------------------------------------------------- failures

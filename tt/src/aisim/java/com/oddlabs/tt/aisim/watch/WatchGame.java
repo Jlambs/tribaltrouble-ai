@@ -4,8 +4,6 @@ import com.oddlabs.net.NetworkSelector;
 import com.oddlabs.tt.Main;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.GameTime;
-import com.oddlabs.tt.aikit.harness.AiSpec;
-import com.oddlabs.tt.aisim.build.Pool;
 import com.oddlabs.tt.aisim.play.ClientWorld;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.camera.MapCamera;
@@ -19,10 +17,8 @@ import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
-import com.oddlabs.tt.player.AI;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInfo;
-import com.oddlabs.tt.player.UnitInfo;
 import com.oddlabs.tt.render.RenderQueues;
 import com.oddlabs.tt.render.Renderer;
 import com.oddlabs.tt.resource.IslandGenerator;
@@ -32,12 +28,9 @@ import com.oddlabs.tt.viewer.WorldViewer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.net.URLClassLoader;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -66,6 +59,7 @@ final class WatchGame implements Clock.Listener {
     private final @NonNull Rewinder rewinder;
     private final @NonNull Verification verification;
     private final @NonNull Clock clock;
+    private final @NonNull AiOverlay overlay;
     private final @NonNull WatchHud hud;
     private final @NonNull WorldViewer viewer;
     private final @Nullable Selftest selftest;
@@ -116,6 +110,7 @@ final class WatchGame implements Clock.Listener {
         this.rewinder = newRewinder(world, file, track, ai_log);
 
         this.verification = new Verification(recording, track);
+        this.overlay = new AiOverlay(this);
         this.hud = new WatchHud(this);
         this.clock = new Clock(world, rewinder, this, this::menuPaused, end_tick);
         this.viewer = new WorldViewer(network, gui_root, parameters, new WatchInGameInfo(), generator, world_info,
@@ -158,41 +153,12 @@ final class WatchGame implements Clock.Listener {
 
     /** The AIs in slot order, as Match.createAIs makes them; a seat whose AI comes from a jar uses its loader. */
     private void createAIs() {
-        Map<String, URLClassLoader> loaders = new LinkedHashMap<>();
-        Map<String, WatchFile.Loader> by_name = new LinkedHashMap<>();
-        for (WatchFile.Loader loader : file.loaders()) {
-            by_name.put(loader.name(), loader);
-            String tag = loader.name().startsWith("@") ? loader.name().substring(1) : loader.name();
-            loaders.put(loader.name(), new Pool(tag, loader.entry(), loader.packageName(), "", Path.of(
-                    loader.jar())).newLoader());
-        }
-        UnitInfo unit_info = ClientWorld.startingUnits();
-        for (int slot = 0; slot < job.slots(); slot++) {
-            Player player = world.getPlayers()[slot];
-            String spec = job.spec(slot);
-            String name = AiSpec.nameOf(spec);
-            WatchFile.Loader loader = by_name.get(name);
-            AI ai;
-            if (loader != null) {
-                try {
-                    Class<?> type = Class.forName(loader.entry(), true, loaders.get(name));
-                    ai = AiSpec.create(type, AiSpec.paramsOf(spec), player, unit_info);
-                } catch (ClassNotFoundException e) {
-                    throw new IllegalStateException("no class " + loader.entry() + " in " + loader.jar(), e);
-                }
-            } else if (name.startsWith("@")) {
-                throw new IllegalStateException(
-                        "slot " + slot + " plays " + spec + ", but the watch file has no " + "loader for " + name);
-            } else {
-                ai = AiSpec.create(spec, player, unit_info);
-            }
-            player.setAI(ai);
-        }
+        SeatAis.create(job, world, file.loaders());
     }
 
     // ---------------------------------------------------------------- the frame
 
-    /** The frame task: the selftest's next step, the clock's ticks, then the HUD. */
+    /** The frame task: the selftest's next step, the clock's ticks, the AI's overlay (between ticks), the HUD. */
     void frame() {
         long now = System.nanoTime();
         try {
@@ -201,6 +167,7 @@ final class WatchGame implements Clock.Listener {
             }
             clock.frame(now);
             dropDeadPick();
+            overlay.frame();
             hud.frame(now);
         } catch (RuntimeException | AssertionError e) {
             if (selftest != null) {
@@ -328,6 +295,12 @@ final class WatchGame implements Clock.Listener {
         return ai_log;
     }
 
+    /** What the followed player's AI shows of its thinking (AiView). */
+    @NonNull
+    AiOverlay aiOverlay() {
+        return overlay;
+    }
+
     @NonNull
     Rewinder rewinder() {
         return rewinder;
@@ -352,6 +325,12 @@ final class WatchGame implements Clock.Listener {
     /** Rebuild the HUD's text on the next frame (a screenshot wants the HUD of this very state). */
     void hudRefreshSoon() {
         hud.refreshSoon();
+    }
+
+    /** The HUD, for the selftest's input steps. */
+    @NonNull
+    WatchHud hud() {
+        return hud;
     }
 
     /** The object the inspector shows (with a selection ring), or null. */

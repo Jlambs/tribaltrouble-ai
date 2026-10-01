@@ -124,7 +124,7 @@ public record ClientWorld(@NonNull World world, @NonNull Landscape landscape) im
     public static @NonNull WorldParameters parameters(@NonNull Job job) {
         // spotless:off
         return WorldParameters.builder()
-                .initialGameSpeed(Game.GAMESPEED_NORMAL)
+                .initialGameSpeed(job.gameSpeed())
                 .mapcode(job.mapcode())
                 .initialUnitCount(STARTING_UNITS)
                 .maxUnitCount(Game.DEFAULT_MAX_UNIT_COUNT)

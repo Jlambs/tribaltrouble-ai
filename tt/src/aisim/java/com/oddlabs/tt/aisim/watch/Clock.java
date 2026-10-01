@@ -95,6 +95,14 @@ final class Clock {
     /** Seeks queued after the current one (presimulation). */
     private final ArrayDeque<Integer> pending = new ArrayDeque<>();
     private boolean presimulating;
+    /** Where a presimulation comes back to, and whether it plays on from there. */
+    private int presim_back_to;
+    private boolean presim_resume;
+
+    // what the clock did, for reports: every tick played (first passes and re-plays) and every restore
+    private long ticks_played;
+    private int restores;
+    private int last_restore_tick = -1;
 
     // the effective speed: ticks played in recent frames
     private final long[] frame_nanos = new long[256];
@@ -178,6 +186,21 @@ final class Clock {
 
     boolean presimulating() {
         return presimulating;
+    }
+
+    /** Ticks the world played since the start, first passes and re-plays alike: how much was simulated. */
+    long ticksPlayed() {
+        return ticks_played;
+    }
+
+    /** How many restores the rewinder did so far. */
+    int restores() {
+        return restores;
+    }
+
+    /** The tick the last restore went back to, or -1 before the first. */
+    int lastRestoreTick() {
+        return last_restore_tick;
     }
 
     /** The speed as the view writes it: x1/8 ... x128, MAX. */
@@ -285,9 +308,21 @@ final class Clock {
         return startSeek(target);
     }
 
-    /** Simulates the whole game (to the recorded end, then back to the start), so every later jump is quick. */
+    /**
+     * Simulates the whole game (to the recorded end, then back to the start, paused), so every later jump is quick:
+     * --presim and the selftest's presim step.
+     */
     @Nullable
     String presimulate() {
+        return presimulate(0, false);
+    }
+
+    /**
+     * Simulates the rest of the game to the recorded end, then comes back to {@code back_to}, playing on from there if
+     * {@code resume}: the HUD's command, after which every jump is quick. A seek meanwhile cancels the way back.
+     */
+    @Nullable
+    String presimulate(int back_to, boolean resume) {
         if (end_tick < 0) {
             say("cannot presimulate: the recorded end is unknown");
             return message;
@@ -295,11 +330,24 @@ final class Clock {
         pending.clear();
         String error = startSeek(end_tick);
         if (error == null) {
-            pending.add(0);
+            pending.add(back_to);
             presimulating = true;
+            presim_back_to = back_to;
+            presim_resume = resume;
             resume_playing = false;
         }
         return error;
+    }
+
+    /** Stops a presimulation where it is and goes back to where it started from, as it would have at its end. */
+    void stopPresimulation() {
+        if (!presimulating) {
+            return;
+        }
+        String error = seek(presim_back_to);
+        if (error == null) {
+            resume_playing = presim_resume;
+        }
     }
 
     private @Nullable String startSeek(int target) {
@@ -315,6 +363,8 @@ final class Clock {
             try {
                 int at = rewinder.restoreAtOrBefore(world, target);
                 seek_restored = true;
+                restores++;
+                last_restore_tick = at;
                 listener.restored(at);
             } catch (RuntimeException e) {
                 // the rewinder left the world as it was: a seek under way goes on
@@ -411,6 +461,7 @@ final class Clock {
             Globals.run_ai = true;
             world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
             ran++;
+            ticks_played++;
             int tick = world.getTick();
             if (tick > frontier) {
                 frontier = tick;
@@ -438,7 +489,9 @@ final class Clock {
         listener.seekDone(restored);
         Integer next = pending.poll();
         if (next != null) {
-            startSeek(next);
+            if (startSeek(next) == null && pending.isEmpty()) {
+                resume_playing = presim_resume; // the way back of a presimulation: play on as before it, or not
+            }
         } else {
             presimulating = false;
         }

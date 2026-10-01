@@ -1,7 +1,13 @@
 package com.oddlabs.tt.aisim.watch;
 
+import com.oddlabs.tt.gui.GUIRoot;
+import com.oddlabs.tt.gui.LocalInput;
+import com.oddlabs.tt.gui.MouseButton;
+import com.oddlabs.tt.input.Key;
+import com.oddlabs.tt.input.Modifier;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.player.Player;
+import com.oddlabs.tt.render.Renderer;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -10,8 +16,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * A scripted check of the watch view, run in place of a user (WatchFile.selftest): {@code ;}-separated steps, each
@@ -31,8 +40,32 @@ import java.util.Locale;
  * <li>{@code map} flies up to the overview map (Space), where every player's objects are dots; {@code follow} or
  * {@code select} flies back down;</li>
  * <li>{@code follow:SLOT} moves the camera to player SLOT (as the {@code ]} key does);</li>
+ * <li>{@code overlay:MODE} shows the followed AI's overlay layers as the {@code A} key does: {@code all},
+ * {@code none}, {@code next}, {@code prev} or a layer's name; {@code overlay:report} only reports, and
+ * {@code overlay:check} fails when a paint failed or an AI that implements AiView was never painted. Each reports the
+ * overlay's state after the next frame;</li>
  * <li>{@code quit} ends the script (also the end of the steps).</li>
  * </ul>
+ * Input steps go the way a real key or mouse button does from the moment the window reports it (InputState: focus,
+ * picking, the panels, SelectionDelegate, the watch keys); only the window system's own event delivery is left out.
+ * Each waits until the clock is idle again (a key or click may seek):
+ * <ul>
+ * <li>{@code key:KEY} presses and lets go of a key: a Key name ({@code F1}, {@code N}, {@code PERIOD},
+ * {@code RETURN}) or one of {@code . , [ ] + -}, after {@code shift+}, {@code ctrl+} or {@code alt+} as wanted;</li>
+ * <li>{@code tap:KEY} is {@code key:KEY} without the wait (to press E again while it presimulates);</li>
+ * <li>{@code type:TEXT} types TEXT into whatever has the keys (the jump box after {@code key:J});</li>
+ * <li>{@code click:WHERE}, {@code hover:WHERE}, {@code press:WHERE}, {@code drag:WHERE}, {@code release} move the
+ * mouse and use its left button, WHERE being {@code X,Y} (GUI units from the bottom left), {@code row:SLOT} (that
+ * player's scoreboard row), {@code timeline:TIME} (the timeline at TIME), {@code log} (the AI log panel) or
+ * {@code view} (the middle of the window);</li>
+ * <li>{@code wheel:N} turns the mouse wheel N notches (up is positive) where the mouse is;</li>
+ * <li>{@code expect:WHAT=VALUE} fails unless the view is so: {@code tick=TIME}, {@code follow=SLOT},
+ * {@code state=PAUSED} (PLAYING, SEEKING, ENDED), {@code help}, {@code log}, {@code scoreboard}, {@code inspector},
+ * {@code timeline} or {@code flee} {@code =on}/{@code off}, {@code inspect=none} or a kind, {@code message=TEXT}
+ * (the status panel's message contains TEXT).</li>
+ * </ul>
+ * Each report line says how many ticks the world played during the step and how fast (not the distance the view
+ * moved: a seek may restore a later checkpoint and play only from there), and the checkpoint it restored, if any.
  */
 final class Selftest {
     private final @NonNull WatchGame game;
@@ -44,7 +77,9 @@ final class Selftest {
     private @Nullable String step;
     private boolean step_started;
     private long step_start_nanos;
-    private int step_start_tick;
+    private long step_start_played;
+    private int step_start_restores;
+    private @Nullable String step_start_message;
     /** play: when the step ends. */
     private long until_nanos;
     /** step: the tick it must reach, and the clock's message before it. */
@@ -82,7 +117,9 @@ final class Selftest {
             if (!step_started) {
                 step_started = true;
                 step_start_nanos = now;
-                step_start_tick = game.clock().tick();
+                step_start_played = game.clock().ticksPlayed();
+                step_start_restores = game.clock().restores();
+                step_start_message = game.clock().message();
                 if (start(current, now)) {
                     done(current, null);
                 }
@@ -160,6 +197,15 @@ final class Selftest {
                 verify();
                 return true;
             }
+            case "overlay" -> {
+                if (!argument.equals("check") && !argument.equals("report")) {
+                    String error = game.aiOverlay().choose(argument);
+                    if (error != null) {
+                        throw new IllegalArgumentException(error);
+                    }
+                }
+                return false; // reported after a frame, which paints and draws in the mode chosen
+            }
             case "presim" -> {
                 String error = clock.presimulate();
                 if (error != null) {
@@ -171,6 +217,38 @@ final class Selftest {
                 next_step = steps.size();
                 return true;
             }
+            case "key" -> {
+                key(argument);
+                return false;
+            }
+            case "tap" -> {
+                key(argument);
+                return true; // goes on at once, while what the key started runs
+            }
+            case "type" -> {
+                GUIRoot root = game.viewer().getGUIRoot();
+                for (int i = 0; i < argument.length(); i++) {
+                    root.getInputState().keyTyped(0, argument.charAt(i));
+                }
+                return false;
+            }
+            case "click", "hover", "press", "drag" -> {
+                mouse(name, argument);
+                return false;
+            }
+            case "release" -> {
+                Renderer.getLocalInput().mouseReleased(game.viewer().getGUIRoot(), MouseButton.LEFT);
+                return false;
+            }
+            case "wheel" -> {
+                // the window reports a notch as 120 (LWJGL3InputProvider), the GUI makes it 1
+                Renderer.getLocalInput().mouseScrolled(game.viewer().getGUIRoot(), Integer.parseInt(argument) * 120);
+                return false;
+            }
+            case "expect" -> {
+                expect(argument);
+                return true;
+            }
             default -> throw new IllegalArgumentException("unknown step " + name);
         }
     }
@@ -180,7 +258,7 @@ final class Selftest {
         Clock clock = game.clock();
         return switch (name) {
             case "play", "wait" -> now >= until_nanos;
-            case "seek" -> !clock.busy();
+            case "seek", "key", "type", "click", "hover", "press", "drag", "release", "wheel" -> !clock.busy();
             case "presim" -> {
                 if (clock.busy()) {
                     yield false;
@@ -210,6 +288,19 @@ final class Selftest {
                 Screenshot.save(file);
                 yield true;
             }
+            case "overlay" -> {
+                AiOverlay overlay = game.aiOverlay();
+                log("     " + overlay.report());
+                if (current.split(":", 2)[1].trim().equals("check")) {
+                    if (overlay.failures() > 0) {
+                        throw new IllegalStateException(overlay.failures() + " paints failed");
+                    }
+                    if (overlay.paints() == 0 && overlay.followedPaints()) {
+                        throw new IllegalStateException("the followed AI implements AiView, but was never painted");
+                    }
+                }
+                yield true;
+            }
             default -> true;
         };
     }
@@ -217,15 +308,26 @@ final class Selftest {
     private void done(@NonNull String current, @Nullable String failure) {
         double seconds = (System.nanoTime() - step_start_nanos) / 1e9;
         Clock clock = game.clock();
-        int ticks = clock.tick() - step_start_tick;
+        // the ticks the world played, not the distance travelled: a seek may restore a checkpoint first
+        long played = clock.ticksPlayed() - step_start_played;
+        int restores = clock.restores() - step_start_restores;
         StringBuilder line = new StringBuilder(String.format(Locale.ROOT, "%-4s %-22s %7.2f s  at %s (t%d)",
                 failure == null ? "ok" : "FAIL", current, seconds, Times.clockTicks(clock.tick()), clock.tick()));
-        String name = current.split(":", 2)[0].trim().toLowerCase(Locale.ROOT);
-        if (ticks > 0 && seconds > 0 && !name.equals("shot")) {
-            line.append(String.format(Locale.ROOT, "  %d ticks, %.0f ticks/s (x%.1f)", ticks, ticks / seconds,
-                    ticks / seconds / 50));
+        if (restores > 0) {
+            line.append("  restored ").append(Times.clockTicks(clock.lastRestoreTick())).append(
+                    restores > 1 ? " (the last of " + restores + " restores)" : "");
+        }
+        // a screenshot's frame plays on as every frame does, and encoding it takes long: no rate worth showing
+        boolean shot = current.toLowerCase(Locale.ROOT).startsWith("shot");
+        if (played > 0 && seconds > 0 && !shot) {
+            line.append(String.format(Locale.ROOT, "  %d ticks played, %.0f ticks/s (x%.1f)", played, played / seconds,
+                    played / seconds / 50));
         }
         line.append("  ").append(clock.stateText()).append("  [").append(game.verification().status()).append(']');
+        String message = clock.message();
+        if (message != null && !message.equals(step_start_message)) {
+            line.append("  \"").append(message).append('"');
+        }
         if (failure != null) {
             failures++;
             line.append("\n       ").append(failure);
@@ -253,6 +355,153 @@ final class Selftest {
         }
         throw new IllegalStateException("slot " + slot + " has no " + type);
     }
+
+    /** Presses and lets go of a key, as the window would report it ({@code shift+ctrl+N}, {@code F1}, {@code .}). */
+    private void key(@NonNull String argument) {
+        Set<Modifier> modifiers = EnumSet.noneOf(Modifier.class);
+        String rest = argument.trim();
+        while (true) {
+            String lower = rest.toLowerCase(Locale.ROOT);
+            if (lower.startsWith("shift+") && rest.length() > 6) {
+                modifiers.add(Modifier.SHIFT);
+            } else if (lower.startsWith("ctrl+") && rest.length() > 5) {
+                modifiers.add(Modifier.CONTROL);
+            } else if (lower.startsWith("alt+") && rest.length() > 4) {
+                modifiers.add(Modifier.ALT);
+            } else {
+                break;
+            }
+            rest = rest.substring(rest.indexOf('+') + 1);
+        }
+        Key key = switch (rest) {
+            case "." -> Key.PERIOD;
+            case "," -> Key.COMMA;
+            case "[" -> Key.LBRACKET;
+            case "]" -> Key.RBRACKET;
+            case "-" -> Key.MINUS;
+            case "+" -> {
+                modifiers.add(Modifier.SHIFT); // the game's speed key is Shift and =
+                yield Key.EQUALS;
+            }
+            default -> {
+                try {
+                    yield Key.valueOf(rest.toUpperCase(Locale.ROOT));
+                } catch (IllegalArgumentException e) {
+                    throw new IllegalArgumentException("no key " + rest, e);
+                }
+            }
+        };
+        GUIRoot root = game.viewer().getGUIRoot();
+        LocalInput input = Renderer.getLocalInput();
+        input.setKeys(key, true, modifiers);
+        root.getInputState().keyPressed(key, (char) 0, modifiers, false);
+        input.setKeys(key, false, EnumSet.noneOf(Modifier.class));
+        root.getInputState().keyReleased(key, (char) 0, modifiers);
+    }
+
+    /** Moves the mouse to WHERE (see the class comment) and clicks, presses or drags there, or only moves. */
+    private void mouse(@NonNull String step, @NonNull String where) {
+        int[] at = guiPoint(where);
+        GUIRoot root = game.viewer().getGUIRoot();
+        LocalInput input = Renderer.getLocalInput();
+        float scale = root.getGlobalScale();
+        short x = (short) Math.round(at[0] * scale);
+        short y = (short) Math.round(at[1] * scale);
+        if (step.equals("drag")) {
+            input.mouseDragged(root, MouseButton.LEFT, x, y);
+            return;
+        }
+        input.mouseMoved(root, x, y);
+        if (step.equals("click") || step.equals("press")) {
+            input.mousePressed(root, MouseButton.LEFT);
+        }
+        if (step.equals("click")) {
+            input.mouseReleased(root, MouseButton.LEFT);
+        }
+    }
+
+    /** A place on the screen in GUI units (y up): {@code X,Y}, {@code row:SLOT}, {@code timeline:TIME}, ... */
+    private int @NonNull [] guiPoint(@NonNull String where) {
+        WatchHud hud = game.hud();
+        String[] parts = where.trim().split(":", 2);
+        String argument = parts.length > 1 ? parts[1].trim() : "";
+        switch (parts[0].trim().toLowerCase(Locale.ROOT)) {
+            case "row" -> {
+                Scoreboard board = hud.scoreboard();
+                requireShown(board, "the scoreboard");
+                return new int[]{board.guiX() + board.getWidth() / 3, board.guiY() + board.rowMiddleY(
+                        Integer.parseInt(argument))};
+            }
+            case "timeline" -> {
+                Timeline timeline = hud.timeline();
+                requireShown(timeline, "the timeline");
+                int tick = Times.parse(argument, game.clock().tick(), game.endTick());
+                return new int[]{timeline.guiX() + timeline.xOf(tick), timeline.guiY() + timeline.barMiddleY()};
+            }
+            case "log" -> {
+                AiLogPanel log = hud.aiLog();
+                requireShown(log, "the AI log");
+                return new int[]{log.guiX() + log.getWidth() / 2, log.guiY() + log.getHeight() / 2};
+            }
+            case "view" -> {
+                GUIRoot root = game.viewer().getGUIRoot();
+                return new int[]{root.getWidth() / 2, root.getHeight() / 2};
+            }
+            default -> {
+                String[] xy = where.split(",");
+                if (xy.length != 2) {
+                    throw new IllegalArgumentException(
+                            "not a place: " + where + " (X,Y row:SLOT timeline:TIME log view)");
+                }
+                return new int[]{Integer.parseInt(xy[0].trim()), Integer.parseInt(xy[1].trim())};
+            }
+        }
+    }
+
+    private static void requireShown(@NonNull HudPanel panel, @NonNull String name) {
+        if (!panel.isShown()) {
+            throw new IllegalStateException(name + " is hidden");
+        }
+    }
+
+    /** {@code expect:WHAT=VALUE}: fails unless the view is so (see the class comment). */
+    private void expect(@NonNull String argument) {
+        int equals = argument.indexOf('=');
+        if (equals < 0) {
+            throw new IllegalArgumentException("expect:WHAT=VALUE, not " + argument);
+        }
+        String what = argument.substring(0, equals).trim().toLowerCase(Locale.ROOT);
+        String wanted = argument.substring(equals + 1).trim();
+        Clock clock = game.clock();
+        WatchHud hud = game.hud();
+        String expected = wanted;
+        String actual;
+        switch (what) {
+            case "tick" -> {
+                expected = Times.clockTicks(Times.parse(wanted, clock.tick(), game.endTick()));
+                actual = Times.clockTicks(clock.tick());
+            }
+            case "follow" -> actual = String.valueOf(game.followedSlot());
+            case "state" -> actual = clock.state().name();
+            case "help", "log", "scoreboard", "inspector", "timeline" -> actual = hud.isShown(what) ? "on" : "off";
+            case "flee" -> actual = hud.aiLog().fleeShown() ? "on" : "off";
+            case "inspect" -> {
+                Selectable<?> inspected = game.inspected();
+                String kind = inspected == null ? "none" : Inspector.kindOf(inspected);
+                actual = kind.contains(wanted) ? wanted : kind;
+            }
+            case "message" -> {
+                String message = Objects.requireNonNullElse(clock.message(), "");
+                actual = message.contains(wanted) ? wanted : message;
+            }
+            default -> throw new IllegalArgumentException("cannot expect " + what);
+        }
+        if (!actual.equalsIgnoreCase(expected)) {
+            throw new IllegalStateException("expected " + what + " " + expected + ", but it is " + actual);
+        }
+        log("     " + what + " is " + actual);
+    }
+
 
     private void verify() {
         Verification verification = game.verification();
