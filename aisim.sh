@@ -39,10 +39,19 @@ case "${1:-help}" in
 esac
 
 JDK=$(find_jdk)
-# the parent JVM; workers get the same options from Batch.workerCommand (keep in sync)
+# the parent JVM; workers get the same options from WorkerProcess.command (keep in sync)
 OPTS=(-ea --enable-native-access=ALL-UNNAMED -Xmx768m -XX:+UseSerialGC -Djava.awt.headless=true
     -Dcom.oddlabs.tt.headless=true)
 [ "$(uname)" = Darwin ] && OPTS+=(-XstartOnFirstThread) # GLFW must own the first thread on macOS
+# the game's options, as tt/build.gradle.kts gives `gradlew :tt:run` (keep in sync)
+GUI_OPTS=(-ea -esa --enable-native-access=ALL-UNNAMED -Dcom.oddlabs.tt.developer=true
+    -Djdk.crypto.KeyAgreement.legacyKDF=true -Xms80m -Xmx512m)
+[ "$(uname)" = Darwin ] && GUI_OPTS+=(-XstartOnFirstThread)
+# watch's rewind (Copier) copies the world by reflection: into JDK collections and atomics, and into final fields
+WATCH_OPTS=(--add-opens java.base/java.util=ALL-UNNAMED --add-opens java.base/java.util.concurrent=ALL-UNNAMED
+    --add-opens java.base/java.util.concurrent.atomic=ALL-UNNAMED --enable-final-field-mutation=ALL-UNNAMED)
+# the heap of the watch game and of rewindcheck, which keep the rewind's checkpoints; WatchCommand has the same default
+WATCH_HEAP=${AISIM_WATCH_HEAP:-6g}
 
 case "${1:-help}" in
     build)
@@ -72,14 +81,50 @@ case "${1:-help}" in
         # stale_ok is empty (an empty array would do, but "${a[@]}" of one fails under set -u in macOS's bash 3.2).
         "$JDK/bin/java" "${OPTS[@]}" "@$cp_args" com.oddlabs.tt.aisim.Aisim guicheck ${stale_ok:+"$stale_ok"} "$spec" \
             || exit 2
-        # the game's options, as tt/build.gradle.kts gives `gradlew :tt:run` (keep in sync)
-        GUI_OPTS=(-ea -esa --enable-native-access=ALL-UNNAMED -Dcom.oddlabs.tt.developer=true
-            -Djdk.crypto.KeyAgreement.legacyKDF=true -Xms80m -Xmx512m)
-        [ "$(uname)" = Darwin ] && GUI_OPTS+=(-XstartOnFirstThread)
         # the game finds its resources relative to tt/, as under gradlew :tt:run
         cd tt
         exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" "-Daisim.snap=$snap" \
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/gui" "@../$cp_args" com.oddlabs.tt.Main "$@"
+        ;;
+    watch)
+        # A harness game in the game client (docs/aisim.md#watching-a-game). Aisim watchfile (internal) finds the game
+        # from the repository root, writes the watch file with absolute paths and prints its path as its last line;
+        # the game then loads it in tt/, as for gui, with the rewind's options and a heap for its checkpoints.
+        shift
+        read_snapshot # once: the watch file and the game name the snapshot they run from
+        cp_args="aisim/snap/$snap/cp.args"
+        found=$("$JDK/bin/java" "${OPTS[@]}" "-Daisim.snap=$snap" "@$cp_args" com.oddlabs.tt.aisim.Aisim watchfile \
+            "$@") || {
+            status=$?
+            [ -z "$found" ] || printf '%s\n' "$found"
+            exit "$status"
+        }
+        watch_file=${found##*$'\n'}
+        [ "$watch_file" = "$found" ] || printf '%s\n' "${found%$'\n'*}"
+        if [ ! -f "$watch_file" ]; then
+            echo "aisim: watchfile wrote no watch file (its last line: '$watch_file')" >&2
+            exit 3
+        fi
+        cd tt
+        # -Xmx after GUI_OPTS: the last one wins, and GUI_OPTS stays as gradlew :tt:run has it
+        exec "$JDK/bin/java" "${GUI_OPTS[@]}" "${WATCH_OPTS[@]}" "-Xmx$WATCH_HEAP" "-Daisim.watch=$watch_file" \
+            "-Daisim.snap=$snap" "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/watch" "@../$cp_args" \
+            com.oddlabs.tt.Main
+        ;;
+    rewindcheck)
+        # Does watch's rewind play a game exactly as the first time? From the repository root, as the parent JVM, with
+        # the rewind's options and heap; --gl plays with the client's resources in a hidden GL window, as watch does.
+        shift
+        read_snapshot
+        check_opts=("${OPTS[@]}" "${WATCH_OPTS[@]}" "-Xmx$WATCH_HEAP")
+        for arg in "$@"; do
+            if [ "$arg" = --gl ]; then
+                check_opts+=(-Dcom.oddlabs.tt.headless=false) # after OPTS' true: the last one wins
+            fi
+        done
+        exec "$JDK/bin/java" "${check_opts[@]}" "-Daisim.snap=$snap" \
+            "-Dorg.lwjgl.system.SharedLibraryExtractPath=aisim/natives/rewindcheck" "@aisim/snap/$snap/cp.args" \
+            com.oddlabs.tt.aisim.watch.RewindCheck "$@"
         ;;
     lab)
         # Your own tool: java runs a .java source file straight from source (with the other .java files of its folder)

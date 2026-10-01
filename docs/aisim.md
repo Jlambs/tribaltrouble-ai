@@ -8,6 +8,7 @@ edit your AI -> build -> batch against an opponent -> compare with the last vers
 ```
 
 and for play-tests: `./aisim.sh gui SPEC` lets you play against your AI, and records that game in the same format.
+`./aisim.sh watch RUN KEY` shows any harness game in the game client, as it was played, with rewind and the AIs' logs.
 
 Everything runs through `./aisim.sh` (Git Bash on Windows). All output is plain text and JSON lines, so scripts and
 coding agents can drive it as well as you can. Its analyses are generic, and questions about your own AI are best
@@ -19,7 +20,8 @@ Contents: [Words used here](#words-used-here) · [Requirements](#requirements) �
 [The development loop](#the-development-loop) · [Workers](#workers) · [Speed](#speed) · [Opponents](#opponents) · [Players](#players) · [Maps](#maps) ·
 [Reading results](#reading-results) ·
 [Why did it lose?](#why-did-it-lose-show-and-replay) · [Across a run](#across-a-run-curves-fights-and-export) ·
-[Your own tools](#your-own-tools) · [Play-tests](#play-tests) · [Troubleshooting](#troubleshooting) · Reference:
+[Your own tools](#your-own-tools) · [Play-tests](#play-tests) · [Watching a game](#watching-a-game) ·
+[Troubleshooting](#troubleshooting) · Reference:
 [Commands](#commands), [How a game ends](#how-a-game-ends), [Files](#files)
 
 ## Words used here
@@ -49,9 +51,10 @@ Contents: [Words used here](#words-used-here) · [Requirements](#requirements) �
 
 - **JDK 26.** `aisim.sh` takes the first JDK 26 it finds in `AISIM_JDK`, `JAVA_HOME`, `C:/Program Files/Java/jdk-26*`,
   `/usr/lib/jvm/*26*` or `/Library/Java/JavaVirtualMachines/*26*`, so your default JDK does not matter.
-- **For `gui` only, a desktop session with OpenGL 4.1 and an audio device.** The games the harness plays are headless
-  (`-Dcom.oddlabs.tt.headless=true`, see `com.oddlabs.tt.global.Headless`): they load only what the simulation
-  reads, and open no window and no audio device.
+- **For `gui` and `watch` only (and `rewindcheck --gl`), a desktop session with OpenGL 4.1 and an audio device.** The
+  games the harness plays are headless (`-Dcom.oddlabs.tt.headless=true`, see `com.oddlabs.tt.global.Headless`): they
+  load only what the simulation reads, and open no window and no audio device. `watch` also needs memory: its game
+  runs with a 6 GB heap by default ([Watching a game](#watching-a-game)).
 - **Git Bash on Windows** (it comes with Git for Windows). From PowerShell run
   `& "C:\Program Files\Git\bin\bash.exe" ./aisim.sh ...`.
 - **A build first.** Every command except `build` runs from the last build. The first build needs the network
@@ -493,6 +496,97 @@ recorded to, never over the originals; compare the `checksum` of the `census` li
 folder, so copy the folders you want to re-simulate under `aisim/`, for example to `aisim/playtests/`, and load them
 from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
 
+## Watching a game
+
+```bash
+./aisim.sh watch base s19-1                        # game s19-1 of run base, in the game client
+./aisim.sh watch aisim/runs/base/g/s19-1.jsonl     # the same game, named by its game file
+./aisim.sh watch ../other-checkout/aisim/runs/base s19-1 --ai-from-run   # a run of another checkout
+```
+
+`watch` plays a recorded harness game again in the game client itself, with nobody seated: the same world, the
+same AIs in the same slots, tick for tick, so what you see is the game the harness played, not one like it. You can
+play it at any speed, pause, step a tick at a time, jump to any moment and rewind, click any unit or building of any
+player to see inside it, and read each AI's decision log at the moment you are looking at. Building the world takes a
+few seconds to a minute (the map's textures); the game then starts at 0:00.
+
+**Which game.** RUN is a run name or the folder of a run in any checkout; KEY is a game of it, as in `show` and
+`replay`. A game's job comes from the run's run.json, exactly as the harness played it; when run.json lacks it (a run
+merged from others), from the game file's header, which holds everything that decides the game (the players and
+their slots, the map code, the world's seed). A game file alone (FILE.jsonl, such as a replay's) works the same way.
+Play-test files cannot be watched: the human's orders are not in them (re-simulate one as [Play-tests](#play-tests)
+says). Before the game starts, `watch` prints what it found and anything that may make the game differ from the
+recording.
+
+**Is it the same game?** The viewer checks itself as it plays: every 30 game seconds it compares the world's checksum
+with the census checksum the recording has for that second, and its control bar shows `VERIFIED to 51:30`, or
+`DIVERGED at 12:00` from the first second that differs. The game runs on your latest build, so a game recorded by
+another snapshot diverges wherever the engine or an AI changed in between:
+
+- frozen `@TAG` AIs play from their pool jar, as in the harness (from the run's own checkout when yours does not have
+  the tag; `watch` warns when the jar's hash is not the one run.json recorded);
+- `--ai-from-run` plays every AI named by its package (`myai`, not the stock AI, `@TAG` or a class name) from the
+  classes of the snapshot that recorded the game: an older version of your AI, or one from another branch, plays as
+  recorded on today's engine. That snapshot must still exist (`aisim/snap/<id>` of the run's checkout). Without it, an
+  AI that your build does not have is refused, with that advice;
+- when the engine itself changed, the game diverges anyway: `replay` replays it on its own snapshot (headless).
+
+**Keys and mouse.** F1 or H lists every key in the game.
+
+| Key | |
+|---|---|
+| P or Pause | play / pause |
+| + / - (the game's speed keys) | faster / slower: 1/8x, 1/4x, 1/2x, 1x, 2x ... 128x and MAX, as fast as the machine simulates |
+| . / , | one tick forward / back; with Shift a second, with Ctrl 10 seconds |
+| J | the jump box: `mm:ss`, `h:mm:ss`, `123s`, `t123` (a tick), `+30` / `-10` (seconds from now), `0`, `end` |
+| N / B | next / previous event of the timeline |
+| ] / [ | next / previous player |
+| L, I, O | the AI log, the inspector, the scoreboard: show or hide |
+| Space, Esc | map mode, the menu, as in a game |
+
+Click a unit or building of any player to inspect it: its owner, hit points, build progress, the units inside (and
+a tower's garrison), what an armory stores, production; for a unit, its behaviour, its target and what it carries.
+Click a row of the scoreboard (one per player: warriors, peons, buildings, chieftain, out) to look at that player, and
+have the AI log follow it. Drag the timeline at the bottom to scrub (it jumps when you let go); its marks are the
+recording's key events: players out, team A's buildings razed and chieftains, teams out. The AI log shows the last
+lines up to the moment you are watching of the AIs that write one (the stock AI writes none); `flee of` lines are
+hidden at first.
+
+Speed 1x is the game at normal speed, 50 ticks a second; faster speeds play more ticks per frame. They never change
+the game's own speed setting, which would make it another game.
+
+**Rewind.** As the game plays each second for the first time, `watch` keeps a checkpoint of the whole world every
+`--checkpoint` game seconds (default 60). Going back restores the last checkpoint before that moment and plays on to
+it, which takes at most one interval of simulation, shown as it runs; a jump forward past what was played so far plays
+the way there. Checkpoints take memory, up to `--checkpoint-memory` MB in all (default 45% of the heap); when they
+reach it, every other one is dropped and the interval doubles, so a long game keeps checkpoints all the way. The game
+runs with a 6 GB heap, or `AISIM_WATCH_HEAP` (`AISIM_WATCH_HEAP=10g ./aisim.sh watch ...`). Each second played again is
+checked against its first pass, so a rewind that did not restore everything shows `REWIND MISMATCH at ...`; that is a
+bug of `watch`, which `./aisim.sh rewindcheck RUN KEY` reproduces without a window. `--presim` plays the whole game
+first, so every jump afterwards is quick; it takes as long as simulating the game in the client, several minutes for
+a long game of many players.
+
+**For scripts and agents**, `--selftest SCRIPT` runs steps instead of waiting for input, then quits with exit code 0
+when every check passed, else 1, and writes its report to `aisim/watch/<run>-<key>/selftest.txt`, with the
+screenshots next to it. Steps, separated by `;`: `play:SEC` (play for SEC seconds of real time), `speed:X`, `seek:TIME`
+(as the jump box), `step:+N` / `step:-N` (ticks), `shot:NAME` (a screenshot, `NAME.png`), `select:SLOT:TYPE` (inspect
+the first object of player SLOT whose type contains TYPE, such as `select:0:quarters`), `verify` (fails on a
+divergence or a rewind mismatch, or when no census second was compared yet), `presim`, `quit`:
+
+```bash
+./aisim.sh watch base s19-1 --selftest "play:3;shot:start;seek:10:00;select:0:quarters;shot:inspect;verify;quit"
+```
+
+`./aisim.sh rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]` checks the rewind itself: it plays the game with
+checkpoints, then at each `--at` second restores the checkpoint before it and plays `--span` seconds again, and exits
+1 unless every second played again equals the first pass (and the first pass the recording). It prints the
+checkpoints' count, size and copy times. `--gl` runs it with the client's resources in a hidden GL window, as the
+viewer has them.
+
+Limits: one game per start of the client, which quits when you leave the game; a game whose recording ended in a
+crash, hang or error may fail the same way when the viewer gets there; a game file without its end line (a game still
+being played) plays on until you stop it.
+
 ## Troubleshooting
 
 - Each worker is a JVM whose heap may grow to 256 MB (512 MB when a game of the run has 4 players or more, or a huge
@@ -528,6 +622,11 @@ What the messages mean:
   or `the replay worker died; see ...`: read that log. `glfwInit failed` or an OpenAL error there (only with
   `-Dcom.oddlabs.tt.headless=false`) means that needs a desktop session with GL 4.1 and an audio device.
 - `ai_init` errors: the AI's constructor threw (often an unknown param), with the stack in `g/<key>.err`.
+- `watch`: `this build cannot play NAME`: the game's AI is not in your build (it is on another branch, or was
+  renamed); `--ai-from-run` plays the one that recorded the game. `!! recorded by snapshot ..., but this build is ...`:
+  the game may diverge where the engine or an AI changed; watch it anyway, the viewer shows where (`DIVERGED at`), or
+  add `--ai-from-run` when only your AI changed. `--ai-from-run: the run's snapshot ID is gone`: its snapshot folder
+  was deleted, or the checkout moved; watch without `--ai-from-run`, from a build that has the AI.
 - `$'\r': command not found` in Git Bash: `aisim.sh` was checked out with CRLF line endings. The repository's
   `.gitattributes` keeps `*.sh` files LF; delete `aisim.sh` and run `git checkout aisim.sh` to get it back with LF.
 
@@ -553,6 +652,9 @@ The same list as `./aisim.sh help`:
 ./aisim.sh lab     FILE.java [args]
 ./aisim.sh freeze  TAG NAME|CLASS [--from DIR|JAR]
 ./aisim.sh gui     [--stale-ok] SPEC [game args]
+./aisim.sh watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
+                   [--selftest SCRIPT]
+./aisim.sh rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]
 --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
   A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
   is left, or to the time limit.
@@ -593,12 +695,17 @@ GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --n
 - **`new NAME`**: lowercase letters, digits and `_`, starting with a letter; not `easy`, `normal`, `hard` or a Java
   keyword. Pool tags are 1..32 characters of `A-Z a-z 0-9 . _ -`.
 - **Stale builds**: `play`, `batch`, `lint` (unless it only checks `@TAG`s), `freeze` (without `--from`),
-  `replay --snap latest` and `gui` refuse to run when a `.java` file under `tt/src/main/java` or `tt/src/aisim/java`
-  changed after the last `build`: nothing is more confusing than measuring the old code. `--stale-ok` runs the last
-  build anyway (`gui --stale-ok SPEC`; every other command takes it after its arguments).
-- **Exit codes**: 0 ok; 1 the run has failed games or no counted games, a replay did not reproduce its game, or
-  `compare` found no common games; 2 a usage error, a refusal, or a cancelled or aborted run; 3 the harness itself
-  failed (a bug; it prints the stack trace).
+  `replay --snap latest`, `gui` and `watch` refuse to run when a `.java` file under `tt/src/main/java` or
+  `tt/src/aisim/java` changed after the last `build`: nothing is more confusing than measuring the old code.
+  `--stale-ok` runs the last build anyway (`gui --stale-ok SPEC`; every other command takes it after its arguments).
+- **`watch`** ([Watching a game](#watching-a-game)): `--checkpoint SEC` (1..3600, default 60) game seconds between
+  rewind checkpoints at first, `--checkpoint-memory MB` (default 45% of the heap, at most 80%) their memory in all,
+  `--presim` plays the whole game before showing it, `--ai-from-run` plays AIs named by package from the snapshot
+  that recorded the game, `--selftest SCRIPT` runs a script and quits. `AISIM_WATCH_HEAP` (default `6g`) is the heap
+  of the game, and of `rewindcheck`.
+- **Exit codes**: 0 ok; 1 the run has failed games or no counted games, a replay did not reproduce its game,
+  `compare` found no common games, a `watch --selftest` check or a `rewindcheck` failed; 2 a usage error, a refusal,
+  or a cancelled or aborted run; 3 the harness itself failed (a bug; it prints the stack trace).
 
 ## How a game ends
 
@@ -654,7 +761,10 @@ aisim/                                  (in the repository root, git-ignored)
     log/w<i>.log                        worker output (engine chatter, errors)
     n/                                  native libraries unpacked for the workers (ignore)
     STOP                                create this file to cancel the run
-  natives/gui                           native libraries unpacked for `gui` (ignore)
+  watch/<run>-<key>.json                what `watch` hands the game: the job, the recording, the AIs from jars, the
+                                        options (absolute paths; written anew by every watch of that game)
+  watch/<run>-<key>/                    the watched game's output: selftest.txt and the screenshots of --selftest
+  natives/gui, natives/watch, natives/rewindcheck   native libraries unpacked for `gui`, `watch`, `rewindcheck` (ignore)
 ```
 
 **run.json**: `v name snap java created workers workerLimits profile players a lineup config logs aPools pools expected
