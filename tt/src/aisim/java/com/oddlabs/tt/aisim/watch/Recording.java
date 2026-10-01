@@ -26,7 +26,7 @@ final class Recording {
     /** Stuns of at least this many units are key events. */
     private static final int STUNS_SHOWN = 5;
     /** Deaths are summed per slot over windows of this many game seconds... */
-    private static final int DEATH_WINDOW = 10;
+    static final int DEATH_WINDOW = 10;
     /** ...and a window with at least this many is a key event. */
     private static final int DEATHS_SHOWN = 10;
 

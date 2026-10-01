@@ -2,6 +2,7 @@ package com.oddlabs.tt.aisim.watch;
 
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.global.Globals;
+import com.oddlabs.tt.global.Settings;
 import com.oddlabs.tt.gui.EditLine;
 import com.oddlabs.tt.gui.GUIObject;
 import com.oddlabs.tt.gui.Skin;
@@ -21,29 +22,58 @@ import java.util.Locale;
 
 /**
  * The watch view's controls and heads-up display: the keys and clicks SelectionDelegate hands on
- * ({@link WatchControls}), a status panel (time, end, speed, state, verification, rewind), the jump box and the
- * inspector of the picked object. All of it hangs under the viewer's SelectionDelegate, so it shows with the game view
- * and hides with the HUD (Ctrl+H) and under the Esc menu.
+ * ({@link WatchControls}) and the panels. At the top, the status panel (time, end, speed, state, verification,
+ * rewind) with the jump box under it; on the left the {@link Scoreboard}; at the top right the inspector of the picked
+ * object; along the bottom the {@link Timeline}; at the bottom right, above the compass and clear of the middle of
+ * the view, the AI column: the {@link AiLogPanel} of the followed player and any panels about that AI above it
+ * ({@link #addAiColumnPanel}); the {@link HelpPanel} over all of it. All of it hangs under the viewer's
+ * SelectionDelegate, so it shows with the game view and hides with the HUD
+ * (Ctrl+H) and under the Esc menu.
  *
- * <p>Built to grow: each panel is a {@link TextPanel} on {@link #layer}, filled by {@link #refresh()} (about ten times
- * a second, from the frame task) and placed by {@link #layout(int, int)}; keys go through
- * {@link #handleInput(InputEvent)}. The model behind it is {@link WatchGame}.
+ * <p>How it works: each panel is a {@link HudPanel} on {@link #layer}; their text is rebuilt by {@link #refresh()}
+ * (about ten times a second, from the frame task; the scoreboard's census a few times a second), the panels are
+ * placed by {@link #layout(int, int)} every frame, and keys go through {@link #handleInput(InputEvent)}. A shown panel
+ * is on the layer, a hidden one off it. The model behind it all is {@link WatchGame}.
  */
 final class WatchHud implements WatchControls {
     /** Text is rebuilt this often at most: it changes far slower than frames come. */
     private static final long REFRESH_NANOS = 100_000_000L;
     private static final int MARGIN = 8;
+    private static final int GAP = 6;
     private static final int JUMP_BOX_WIDTH = 220;
+    private static final int INSPECTOR_MIN = 260;
+    /**
+     * The corner the compass takes at the bottom right (CompassRenderer: its centre 80 from both edges, its letters 46
+     * from the centre): the timeline ends left of it, the AI column starts above it.
+     */
+    private static final int COMPASS_WIDTH = 150;
+    private static final int COMPASS_HEIGHT = 140;
+    /** The AI column's width, as the window allows. */
+    private static final int AI_COLUMN_MIN = 360;
+    private static final int AI_COLUMN_MAX = 760;
+    /** How far right of the middle of the view the AI column starts, unless the window is too narrow for it. */
+    private static final int MIDDLE_CLEAR = 60;
+    /** The AI log's lines on the overview map, which it should cover little of. */
+    private static final int MAP_LOG_LINES = 7;
     /** Step sizes in ticks: plain, Shift, Ctrl. */
     private static final int STEP_TICK = 1;
     private static final int STEP_SECOND = 50;
     private static final int STEP_TEN_SECONDS = 500;
 
     private final @NonNull WatchGame game;
-    /** Full-screen, never focused: its panels draw over the 3D view and let clicks through. */
+    /** Full-screen, never focused: its panels draw over the 3D view and take the mouse only where they are. */
     private final @NonNull Layer layer = new Layer();
     private final @NonNull TextPanel status = new TextPanel(420);
-    private final @NonNull TextPanel inspector = new TextPanel(260);
+    private final @NonNull TextPanel inspector = new TextPanel(INSPECTOR_MIN, 640);
+    private final @NonNull Scoreboard scoreboard;
+    private final @NonNull Timeline timeline;
+    private final @NonNull AiLogPanel ai_log;
+    private final @NonNull HelpPanel help = new HelpPanel();
+    /**
+     * Panels about the followed AI, stacked above its log at the bottom right, the first lowest (an AI's own status
+     * panel, from its AiView, belongs here).
+     */
+    private final @NonNull List<GUIObject> ai_column = new ArrayList<>();
     private final @NonNull JumpBox jump_box = new JumpBox();
     private @Nullable SelectionDelegate delegate;
     private long last_refresh_nanos;
@@ -54,8 +84,15 @@ final class WatchHud implements WatchControls {
 
     WatchHud(@NonNull WatchGame game) {
         this.game = game;
-        layer.addChild(status);
+        this.scoreboard = new Scoreboard(game);
+        this.timeline = new Timeline(game);
+        this.ai_log = new AiLogPanel(game);
+        // added first is drawn lowest: the help over everything
+        layer.addChild(timeline);
+        layer.addChild(ai_log);
+        layer.addChild(scoreboard);
         layer.addChild(inspector);
+        layer.addChild(status);
         jump_box.addEnterListener(this::jump);
     }
 
@@ -67,12 +104,22 @@ final class WatchHud implements WatchControls {
         refresh_now = true;
     }
 
+    /**
+     * Adds a panel to the AI column (above the AI log, bottom right). The layout places it, and the AI log gives up
+     * lines to make room for it; its owner fills it. Only a {@link HudPanel} takes the mouse.
+     */
+    void addAiColumnPanel(@NonNull GUIObject panel) {
+        ai_column.add(panel);
+        layer.addChild(panel);
+        refresh_now = true;
+    }
+
     /** Rebuild the text on the next frame, whatever the time: a screenshot wants the HUD of this very state. */
     void refreshSoon() {
         refresh_now = true;
     }
 
-    /** Called every frame by the frame task: shows or hides the jump box with the HUD, and refreshes the text. */
+    /** Called every frame by the frame task: shows or hides the jump box with the HUD, refreshes and places it all. */
     void frame(long now_nanos) {
         SelectionDelegate selection_delegate = delegate;
         if (selection_delegate == null) {
@@ -90,15 +137,19 @@ final class WatchHud implements WatchControls {
                 jump_box.remove();
             }
         }
-        if (!refresh_now && now_nanos - last_refresh_nanos < REFRESH_NANOS) {
-            return;
+        boolean force = refresh_now;
+        scoreboard.refresh(now_nanos, force);
+        if (force || now_nanos - last_refresh_nanos >= REFRESH_NANOS) {
+            refresh_now = false;
+            last_refresh_nanos = now_nanos;
+            refresh();
         }
-        refresh_now = false;
-        last_refresh_nanos = now_nanos;
-        refresh();
-        int width = selection_delegate.getWidth();
-        int height = selection_delegate.getHeight();
-        layout(width, height);
+        int log_lines = ai_log.maxLines();
+        layout(selection_delegate.getWidth(), selection_delegate.getHeight());
+        if (ai_log.maxLines() != log_lines && ai_log.isShown()) {
+            ai_log.refresh(); // the room changed (the inspector grew, map mode): fill the new room now
+            layout(selection_delegate.getWidth(), selection_delegate.getHeight());
+        }
     }
 
     /** Rebuilds every panel's text from the model. */
@@ -106,6 +157,10 @@ final class WatchHud implements WatchControls {
         status.setLines(statusLines());
         Selectable<?> picked = game.inspected();
         inspector.setLines(picked == null ? List.of() : Inspector.describe(picked, game.world(), game.job()));
+        timeline.refresh();
+        if (ai_log.isShown()) {
+            ai_log.refresh();
+        }
     }
 
     /** Places the panels for a GUI of {@code width} x {@code height} (y grows upwards). */
@@ -116,12 +171,60 @@ final class WatchHud implements WatchControls {
             layer.setDim(width, height);
         }
         SelectionDelegate selection_delegate = delegate;
-        // the overview map shows its title at the top centre
-        int top = height - MARGIN - (selection_delegate != null
-                && selection_delegate.isInMapMode() ? Skin.getSkin().getHeadlineFont().getHeight() : 0);
-        status.setPos((width - status.getWidth()) / 2, top - status.getHeight());
-        jump_box.setPos((width - jump_box.getWidth()) / 2, status.getY() - jump_box.getHeight() - 2);
-        inspector.setPos(width - MARGIN - inspector.getWidth(), height - MARGIN - inspector.getHeight() - 40);
+        boolean map_mode = selection_delegate != null && selection_delegate.isInMapMode();
+        // the top: the scoreboard on the left; the status panel in the middle (the overview map shows its title
+        // there), right of the scoreboard in a narrow window; the inspector on the right, no wider than leaves the
+        // status panel free (its widths apply from its next lines)
+        scoreboard.setPos(MARGIN, height - MARGIN - scoreboard.getHeight());
+        int top = height - MARGIN - (map_mode ? Skin.getSkin().getHeadlineFont().getHeight() : 0);
+        int status_x = (width - status.getWidth()) / 2;
+        if (scoreboard.isShown()) {
+            status_x = Math.max(status_x, Math.min(MARGIN + scoreboard.getWidth() + GAP,
+                    width - MARGIN - status.getWidth()));
+        }
+        status.setPos(status_x, top - status.getHeight());
+        jump_box.setPos(status_x + (status.getWidth() - jump_box.getWidth()) / 2,
+                status.getY() - jump_box.getHeight() - 2);
+        inspector.setWidths(INSPECTOR_MIN, Math.max(INSPECTOR_MIN,
+                width - MARGIN - (status_x + status.getWidth()) - GAP));
+        inspector.setPos(width - MARGIN - inspector.getWidth(), height - MARGIN - inspector.getHeight());
+        help.setPos((width - help.getWidth()) / 2, Math.max(MARGIN, (height - help.getHeight()) / 2));
+
+        // the bottom: the timeline, all along but for the compass's corner
+        boolean compass = Settings.getSettings().show_compass;
+        timeline.setDim(Math.max(200, width - 2 * MARGIN - (compass ? COMPASS_WIDTH : 0)), timeline.preferredHeight());
+        timeline.setPos(MARGIN, MARGIN);
+
+        // the AI column: at the right edge, bottom up from above the timeline and the compass, as high as the panels
+        // above it leave room; it keeps clear of the middle of the view, where the camera puts what it goes to
+        int right = width - MARGIN;
+        int left = Math.min(right - AI_COLUMN_MIN, Math.max(width / 2 + MIDDLE_CLEAR, right - AI_COLUMN_MAX));
+        int column_width = right - left;
+        int bottom = Math.max(timeline.isShown() ? timeline.getY() + timeline.getHeight() : MARGIN,
+                compass ? COMPASS_HEIGHT : 0) + GAP;
+        int ceiling = height - MARGIN;
+        for (GUIObject above : List.<GUIObject>of(status, jump_box, inspector, scoreboard)) {
+            boolean on = above == jump_box ? shown : above.getParent() != null;
+            if (on && above.getHeight() > 0 && above.getX() < right && above.getX() + above.getWidth() > left) {
+                ceiling = Math.min(ceiling, above.getY() - GAP);
+            }
+        }
+        int extras = 0;
+        for (GUIObject panel : ai_column) {
+            extras += panel.getHeight() > 0 ? panel.getHeight() + GAP : 0;
+        }
+        int room_lines = (ceiling - bottom - extras - 2 * TextPanel.PADDING) / Math.max(ai_log.lineHeight(), 1);
+        ai_log.setMaxLines(Math.min(room_lines, map_mode ? MAP_LOG_LINES : AiLogPanel.MAX_LINES));
+        ai_log.setWidths(column_width, column_width);
+        int y = bottom;
+        if (ai_log.isShown()) {
+            ai_log.setPos(right - ai_log.getWidth(), y);
+            y += ai_log.getHeight() + GAP;
+        }
+        for (GUIObject panel : ai_column) {
+            panel.setPos(right - panel.getWidth(), y);
+            y += panel.getHeight() > 0 ? panel.getHeight() + GAP : 0;
+        }
     }
 
     private @NonNull List<TextPanel.Line> statusLines() {
@@ -148,9 +251,50 @@ final class WatchHud implements WatchControls {
             lines.add(new TextPanel.Line(message, TextPanel.WARN));
         }
         lines.add(new TextPanel.Line(
-                "P play/pause   +/- speed   , . step (Shift 1 s, Ctrl 10 s)   J jump   [ ] players",
+                "F1 help   P play/pause   +/- speed   , . step   J jump   N B events   [ ] players",
                 TextPanel.DIM));
         return lines;
+    }
+
+    // ---------------------------------------------------------------- what the selftest and the session ask
+
+    @NonNull
+    Scoreboard scoreboard() {
+        return scoreboard;
+    }
+
+    @NonNull
+    Timeline timeline() {
+        return timeline;
+    }
+
+    @NonNull
+    AiLogPanel aiLog() {
+        return ai_log;
+    }
+
+    /** Whether panel {@code name} (help, log, scoreboard, inspector, timeline) is shown. */
+    boolean isShown(@NonNull String name) {
+        return switch (name) {
+            case "help" -> help.isShown();
+            case "log" -> ai_log.isShown();
+            case "scoreboard" -> scoreboard.isShown();
+            case "inspector" -> inspector.isShown();
+            case "timeline" -> timeline.isShown();
+            default -> throw new IllegalArgumentException("no panel " + name);
+        };
+    }
+
+    private void toggle(@NonNull HudPanel panel) {
+        if (panel.isShown()) {
+            panel.remove();
+        } else {
+            layer.addChild(panel); // on top of the others
+            if (panel != help && help.isShown()) {
+                layer.addChild(help);
+            }
+        }
+        refresh_now = true;
     }
 
     // ---------------------------------------------------------------- WatchControls
@@ -170,16 +314,17 @@ final class WatchHud implements WatchControls {
             int ticks = event.isControlDown() ? STEP_TEN_SECONDS : event.isShiftDown() ? STEP_SECOND : STEP_TICK;
             clock.step(key == Key.PERIOD ? ticks : -ticks);
             event.consume();
+            refresh_now = true;
             return;
         }
+        // Ctrl, Alt and Meta keys are the game's (Ctrl+H hides the HUD, Ctrl+P takes a screenshot)
         if (phase != InputPhase.PRESSED || event.isControlDown() || event.isAltDown() || event.isMetaDown()) {
             return;
         }
-        if (key == Key.P) {
-            clock.togglePause();
+        if (key != null && command(key, event.isShiftDown())) {
             event.consume();
-        } else if (key == Key.J) {
-            jump_box.setFocus();
+        } else if (help.isShown() && event.hasAction(GameAction.GLOBAL_MENU)) {
+            toggle(help); // Esc closes the help before it opens the menu
             event.consume();
         } else if (event.hasAction(GameAction.SPECTATOR_NEXT_PLAYER)) {
             game.followNext(1);
@@ -190,6 +335,65 @@ final class WatchHud implements WatchControls {
         }
         if (event.isConsumed()) {
             refresh_now = true;
+        }
+    }
+
+    /** The watch view's own keys (the help lists them): true if {@code key} is one. */
+    private boolean command(@NonNull Key key, boolean shift) {
+        Clock clock = game.clock();
+        switch (key) {
+            case P -> clock.togglePause();
+            case J -> jump_box.setFocus();
+            case N -> jumpToEvent(true);
+            case B -> jumpToEvent(false);
+            case E -> presimulate();
+            case L -> {
+                if (shift) {
+                    ai_log.toggleFlee();
+                } else {
+                    toggle(ai_log);
+                }
+            }
+            case O -> toggle(scoreboard);
+            case I -> toggle(inspector);
+            case H, F1 -> toggle(help);
+            default -> {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** N and B: seeks to the next or previous timeline mark from where the view is (or is going). */
+    private void jumpToEvent(boolean next) {
+        Clock clock = game.clock();
+        int from = clock.seekTarget() >= 0 ? clock.seekTarget() : clock.tick();
+        Timeline.Mark mark = next ? timeline.next(from) : timeline.previous(from);
+        if (mark == null) {
+            clock.say(
+                    game.recording() == null ? "no events: the watch file names no recording" : "no event " + (next ? "after " : "before ") + Times.clock(
+                            from));
+            return;
+        }
+        if (clock.seek(mark.tick()) == null) {
+            clock.say(Times.clock(mark.tick()) + "  " + mark.text());
+        }
+    }
+
+    /** E: simulates the rest of the game now and comes back, so every later jump is quick; E again stops it. */
+    private void presimulate() {
+        Clock clock = game.clock();
+        if (clock.presimulating()) {
+            clock.stopPresimulation();
+            clock.say("stopped simulating ahead");
+        } else if (clock.endTick() >= 0 && clock.frontier() >= clock.endTick()) {
+            clock.say("the whole game is simulated already: every jump is quick");
+        } else {
+            boolean playing = clock.state() == Clock.State.PLAYING;
+            int here = clock.seekTarget() >= 0 ? clock.seekTarget() : clock.tick();
+            if (clock.presimulate(here, playing) == null) {
+                clock.say("simulating to the end, then back to " + Times.clock(here) + " (E stops)");
+            }
         }
     }
 
@@ -226,7 +430,11 @@ final class WatchHud implements WatchControls {
         refresh_now = true;
     }
 
-    /** The full-screen layer the panels hang on; it draws nothing itself and hides them with the HUD. */
+    /**
+     * The full-screen layer the panels hang on: it draws nothing itself, hides them with the HUD, and hands the mouse
+     * to the panel under it (the engine's picking skips objects that cannot take the focus, and panels never take it,
+     * so the keys stay with the view); elsewhere the mouse goes on to the 3D view.
+     */
     private static final class Layer extends GUIObject {
         @Override
         protected void render(@NonNull GUIRenderer renderer, float clip_left, float clip_right, float clip_bottom,
@@ -235,12 +443,31 @@ final class WatchHud implements WatchControls {
                 super.render(renderer, clip_left, clip_right, clip_bottom, clip_top);
             }
         }
+
+        @Override
+        protected @Nullable GUIObject pick(float x, float y) {
+            if (!Globals.draw_hud) {
+                return null;
+            }
+            float local_x = x - getX();
+            float local_y = y - getY();
+            for (GUIObject child = getFirstChild(); child != null; child = child.getNext()) {
+                if (child instanceof HudPanel panel && panel.covers(local_x, local_y)) {
+                    return panel; // the first child is the topmost
+                }
+            }
+            return null;
+        }
     }
 
     /** The jump box: an edit line that gives the keys back to the view on Esc. */
     private final class JumpBox extends EditLine {
         JumpBox() {
             super(JUMP_BOX_WIDTH, 32);
+            // Not a tab stop: a delegate that gets the focus hands it on to its first tab stop (Delegate.setFocus),
+            // so giving the keys back to the view after Enter, or closing the Esc menu, would land them here again
+            // and every watch key would go into the box. Only J (setFocus) and a click put the keys here.
+            setTabStop(false);
         }
 
         @Override
