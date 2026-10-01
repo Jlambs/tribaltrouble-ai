@@ -984,8 +984,9 @@ final class Shepherd {
      * the spot, the copy's leader (its oldest idle warrior, whose cell the next wave starts from) with its idle
      * warriors against the wave size, and while the copy's last wave walks a line from that wave's leader to where it
      * goes. A copy about to launch (as many idle warriors as its wave size, as tend's shepherd_hold test counts them,
-     * worked out here whether or not shepherd_hold is on) has its spot and the leader's line to it in orange. Status
-     * line shepherds.
+     * worked out here whether or not shepherd_hold is on, from the copy's launches: a home flock's are its partner's)
+     * has its spot and the leader's line to it in orange. Status lines shepherds (flocks and their shepherds) and
+     * waves (copies about to launch, waves walking, waves seen).
      */
     void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
         String layer = WatchView.SHEPHERDS;
@@ -1008,10 +1009,10 @@ final class Shepherd {
         for (int i = 0; i < flocks.size(); i++) {
             Flock f = flocks.get(i);
             String name = name(f);
-            int wave_size = Math.min(40, 10 + 5 * f.launches);
+            int wave_size = Math.min(40, 10 + 5 * copyLaunches(f));
             boolean launching = idle[i] >= wave_size && (wave_size < 20 || f.copy.hasActiveChieftain());
-            if (launching)
-                imminent++;
+            if (launching && !f.home)
+                imminent++; // once a copy: its home flock (shepherd_home_pair) comes to the same
             if (!f.home) {
                 waves += f.launches;
                 base_waves += f.base_waves;
@@ -1052,12 +1053,22 @@ final class Shepherd {
         }
         if (flocks.isEmpty()) {
             canvas.status("shepherds", "none yet");
+            canvas.status("waves", "none seen");
             return;
         }
         String posts = shepherds + " shepherds (" + at_spot + " at the spot, " + fleeing + " fleeing)";
-        String launch = imminent + " copies about to launch, " + walking + " waves walking";
-        String seen = waves + " waves seen, " + base_waves + " at our base";
-        canvas.status("shepherds", flocks.size() + " flocks: " + posts + "; " + launch + "; " + seen);
+        canvas.status("shepherds", flocks.size() + " flocks, " + posts);
+        String launch = imminent + " copies about to launch, " + walking + " walking";
+        canvas.status("waves", launch + "; " + waves + " seen, " + base_waves + " at our base");
+    }
+
+    /**
+     * The launches of a flock's copy: the copy's own flock counts them (tend), so a home flock (shepherd_home_pair)
+     * reads its partner's.
+     */
+    private static int copyLaunches(@NonNull Flock f) {
+        Flock partner = f.partner;
+        return f.home && partner != null ? partner.launches : f.launches;
     }
 
     /**
@@ -1085,9 +1096,8 @@ final class Shepherd {
                 case "nospot" -> "no spot draws the wave";
                 default -> f.spot_x >= 0 ? "walking to the spot " + WatchView.at(f.spot_x, f.spot_y) : "walking";
             };
-            String flock = "shepherd of " + name(f) + ": " + doing;
             int ago = (int) (ai.time() - f.recruited);
-            return flock + ", recruited " + ago + " s ago, " + f.launches + " waves seen";
+            return "shepherd of " + name(f) + " for " + ago + " s: " + doing + "; " + copyLaunches(f) + " waves seen";
         }
         return null;
     }

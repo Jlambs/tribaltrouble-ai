@@ -4,16 +4,21 @@
 ///     ./aisim.sh lab lab/gauntlet/PaintCheck.java RUN KEY [--every N] [--dump-every SEC] [--limit SEC]
 ///
 /// It plays a recorded harness game again exactly as Match played it: ClientWorld.boot/create, the rng seed, a probe
-/// on the real-time manager where the GameRecorder sat, AiLog.begin (the decision logs go to aisim/paintcheck/RUN-KEY/),
-/// then the AIs in slot order with Match.createAI, and world.tick(ANIMATION_SECONDS_PER_TICK) to the recorded end.
+/// on the real-time manager where the GameRecorder sat, AiLog.begin (with decision logs only if the run kept logs, as
+/// Match; they go to aisim/paintcheck/RUN-KEY/), then the AIs in slot order with Match.createAI, and
+/// world.tick(ANIMATION_SECONDS_PER_TICK) to the recorded end.
 /// Every N ticks (default 1, or 10 for games over 20 minutes) it calls paint on a recording canvas and describe on
 /// every unit and building of each AI that implements AiView, as the watch viewer would between two ticks. Then it
 /// requires
 ///   - every 30-s census checksum and the end checksum as recorded,
-///   - each slot's decision log line for line as recorded (header lines aside),
+///   - each slot's decision log line for line as recorded (header lines aside), where the run kept it: a batch
+///     without --logs plays with logging off (and so does this), --logs lost deletes the logs of the games team A
+///     won (ours is then written, not compared),
 ///   - the AI counters and swallowed errors of each team as the result row has them (paint must count nothing),
 ///   - a clean canvas: no "paint error" status, no exception, cells on the map, colours 0..0xFFFFFF, positive radii,
-///     no line breaks, no status key painted twice in one paint.
+///     no line breaks, no status key painted twice in one paint,
+///   - texts the viewer shows whole: a status line (key: value) and a mark label of at most MAX_LINE characters, a
+///     describe text of at most MAX_DESCRIBE, at most MAX_STATUS status lines and MAX_SHAPES shapes in one paint.
 /// It also times paint and describe, and writes what was painted (statuses, shapes by layer, the describe texts) every
 /// --dump-every seconds (default 600) and at the end to aisim/paintcheck/RUN-KEY/paint-sSLOT-HHMMSS.txt (RUN-KEY-toSEC
 /// with --limit), so it can be read next to the AI log lines of the same moment. Exit 0 when all of it holds, 1 otherwise, 2 on usage errors.
@@ -37,6 +42,15 @@ import com.oddlabs.tt.player.UnitInfo;
 
 static final int TPS = GameTime.TICKS_PER_SECOND;
 static final int CENSUS_TICKS = 30 * TPS;
+// The viewer's limits (aisim/watch OverlayPaint and AiOverlay, package-private there): what it cuts or leaves out.
+/// A status line as the AI panel shows it ("key: value"), and a mark label: short enough to read whole at a glance
+/// (the viewer cuts a key, a value or a label longer than OverlayPaint.MAX_TEXT).
+static final int MAX_LINE = 100;
+/// A describe text: the inspector cuts "AI: " + text at AiOverlay.MAX_LINE, 90 characters.
+static final int MAX_DESCRIBE = 86;
+/// Status lines and shapes in one paint (OverlayPaint.MAX_STATUS, MAX_SHAPES): the viewer leaves out the rest.
+static final int MAX_STATUS = 20;
+static final int MAX_SHAPES = 5_000;
 
 void main(String[] args) throws Exception {
     // before anything reads Headless: the check needs no window (a bare java call may not give the flag)
@@ -74,9 +88,12 @@ void main(String[] args) throws Exception {
     // a run to a limit writes apart, so a short look and a whole check of the same game can run side by side
     Path out = Aisim.ROOT.resolve("paintcheck").resolve(dir.getFileName() + "-" + key + (limited ? "-to" + limit : ""));
     Files.createDirectories(out);
-    IO.println("paintcheck %s %s: %s, %s, recorded end %s (tick %d)%s, paint and describe every %d ticks".formatted(
+    for (int slot = 0; slot < job.slots(); slot++) // an earlier check's logs, which a check without logs would leave
+        Files.deleteIfExists(out.resolve(key + "-ai-s" + slot + ".log"));
+    IO.println("paintcheck %s %s: %s, %s, recorded end %s (tick %d)%s, paint and describe every %d ticks%s".formatted(
             run, key, job.players(), job.map(), clock(recorded.end_tick), recorded.end_tick,
-            limited ? ", played to " + clock(end_tick) : "", every));
+            limited ? ", played to " + clock(end_tick) : "", every, job.logs() == null ? ", no decision logs (as the run)"
+                    : ""));
 
     List<String> problems = new ArrayList<>();
     ClientWorld.boot();
@@ -87,7 +104,10 @@ void main(String[] args) throws Exception {
         Map<Integer, Integer> sampled = new TreeMap<>();
         // where the harness's GameRecorder sits: on the real-time manager, before the AIs
         world.getAnimationManagerRealTime().registerAnimation(new Probe(world, sampled));
-        AiLog.begin(world, slot -> out.resolve(key + "-ai-s" + slot + ".log"), "key=" + key + " paintcheck");
+        // logging on only if the game was played with it, as Match does: an AI may count some things only in logged
+        // games (the gauntlet's shepherd_rej_*), and the counters must come out as the result row has them
+        AiLog.begin(world, job.logs() == null ? null : slot -> out.resolve(key + "-ai-s" + slot + ".log"), "key="
+                + key + " paintcheck");
         try {
             UnitInfo unit_info = ClientWorld.startingUnits();
             for (int slot = 0; slot < job.slots(); slot++) {
@@ -265,16 +285,26 @@ static void checkCounters(Path dir, String key, Job job, World world, List<Strin
         IO.println("counters: the result row has none");
 }
 
-/// Each slot's decision log against the recorded one, line for line, header lines (# ...) aside.
+/// Each slot's decision log against the recorded one, line for line, header lines (# ...) aside. A batch without
+/// --logs played with logging off, and so did this; --logs lost deletes the logs of the games team A won: ours is then
+/// written, not compared.
 static void checkLogs(Path dir, String key, Job job, Path out, List<String> problems) throws IOException {
+    if (job.logs() == null) {
+        IO.println("decision logs: the run kept none (played with logging off, as recorded), not compared");
+        return;
+    }
     for (int slot = 0; slot < job.slots(); slot++) {
         Path recorded = Runs.gameFile(dir, key).resolveSibling(key + "-ai-s" + slot + ".log");
         Path ours = out.resolve(key + "-ai-s" + slot + ".log");
         if (!Files.exists(recorded) && !Files.exists(ours))
             continue;
-        if (!Files.exists(recorded) || !Files.exists(ours)) {
-            problems.add("s" + slot + " decision log: only " + (Files.exists(ours) ? "ours" : "the recorded one")
-                    + " exists");
+        if (!Files.exists(recorded)) {
+            IO.println("s%d decision log: the run deleted it (--logs lost), not compared; ours is %s".formatted(slot,
+                    Aisim.slash(ours)));
+            continue;
+        }
+        if (!Files.exists(ours)) {
+            problems.add("s" + slot + " decision log: only the recorded one exists");
             continue;
         }
         List<String> a = lines(recorded);
@@ -321,6 +351,7 @@ static final class Watcher {
     private long describes;
     private long described;
     private int max_shapes;
+    private int longest_describe;
 
     Watcher(World world, List<Integer> slots, List<String> problems, Path out) {
         this.world = world;
@@ -354,6 +385,10 @@ static final class Watcher {
             String error = canvas.status.get("paint error");
             if (error != null)
                 problem("paint error status", "s" + slot + " at " + clock(tick) + ": " + error);
+            if (canvas.status.size() > MAX_STATUS)
+                problem("over " + MAX_STATUS + " status lines", canvas.status.size() + " at " + clock(tick));
+            if (canvas.shapeCount() > MAX_SHAPES)
+                problem("over " + MAX_SHAPES + " shapes", canvas.shapeCount() + " at " + clock(tick));
             // the engine's own set, walked as it stands: describe must not change it
             Map<String, Integer> texts = dump ? new TreeMap<>() : null;
             long t2 = System.nanoTime();
@@ -376,6 +411,12 @@ static final class Watcher {
                 if (text.indexOf('\n') >= 0)
                     problem("line break in a describe text", text);
                 String kind = text.replaceAll("[0-9]+", "#");
+                if (text.length() > MAX_DESCRIBE) {
+                    problem("describe text over " + MAX_DESCRIBE + " characters", text.length() + " at " + clock(tick)
+                            + ": " + text);
+                    canvas.too_long.merge("describe " + kind, 1, Integer::sum);
+                }
+                longest_describe = Math.max(longest_describe, text.length());
                 describe_kinds.merge(kindKey(kind), 1, Integer::sum);
                 if (texts != null)
                     texts.merge(kind, 1, Integer::sum);
@@ -435,6 +476,15 @@ static final class Watcher {
                 .formatted(describe_rounds, describe_rounds == 0 ? 0 : describe_nanos / 1e3 / describe_rounds,
                         describe_max / 1e6, describes, described));
         IO.println("shapes painted by layer (all paints): " + layers_seen);
+        IO.println("longest texts (characters; at most %d for a status line or label, %d for a describe text):"
+                .formatted(MAX_LINE, MAX_DESCRIBE));
+        IO.println("  status lines: " + canvas.longest_status);
+        IO.println("  label %d, describe text %d".formatted(canvas.longest_label, longest_describe));
+        if (!canvas.too_long.isEmpty()) {
+            IO.println("texts over the limits, by kind (digits as #), the most frequent first:");
+            canvas.too_long.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(30).forEach(
+                    e -> IO.println("  %9d  %s".formatted(e.getValue(), e.getKey())));
+        }
         IO.println("describe texts by kind (all rounds):");
         describe_kinds.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).limit(30).forEach(
                 e -> IO.println("  %9d  %s".formatted(e.getValue(), e.getKey())));
@@ -449,6 +499,12 @@ static final class Canvas implements AiView.Canvas {
     private final BiConsumer<String, String> problem;
     final Map<String, String> status = new LinkedHashMap<>();
     final Map<String, List<String>> shapes = new TreeMap<>();
+    /// The longest "key: value" of each status key over all paints, in the order first painted.
+    final Map<String, Integer> longest_status = new LinkedHashMap<>();
+    int longest_label;
+    /// Texts over MAX_LINE or MAX_DESCRIBE over all paints, by kind ("status KEY: ...", "label ...", "describe ...",
+    /// digits as #): how often each was painted.
+    final Map<String, Integer> too_long = new TreeMap<>();
     private int tick;
 
     Canvas(int size, BiConsumer<String, String> problem) {
@@ -472,6 +528,13 @@ static final class Canvas implements AiView.Canvas {
         text(value);
         if (status.put(key, value) != null)
             problem.accept("status key painted twice", key + " at " + clock(tick));
+        String line = key + ": " + value;
+        longest_status.merge(key, line.length(), Math::max);
+        if (line.length() > MAX_LINE) {
+            problem.accept("status line over " + MAX_LINE + " characters", line.length() + " at " + clock(tick)
+                    + ": " + line);
+            too_long.merge("status " + line.replaceAll("[0-9]+", "#"), 1, Integer::sum);
+        }
     }
 
     @Override
@@ -479,6 +542,12 @@ static final class Canvas implements AiView.Canvas {
         add(layer, "mark   %d,%d #%06X %s".formatted(x, y, rgb, label), rgb);
         cell(layer, x, y);
         text(label);
+        longest_label = Math.max(longest_label, label.length());
+        if (label.length() > MAX_LINE) {
+            problem.accept("label over " + MAX_LINE + " characters", label.length() + " at " + clock(tick) + ": "
+                    + label);
+            too_long.merge("label " + label.replaceAll("[0-9]+", "#"), 1, Integer::sum);
+        }
     }
 
     @Override

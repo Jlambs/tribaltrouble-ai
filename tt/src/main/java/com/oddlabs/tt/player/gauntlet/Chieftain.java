@@ -37,6 +37,8 @@ final class Chieftain {
     private int cast_best;
     /** Running share of the enemies in reach that our stuns caught; low against an enemy who runs from the horn. */
     private float catch_rate = 1f;
+    /** Watch view: how many stuns checkCatch has judged into catch_rate (before the first, it is only the prior). */
+    private int stuns_judged;
 
     Chieftain(@NonNull GauntletAI ai) {
         this.ai = ai;
@@ -584,6 +586,7 @@ final class Chieftain {
         }
         float share = caught / (float) alive;
         catch_rate = .6f * catch_rate + .4f * share;
+        stuns_judged++;
         ai.log(String.format("our stun caught %d of %d in reach (running share %.2f)%s", caught, alive, catch_rate,
                 state));
     }
@@ -987,13 +990,24 @@ final class Chieftain {
         canvas.status("chief", chiefText(chief, ready));
     }
 
-    /** The chieftain's status: hit points, where, his spell, the last cast and the stuns' catch rate. */
+    /** The chieftain's status: hit points, where, then spellText. */
     private @NonNull String chiefText(@NonNull Unit chief, boolean ready) {
         String at = WatchView.at(chief.getGridX(), chief.getGridY()) + (Intel.isStunned(chief) ? ", stunned" : "");
+        return chief.getHitPoints() + " hp at " + at + "; " + spellText(ready);
+    }
+
+    /**
+     * His spell, the last cast and, for a viking, the running share of enemies in reach his stuns caught (catch_rate,
+     * which enemyDodges reads) once checkCatch has judged a stun: before that it is only the prior.
+     */
+    private @NonNull String spellText(boolean ready) {
         String cast = last_cast < 0f ? "never cast" : "cast " + (int) (ai.time() - last_cast) + " s ago";
-        String spell = spellName() + (ready ? " ready" : " charging");
-        int caught = Math.round(100f * catch_rate);
-        return chief.getHitPoints() + " hp at " + at + "; " + spell + ", " + cast + "; stuns caught " + caught + "%";
+        String spell = spellName() + (ready ? " ready" : " charging") + ", " + cast;
+        if (!isViking())
+            return spell;
+        if (stuns_judged == 0)
+            return spell + "; no stun judged yet";
+        return spell + "; stuns caught " + Math.round(100f * catch_rate) + "% (" + stuns_judged + " judged)";
     }
 
     private @NonNull String spellName() {
@@ -1010,12 +1024,15 @@ final class Chieftain {
         return null;
     }
 
-    /** The chieftain's state (watch view), or null when u is not our chieftain. */
+    /**
+     * The chieftain's state (watch view), or null when u is not our chieftain: the inspector shows his hit points and
+     * where he is.
+     */
     @Nullable
     String describe(@NonNull Unit u) {
         if (u != ai.intel().chieftain || u.isDead())
             return null;
-        return "chieftain: " + chiefText(u, u.canDoMagic(magicIndex()));
+        return "chieftain" + (Intel.isStunned(u) ? ", stunned: " : ": ") + spellText(u.canDoMagic(magicIndex()));
     }
 
     /** Whether b is the quarters training our chieftain (watch view). */

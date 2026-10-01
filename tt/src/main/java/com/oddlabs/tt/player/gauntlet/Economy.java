@@ -649,6 +649,11 @@ final class Economy {
         float placed_time = -1f;
         /** veto_resite: since when projectMayStart has vetoed it for a threat near its site (-1: not vetoed). */
         float veto_since = -1f;
+        /**
+         * Watch view: why manageProjects last held it back (VETO_THREAT .. VETO_PLACER), VETO_NONE before that and
+         * once a placer walks.
+         */
+        int held = VETO_NONE;
         /** tower_wood_drop: pieces of wood ordered out of an armory for this site. */
         int wood_sent;
         /** tower_wood_drop: when the last deploy for this project was ordered. */
@@ -802,12 +807,14 @@ final class Economy {
                 p.site = moved;
             }
             if (!projectMayStart(p)) {
+                p.held = last_veto;
                 if (last_veto == VETO_THREAT && resiteEligible(p))
                     vetoResite(p, it);
                 continue;
             }
             p.veto_since = -1f;
             Unit placer = choosePlacer(p);
+            p.held = placer == null ? VETO_PLACER : VETO_NONE;
             if (placer == null) {
                 if (p.noplacer_since >= 0f && ai.time() - p.noplacer_since > REARM_WAIT && isRebuild(p)) {
                     // rearm_placer: a lost armory's site with no safe way to it is planned afresh.
@@ -867,8 +874,12 @@ final class Economy {
             last_veto = VETO_SITES;
             return false;
         }
-        if (p.sniper)
-            return sniperSafe(p.site.x, p.site.y);
+        if (p.sniper) {
+            boolean safe = sniperSafe(p.site.x, p.site.y);
+            if (!safe)
+                last_veto = VETO_UNSAFE;
+            return safe;
+        }
         // A placer sent into a fight only dies there.
         if (ai.military().threatNearEcon(p.site.x, p.site.y, 16)) {
             last_veto = VETO_THREAT;
@@ -920,12 +931,17 @@ final class Economy {
         return null;
     }
 
-    /** Why projectMayStart last said no (bookkeeping for veto_resite): none, threat, cooldown, escort, sites. */
+    /**
+     * Why projectMayStart last said no (for veto_resite and the watch view): none, threat, cooldown, escort, sites, an
+     * unsafe sniper site. VETO_PLACER is only Project.held's: the project may start, but no placer is free.
+     */
     private static final int VETO_NONE = 0;
     private static final int VETO_THREAT = 1;
     private static final int VETO_COOLDOWN = 2;
     private static final int VETO_ESCORT = 3;
     private static final int VETO_SITES = 4;
+    private static final int VETO_UNSAFE = 5;
+    private static final int VETO_PLACER = 6;
     private int last_veto;
     /**
      * veto_resite: tower (quarters) planning pauses until then after a vetoed project with no clear site is dropped.
@@ -4999,7 +5015,7 @@ final class Economy {
     // Watch view (AiView, GauntletAI.paint): reads fields only. No orders, log lines or counters, no distance field,
     // nothing added to or removed from a collection; the maps are walked, never looked up.
 
-    /** The STAT line's economy essentials: peons, armory workers, finished buildings. */
+    /** The STAT line's economy essentials: peons, armory workers (the buildings have a status line of their own). */
     @NonNull
     String summary() {
         Intel intel = ai.intel();
@@ -5007,22 +5023,21 @@ final class Economy {
         String workers = "";
         if (armory != null && !armory.isDead() && armory.getUnitContainer() != null)
             workers = ", W " + armory.getUnitContainer().getNumSupplies() + "/" + want_workers;
-        String buildings = " | Q" + intel.quarters.size() + " A" + intel.armories.size() + " T" + intel.towers.size();
-        return "peons " + intel.peons.size() + workers + buildings;
+        return "peons " + intel.peons.size() + workers;
     }
 
     /**
-     * Layer "economy": each building project at its site, labelled with what it is for and how far it got (planned,
-     * placer walking, placed and how much built, vetoed by a threat), the primary armory, the expansion armory and the
-     * buildings being evacuated. Status lines peons (gatherers against what the economy wants, then the rest by
-     * state), armory and buildings.
+     * Layer "economy": each building project at its site, labelled with what it is for and how far it got (placer
+     * walking, placed and how much built; before that why manageProjects last held it back, see heldText), the
+     * primary armory, the expansion armory and the buildings being evacuated. Status lines peons (gatherers against
+     * what the economy wants), other peons (the rest by state), armory (workers, stock), weapons and buildings.
      */
     void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
         Intel intel = ai.intel();
         float now = ai.time();
         String layer = WatchView.ECONOMY;
         int placed = 0;
-        int vetoed = 0;
+        int held = 0;
         for (Project p : projects) {
             Building b = p.building;
             boolean alive = b != null && !b.isDead();
@@ -5032,16 +5047,14 @@ final class Economy {
                 placed++;
                 state = String.format(Locale.ROOT, "placed, %d%% built", buildPercent(b));
                 rgb = WatchView.PLACED;
-            } else if (p.veto_since >= 0f) {
-                vetoed++;
-                state = String.format(Locale.ROOT, "vetoed by a threat for %d s", (int) (now - p.veto_since));
-                rgb = WatchView.VETOED;
             } else if (alive) {
                 state = "placer walking";
                 rgb = WatchView.CARRIED;
             } else {
-                state = "planned";
-                rgb = WatchView.PLANNED;
+                if (p.held != VETO_NONE)
+                    held++;
+                state = heldText(p, now);
+                rgb = p.held == VETO_THREAT ? WatchView.VETOED : WatchView.PLANNED;
             }
             canvas.mark(layer, p.site.x, p.site.y, rgb, p.label(p == expansion_project) + ": " + state);
         }
@@ -5059,32 +5072,61 @@ final class Economy {
             if (!b.isDead())
                 canvas.mark(layer, b.getGridX(), b.getGridY(), WatchView.EVACUATING, label);
         }
-        canvas.status("peons", peonText());
-        canvas.status("armory", armoryText(primary));
+        int[] n = new int[PeonState.values().length];
+        for (PeonState s : intel.peon_states.values())
+            n[s.ordinal()]++;
+        canvas.status("peons", peonText(n));
+        canvas.status("other peons", otherPeonText(n));
+        if (primary != null && !primary.isDead() && primary.getUnitContainer() != null) {
+            canvas.status("armory", armoryText(primary));
+            canvas.status("weapons", weaponText(primary));
+        } else {
+            canvas.status("armory", "none");
+            canvas.status("weapons", "no armory");
+        }
         StringBuilder sb = new StringBuilder();
         sb.append('Q').append(intel.quarters.size()).append('+').append(intel.quarters_sites.size());
         sb.append(" A").append(intel.armories.size()).append('+').append(intel.armory_sites.size());
         sb.append(" T").append(intel.towers.size()).append('+').append(intel.tower_sites.size());
         sb.append("; ").append(projects.size()).append(" projects, ").append(placed).append(" placed, ");
-        sb.append(vetoed).append(" vetoed");
+        sb.append(held).append(" held");
         canvas.status("buildings", sb.toString());
     }
 
-    /** The peons status line: each kind of gatherer against what allocatePeons wants, then the other states. */
-    private @NonNull String peonText() {
-        Intel intel = ai.intel();
-        int[] n = new int[PeonState.values().length];
-        for (PeonState s : intel.peon_states.values())
-            n[s.ordinal()]++;
-        StringBuilder sb = new StringBuilder().append(intel.peons.size()).append(':');
-        sb.append(" tree ").append(n[PeonState.GATHER_TREE.ordinal()]).append('/').append(want_tree);
+    /**
+     * A project that has no site out yet: why manageProjects last held it back (projectMayStart's veto, or no free
+     * placer), with veto_resite's clock while a threat holds it; "planned" before its first round or with no reason.
+     */
+    private static @NonNull String heldText(@NonNull Project p, float now) {
+        return switch (p.held) {
+            case VETO_THREAT ->
+                "held by a threat" + (p.veto_since >= 0f ? ", re-site clock " + (int) (now - p.veto_since) + " s" : "");
+            case VETO_COOLDOWN -> "held: a tower was razed near it";
+            case VETO_ESCORT -> "waiting for the army's escort";
+            case VETO_SITES -> "waiting for a site slot";
+            case VETO_UNSAFE -> "waiting: enemies near the sniper site";
+            case VETO_PLACER -> "waiting for a free placer";
+            default -> "planned";
+        };
+    }
+
+    /** The peons status line: how many, and each kind of gatherer against what allocatePeons wants. */
+    private @NonNull String peonText(int @NonNull [] n) {
+        StringBuilder sb = new StringBuilder().append(ai.intel().peons.size());
+        sb.append(", gathering tree ").append(n[PeonState.GATHER_TREE.ordinal()]).append('/').append(want_tree);
         sb.append(", iron ").append(n[PeonState.GATHER_IRON.ordinal()]).append('/').append(want_iron);
         sb.append(", rock ").append(n[PeonState.GATHER_ROCK.ordinal()]).append('/').append(want_rock);
         sb.append(", chicken ").append(n[PeonState.GATHER_CHICKEN.ordinal()]).append('/').append(want_chicken);
+        return sb.toString();
+    }
+
+    /** The other peons status line: the peons in each state but gathering. */
+    private static @NonNull String otherPeonText(int @NonNull [] n) {
+        List<String> parts = new ArrayList<>();
         for (PeonState s : PeonState.values())
             if (n[s.ordinal()] > 0 && !s.name().startsWith("GATHER_"))
-                sb.append(", ").append(s.name().toLowerCase(Locale.ROOT)).append(' ').append(n[s.ordinal()]);
-        return sb.toString();
+                parts.add(s.name().toLowerCase(Locale.ROOT) + " " + n[s.ordinal()]);
+        return parts.isEmpty() ? "none" : String.join(", ", parts);
     }
 
     /** How much of a placed site is built, in percent. */
@@ -5093,17 +5135,20 @@ final class Economy {
         return b instanceof com.oddlabs.tt.model.LandBuilding land && max > 0 ? land.getBuildPoints() * 100 / max : 0;
     }
 
-    /** The primary armory's status line: workers against the wanted number, its stock and weapons, the cycles. */
-    private @NonNull String armoryText(@Nullable Building armory) {
-        if (armory == null || armory.isDead() || armory.getUnitContainer() == null)
-            return "none";
+    /** The primary armory's status line (a living, finished one): where, workers against the wanted number, stock. */
+    private @NonNull String armoryText(@NonNull Building armory) {
         StringBuilder sb = new StringBuilder("at ").append(WatchView.at(armory.getGridX(), armory.getGridY()));
         sb.append(": workers ").append(armory.getUnitContainer().getNumSupplies()).append('/').append(want_workers);
         sb.append("; stock wood ").append(held(armory, TreeSupply.class));
         sb.append(", rock ").append(held(armory, RockSupply.class));
         sb.append(", iron ").append(held(armory, IronSupply.class));
         sb.append(", chicken ").append(held(armory, RubberSupply.class));
-        sb.append("; axes rock ").append(held(armory, RockAxeWeapon.class));
+        return sb.toString();
+    }
+
+    /** The weapons status line: the primary armory's axes, and its gather cycles (a round trip to trees, to iron). */
+    private @NonNull String weaponText(@NonNull Building armory) {
+        StringBuilder sb = new StringBuilder("axes rock ").append(held(armory, RockAxeWeapon.class));
         sb.append(", iron ").append(held(armory, IronAxeWeapon.class));
         sb.append(", chicken ").append(held(armory, RubberAxeWeapon.class));
         sb.append(String.format(Locale.ROOT, "; cycles tree %.0f s, iron %.0f s", tree_cycle, iron_cycle));
@@ -5151,20 +5196,21 @@ final class Economy {
     }
 
     /**
-     * What a building of ours is to the economy (watch view): its project, primary or expansion armory, forward or
-     * sniper tower, evacuation; null for nothing special.
+     * What a building of ours is to the economy (watch view): its project while it goes up (manageProjects drops a
+     * finished one within a second), primary or expansion armory, forward or sniper tower, evacuation; null for
+     * nothing special.
      */
     @Nullable
     String describe(@NonNull Building b) {
         List<String> parts = new ArrayList<>();
         for (Project p : projects)
-            if (p.building == b) {
+            if (p.building == b && !b.isComplete()) {
                 String placed = p.placed_time >= 0f ? ", placed at " + (int) p.placed_time + " s" : "";
                 parts.add("project " + p.label(p == expansion_project) + placed);
             }
         if (b == ai.intel().armory() && !b.isDead() && b.getUnitContainer() != null) {
             int workers = b.getUnitContainer().getNumSupplies();
-            parts.add("primary armory (new peons and gatherers go here), workers " + workers + "/" + want_workers);
+            parts.add("primary armory (new peons go here), workers " + workers + "/" + want_workers);
         }
         if (b == expansion)
             parts.add("expansion armory");

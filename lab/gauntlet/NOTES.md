@@ -111,7 +111,8 @@ N>=7:
   path-(c) cuts and how they ended); `lab/gauntlet/chiefs.py RUN...` (enemy chieftain gating, from game records).
 - `./aisim.sh lab lab/gauntlet/PaintCheck.java RUN KEY [--every N] [--dump-every SEC] [--limit SEC]`: plays a
   recorded game again with the watch view (AiView paint and describe) called every N ticks and requires it unchanged
-  (census, end checksum, decision log, counters); dumps what is painted to `aisim/paintcheck/` (see "Watch view").
+  (census, end checksum, counters, the decision log where the run kept it; logging on only if the run had it) and
+  every text within the viewer's limits; dumps what is painted to `aisim/paintcheck/` (see "Watch view").
 
 ## Log
 
@@ -1642,18 +1643,23 @@ methods of the modules that hold the state (colours, layer names and label helpe
 |---|---|---|
 | army | staging point (and the escort spot while the home army guards builders); the campaign target labelled with owner and kind and a line to it (from the staging point while mustering, from the attacking army's centre in an attack); that centre with ENGAGE_RADIUS (what the attack weighs) and the march waypoint; in a retreat the way back instead; reinforcements, raid (spot and squad), chieftain hunt, focus copy | Military: mode, roles, staging, target, march_wp, raid_x/y, chase_target, focus_owner |
 | threat | the strongest threatening group: a circle of 15 cells (the group updateThreat sums) at threat_x/y, amber at level 1, red at 2 | Military: threat_level/strength/x/y, base_threat_strength, engage_state |
-| economy | every building project at its site: type#id, why (first, by the scout, expansion, relocation, wood lock), state (planned, placer walking, placed and % built, vetoed by a threat); primary armory; expansion armory; evacuations | Economy: projects, expansion, evacuating; Intel.armory() |
-| shepherds | per copy: the spot, the shepherd (state walk/at/flee/nospot) with a line to the spot, the copy's leader with idle warriors against the wave size, orange when a launch is imminent; a walking wave as a line to its target | Shepherd: flocks |
+| economy | every building project at its site: type#id, why (first, by the scout, expansion, relocation, wood lock), state (placer walking, placed and % built; before that why manageProjects last held it back, Project.held: held by a threat with veto_resite's re-site clock (red), a razed tower near it, waiting for the army's escort, a site slot, a safe sniper site or a free placer; else planned); primary armory; expansion armory; evacuations | Economy: projects, expansion, evacuating; Intel.armory() |
+| shepherds | per copy: the spot, the shepherd (state walk/at/flee/nospot) with a line to the spot, the copy's leader with idle warriors against the wave size, orange when a launch is imminent (from the copy's launches, which a home flock reads from its partner); a walking wave as a line to its target | Shepherd: flocks |
 | freeze | each strike: the copy's start with phase and squad, the squad's centre and where it heads, the stage point in path (c); frozen copies' armory sites | Freeze: strikes, frozen, frozen_sites |
 | chief | the chieftain (hp, spell ready), a line to where he walks (his WalkController's target), the stun's reach (17 cells) while charged, the enemies his last stun was cast at until it is judged; or the quarters training him | Chieftain, Intel.chieftain |
 
-Status lines, in order: summary (the STAT line's essentials in its words: mode, atk and army with strength, threat;
-peons, W, Q/A/T), army, target, threat, peons (each gatherer kind against the economy's want, then the other states),
-armory (workers/want, stock, axes, cycles), buildings (Q/A/T with sites, projects), shepherds, freeze, chief.
-`describe`: shepherd of sN (spot, state), freeze squad (target, phase), lure, sapper, the chieftain, a peon's state
+Status lines, in order, each at most 100 characters with its key so the AI panel shows it whole (PaintCheck checks
+it): summary (the STAT line's essentials in its words: mode, atk and army with strength, threat; peons, W), army,
+target, threat, peons (how many, each gatherer kind against the economy's want), other peons (the other states),
+armory (where, workers/want, stock), weapons (axes, cycles), buildings (Q/A/T with sites, projects placed and held),
+shepherds (flocks, shepherds), waves (copies about to launch, waves walking, seen, at our base), freeze, chief (hp,
+where, spell and last cast; a viking's stun catch rate once checkCatch judged a stun, Chieftain.stuns_judged).
+`describe` (at most 86 characters, as the inspector shows "AI: " + text whole up to 90): shepherd of sN (spot, state),
+freeze squad (target, phase), lure, sapper, the chieftain (spell; hp and cell are the inspector's), a peon's state
 with its site or supply and armory, a warrior's role (home army / attack on X / reinforcing / raid / hunt / to a
-tower) with whom it hunts and its state; buildings: project, primary or expansion armory, forward or sniper tower,
-evacuation, the tower's gunner on the way and what it aims at, chieftain training.
+tower), whom it hunts (in place of the attack's target) and its state; buildings: project while it goes up, primary
+or expansion armory, forward or sniper tower, evacuation, the tower's gunner on the way and what it aims at,
+chieftain training.
 
 Read-only by construction: fields only; the maps and sets are walked with `==` (no get or contains, so no unit's
 identity hash is drawn); none of Intel.enemyIndex, computeField, creepTowerCount (its removeIf), trainingQuarters
@@ -1672,6 +1678,19 @@ Proof, `lab/gauntlet/PaintCheck.java` on the painter build (snapshot edbecbbc4f)
 Also: `replay paint-n8-final s201-0` (played on edbecbbc4f) VERIFIED; `replay paint-n8 s201-0 --snap latest` SAME;
 `rewindcheck paint-n8-final s201-0 --limit 400 --at 120,300` OK; the dumps (every 10 minutes) agree with the STAT and
 battle lines of the same moment (targets, army centre and strength, threat, peon wants, armory stock).
+
+Review fixes (2026-09-30, snapshot d921bec1b2): the armory, shepherds and peons lines (up to 138 characters) and the
+summary (92) were cut at the viewer's 72; they are split (weapons, waves, other peons; Q/A/T only on buildings), and
+PaintCheck now fails any status line or label over 100 characters, a describe text over 86, or more than 20 lines or
+5,000 shapes (longest now: status 89, label 50, describe 79). It used to fail every game without logs: it now logs
+only when the run did (the shepherd_rej_* counters are counted only in logged games) and skips logs that --logs lost
+deleted. A natives chieftain no longer shows "stuns caught 100%", nor a viking before checkCatch judged a stun. A
+project held back is labelled with the reason manageProjects last had (Project.held), not "planned"/"vetoed" from
+veto_resite's clock. A home flock (shepherd_home_pair) takes its copy's launches from its partner, and the copies
+about to launch count each copy once. Proof: `replay paint-base s201-0 --snap latest` SAME (played before the
+fixes); PaintCheck 0 differences on paint-fix s201-0 (every tick), natives-base s3-0 (gauntlet/n, no logs, played
+before the fixes, every tick), natives-lost s3-0 (--logs lost, won), paint-homepair s201-0 (shepherd_home_pair=200,
+2:58:29) and the main checkout's cur8-bench-vs15-e s8112-0 (no logs), whose watch selftest stays VERIFIED to the end.
 
 Not shown, because the AI keeps it nowhere: why it is not attacking yet (considerAttack's army, potential, defense and
 caution are locals, logged only when the attack goes), the next target while at home (chooseTarget computes distance
