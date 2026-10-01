@@ -9,6 +9,7 @@ import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.AttackController;
 import com.oddlabs.tt.model.behaviour.Controller;
 import com.oddlabs.tt.model.behaviour.HuntController;
+import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
@@ -69,6 +70,8 @@ final class Freeze {
     private static final int STAGE_CELLS = 19;
     /** Cells from the copy's peons at which the walking squad starts to strike in path (a). */
     private static final int ARRIVE_CELLS = 12;
+    /** freeze_patience_ticks: cells from the copy's idle peons where the squad holds (beyond their 8-cell scan). */
+    static final int HOLD_CELLS = 16;
     /** Below this many peons the squad gives up and walks home. */
     private static final int MIN_SQUAD = 3;
     /** Game ticks the squad waits at the stage point for the armory site (freeze_wait of the old strike). */
@@ -206,6 +209,9 @@ final class Freeze {
         private int stage_x;
         private int stage_y;
         private boolean out_counted;
+        /** freeze_patience_ticks: when the squad first came within HOLD_CELLS of idle peons, and whether it holds. */
+        private float hold_since = -1f;
+        private boolean holding;
 
         Strike(@NonNull Player target, @NonNull List<@NonNull Unit> squad) {
             this.target = target;
@@ -270,6 +276,8 @@ final class Freeze {
             List<Unit> prey = outsideUnits(t);
             int[] goal = prey.isEmpty() ? new int[]{start_x, start_y} : MapAnalysis.centroid(prey);
             int[] c = MapAnalysis.centroid(squad);
+            if (hold(t, prey, goal, c, now))
+                return;
             if (!prey.isEmpty() && MapAnalysis.dist2(c[0], c[1], goal[0], goal[1]) <= ARRIVE_CELLS * ARRIVE_CELLS) {
                 setPhase(Phase.STRIKE);
                 ai.aiLog().count("freeze_path_a");
@@ -279,6 +287,52 @@ final class Freeze {
                 return;
             }
             moveSquad(now, goal[0], goal[1]);
+        }
+
+        /**
+         * freeze_patience_ticks: within HOLD_CELLS of a copy that has at least as many idle peons (no orders yet) as
+         * the
+         * squad has peons, the squad stops and holds there until fewer are idle or the patience runs out. Returns
+         * whether it holds this tick.
+         */
+        private boolean hold(@NonNull Player t, @NonNull List<@NonNull Unit> prey, int @NonNull [] goal,
+                int @NonNull [] c, float now) {
+            float patience = ai.strategy().freeze_patience_ticks;
+            if (patience <= 0f || prey.isEmpty()
+                    || MapAnalysis.dist2(c[0], c[1], goal[0], goal[1]) > HOLD_CELLS * HOLD_CELLS)
+                return false;
+            if (hold_since < 0f)
+                hold_since = now;
+            int idle = 0;
+            for (Unit u : prey)
+                if (u.getPrimaryController() instanceof IdleController)
+                    idle++;
+            if (idle < squad.size() || now - hold_since >= patience) {
+                if (holding) {
+                    holding = false;
+                    last_order = -5000f; // walk on at once
+                    int n = idle;
+                    log(() -> "squad stops holding at " + name(t) + " at " + (int) GauntletAI.seconds(
+                            now) + "s: " + n + " of " + prey.size() + " peons idle");
+                }
+                return false;
+            }
+            if (!holding) {
+                holding = true;
+                ai.aiLog().count("freeze_hold");
+                // A point HOLD_CELLS from the idle peons on the squad's side, ordered at once (moveSquad waits 6 s).
+                double dx = c[0] - goal[0];
+                double dy = c[1] - goal[1];
+                double len = Math.max(1, Math.hypot(dx, dy));
+                int hx = goal[0] + (int) Math.round(dx * HOLD_CELLS / len);
+                int hy = goal[1] + (int) Math.round(dy * HOLD_CELLS / len);
+                last_order = now;
+                ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), hx, hy, Action.MOVE, false);
+                int n = idle;
+                log(() -> "squad holds at " + name(t) + " at " + (int) GauntletAI.seconds(
+                        now) + "s: " + n + " of " + prey.size() + " peons idle");
+            }
+            return true;
         }
 
         private void strike(@NonNull Player t, float now) {
@@ -345,6 +399,8 @@ final class Freeze {
             start_x = UnitGrid.toGridCoordinate(best.getStartX());
             start_y = UnitGrid.toGridCoordinate(best.getStartY());
             out_counted = false;
+            hold_since = -1f;
+            holding = false;
             seen.clear();
             setPhase(Phase.WALK);
             ai.aiLog().count("freeze_retarget");

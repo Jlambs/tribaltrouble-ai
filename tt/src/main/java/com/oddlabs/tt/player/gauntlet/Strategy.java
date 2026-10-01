@@ -886,6 +886,15 @@ class Strategy {
      */
     boolean freeze_retarget = false;
     /**
+     * Path (a) waits for the copy's peons to take orders: while at least as many of its peons stand idle as the squad
+     * has peons, the squad holds Freeze.HOLD_CELLS from them (beyond an idle peon's 8-cell scan) for up to this many
+     * game
+     * ticks, then strikes. Builders never fight back, idle peons do. The stock AI decides on real time, every 20-28
+     * game s at ludicrous speed, so there the squad arrived before the copy's first orders and met 20 idle peons
+     * (ludicrous N=13: freeze kills 8.9 per game against 17.6 at normal speed, peons lost 2.6 against 0.7). 0: off.
+     */
+    float freeze_patience_ticks = 0f;
+    /**
      * The attack target's choice leaves frozen copies (Freeze) until no other copy is a candidate: a frozen copy never
      * launches a wave, so its quarters is worth nothing to our survival, while it scores as the easiest target (no
      * priority, no defense) and took our first attack in 35 of 38 N=13 games (audit13 frozen_last).
@@ -1473,6 +1482,7 @@ class Strategy {
         freeze_fight = params.getBoolean("freeze_fight", freeze_fight);
         freeze_armory_push = params.getBoolean("freeze_armory_push", freeze_armory_push);
         freeze_retarget = params.getBoolean("freeze_retarget", freeze_retarget);
+        freeze_patience_ticks = (float) params.getDouble("freeze_patience_ticks", freeze_patience_ticks);
         frozen_last = params.getBoolean("frozen_last", frozen_last);
         freeze_targets = params.getInt("freeze_targets", freeze_targets);
         freeze_squad2 = params.getInt("freeze_squad2", freeze_squad2);
