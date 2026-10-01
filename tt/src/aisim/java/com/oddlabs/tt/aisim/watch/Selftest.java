@@ -48,7 +48,7 @@ import java.util.Set;
  * </ul>
  * Input steps go the way a real key or mouse button does from the moment the window reports it (InputState: focus,
  * picking, the panels, SelectionDelegate, the watch keys); only the window system's own event delivery is left out.
- * Each waits until the clock is idle again (a key or click may seek):
+ * Each waits until the clock is idle again (a key or click may seek), and fails while the Esc menu stops the clock:
  * <ul>
  * <li>{@code key:KEY} presses and lets go of a key: a Key name ({@code F1}, {@code N}, {@code PERIOD},
  * {@code RETURN}) or one of {@code . , [ ] + -}, after {@code shift+}, {@code ctrl+} or {@code alt+} as wanted;</li>
@@ -177,12 +177,13 @@ final class Selftest {
                 return false;
             }
             case "step" -> {
-                int target = clock.tick() + Integer.parseInt(argument.startsWith("+") ? argument.substring(
-                        1) : argument);
+                int ticks = Integer.parseInt(argument.startsWith("+") ? argument.substring(1) : argument);
+                // as the clock counts it: from where it is heading (a seek's target, a presimulation's way back)
+                int target = clock.position() + ticks;
                 // the clock stops at the start and the recorded end
                 step_target = Math.max(0, clock.endTick() < 0 ? target : Math.min(target, clock.endTick()));
                 step_message = clock.message();
-                clock.step(target - clock.tick());
+                clock.step(ticks);
                 return false;
             }
             case "shot" -> {
@@ -258,9 +259,9 @@ final class Selftest {
         Clock clock = game.clock();
         return switch (name) {
             case "play", "wait" -> now >= until_nanos;
-            case "seek", "key", "type", "click", "hover", "press", "drag", "release", "wheel" -> !clock.busy();
+            case "seek", "key", "type", "click", "hover", "press", "drag", "release", "wheel" -> idle(clock);
             case "presim" -> {
-                if (clock.busy()) {
+                if (!idle(clock)) {
                     yield false;
                 }
                 if (clock.tick() != 0) { // the way back to the start is a rewind
@@ -271,7 +272,7 @@ final class Selftest {
                 yield true;
             }
             case "step" -> {
-                if (clock.busy()) {
+                if (!idle(clock)) {
                     yield false;
                 }
                 String message = clock.message();
@@ -303,6 +304,20 @@ final class Selftest {
             }
             default -> true;
         };
+    }
+
+    /**
+     * Whether the clock is done with what a step started: true once it is idle; fails the step when it cannot get
+     * there, because the Esc menu (a {@code key:ESCAPE}) stops the clock while it is open.
+     */
+    private static boolean idle(@NonNull Clock clock) {
+        if (!clock.busy()) {
+            return true;
+        }
+        if (clock.menuPaused()) {
+            throw new IllegalStateException("the Esc menu stops the clock while it is open (ESCAPE again closes it)");
+        }
+        return false;
     }
 
     private void done(@NonNull String current, @Nullable String failure) {
@@ -429,8 +444,12 @@ final class Selftest {
             case "row" -> {
                 Scoreboard board = hud.scoreboard();
                 requireShown(board, "the scoreboard");
-                return new int[]{board.guiX() + board.getWidth() / 3, board.guiY() + board.rowMiddleY(
-                        Integer.parseInt(argument))};
+                int slot = Integer.parseInt(argument);
+                if (slot < 0 || slot >= game.job().slots()) {
+                    throw new IllegalArgumentException(
+                            "no row " + slot + ": the scoreboard has slots 0 to " + (game.job().slots() - 1));
+                }
+                return new int[]{board.guiX() + board.getWidth() / 3, board.guiY() + board.rowMiddleY(slot)};
             }
             case "timeline" -> {
                 Timeline timeline = hud.timeline();

@@ -70,6 +70,8 @@ final class WatchGame implements Clock.Listener {
     private int followed_slot;
     /** What was picked when a restore began: found again once the seek after it is done. */
     private @Nullable Remembered remembered;
+    /** What was picked when the last presimulation began: found again once it is back. */
+    private @Nullable Remembered presim_pick;
 
     private record Remembered(int slot, @NonNull String kind, int grid_x, int grid_y) {
     }
@@ -169,7 +171,7 @@ final class WatchGame implements Clock.Listener {
             dropDeadPick();
             overlay.frame();
             hud.frame(now);
-        } catch (RuntimeException | AssertionError e) {
+        } catch (RuntimeException | Error e) {
             if (selftest != null) {
                 selftest.crashed(e); // reports and quits
             }
@@ -208,11 +210,37 @@ final class WatchGame implements Clock.Listener {
         if (picked == null) {
             return; // a restore during a seek that restored already: keep what that one remembered
         }
-        remembered = null;
-        if (!picked.isDead()) {
-            remembered = new Remembered(Inspector.slotOf(world, picked.getOwnerNoCheck()), Inspector.kindOf(picked),
-                    picked.getGridX(), picked.getGridY());
+        remembered = rememberedOf(picked);
+    }
+
+    /** What finds {@code picked} again after a restore, or null when it is dead. */
+    private @Nullable Remembered rememberedOf(@NonNull Selectable<?> picked) {
+        if (picked.isDead()) {
+            return null;
         }
+        return new Remembered(Inspector.slotOf(world, picked.getOwnerNoCheck()), Inspector.kindOf(picked),
+                picked.getGridX(), picked.getGridY());
+    }
+
+    @Override
+    public void restoreFailed() {
+        if (!clock.busy()) {
+            remembered = null; // no seek comes to an end that would pick it again: the pick is as it was
+        }
+    }
+
+    @Override
+    public void presimulationStarts() {
+        Selectable<?> picked = inspected;
+        presim_pick = picked == null ? null : rememberedOf(picked);
+    }
+
+    @Override
+    public void presimulationTurns() {
+        // what was picked on the way out (or found at the end) is not what the way back comes to: the pick it began
+        // with is, unless the user picks another meanwhile
+        inspect(null);
+        remembered = presim_pick;
     }
 
     @Override

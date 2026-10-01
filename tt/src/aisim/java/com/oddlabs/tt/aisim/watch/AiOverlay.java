@@ -16,6 +16,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,7 +34,8 @@ import java.util.logging.Logger;
  * painter that throws loses that paint: the overlay shows nothing of it, counts it and says why. Painting must only
  * read; if it changes the game anyway, the next census check shows the game as DIVERGED.
  *
- * <p>Layers: the layer key cycles all layers, none (no paint at all), then each layer the AI painted so far, alone.
+ * <p>Layers: the layer key cycles all layers, none (no paint at all), then each layer the followed AI painted so far,
+ * alone. Each player's AI has its own layers; following one that never painted the layer shown alone shows all.
  */
 final class AiOverlay {
     private static final Logger logger = Logger.getLogger(AiOverlay.class.getName());
@@ -46,8 +48,11 @@ final class AiOverlay {
     private final @NonNull WatchGame game;
     private final @NonNull TextPanel panel = new TextPanel(PANEL_WIDTH);
     private final @NonNull OverlayRenderer renderer = new OverlayRenderer();
-    /** Every layer painted so far, in the order first painted: what the layer key cycles through. */
-    private final @NonNull List<String> layers = new ArrayList<>();
+    /**
+     * Every layer each slot's AI painted so far, in the order first painted: what the layer key cycles through while
+     * that player is followed.
+     */
+    private final @NonNull Map<Integer, List<String>> layers_by_slot = new HashMap<>();
     private boolean off;
     /** The one layer shown, or null for all of them. */
     private @Nullable String solo;
@@ -116,7 +121,8 @@ final class AiOverlay {
         long start = System.nanoTime();
         try {
             view.paint(canvas);
-        } catch (RuntimeException | AssertionError | LinkageError e) {
+        } catch (RuntimeException | AssertionError | LinkageError | StackOverflowError e) {
+            // a painter that recursed too deep has unwound by now: like any other, it costs this paint
             canvas.close();
             failed("paint", e, view, tick);
             shown = null; // skip this frame's paint: a part of it would mislead
@@ -127,11 +133,22 @@ final class AiOverlay {
         paint_millis = paints == 0 ? millis : paint_millis * .9 + millis * .1;
         paints++;
         shown = canvas;
+        List<String> layers = layers();
         for (String layer : canvas.layers()) {
             if (!layers.contains(layer)) {
                 layers.add(layer);
             }
         }
+        String one = solo;
+        if (one != null && !layers.contains(one)) {
+            solo = null; // a layer of another player's AI, which this one never painted: show all of this one's
+            game.hudRefreshSoon();
+        }
+    }
+
+    /** The layers the followed player's AI painted so far, in the order first painted. */
+    private @NonNull List<String> layers() {
+        return layers_by_slot.computeIfAbsent(game.followedSlot(), _ -> new ArrayList<>());
     }
 
     private void failed(@NonNull String what, @NonNull Throwable e, @NonNull AiView view, int tick) {
@@ -217,6 +234,7 @@ final class AiOverlay {
     /** The layer key: {@code +1} the next of all, none, each layer; {@code -1} the previous. */
     void cycle(int direction) {
         // the cycle: all (-1), none (0), then layer i at i + 1
+        List<String> layers = layers();
         int states = layers.size() + 2;
         int at = off ? 0 : solo == null ? -1 : layers.indexOf(solo) + 1;
         int next = Math.floorMod(at + 1 + direction, states) - 1;
@@ -235,6 +253,7 @@ final class AiOverlay {
             case "next" -> cycle(1);
             case "prev" -> cycle(-1);
             default -> {
+                List<String> layers = layers();
                 int index = layers.indexOf(name);
                 if (index < 0) {
                     return "no layer " + name + " painted so far" + (layers.isEmpty() ? "" : " (" + String.join(", ",
@@ -249,7 +268,7 @@ final class AiOverlay {
     /** -1 all, 0 none, i + 1 layer i alone. */
     private void setMode(int mode) {
         off = mode == 0;
-        solo = mode > 0 ? layers.get(mode - 1) : null;
+        solo = mode > 0 ? layers().get(mode - 1) : null;
         game.hudRefreshSoon();
     }
 
@@ -260,10 +279,12 @@ final class AiOverlay {
         if (off) {
             return "off";
         }
+        List<String> layers = layers();
         if (one == null) {
             return layers.isEmpty() ? "all layers" : "all " + layers.size() + " layers";
         }
-        return "layer " + one + " (" + (layers.indexOf(one) + 1) + " of " + layers.size() + ")";
+        int at = layers.indexOf(one);
+        return "layer " + one + (at < 0 ? " (not painted by this AI)" : " (" + (at + 1) + " of " + layers.size() + ")");
     }
 
     // ---------------------------------------------------------------- panels
@@ -328,7 +349,7 @@ final class AiOverlay {
         try {
             String text = view.describe(s);
             return text == null ? null : new TextPanel.Line(OverlayPaint.clip("AI: " + text, MAX_LINE), AI_TEXT);
-        } catch (RuntimeException | AssertionError | LinkageError e) {
+        } catch (RuntimeException | AssertionError | LinkageError | StackOverflowError e) {
             return new TextPanel.Line(OverlayPaint.clip("AI: describe failed: " + explain(e, view), MAX_LINE),
                     TextPanel.BAD);
         }

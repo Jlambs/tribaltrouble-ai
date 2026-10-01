@@ -96,19 +96,19 @@ public final class WatchCommand {
     }
 
     /**
-     * watchfile: resolves the game, writes its watch file to {@code aisim/watch/<run>-<key>.json}, prints the notes
-     * and then the file's absolute path, as the last line.
+     * watchfile: resolves the game, writes its watch file to {@code aisim/watch/<run>-<key>-<unique>.json}, prints the
+     * notes and then the file's absolute path, as the last line.
      */
     public static int run(@NonNull Request request) throws IOException {
         Resolved game = resolve(request.game(), request.aiFromRun());
         String snap = thisSnapshot();
-        // One watch file per start: the game reads it seconds after this, so a second watch started meanwhile must not
-        // overwrite it. Those of earlier starts are deleted.
-        Path file = WATCH.resolve(
-                game.name() + "-" + ProcessHandle.current().pid() + ".json").toAbsolutePath().normalize();
         Path out = WATCH.resolve(game.name()).toAbsolutePath().normalize();
         Files.createDirectories(out);
         deleteOldWatchFiles();
+        // One watch file per start: the game reads it seconds after this JVM exits, so a second watch started
+        // meanwhile must not overwrite it; a name made unique by the file system (this JVM's pid may be reused at
+        // once). Those of earlier starts are deleted a day later.
+        Path file = Files.createTempFile(WATCH, game.name() + "-", ".json").toAbsolutePath().normalize();
         if (request.selftest() != null) {
             // a selftest that dies before its end must not leave the last run's report standing
             Files.deleteIfExists(out.resolve("selftest.txt"));
@@ -175,7 +175,8 @@ public final class WatchCommand {
         Recording recording = Files.exists(game_file) ? Recording.read(game_file) : null;
         List<String> notes = new ArrayList<>();
         // A game still being played has its game file and job, but no result row yet: it plays as far as recorded.
-        Map<String, Object> row = recording == null ? row(dir, run_name, key) : rowOrNull(dir, key);
+        Map<String, Object> row = recording == null ? row(dir, run_name, key) : rowOrNull(dir, key,
+                recording.header().get("snap"));
         if (row == null) {
             notes.add(
                     "no result row for " + key + " yet (a game still being played?): watching it as far as its game" + " file goes");
@@ -202,10 +203,13 @@ public final class WatchCommand {
             String merged = run_name + " is a merged or renamed run";
             notes.add("played as game " + key + " of run " + job.run() + " (" + merged + ")");
         }
-        String run_snap = row != null && row.get("snap") instanceof String snap ? snap : run_json.path("snap").asText();
-        Object header_snap = recording == null ? null : recording.header().get("snap");
-        if (header_snap != null && !header_snap.equals(run_snap)) {
-            notes.add("!! the result row says snapshot " + run_snap + " played the game, its game file " + header_snap);
+        // the snapshot that recorded the game: the recording's own word, which is what the viewer checks against
+        String row_snap = row != null && row.get("snap") instanceof String snap ? snap : null;
+        String run_snap = recording != null && recording.header().get("snap") instanceof String snap
+                && !snap.isEmpty() ? snap : row_snap != null ? row_snap : run_json.path("snap").asText();
+        if (row_snap != null && !row_snap.equals(run_snap)) {
+            String row_says = "the result row says snapshot " + row_snap + " played the game";
+            notes.add("!! " + row_says + ", its game file " + run_snap + ": watching the game file's");
         }
         String name = safeName(run_name) + "-" + safeName(key);
         return finish(job, recording, endTick(recording, row), run_snap, aisimFolder(dir), recordedPools(run_json),
@@ -303,14 +307,25 @@ public final class WatchCommand {
         throw new UsageException("no run " + run + " in " + slash(Runs.RUNS));
     }
 
-    /** Game {@code key}'s result row in the run folder {@code dir}, or null if it has none (yet). */
-    private static @Nullable Map<String, Object> rowOrNull(@NonNull Path dir, @NonNull String key) throws IOException {
+    /**
+     * Game {@code key}'s result row in the run folder {@code dir}, or null if it has none (yet); of several (a merged
+     * run), the one of snapshot {@code snap}, the recording's, else the first.
+     */
+    private static @Nullable Map<String, Object> rowOrNull(@NonNull Path dir, @NonNull String key,
+            @Nullable Object snap) throws IOException {
+        Map<String, Object> first = null;
         for (Map<String, Object> row : Runs.readJsonl(dir.resolve("results.jsonl"))) {
-            if (key.equals(row.get("key"))) {
+            if (!key.equals(row.get("key"))) {
+                continue;
+            }
+            if (snap != null && snap.equals(row.get("snap"))) {
                 return row;
             }
+            if (first == null) {
+                first = row;
+            }
         }
-        return null;
+        return first;
     }
 
     /** Game {@code key}'s result row in the run folder {@code dir}; a usage error, with some of its keys, if none. */
@@ -474,7 +489,12 @@ public final class WatchCommand {
         if (lineup == null) {
             lineup = row != null && row.get("players") instanceof String text ? text : lineupOf(seats);
         }
-        String speed = row != null && row.get("speed") instanceof String text ? text : speedOf(header, file);
+        // the header's seconds per tick are how the world played; the row's speed only for files from before them
+        String speed = speedOf(header, file);
+        if (!(header.get("secondsPerTick") instanceof Number) && row != null && row.get(
+                "speed") instanceof String text) {
+            speed = text;
+        }
         return new Job(run, key, map.seed(), side, lineup, seats, map.size(), map.terrain(), map.hills(), map.trees(),
                 map.supplies(), minutes, rng, collapse, stop_when_a_out, jobPath(recording.file()), null, speed);
     }

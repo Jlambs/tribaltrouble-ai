@@ -29,9 +29,9 @@ public interface WatchControls {
     boolean keyboardBlocked();
 
     /**
-     * Draws the controls' own 3D overlay into the scene (an AI's painted plans), after the scene's objects, with the
-     * scene's camera and matrices. Called for every pass that draws the scene, the water's reflection pass included
-     * (its camera is the view's mirrored below the sea level): draw in the view's pass only.
+     * Draws the controls' own 3D overlay into the scene (an AI's painted plans), with the scene's camera and matrices:
+     * once a frame, last in the view's pass (after the water, the particles and the rally point), never in the water's
+     * reflection pass (DefaultRenderer).
      */
     default void render3D(@NonNull CameraState state, @NonNull MatrixStack model_view,
             @NonNull MatrixStack projection) {

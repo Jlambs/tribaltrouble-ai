@@ -1,5 +1,7 @@
 package com.oddlabs.tt.aisim.watch;
 
+import com.oddlabs.matchmaking.Game;
+import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.global.Globals;
@@ -43,6 +45,7 @@ final class WatchHud implements WatchControls {
     private static final int MARGIN = 8;
     private static final int GAP = 6;
     private static final int JUMP_BOX_WIDTH = 220;
+    private static final int STATUS_MIN = 420;
     private static final int INSPECTOR_MIN = 260;
     /**
      * The corner the compass takes at the bottom right (CompassRenderer: its centre 80 from both edges, its letters 46
@@ -65,7 +68,7 @@ final class WatchHud implements WatchControls {
     private final @NonNull WatchGame game;
     /** Full-screen, never focused: its panels draw over the 3D view and take the mouse only where they are. */
     private final @NonNull Layer layer = new Layer();
-    private final @NonNull TextPanel status = new TextPanel(420);
+    private final @NonNull TextPanel status = new TextPanel(STATUS_MIN);
     private final @NonNull TextPanel inspector = new TextPanel(INSPECTOR_MIN, 640);
     private final @NonNull Scoreboard scoreboard;
     private final @NonNull Timeline timeline;
@@ -186,15 +189,15 @@ final class WatchHud implements WatchControls {
         SelectionDelegate selection_delegate = delegate;
         boolean map_mode = selection_delegate != null && selection_delegate.isInMapMode();
         // the top: the scoreboard on the left; the status panel in the middle (the overview map shows its title
-        // there), right of the scoreboard in a narrow window; the inspector on the right, no wider than leaves the
-        // status panel free (its widths apply from its next lines)
+        // there), right of the scoreboard in a narrow window, and no wider than leaves the inspector its least width
+        // (a longer line, such as why rewind is off, is cut); the inspector on the right, in the room the status leaves
         scoreboard.setPos(MARGIN, height - MARGIN - scoreboard.getHeight());
         int top = height - MARGIN - (map_mode ? Skin.getSkin().getHeadlineFont().getHeight() : 0);
-        int status_x = (width - status.getWidth()) / 2;
-        if (scoreboard.isShown()) {
-            status_x = Math.max(status_x, Math.min(MARGIN + scoreboard.getWidth() + GAP,
-                    width - MARGIN - status.getWidth()));
-        }
+        int status_left = scoreboard.isShown() ? MARGIN + scoreboard.getWidth() + GAP : MARGIN;
+        int status_right = width - MARGIN - INSPECTOR_MIN - GAP;
+        status.setWidths(STATUS_MIN, Math.max(STATUS_MIN, status_right - status_left));
+        int status_x = Math.clamp((width - status.getWidth()) / 2, status_left,
+                Math.max(status_left, status_right - status.getWidth()));
         status.setPos(status_x, top - status.getHeight());
         jump_box.setPos(status_x + (status.getWidth() - jump_box.getWidth()) / 2,
                 status.getY() - jump_box.getHeight() - 2);
@@ -229,6 +232,11 @@ final class WatchHud implements WatchControls {
         int room_lines = (ceiling - bottom - extras - 2 * TextPanel.PADDING) / Math.max(ai_log.lineHeight(), 1);
         ai_log.setMaxLines(Math.min(room_lines, map_mode ? MAP_LOG_LINES : AiLogPanel.MAX_LINES));
         ai_log.setWidths(column_width, column_width);
+        for (GUIObject panel : ai_column) {
+            if (panel instanceof TextPanel text) {
+                text.setMaxWidth(column_width); // its longer lines are cut
+            }
+        }
         int y = bottom;
         if (ai_log.isShown()) {
             ai_log.setPos(right - ai_log.getWidth(), y);
@@ -255,6 +263,11 @@ final class WatchHud implements WatchControls {
             time.append(String.format(Locale.ROOT, "  (runs x%.1f)", clock.effectiveSpeed()));
         }
         lines.add(new TextPanel.Line(time.toString()));
+        Job job = game.job();
+        if (job.gameSpeed() != Game.GAMESPEED_NORMAL) {
+            // 1x plays 50 world ticks a second at any game speed, and every time shown is ticks / 50
+            lines.add(new TextPanel.Line("game speed " + job.speed() + ": times are world ticks / 50", TextPanel.DIM));
+        }
         Verification verification = game.verification();
         lines.add(new TextPanel.Line(verification.status(), verification.diverged()
                 || verification.rewindMismatch() ? TextPanel.BAD : verification.compared() > 0 ? TextPanel.GOOD : TextPanel.DIM));
@@ -384,7 +397,7 @@ final class WatchHud implements WatchControls {
     /** N and B: seeks to the next or previous timeline mark from where the view is (or is going). */
     private void jumpToEvent(boolean next) {
         Clock clock = game.clock();
-        int from = clock.seekTarget() >= 0 ? clock.seekTarget() : clock.tick();
+        int from = clock.position();
         Timeline.Mark mark = next ? timeline.next(from) : timeline.previous(from);
         if (mark == null) {
             clock.say(
@@ -401,14 +414,13 @@ final class WatchHud implements WatchControls {
     private void presimulate() {
         Clock clock = game.clock();
         if (clock.presimulating()) {
-            clock.stopPresimulation();
-            clock.say("stopped simulating ahead");
+            String back_to = Times.clock(clock.position());
+            clock.say(clock.stopPresimulation() ? "stopped simulating ahead" : "on the way back to " + back_to);
         } else if (clock.endTick() >= 0 && clock.frontier() >= clock.endTick()) {
             clock.say("the whole game is simulated already: every jump is quick");
         } else {
-            boolean playing = clock.state() == Clock.State.PLAYING;
-            int here = clock.seekTarget() >= 0 ? clock.seekTarget() : clock.tick();
-            if (clock.presimulate(here, playing) == null) {
+            int here = clock.position();
+            if (clock.presimulate(here, clock.willPlay()) == null) {
                 clock.say("simulating to the end, then back to " + Times.clock(here) + " (E stops)");
             }
         }

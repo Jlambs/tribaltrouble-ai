@@ -24,8 +24,11 @@ final class OverlayPaint implements AiView.Canvas {
     static final int MAX_SHAPES = 5_000;
     /** Status lines beyond this many are left out: the AI panel is meant to stay small. */
     static final int MAX_STATUS = 20;
-    /** Longer status keys and values and mark labels are cut to this many characters. */
-    static final int MAX_TEXT = 72;
+    /**
+     * Longer status keys and values and mark labels are cut to this many characters (the AI panel also cuts a line
+     * that does not fit its width).
+     */
+    static final int MAX_TEXT = 120;
     /** Longer layer names are cut to this many characters. */
     static final int MAX_LAYER = 24;
 

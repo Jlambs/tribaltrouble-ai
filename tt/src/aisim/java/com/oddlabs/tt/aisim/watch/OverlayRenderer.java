@@ -21,9 +21,9 @@ import java.util.function.Predicate;
 /**
  * Draws an AI's painted shapes into the 3D scene, from the view's {@code render3D} (WatchControls): lines and circles
  * that follow the ground, and marks as pins standing on it. Like the engine's debug drawing it draws with the depth
- * test off, so terrain, trees and units never hide a shape; unlike it, lines are ribbons a few pixels wide that face
- * the camera, readable at any zoom (GL core profiles draw 1-pixel lines only). Only drawing: it reads the height map,
- * nothing else of the world.
+ * test off, and after the rest of the scene, so terrain, trees, units, water and particles never hide or tint a shape;
+ * unlike it, lines are ribbons a few pixels wide that face the camera, readable at any zoom (GL core profiles draw
+ * 1-pixel lines only). Only drawing: it reads the height map, nothing else of the world.
  */
 final class OverlayRenderer {
     /** Lines and circles float this far above the ground (meters), so they never dip into a slope between samples. */
@@ -72,13 +72,13 @@ final class OverlayRenderer {
     private double draw_millis;
 
     /**
-     * Draws {@code paint}'s shapes of the layers {@code shows} accepts. Called for every pass of the scene: the water's
-     * reflection pass (its camera is mirrored below the sea level, where the game camera never goes) is skipped, so
-     * each shape is drawn once and never shows up as a reflection.
+     * Draws {@code paint}'s shapes of the layers {@code shows} accepts. Called once a frame, last in the view's pass
+     * (after the water and the particles, which would otherwise tint or cover the shapes), never in the water's
+     * reflection pass, so a shape never shows up as a reflection.
      */
     void render(@NonNull OverlayPaint paint, @NonNull Predicate<String> shows, @NonNull HeightMap height_map,
             @NonNull CameraState state, @NonNull MatrixStack model_view, @NonNull MatrixStack projection) {
-        if (state.getCurrentZ() < height_map.getSeaLevelMeters() || state.getHeight() <= 0) {
+        if (state.getHeight() <= 0) {
             return;
         }
         DebugShaderRenderer renderer = shaderFor(model_view, projection);

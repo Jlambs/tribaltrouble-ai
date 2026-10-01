@@ -1,5 +1,6 @@
 package com.oddlabs.tt.gui;
 
+import com.oddlabs.tt.aikit.harness.Watch;
 import com.oddlabs.tt.animation.TimerAnimation;
 import com.oddlabs.tt.delegate.CameraDelegate;
 import com.oddlabs.tt.delegate.ModalDelegate;
@@ -316,8 +317,9 @@ public final class GUIRoot extends GUIObject {
                     consumed = true;
                 }
 
-                // Debug Actions (Only those that don't need Viewer)
-                if (Settings.getSettings().inDeveloperMode()) {
+                // Debug Actions (Only those that don't need Viewer); a watched harness game runs in developer mode, but
+                // its view's keys (P, E, L, O, A, J...) must not reach these, also not while its Esc menu is up
+                if (Settings.getSettings().inDeveloperMode() && !Watch.requested()) {
                     if (event.consumeAction(GameAction.DEBUG_TOGGLE_LIGHT)) {
                         Globals.draw_light = !Globals.draw_light;
                         consumed = true;
