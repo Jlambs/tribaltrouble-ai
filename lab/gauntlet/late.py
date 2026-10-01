@@ -2,9 +2,11 @@
 """Late-acting arms against the benchmark rows they re-run: python lab/gauntlet/late.py ARM BASE_PREFIX [T]
 
 ARM re-plays a subset of the base's games (e.g. the cur7 benchmark games alive at 40 min) with a change that acts only
-from T seconds (default 2400). BASE_PREFIX names the base runs (cur7-bench-vs14 matches cur7-bench-vs14-a..d); rows
-pair by key. Prints wins base -> arm, flips both ways, minutes-to-win for games won by both, the arm's result for base
-losses and draws, and a check that each pair's census checksums agree up to T (the arm must not act earlier).
+from T game seconds (default 2400). BASE_PREFIX names the base runs (cur7-bench-vs14 matches cur7-bench-vs14-a..d);
+rows pair by key. Prints wins base -> arm, flips both ways, minutes-to-win for games won by both, the arm's result for
+base losses and draws, and a check that each pair's census checksums agree up to T (the arm must not act earlier).
+All times are game time at every --speed (gtime converts rows and game files from before the harness counted it).
+Those old non-normal files took the census every 30 x factor game s (2 min at ludicrous): the check reads the last.
 """
 import glob
 import json
@@ -12,21 +14,27 @@ import os
 import statistics
 import sys
 
+import gtime
+
 arm, prefix = sys.argv[1], sys.argv[2]
 T = float(sys.argv[3]) if len(sys.argv) > 3 else 2400.0
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 
 
 def rows(run):
-    return {x['key']: dict(x, run=run) for x in map(json.loads, open(os.path.join(ROOT, run, 'results.jsonl')))}
+    return {x['key']: gtime.row(dict(x, run=run))
+            for x in map(json.loads, open(os.path.join(ROOT, run, 'results.jsonl')))}
 
 
 def checksum_at(run, key, t):
     last = None
+    scale = 1.0  # game seconds per t of the file (gtime.factor of its header, the first line)
     for line in open(os.path.join(ROOT, run, 'g', key + '.jsonl')):
-        if '"census"' in line and '"s":0,' in line:
+        if line.startswith('{"ev":"game"'):
+            scale = gtime.factor(json.loads(line))
+        elif '"census"' in line and '"s":0,' in line:
             e = json.loads(line)
-            if e['t'] > t:
+            if e['t'] * scale > t:
                 break
             last = e.get('checksum')
     return last

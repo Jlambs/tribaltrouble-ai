@@ -5,12 +5,15 @@ A Hard copy past wave size 20 launches only with an active chieftain (AdvancedAI
 one after its first chieftain was born is time it cannot send a wave. Per run, over the first 20 minutes of each game
 (from the game records' chief / chief_died / out / end events): enemy chieftain births and deaths per game, the median
 first birth, the copy-minutes after a first birth ("gated") and the share of them without a chieftain; then the games
-in terciles of that share, with their median length and wins.
+in terciles of that share, with their median length and wins. All times are game seconds (gtime), and a copy is out at
+its first out or collapse event.
 """
 import json
 import os
 import statistics as st
 import sys
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 HORIZON = 1200.0
@@ -21,17 +24,20 @@ def game(path, horizon=HORIZON):
     deaths = {}
     outs = {}
     end = None
+    f = None
     for line in open(path, encoding='utf-8'):
         x = json.loads(line)
+        if f is None:
+            f = gtime.factor(x)  # the first line is the game event
         e = x.get('ev')
         if e == 'chief':
-            births.setdefault(x['s'], []).append(x['t'])
+            births.setdefault(x['s'], []).append(x['t'] * f)
         elif e == 'chief_died':
-            deaths.setdefault(x['s'], []).append(x['t'])
-        elif e == 'out':
-            outs[x['s']] = x['t']
+            deaths.setdefault(x['s'], []).append(x['t'] * f)
+        elif e in gtime.OUTS:
+            outs.setdefault(x['s'], x['t'] * f)
         elif e == 'end':
-            end = x['t']
+            end = x['t'] * f
     if end is None:
         return None
     h = min(horizon, end)

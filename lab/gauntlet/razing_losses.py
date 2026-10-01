@@ -5,6 +5,8 @@ For every razing of a finished armory of ours (slot 0, the event log's `razed` e
 sample just before it and the first one after: units inside buildings before, and the drop in our unit count across
 the step (units inside a razed building vanish with it, LandBuilding.removeDying). Per run: razings, mean inside
 before, mean units lost across the step. Needs event logs (RUN/g/<key>.jsonl; the benchmark runs have them).
+Times are game seconds (event t through gtime). Old non-normal files took the census every 30 world-tick seconds (120
+game s at ludicrous), so their step spans more fighting than the 30 game s of other files.
 
 Reference (raid_evac / raid_bank smokes, 2026-09-30, N=14 seeds 6001..6006): cur7-bench-vs14-a 45.2 lost per razing
 (inside 62.9; 49.2 and 67.0 over s6001..6100), raid_evac 22.3 (inside 37.0), the hop arm with raid_bank 23.1 (39.2)
@@ -14,6 +16,8 @@ import glob
 import json
 import os
 import sys
+
+import gtime
 
 
 def main(argv):
@@ -36,10 +40,16 @@ def main(argv):
         for f in files:
             census = []
             razings = []
+            gf = 1.
             for line in open(f, encoding='utf-8'):
                 r = json.loads(line)
+                if r['ev'] == 'game':
+                    gf = gtime.factor(r)
+                    continue
                 if r.get('s') != 0:
                     continue
+                if 't' in r:
+                    r['t'] *= gf
                 if r['ev'] == 'census':
                     census.append(r)
                 elif r['ev'] == 'razed' and r.get('b') == 'armory' and not r.get('site'):

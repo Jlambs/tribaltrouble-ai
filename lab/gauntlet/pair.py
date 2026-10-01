@@ -6,9 +6,9 @@ and length), the median win time on wins both runs share, and a sign test z for 
 (rows of non-normal runs from before the harness counted game time are converted)."""
 import json, math, os, statistics, sys
 
+import gtime
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
-# game time per world tick over the normal tick's, for old non-normal rows
-OLD_SPEED_FACTOR = {'slow': .5, 'fast': 1.75, 'ludicrous': 4}
 
 
 def rows(run):
@@ -18,9 +18,7 @@ def rows(run):
             r = json.loads(line)
             if r.get('result') is None:
                 continue
-            # rows from before the harness counted game time (a speed but no ticks) hold world ticks / 50
-            old = r.get('speed') and 'ticks' not in r
-            r['_min'] = r['t'] * (OLD_SPEED_FACTOR[r['speed']] if old else 1) / 60
+            r['_min'] = gtime.row(r)['t'] / 60
             out[r['key']] = r
     return out
 
