@@ -100,9 +100,17 @@ public final class WatchCommand {
     public static int run(@NonNull Request request) throws IOException {
         Resolved game = resolve(request.game(), request.aiFromRun());
         String snap = thisSnapshot();
-        Path file = WATCH.resolve(game.name() + ".json").toAbsolutePath().normalize();
+        // One watch file per start: the game reads it seconds after this, so a second watch started meanwhile must not
+        // overwrite it. Those of earlier starts are deleted.
+        Path file = WATCH.resolve(
+                game.name() + "-" + ProcessHandle.current().pid() + ".json").toAbsolutePath().normalize();
         Path out = WATCH.resolve(game.name()).toAbsolutePath().normalize();
         Files.createDirectories(out);
+        deleteOldWatchFiles();
+        if (request.selftest() != null) {
+            // a selftest that dies before its end must not leave the last run's report standing
+            Files.deleteIfExists(out.resolve("selftest.txt"));
+        }
         String game_file = game.gameFile() == null ? null : slash(game.gameFile());
         WatchFile watch = new WatchFile(game.job(), game_file, game.endTick(), snap, game.runSnap(), game.loaders(),
                 slash(out), request.checkpointSeconds(), request.checkpointMegabytes(), request.presim(),
@@ -124,6 +132,18 @@ public final class WatchCommand {
         System.out.println("  watch file " + shown(file) + ", the session's output in " + shown(out) + "/");
         System.out.println(slash(file)); // last: aisim.sh starts the game with it
         return 0;
+    }
+
+    /** Deletes the watch files written more than a day ago: each start writes its own, read only while it loads. */
+    private static void deleteOldWatchFiles() throws IOException {
+        long day_ago = System.currentTimeMillis() - 24L * 3600 * 1000;
+        try (var files = Files.list(WATCH)) {
+            for (Path old : files.filter(p -> p.toString().endsWith(".json")).toList()) {
+                if (Files.getLastModifiedTime(old).toMillis() < day_ago) {
+                    Files.deleteIfExists(old);
+                }
+            }
+        }
     }
 
     /**
@@ -148,11 +168,16 @@ public final class WatchCommand {
             boolean ai_from_run) throws IOException {
         Path dir = runDir(run);
         String run_name = dir.getFileName().toString();
-        Map<String, Object> row = row(dir, run_name, key);
         JsonNode run_json = Aisim.JSON.readTree(dir.resolve("run.json").toFile());
         Path game_file = Runs.gameFile(dir, key).toAbsolutePath().normalize();
         Recording recording = Files.exists(game_file) ? Recording.read(game_file) : null;
         List<String> notes = new ArrayList<>();
+        // A game still being played has its game file and job, but no result row yet: it plays as far as recorded.
+        Map<String, Object> row = recording == null ? row(dir, run_name, key) : rowOrNull(dir, key);
+        if (row == null) {
+            notes.add(
+                    "no result row for " + key + " yet (a game still being played?): watching it as far as its game" + " file goes");
+        }
         Job job = runJsonJob(run_json, key);
         if (job == null) {
             if (recording == null) {
@@ -175,7 +200,7 @@ public final class WatchCommand {
             String merged = run_name + " is a merged or renamed run";
             notes.add("played as game " + key + " of run " + job.run() + " (" + merged + ")");
         }
-        String run_snap = row.get("snap") instanceof String snap ? snap : run_json.path("snap").asText();
+        String run_snap = row != null && row.get("snap") instanceof String snap ? snap : run_json.path("snap").asText();
         Object header_snap = recording == null ? null : recording.header().get("snap");
         if (header_snap != null && !header_snap.equals(run_snap)) {
             notes.add("!! the result row says snapshot " + run_snap + " played the game, its game file " + header_snap);
@@ -274,6 +299,16 @@ public final class WatchCommand {
             throw new UsageException("no run " + run + ": that folder has no run.json");
         }
         throw new UsageException("no run " + run + " in " + slash(Runs.RUNS));
+    }
+
+    /** Game {@code key}'s result row in the run folder {@code dir}, or null if it has none (yet). */
+    private static @Nullable Map<String, Object> rowOrNull(@NonNull Path dir, @NonNull String key) throws IOException {
+        for (Map<String, Object> row : Runs.readJsonl(dir.resolve("results.jsonl"))) {
+            if (key.equals(row.get("key"))) {
+                return row;
+            }
+        }
+        return null;
     }
 
     /** Game {@code key}'s result row in the run folder {@code dir}; a usage error, with some of its keys, if none. */
