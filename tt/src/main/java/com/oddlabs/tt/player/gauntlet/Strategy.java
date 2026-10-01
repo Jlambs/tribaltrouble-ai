@@ -893,9 +893,12 @@ class Strategy {
      * then the plain strike. The stock AI decides on real time, every 20-28 game s at ludicrous speed, so there the
      * squad arrived before the copy's first orders and met 20 idle peons (ludicrous N=13: freeze kills 8.9 per game
      * against 17.6 at normal speed, peons lost 2.6 against 0.7; a hold 16 cells from the centre of all its peons,
-     * 1500 ticks, changed nothing: W 65 -> 66 of 500, 199 of 238 held strikes still given up). 0: off.
+     * 1500 ticks, changed nothing: W 65 -> 66 of 500, 199 of 238 held strikes still given up). 0: off. 1500 (30 s; 3000
+     * plays the same games): ludicrous N=13 W 65 -> 107 of 500 (z 4.2, surv60 +4.9 min), fresh 8001..8500 59 -> 105 (z
+     * 4.8), N=15 5 -> 16 (z 2.5, surv60 +4.8), N=16 5 -> 10 (surv60 +4.2); normal-speed N=13 281 of 300 games
+     * identical, 6 -> 7, surv60 +0.46 (z 2.3).
      */
-    float freeze_patience_ticks = 0f;
+    float freeze_patience_ticks = 1500f;
     /**
      * The attack target's choice leaves frozen copies (Freeze) until no other copy is a candidate: a frozen copy never
      * launches a wave, so its quarters is worth nothing to our survival, while it scores as the easiest target (no
