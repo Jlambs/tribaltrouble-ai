@@ -1,5 +1,6 @@
 package com.oddlabs.tt.aisim.watch;
 
+import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.global.Settings;
@@ -12,6 +13,7 @@ import com.oddlabs.tt.input.InputPhase;
 import com.oddlabs.tt.input.Key;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.render.GUIRenderer;
+import com.oddlabs.tt.render.MatrixStack;
 import com.oddlabs.tt.viewer.WatchControls;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -93,12 +95,14 @@ final class WatchHud implements WatchControls {
         layer.addChild(scoreboard);
         layer.addChild(inspector);
         layer.addChild(status);
+        addAiColumnPanel(game.aiOverlay().panel());
         jump_box.addEnterListener(this::jump);
     }
 
     /** Puts the HUD on the viewer's delegate; once, after the viewer is made. */
     void attach(@NonNull SelectionDelegate selection_delegate) {
         this.delegate = selection_delegate;
+        game.aiOverlay().attach(selection_delegate);
         selection_delegate.addChild(layer);
         shown = false;
         refresh_now = true;
@@ -156,7 +160,16 @@ final class WatchHud implements WatchControls {
     private void refresh() {
         status.setLines(statusLines());
         Selectable<?> picked = game.inspected();
-        inspector.setLines(picked == null ? List.of() : Inspector.describe(picked, game.world(), game.job()));
+        List<TextPanel.Line> inspected = new ArrayList<>();
+        if (picked != null) {
+            inspected.addAll(Inspector.describe(picked, game.world(), game.job()));
+            TextPanel.Line ai_line = game.aiOverlay().describe(picked);
+            if (ai_line != null) {
+                inspected.add(ai_line);
+            }
+        }
+        inspector.setLines(inspected);
+        game.aiOverlay().panel().setLines(game.aiOverlay().panelLines());
         timeline.refresh();
         if (ai_log.isShown()) {
             ai_log.refresh();
@@ -250,6 +263,7 @@ final class WatchHud implements WatchControls {
         if (message != null) {
             lines.add(new TextPanel.Line(message, TextPanel.WARN));
         }
+        lines.add(game.aiOverlay().statusLine());
         lines.add(new TextPanel.Line(
                 "F1 help   P play/pause   +/- speed   , . step   J jump   N B events   [ ] players",
                 TextPanel.DIM));
@@ -325,6 +339,9 @@ final class WatchHud implements WatchControls {
             event.consume();
         } else if (help.isShown() && event.hasAction(GameAction.GLOBAL_MENU)) {
             toggle(help); // Esc closes the help before it opens the menu
+            event.consume();
+        } else if (key == Key.A) {
+            game.aiOverlay().cycle(event.isShiftDown() ? -1 : 1); // all, none, each layer alone
             event.consume();
         } else if (event.hasAction(GameAction.SPECTATOR_NEXT_PLAYER)) {
             game.followNext(1);
@@ -412,6 +429,12 @@ final class WatchHud implements WatchControls {
     @Override
     public boolean keyboardBlocked() {
         return jump_box.isActive();
+    }
+
+    @Override
+    public void render3D(@NonNull CameraState state, @NonNull MatrixStack model_view,
+            @NonNull MatrixStack projection) {
+        game.aiOverlay().render3D(state, model_view, projection);
     }
 
     /** The jump box's Enter: seek to the time typed. */

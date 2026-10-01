@@ -79,7 +79,7 @@ public final class Lint {
     public static final String RULES = "tt/src/main/java/com/oddlabs/tt/player/AGENTS.md";
     /** AI packages are com.oddlabs.tt.player.NAME, as AiSpec names them; the build checks every one. */
     private static final String AI_PACKAGES = "com/oddlabs/tt/player/";
-    /** The AI toolkit package (AiLog, AiParams, GameTime): all of it is for AIs. */
+    /** The AI toolkit package (AiLog, AiParams, GameTime, AiView): all of it is for AIs. */
     private static final String TOOLKIT = AiLog.class.getPackageName();
     /** The harness's part of the toolkit, which AIs must not use. */
     private static final String HARNESS_PACKAGE = AiSpec.class.getPackageName() + ".";
@@ -120,7 +120,7 @@ public final class Lint {
             Lint.isVoidQuery)""";
     private static final String HARNESS = """
             is the harness's (com.oddlabs.tt.aikit.harness): an AI uses only com.oddlabs.tt.aikit (AiLog, AiParams, \
-            GameTime)""";
+            GameTime, AiView)""";
     private static final String OTHER_AI = """
             belongs to another AI: an AI is one package (freeze copies only that package), so copy what you need \
             into yours""";

@@ -34,6 +34,7 @@ final class HelpPanel extends HudPanel {
             Shift+L | AI log: show / hide the 'flee of' lines
             O | scoreboard: show / hide
             I | inspector: show / hide
+            A  Shift+A | the followed AI's overlay: all layers, none, each layer alone
             F1  H | this help (Esc closes it too)
             Space | overview map and back
             Ctrl+H | hide / show the whole HUD
