@@ -29,21 +29,34 @@ import java.util.Map;
 public record Pool(@NonNull String tag, @NonNull String entry, @NonNull String packageName, @NonNull String sha,
                    @NonNull Path jar) {
 
-    private static final Path POOL = Aisim.ROOT.resolve("pool");
+    /** This checkout's frozen AIs, relative to the repository root. */
+    public static final Path POOL = Aisim.ROOT.resolve("pool");
     /** The longest tag. */
     private static final int MAX_TAG = 32;
 
     /** The frozen AI {@code @tag}; a usage error if it was never frozen. */
     public static @NonNull Pool of(@NonNull String tag) {
         try {
-            Map<?, ?> meta = Aisim.JSON.readValue(metaFile(tag).toFile(), Map.class);
-            String entry = (String) meta.get("entry");
-            String package_name = (String) meta.get("package");
-            String sha = (String) meta.get("sha");
-            return new Pool(tag, entry, package_name, sha, jarFile(tag));
+            return read(POOL, tag);
         } catch (IOException e) {
             throw new UsageException("no frozen AI @" + tag + " (./aisim.sh freeze " + tag + " NAME)");
         }
+    }
+
+    /**
+     * The frozen AI {@code @tag} of the pool folder {@code pool} (the {@code aisim/pool} of this or another checkout,
+     * as watch looks for the AI a run of another checkout played), or null when that pool has no such tag.
+     */
+    public static @Nullable Pool find(@NonNull Path pool, @NonNull String tag) throws IOException {
+        return Files.exists(pool.resolve(tag + ".json")) ? read(pool, tag) : null;
+    }
+
+    private static @NonNull Pool read(@NonNull Path pool, @NonNull String tag) throws IOException {
+        Map<?, ?> meta = Aisim.JSON.readValue(pool.resolve(tag + ".json").toFile(), Map.class);
+        String entry = (String) meta.get("entry");
+        String package_name = (String) meta.get("package");
+        String sha = (String) meta.get("sha");
+        return new Pool(tag, entry, package_name, sha, pool.resolve(tag + ".jar"));
     }
 
     /**

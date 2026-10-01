@@ -17,7 +17,7 @@ import java.util.Set;
 final class Options {
     /** Options that never take a value, so {@code --force RUN} does not swallow RUN. */
     private static final Set<String> FLAGS = Set.of("force", "stale-ok", "no-collapse", "stop-when-a-out", "split",
-            "profile");
+            "profile", "ai-from-run", "presim");
 
     /** The positional arguments, in order. */
     final @NonNull List<String> args = new ArrayList<>();

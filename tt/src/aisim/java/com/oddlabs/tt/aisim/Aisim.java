@@ -25,6 +25,7 @@ import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.aisim.play.Pace;
 import com.oddlabs.tt.aisim.play.Replay;
 import com.oddlabs.tt.aisim.play.WorkerMain;
+import com.oddlabs.tt.aisim.watch.WatchCommand;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -92,6 +93,11 @@ public final class Aisim {
               lab     FILE.java [args]           run your own tool (lab/NAME/) on the last build's class path
               freeze  TAG NAME|CLASS [--from DIR|JAR]   freeze an AI package as opponent @TAG
               gui     [--stale-ok] SPEC [game args]     play the game yourself; SPEC plays the skirmish Hard slots
+              watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
+                      [--selftest SCRIPT]        a harness game in the game client, played again exactly: pause,
+                                                 step, rewind, jump, any speed; click any unit or building; AI logs
+              rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]
+                                                 check that watch's rewind plays a game exactly as the first time
             --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
               A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
               is left, or to the time limit.
@@ -108,8 +114,8 @@ public final class Aisim {
                      threads) --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
             GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
                   --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
-            play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
-            last build; --stale-ok overrides.
+            play, batch, gui, watch, lint, freeze (without --from) and replay --snap latest refuse sources newer than
+            the last build; --stale-ok overrides.
             defaults: vikings, every map setting random, 360 minutes (up to 600), seeds tune from every start,
                       --workers auto; play: --players "hard vs hard" --seed 1 --side 0
             writing an AI (rules, orders, recipes): tt/src/main/java/com/oddlabs/tt/player/AGENTS.md
@@ -123,7 +129,7 @@ public final class Aisim {
      * The time limit in game minutes. A game that reaches it is a draw, so only beating every opponent wins; the
      * default leaves room for slow wins (docs/aisim.md, --minutes).
      */
-    private static final int DEFAULT_MINUTES = 360;
+    public static final int DEFAULT_MINUTES = 360;
     private static final int MAX_MINUTES = 600;
     private static final int MAX_RUN_NAME = 40;
     /** The time part of a default run name. */
@@ -228,6 +234,9 @@ public final class Aisim {
             case "guicheck" -> { // ./aisim.sh gui, before the game starts
                 return guiCheck(options);
             }
+            case "watchfile" -> { // ./aisim.sh watch, before the game starts
+                return watchFile(options);
+            }
             case "worker" -> { // a worker JVM started by WorkerProcess
                 WorkerMain.run(argv[1]);
                 return 0;
@@ -322,6 +331,35 @@ public final class Aisim {
         String advice = "run ./aisim.sh build (or ./aisim.sh gui --stale-ok SPEC to play it anyway)";
         Snapshot.requireFresh(options.flag("stale-ok"), advice);
         return 0;
+    }
+
+    /**
+     * watchfile RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
+     * [--selftest SCRIPT] [--stale-ok]: checks the options and the build's freshness (the viewer's code must be in the
+     * snapshot), then writes the watch file and prints its path last, for ./aisim.sh watch to start the game with.
+     */
+    private static int watchFile(@NonNull Options options) throws IOException {
+        options.check(Set.of("ai-from-run", "checkpoint", "checkpoint-memory", "presim", "selftest", "stale-ok"),
+                options.args.size() == 1 ? 1 : 2); // FILE.jsonl or RUN KEY
+        Snapshot.requireFresh(options.flag("stale-ok"));
+        int checkpoint = options.integer("checkpoint", WatchCommand.DEFAULT_CHECKPOINT_SECONDS, 1, 3600);
+        // the checkpoints live in the game's heap, which aisim.sh sets from the same variable
+        int heap = WatchCommand.heapMegabytes(System.getenv(WatchCommand.HEAP_VARIABLE));
+        int most = heap * WatchCommand.MAX_CHECKPOINT_PERCENT / 100;
+        int memory = options.integer("checkpoint-memory", heap * WatchCommand.DEFAULT_CHECKPOINT_PERCENT / 100, 0,
+                Integer.MAX_VALUE);
+        if (memory < 16 || memory > most) {
+            throw new UsageException("""
+                    --checkpoint-memory must be 16..%d, at most %d%% of the game's heap, which %s sets (default \
+                    %s)""".formatted(most, WatchCommand.MAX_CHECKPOINT_PERCENT, WatchCommand.HEAP_VARIABLE,
+                    WatchCommand.DEFAULT_HEAP));
+        }
+        String selftest = options.get("selftest");
+        if ("true".equals(selftest)) { // --selftest without a script
+            throw new UsageException("--selftest needs a script, steps separated by ;, such as \"play:3;verify;quit\"");
+        }
+        return WatchCommand.run(new WatchCommand.Request(options.args, options.flag("ai-from-run"), checkpoint, memory,
+                options.flag("presim"), selftest));
     }
 
     /** A run's setup and its jobs. */
