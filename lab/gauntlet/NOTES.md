@@ -1775,3 +1775,22 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   armory (relink_guard). Idle after a siege: the army leaves in ~20 s; long idle stretches are jams (unjam_from_ticks 0,
   mostly N=6). Shepherds: fleeing outbound shepherds pull caught waves 25 cells towards us, caught waves feed 73 % of
   base-threat entries (shepherd_flee_side).
+- **cur10 adopted** (f40b07e1): freeze_patience_ticks 1500 by default. Confirmations: N=15 5 -> 16 of 500 (z 2.5,
+  surv60 +4.75, z 9.8), N=16 5 -> 10 (surv60 +4.22, z 10.4), fresh N=13 8001..8500 59 -> 105 (z 4.8), normal speed
+  N=13 281 of 300 identical (6 -> 7, surv60 +0.46). cur10 at ludicrous: N=6 288 of 300 (6001..6300), N=13 107 / 500,
+  N=14 51 / 500 (fresh 49), N=15 16 / 500 (fresh 30), N=16 10 / 500.
+- **Beta fixes, wave 1** (2dcb583f, off), vs cur10, 6001..6300: shepherd_flee_side N=13 W 71 -> 88 (z 2.0, surv60
+  +1.39), N=6 287 / 288; relink_guard N=13 68, N=6 287 (neutral); rush_hold_armory N=13 71 (119 identical), N=6 287.
+  shepherd_flee_side confirmations: N=13 6001..6500 107 -> 128 (z 2.0, surv60 +1.61, z 2.9), fresh 105 -> 102 (surv60
+  +2.38, z 4.2, alive40 +44), N=14 51 -> 44 (surv60 +0.96, z 1.8), fresh N=14 49 -> 53 (surv60 +1.40, z 2.4), N=15 16
+  -> 15 (surv60 +0.73), fresh N=15 30 -> 25 (surv60 -0.10). Survival up at N=13-14 in every block and wins faster
+  (shared wins 7-15 min sooner), but W +9 over ~2950 games and N=15 -6: not adopted; a lead for N=13-14.
+- **Beta fixes, wave 2** (28d0b2b3, off), vs cur10, 6001..6300: ore_iron_first + ore_reach_fail + relink_guard N=13 69,
+  N=6 288; the same + stuck_trip_factor 1.0 N=13 72 (surv60 +0.48), N=6 288 (surv60 +0.14, z 1.8); weapon_reserve 12
+  / 24 N=13 63 / 67 (surv60 -0.56 / -0.89): the hold-back family again; sortie_ratio 0.8 N=13 72 (85 identical), N=6
+  289; sortie_ratio 1.0 N=13 80 (+16 / -7, z 1.9): confirming.
+- **Screen on cur10** (no-code arms, N=13 6001..6300, W 71): stuck_trip_factor 1.0 78 (z 1.3), 0.6 74; unjam_from_ticks
+  0 inert (285 identical; N=6 queued); woodr20 76, surv60 +0.84 (z 1.6), alive40 +11; gather_avoid_parked 75;
+  rush_opening_only 71; target_defense_weight 4 66 (surv60 z -1.7); reinforce_ratio 0.3 81 (z 1.4); chieftain_ticks
+  10000 (200 s) 60, surv60 -1.81 (z -2.6), 22500 (450 s) 87 (z 1.9); towers_early/mid_ticks 15000 / 24000 82 (z 1.3).
+  Confirming chieftain 450 s, reinforce 0.3, later towers and sortie 1.0 on 6301..6500 and 8001..8300.
