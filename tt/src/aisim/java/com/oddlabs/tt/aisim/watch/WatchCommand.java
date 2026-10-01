@@ -1,5 +1,6 @@
 package com.oddlabs.tt.aisim.watch;
 
+import com.oddlabs.matchmaking.Game;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -11,6 +12,7 @@ import com.oddlabs.tt.aisim.analysis.Runs;
 import com.oddlabs.tt.aisim.build.Pool;
 import com.oddlabs.tt.aisim.build.Snapshot;
 import com.oddlabs.tt.aisim.play.Job;
+import com.oddlabs.tt.animation.AnimationManager;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -472,12 +474,31 @@ public final class WatchCommand {
         if (lineup == null) {
             lineup = row != null && row.get("players") instanceof String text ? text : lineupOf(seats);
         }
+        String speed = row != null && row.get("speed") instanceof String text ? text : speedOf(header, file);
         return new Job(run, key, map.seed(), side, lineup, seats, map.size(), map.terrain(), map.hills(), map.trees(),
-                map.supplies(), minutes, rng, collapse, stop_when_a_out, jobPath(recording.file()), null);
+                map.supplies(), minutes, rng, collapse, stop_when_a_out, jobPath(recording.file()), null, speed);
     }
 
     /**
-     * The fields that decide the game (seats, map, first player's slot, world seed) in which two jobs differ, such as
+     * The world's game speed as a job names it (null at normal speed), from the header's seconds per tick: the game
+     * time one world tick lasts at each speed (World.GAMESPEEDS), which the recorder writes into every game file.
+     */
+    private static @Nullable String speedOf(@NonNull Map<String, Object> header, @NonNull String file) {
+        if (!(header.get("secondsPerTick") instanceof Number seconds)) {
+            return null; // not in files of older harnesses, which all played at normal speed
+        }
+        // slow, normal, fast and ludicrous: World.GAMESPEEDS, the normal tick times these
+        float[] ticks = {.5f, 1f, 1.75f, 4f};
+        for (int i = 0; i < ticks.length; i++) {
+            if (Math.abs(AnimationManager.ANIMATION_SECONDS_PER_TICK * ticks[i] - seconds.floatValue()) < 1e-6f) {
+                return Game.GAMESPEED_SLOW + i == Game.GAMESPEED_NORMAL ? null : Job.SPEEDS.get(i);
+            }
+        }
+        throw new UsageException(file + ": no game speed plays " + seconds + " s per tick");
+    }
+
+    /**
+     * The fields that decide the game (seats, map, first player's slot, world seed, speed) in which two jobs differ, as
      * "seats, rng"; null when they are the same game. The others only label a game or end it by the harness's rules.
      */
     static @Nullable String decidingDifference(@NonNull Job a, @NonNull Job b) {
@@ -488,6 +509,7 @@ public final class WatchCommand {
         same.put("map", a.size() == b.size() && a.terrain() == b.terrain() && a.hills() == b.hills()
                 && a.trees() == b.trees() && a.supplies() == b.supplies());
         same.put("rng", Objects.equals(a.rng(), b.rng()));
+        same.put("speed", a.gameSpeed() == b.gameSpeed());
         List<String> differ = same.entrySet().stream().filter(field -> !field.getValue()).map(
                 Map.Entry::getKey).toList();
         return differ.isEmpty() ? null : String.join(", ", differ);
