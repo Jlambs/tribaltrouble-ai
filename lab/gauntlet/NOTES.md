@@ -1649,3 +1649,37 @@ retreat through the same pass (only the attack role is watched).
   stood 33 cells from our buildings all game (never died), the other's stayed at their start and vanished at ~7 game
   min. Allying with the Hards instead would make the humans enemies of ours (counted in N, freeze and campaign
   targets, needed for the win). Least influence: spectate, or park far from every start on our team.
+- **Low-N baseline (cur8 + clock fix, normal speed):** N=1 996 W / 4 L (6001..7000), N=2 996 / 3 / 1 draw, N=3 593 / 6
+  (6001..6600), N=4 392 / 5 / 2 draws (6001..6400), N=5 384 / 12 / 4, N=6 358 / 41 / 1 (89.5 %). Every N=1-2 loss and
+  the N=2 draw: every ore of the kind the weapons need is beyond the main armory's 400 m walking field (computeField
+  max 400; scanSupplies skips UNREACHABLE), so rock_weapons wants 140 rock gatherers and gets 0, iron is wanted 0, and
+  100-200 workers sit in the armory for 20+ min while one Hard out-builds us (counter pick_null_rock_unreachable).
+  **ore_reach=400** (iron, else rock, out to 800 m when the field has none): low-N losers 5 of 14 flip to wins (N=1
+  s6087, s6508; N=2 s6529 draw; N=3 s6282, s6598); N=3 6001..6600 591 of 599 identical, W 593 -> 594 (+2 / -1, the
+  loss s6034: 100+ peons on far-iron trips); N=6 372 of 400 identical, 358 -> 358 (+1 / -1); N=13 292 of 299
+  identical, 6 -> 6. Remaining low-N losses: s6449 N=3 is a broken spawn (a stock Hard in our slot never places an
+  armory either); s6045 N=1 has almost no ore within 800 m; s6102 N=2 builds 97 warriors by 15 min and never
+  attacks while two Hards out-grow it; the hopdraw stack on top flips s6215 and s6102 (N=2) but not the rest.
+- **Timeouts at N=4-6** (7 in 1,200): army wedges (s6021 N=5/6: 90+ warriors pressed against a 2-cell diagonal pass
+  from 23 min for 5 hours; the stall clock restarts whenever anyone in the army fights, so no stall ever fires, and
+  unjam's one column march at 40 min stays stuck) and production stalls (s6210 N=4, s6074 N=5: 250 units, 0
+  warriors). **stall_cap=300** (no 20 m gain and < 10 kills in 300 s stalls the target even while some fight; a
+  second stall in a row walks the army home to re-form): with ore_reach, 2 of 6 timeouts become wins (s6386 61 min,
+  s6074 153 min); the pass in s6021 still holds (the army re-musters and marches back into it).
+- **Quirks from the play test.** "Peons out of the armory and straight back in" and "peons standing still": in the
+  gatherer allocation a peon whose pick fails (mostly chickens out of range or near enemies) is taken off the free
+  list but never ordered (gather_pick_failed ~570 economy ticks per N=13 game), and when no peon is free the armory
+  deploys workers for a supply none can reach, which then walk back in (deploy_gather ~54 per game).
+  gather_probe=true fixes both: N=13 6001..6300 W 6 -> 10 (+9 / -5, z 1.1), surv60 +0.12 (z 0.2). Defense
+  overcommit is rare at normal speed: 29 of 1,629 logged threat-2 events at N=6 pit a small threat against a home
+  army 5x its size (the army is on campaign), and the military thinks every 0.5 s (2 s at ludicrous before the fix).
+- **Towers and the cap (N=13 benchmark):** by 12 min 18-19 of 20 building slots are used (11-13 towers), 54-72 % of
+  games at the cap; in losses towers then fall 11.2 -> 6.2 by 25 min while the cap no longer binds (13-29 %): towers
+  are lost to razings, not missing. Chickens: by 20 min we take 11 of ~87 (each Hard ~6; N=6: 23 vs 9); most failed
+  hunts are out of range (150 cells) or near enemies.
+- **N=6 losses** (41 of 400): mostly 19-32 min with 4-6 copies alive. s6064: the army (100) marches 318 m to the far
+  copy right after an out while 110 enemy strength stands on our main armory (built at the expansion, no towers in
+  reach); both armories fall by 18:23, the army is ground down without production. s6074: iron gone at both armories
+  by 8 min, 130 peons on rock that delivers ~1 unit per 800-5000 gatherer-seconds (peons 167 -> 26 by 15 min).
+  Queued at N=6: recall_ratio 0.8 / 0.5, target_threat_weight 2, chickens (14 hunters, 250 cells), hopdraw,
+  rearm_placer.

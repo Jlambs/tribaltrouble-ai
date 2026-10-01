@@ -134,6 +134,13 @@ final class Military {
     private float last_trace;
     private float hold_until = -1f;
     private float last_progress_time;
+    /**
+     * stall_cap: when the attack last gained 20 m on its target or killed stall_cap_kills units, and our kills then.
+     */
+    private float cap_progress_time;
+    private int cap_progress_kills;
+    /** stall_cap: stalls in a row with no gain or kills between them; the second walks the army home to re-form. */
+    private int cap_strikes;
     private int best_target_dist = Integer.MAX_VALUE;
     private int @NonNull [] hold_spot = new int[2];
     private int last_enemy_d2 = Integer.MAX_VALUE;
@@ -2341,6 +2348,8 @@ final class Military {
         attack_losses_start = ai.owner().getUnitsLost();
         attack_running = true;
         last_progress_time = ai.time();
+        markCapProgress();
+        cap_strikes = 0;
         best_target_dist = Integer.MAX_VALUE;
         mode = s > 0 ? Mode.ATTACK : Mode.HOME;
         // Name the target without the engine's toString (a Unit's shows an identity hash, which differs between JVMs).
@@ -2562,6 +2571,7 @@ final class Military {
             target_field = ai.map().computeField(target_x, target_y, Integer.MAX_VALUE);
             best_target_dist = Integer.MAX_VALUE;
             last_progress_time = ai.time();
+            markCapProgress();
         }
     }
 
@@ -2830,11 +2840,43 @@ final class Military {
         }
         // Give up only when the army stops getting anywhere, not because the march is long.
         if (dist != DistanceField.UNREACHABLE && dist < best_target_dist - 20) {
+            // a real gain, not the first measure after a new target
+            if (best_target_dist != Integer.MAX_VALUE)
+                cap_strikes = 0;
             best_target_dist = dist;
             last_progress_time = ai.time();
+            markCapProgress();
         }
-        if (ai.time() - last_progress_time > 75f && (ai.strategy().stall_peons ? armed == 0f : local_enemy == 0f))
+        if (ai.time() - last_progress_time > 75f && (ai.strategy().stall_peons ? armed == 0f : local_enemy == 0f)) {
             stalled(c);
+            return;
+        }
+        // stall_cap: the calm-march clock above restarts whenever anyone fights, so an army wedged at a pass with a
+        // few enemies about (or peons to cut down) never stalls: s6021 at N=6 stood 5 hours at 240 warriors.
+        float cap = ai.strategy().stall_cap;
+        if (cap > 0f) {
+            if (ai.owner().getUnitsKilled() - cap_progress_kills >= ai.strategy().stall_cap_kills) {
+                markCapProgress();
+                cap_strikes = 0;
+            } else if (ai.time() - cap_progress_time > cap) {
+                if (cap_strikes++ == 0) {
+                    ai.aiLog().count("stall_cap");
+                    stalled(c);
+                } else {
+                    // A new target did not get the army moving either: it is wedged (s6021: every unit waits on a
+                    // pivot stuck in a pocket). Walk it home and muster again from there.
+                    ai.aiLog().count("stall_cap_retreat");
+                    ai.log("attack wedged: the army walks home to re-form");
+                    cap_strikes = 0;
+                    beginRetreat();
+                }
+            }
+        }
+    }
+
+    private void markCapProgress() {
+        cap_progress_time = ai.time();
+        cap_progress_kills = ai.owner().getUnitsKilled();
     }
 
     /**
@@ -2973,6 +3015,7 @@ final class Military {
                     // A new target near the old one keeps the old field: restart the clock either way, or the
                     // next tick would ban it too.
                     last_progress_time = ai.time();
+                    markCapProgress();
                     best_target_dist = Integer.MAX_VALUE;
                     ai.aiLog().count("stall_retarget");
                     return;

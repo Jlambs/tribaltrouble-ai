@@ -41,9 +41,17 @@ def main(base_run, arms):
         z = (len(gained) - len(lost)) / math.sqrt(n) if n else 0.0
         bw, bl, bd = tally(b)
         aw, al, ad = tally(a)
-        med = ''
+        # survival: game minutes capped at 60 (a win counts 60), paired
+        def surv(r):
+            return 60.0 if r['result'] == 'win' else min(60.0, r['_min'])
+        diffs = [surv(arm[k]) - surv(base[k]) for k in keys]
+        md = statistics.mean(diffs) if diffs else 0.0
+        sd = statistics.pstdev(diffs) if len(diffs) > 1 else 0.0
+        zs = md / (sd / math.sqrt(len(diffs))) if sd > 0 else 0.0
+        a40 = sum(1 for k in keys if surv(arm[k]) >= 40) - sum(1 for k in keys if surv(base[k]) >= 40)
+        med = ' | surv60 %+.2f min (z %.1f), alive40 %+d' % (md, zs, a40)
         if both:
-            med = ' | shared wins median %.1f -> %.1f min' % (statistics.median(base[k]['_min'] for k in both),
+            med += ' | shared wins median %.1f -> %.1f min' % (statistics.median(base[k]['_min'] for k in both),
                                                             statistics.median(arm[k]['_min'] for k in both))
         print('%s vs %s: %d games, %d identical | W/L/D %d/%d/%d -> %d/%d/%d | gained %d lost %d (z %.1f)%s' % (
             arm_run, base_run, len(keys), same, bw, bl, bd, aw, al, ad, len(gained), len(lost), z, med))

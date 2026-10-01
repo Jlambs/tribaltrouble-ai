@@ -940,6 +940,12 @@ class Strategy {
     int chicken_hunters = 7;
     /** Farthest chicken a hunter goes for, in cells from the main armory. */
     int chicken_range = 150;
+    /**
+     * stall_cap (s, 0 = off): an attack that gains no 20 m on its target and kills fewer than stall_cap_kills units in
+     * that time stalls (target skipped, as a calm stall), even while some of the army fights.
+     */
+    float stall_cap = 0f;
+    int stall_cap_kills = 10;
     float chicken_time = 150f;
     int chicken_pool_div = 18;
 
@@ -1453,6 +1459,8 @@ class Strategy {
         hidden_info = params.getBoolean("hidden_info", hidden_info);
         chicken_hunters = params.getInt("chicken_hunters", chicken_hunters);
         chicken_range = params.getInt("chicken_range", chicken_range);
+        stall_cap = (float) params.getDouble("stall_cap", stall_cap);
+        stall_cap_kills = params.getInt("stall_cap_kills", stall_cap_kills);
         chicken_time = (float) params.getDouble("chicken_time", chicken_time);
         chicken_pool_div = params.getInt("chicken_pool_div", chicken_pool_div);
         tower_fire = params.getBoolean("tower_fire", tower_fire);
