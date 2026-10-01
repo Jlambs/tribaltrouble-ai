@@ -106,9 +106,8 @@ public final class Aisim {
             WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared with the other runs on
                      it, growing and shrinking as it frees up or fills) --cpus N|P% (at most N or P% of the hardware
                      threads) --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
-            GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
-                  --speed slow|normal|fast|ludicrous (the world's game speed; the harness counts world ticks, so at
-                  ludicrous a harness minute, --minutes included, is four game minutes)
+            GAME: --minutes M (the time limit in game minutes; a game that reaches it is a draw) --rng N --no-collapse
+                  --speed slow|normal|fast|ludicrous (the game speed; the harness counts game time at every speed)
                   --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.

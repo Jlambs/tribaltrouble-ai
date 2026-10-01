@@ -34,6 +34,9 @@ public final class World {
 
     private static final float[] GAMESPEEDS = new float[]{0f, AnimationManager.ANIMATION_SECONDS_PER_TICK / 2, AnimationManager.ANIMATION_SECONDS_PER_TICK, AnimationManager.ANIMATION_SECONDS_PER_TICK * 1.75f, AnimationManager.ANIMATION_SECONDS_PER_TICK * 4
     };
+    private static final int NORMAL_TICK_MILLIS = (int) AnimationManager.ANIMATION_MILLISECONDS_PER_TICK;
+    /** GAMESPEEDS in whole ms: the game time a world tick covers at each speed (pause, slow ... ludicrous). */
+    private static final int[] GAME_MILLIS_PER_TICK = {0, NORMAL_TICK_MILLIS / 2, NORMAL_TICK_MILLIS, NORMAL_TICK_MILLIS * 7 / 4, NORMAL_TICK_MILLIS * 4};
 
     private final @NonNull HeightMap world;
     private final @NonNull Random random;
@@ -59,6 +62,8 @@ public final class World {
 
     private int global_checksum;
     private int gamespeed;
+    /** Game time played, in ms: only counted, for AIs and recordings; the simulation never reads it. */
+    private long game_millis;
     private int map_size;
     private final @NonNull GameMode mode;
 
@@ -168,13 +173,30 @@ public final class World {
     }
 
     public void tick(float t) {
+        int speed = gamespeed;
         getAnimationManagerGameTime().runAnimations(
                 getSecondsPerTick() * t / AnimationManager.ANIMATION_SECONDS_PER_TICK);
+        // counted between the passes, so that it changes along with getTick(), which the real-time pass advances
+        game_millis += Math.round(GAME_MILLIS_PER_TICK[speed] * (t / AnimationManager.ANIMATION_SECONDS_PER_TICK));
         getAnimationManagerRealTime().runAnimations(t/*AnimationManager.ANIMATION_SECONDS_PER_TICK*/);
     }
 
     public int getTick() {
         return getAnimationManagerRealTime().getTick();
+    }
+
+    /**
+     * The game time played, in ms: what every tick so far covered at the game speed then in effect (20 a tick at
+     * normal speed, 80 at ludicrous, nothing while paused). Units move and fight in game time, while getTick() counts
+     * world ticks, which is real time: 50 to the second at every speed.
+     */
+    public long getGameMillis() {
+        return game_millis;
+    }
+
+    /** The game time the next tick covers at the current game speed, in ms; see getGameMillis(). */
+    public int getGameMillisPerTick() {
+        return GAME_MILLIS_PER_TICK[gamespeed];
     }
 
     private World(@NonNull AudioImplementation audio_implementation, @NonNull LandscapeResources landscape_resources,

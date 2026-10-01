@@ -48,12 +48,12 @@ import java.util.function.IntFunction;
 final class Match {
     /** A player with at most this many units and no chieftain or real building is collapsing, see collapsing(). */
     private static final int COLLAPSE_UNITS = 8;
-    /** Collapsing this long in a row puts a player out, when the job allows collapse. */
+    /** Collapsing this many game seconds in a row puts a player out, when the job allows collapse. */
     private static final int COLLAPSE_SECONDS = 60;
-    /** The tick of the w15 milestone: team A's warriors at 15:00. */
-    private static final int W15_TICK = 15 * 60 * GameTime.TICKS_PER_SECOND;
-    /** The tick of the kd30 milestone: team A's kills minus its losses at 30:00. */
-    private static final int KD30_TICK = 30 * 60 * GameTime.TICKS_PER_SECOND;
+    /** The game time of the w15 milestone, in ms: team A's warriors at 15:00. */
+    private static final long W15_MILLIS = 15 * 60_000L;
+    /** The game time of the kd30 milestone, in ms: team A's kills minus its losses at 30:00. */
+    private static final long KD30_MILLIS = 30 * 60_000L;
 
     /**
      * How many identity hashes boot() draws on the simulation thread before the first game (pid % 1000). The thread's
@@ -73,6 +73,8 @@ final class Match {
     private static final Map<String, URLClassLoader> frozen_loaders = new HashMap<>();
     /** Ticks played in the current game, for the worker's hang watchdog. */
     static volatile int progress;
+    /** The game time of {@link #progress}, in ms. */
+    static volatile long progress_millis;
 
     private Match() {
     }
@@ -93,6 +95,7 @@ final class Match {
         long wall_start = System.nanoTime();
         long cpu_start = threadCpuNanos();
         progress = 0;
+        progress_millis = 0;
         Map<String, Object> row;
         try (ClientWorld client = ClientWorld.create(job)) {
             World world = client.world();
@@ -174,7 +177,9 @@ final class Match {
 
     /**
      * Ticks the world until at most one team is standing or the time is up, taking the milestones on the way. A team
-     * that goes out gets a team_out event, and the others play on without it.
+     * that goes out gets a team_out event, and the others play on without it. Every rule counts game time, whatever
+     * the game speed: the end rules run once a game second ({@link GameTime.Every}), on every 50th tick at normal
+     * speed, and the time limit and the milestones are in game minutes.
      */
     private static void play(@NonNull Job job, @NonNull World world, @NonNull GameRecorder recorder,
             @NonNull Outcome outcome) {
@@ -182,21 +187,22 @@ final class Match {
         int[] collapse_seconds = new int[players.length];
         boolean[] is_out = new boolean[players.length];
         boolean[] collapsed = new boolean[players.length];
-        int last_tick = job.minutes() * 60 * GameTime.TICKS_PER_SECOND;
+        long limit_millis = job.minutes() * 60_000L;
+        GameTime.Every every_second = new GameTime.Every(1000);
         while (true) {
             world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
-            int tick = world.getTick();
-            progress = tick;
-            if (tick == W15_TICK) {
+            progress = world.getTick();
+            progress_millis = world.getGameMillis();
+            if (outcome.w15 == null && GameTime.reached(world, W15_MILLIS)) {
                 outcome.w15 = warriors(teamCensus(job, recorder, job.team(job.side())));
-            } else if (tick == KD30_TICK) {
+            } else if (outcome.kd30 == null && GameTime.reached(world, KD30_MILLIS)) {
                 outcome.kd30 = killsMinusLosses(teamCensus(job, recorder, job.team(job.side())));
             }
-            if (tick % GameTime.TICKS_PER_SECOND != 0) {
+            if (!every_second.due(world)) {
                 continue; // everything below happens once per game second
             }
             updatePlayersOut(job, players, recorder, collapse_seconds, is_out, collapsed);
-            double t = tick / (double) GameTime.TICKS_PER_SECOND;
+            double t = every_second.struck() / 1000.0; // the whole game second this strike is for
             int standing = 0;
             for (int team = 0; team < job.teamCount(); team++) {
                 if (outcome.isOut(team)) {
@@ -214,7 +220,7 @@ final class Match {
                 outcome.end = End.elim; // with stopWhenAOut, the teams still standing share first place
                 return;
             }
-            if (tick >= last_tick) {
+            if (every_second.struck() >= limit_millis) {
                 outcome.timedOut(job, recorder);
                 return;
             }
@@ -555,7 +561,7 @@ final class Match {
             if (outcome.end == null || outcome.end.normal() || outcome.problem == null) {
                 throw e; // a harness bug: WorkerMain reports it
             }
-            return errorRow(job, snapshot, outcome.end, outcome.problem, gameSeconds(world));
+            return errorRow(job, snapshot, outcome.end, outcome.problem, gameSeconds(world), world.getTick());
         }
     }
 
@@ -577,6 +583,7 @@ final class Match {
         row.put("via", outcome.via());
         row.put("winnerTeam", counts ? outcome.winnerTeam(teams) : null);
         row.put("t", gameSeconds(world));
+        putTicks(row, job, world.getTick());
         row.put("checksum", world.getChecksum());
         row.put("result", counts ? outcome.result(team_a, teams) : null);
         row.put("place", counts ? outcome.place(team_a, teams) : null);
@@ -596,17 +603,31 @@ final class Match {
         return row;
     }
 
-    /** The row of a game that did not count and has no result of its own (hang, dead worker, harness error). */
+    /**
+     * The row of a game that did not count and has no result of its own (hang, dead worker, harness error), which
+     * stopped at game second {@code t}, world tick {@code ticks}.
+     */
     static @NonNull Map<String, Object> errorRow(@NonNull Job job, @NonNull String snapshot, @NonNull End end,
-            @NonNull String problem, double t) {
+            @NonNull String problem, double t, int ticks) {
         Map<String, Object> row = baseRow(job, snapshot);
         row.put("end", end.name());
         row.put("winnerTeam", null);
         row.put("t", t);
+        putTicks(row, job, ticks);
         row.put("result", null);
         row.put("problem", problem);
         row.put("replay", replayCommand(job));
         return row;
+    }
+
+    /**
+     * The world ticks played, next to t, at a game speed other than normal, where t (game seconds) is not ticks / 50.
+     * Rows of such runs from before the harness counted game time have a speed but no ticks, and t in ticks / 50.
+     */
+    private static void putTicks(@NonNull Map<String, Object> row, @NonNull Job job, int ticks) {
+        if (job.speed() != null) {
+            row.put("ticks", ticks);
+        }
     }
 
     /** The fields every result row starts with, whatever happened. */

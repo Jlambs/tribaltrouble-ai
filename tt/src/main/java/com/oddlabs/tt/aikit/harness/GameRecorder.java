@@ -3,6 +3,7 @@ package com.oddlabs.tt.aikit.harness;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.animation.Animated;
+import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.model.LandBuilding;
 import com.oddlabs.tt.model.Race;
@@ -29,9 +30,9 @@ import java.util.logging.Logger;
 
 /**
  * Records a game, whoever plays it, as one JSON object per line: a header, every player's {@link Census} every 30
- * game seconds, events (buildings, deaths, stuns, casts, ...) every second, and an end line. The aisim harness records
- * every game with it, and {@link PlayTest} records play-tests in the game, so both give the same file. docs/aisim.md
- * describes the format.
+ * game seconds, events (buildings, deaths, stuns, casts, ...) every game second, and an end line, all stamped in game
+ * time ({@link GameTime}), whatever the game speed. The aisim harness records every game with it, and {@link PlayTest}
+ * records play-tests in the game, so both give the same file. docs/aisim.md describes the format.
  *
  * <p>It is an {@link Animated} on the world's real-time manager, like the game-over trigger. It reads only public
  * getters of live objects (of remembered ones only {@code isDead()} and a unit's hit points, which never assert),
@@ -41,8 +42,7 @@ import java.util.logging.Logger;
 public final class GameRecorder implements Animated {
     /** Building kinds by Race.BUILDING_*. */
     private static final String[] BUILDINGS = {"quarters", "armory", "tower", "ship"};
-    private static final int EVENT_TICKS = GameTime.TICKS_PER_SECOND;
-    private static final int CENSUS_TICKS = 30 * GameTime.TICKS_PER_SECOND;
+    /** In world ticks: flushing is I/O, which keeps to real time. */
     private static final int FLUSH_TICKS = 10 * GameTime.TICKS_PER_SECOND;
     private static final Logger logger = Logger.getLogger(GameRecorder.class.getName());
 
@@ -80,6 +80,8 @@ public final class GameRecorder implements Animated {
     private final @NonNull Seen @NonNull [] seen;
     private boolean header_written;
     private int census_tick = -1;
+    private final GameTime.@NonNull Every event_clock = new GameTime.Every(1000);
+    private final GameTime.@NonNull Every census_clock = new GameTime.Every(30_000);
     /** Changes only in the GUI. */
     private float seconds_per_tick;
     private boolean finished;
@@ -142,11 +144,11 @@ public final class GameRecorder implements Animated {
         try {
             int tick = world.getTick();
             writeHeaderOnce();
-            if (!finished && tick % EVENT_TICKS == 0) {
+            if (!finished && event_clock.due(world)) {
                 pollEvents();
             }
             // checked again: pollEvents() may have finished the GUI game, which already wrote the final census
-            if (!finished && tick % CENSUS_TICKS == 0) {
+            if (!finished && census_clock.due(world)) {
                 writeCensus();
             }
             if (tick % FLUSH_TICKS == 0) {
@@ -157,7 +159,7 @@ public final class GameRecorder implements Animated {
         }
     }
 
-    /** Every second: each player's events, a game-speed change (GUI only), and the GUI game's end. */
+    /** Every game second: each player's events, a game-speed change (GUI only), and the GUI game's end. */
     private void pollEvents() {
         Player[] players = world.getPlayers();
         for (int slot = 0; slot < players.length; slot++) {
@@ -165,7 +167,7 @@ public final class GameRecorder implements Animated {
         }
         if (world.getSecondsPerTick() != seconds_per_tick) {
             seconds_per_tick = world.getSecondsPerTick();
-            writeLine(lineStart("speed") + ",\"secondsPerTick\":" + seconds_per_tick + "}");
+            writeLine(lineStart("speed") + ",\"secondsPerTick\":" + seconds_per_tick + ",\"clock\":\"game\"}");
         }
         if (on_gui_finish != null) {
             finishIfOneTeamLeft();
@@ -273,6 +275,10 @@ public final class GameRecorder implements Animated {
         StringBuilder text = new StringBuilder("{\"ev\":\"game\",\"v\":1,").append(header);
         text.append(",\"meters\":").append(world.getHeightMap().getMetersPerWorld());
         text.append(",\"secondsPerTick\":").append(world.getSecondsPerTick());
+        if (world.getGameMillisPerTick() != AnimationManager.ANIMATION_MILLISECONDS_PER_TICK) {
+            // t is game time, not world ticks / 50 as in files from before the harness followed the game speed
+            text.append(",\"clock\":\"game\"");
+        }
         text.append(",\"players\":[");
         Player[] players = world.getPlayers();
         for (int slot = 0; slot < players.length; slot++) {
