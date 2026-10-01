@@ -86,6 +86,8 @@ public final class WorldViewer implements Animated, AutoCloseable {
     private final @NonNull AnimationManager animation_manager_local;
     private final @NonNull Cheat cheat;
     private final @Nullable SpectatorView spectator_view;
+    /** The time controls of a watched harness game; null in every other game. */
+    private final @Nullable WatchControls watch_controls;
 
     public WorldViewer(@NonNull NetworkSelector network, final @NonNull GUIRoot gui_root,
             @NonNull WorldParameters world_params, @NonNull InGameInfo ingame_info, @NonNull WorldGenerator generator,
@@ -96,6 +98,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
         this.network = network;
         this.notification_manager = new NotificationManager(gui_root);
         this.cheat = new Cheat(!ingame_info.isMultiplayer());
+        this.watch_controls = null;
         Renderer.getRenderer().setCheat(cheat);
         this.animation_manager_local = new AnimationManager();
         final FogInfo worldFog = generator.getFogInfo();
@@ -254,6 +257,65 @@ public final class WorldViewer implements Animated, AutoCloseable {
         initPlayers(world_info.starting_locations(), player_slots, world.getPlayers(), unit_infos,
                 world_params.getInitialGameSpeed());
         LocalEventQueue.getQueue().getManager().registerAnimation(this);
+    }
+
+    /**
+     * A viewer of a world its caller built and ticks: a watched harness game (aikit.harness.Watch), which seats no
+     * human. The world is complete, AIs and all, so nothing here generates it or initialises its players; the offline
+     * PeerHub never ticks it, and orders go nowhere. {@code local_slot} is the viewpoint player (where the camera
+     * starts, whose colours the selection rings use); the view behaves as an observer's, with every owner's objects on
+     * the overview map, and {@code watch_controls} gets the clicks and keys (SelectionDelegate). Cheats stay off.
+     * The world's notification listener and audio are the caller's; its fog is the camera's, as in a normal game.
+     */
+    public WorldViewer(@NonNull NetworkSelector network, @NonNull GUIRoot gui_root,
+            @NonNull WorldParameters world_params, @NonNull InGameInfo ingame_info, @NonNull WorldGenerator generator,
+            @NonNull WorldInfo world_info, @NonNull World world, @NonNull RenderQueues render_queues,
+            short local_slot, @NonNull WatchControls watch_controls) {
+        this.world_params = world_params;
+        this.ingame_info = ingame_info;
+        this.network = network;
+        this.notification_manager = new NotificationManager(gui_root);
+        this.cheat = new Cheat(false);
+        this.watch_controls = watch_controls;
+        Renderer.getRenderer().setCheat(cheat);
+        this.animation_manager_local = new AnimationManager();
+        CameraState camera_state = new CameraState(world.getFog());
+        this.distributable_table = new DistributableTable();
+        this.world = world;
+        this.local_player = world.getPlayers()[local_slot];
+        this.selection = new Selection(local_player);
+        this.spectator_view = null;
+        this.landscape_renderer = new LandscapeRenderer(world, world_info, animation_manager_local);
+        this.picker = new Picker(animation_manager_local, local_player, gui_root, render_queues, landscape_renderer,
+                selection);
+        this.renderer = new DefaultRenderer(cheat, local_player, render_queues, world_info, landscape_renderer, picker,
+                selection, generator, new MatrixStack(), new MatrixStack(), null);
+        renderer.showEveryOwnerOnMap();
+        this.gui_root = gui_root;
+        this.peerhub = new PeerHub(animation_manager_local, local_player, notification_manager);
+        this.camera = new GameCamera(this, camera_state);
+        this.panel = new ActionButtonPanel(this, camera);
+        this.delegate = new SelectionDelegate(this, camera);
+        camera.reset(local_player.getStartX(), local_player.getStartY());
+        LocalEventQueue.getQueue().getManager().registerAnimation(this);
+    }
+
+    /** The time controls of a watched harness game, or null for every other game. */
+    public @Nullable WatchControls getWatchControls() {
+        return watch_controls;
+    }
+
+    /**
+     * Drops every reference the view keeps into the world's objects: the selection (and the shortcut armies), the
+     * building whose rally point shows, what the picker hovers and targeted, and the notifications. A watched game
+     * calls it after restoring its world to an earlier state in place, which leaves those objects outside the world.
+     */
+    public void forgetWorldObjects() {
+        selection.clearSelection();
+        selection.clearShortcutArmies();
+        renderer.setSelectedBuilding(null);
+        picker.forgetWorldObjects();
+        notification_manager.clear();
     }
 
     /** Whose arrows and cues this screen shows: the watched player for a spectator, otherwise the local player. */

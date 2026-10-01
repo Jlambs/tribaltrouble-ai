@@ -125,6 +125,11 @@ public final class DefaultRenderer implements UIRenderer, AutoCloseable {
         return cheat != null && cheat.isEnabled();
     }
 
+    /** Draws every owner's objects as dots on the overview map, enemies too: for a watched game, which has no side. */
+    public void showEveryOwnerOnMap() {
+        element_renderer.getRenderState().showEveryOwnerOnMap();
+    }
+
     public void setSelectedBuilding(@Nullable Building building) {
         this.selected_building = building;
     }

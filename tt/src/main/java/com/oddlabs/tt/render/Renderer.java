@@ -5,6 +5,7 @@ import com.oddlabs.matchmaking.Game;
 import com.oddlabs.net.NetworkSelector;
 import com.oddlabs.util.BuildInfo;
 import com.oddlabs.tt.Main;
+import com.oddlabs.tt.aikit.harness.Watch;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.animation.TimerAnimation;
 import com.oddlabs.tt.animation.Updatable;
@@ -103,6 +104,9 @@ public final class Renderer implements AutoCloseable {
 
     private @Nullable Cheat cheat = new Cheat();
 
+    /** Run once per frame between the game loop and drawing; null (always, in a normal game) for none. */
+    private static @Nullable Runnable frame_task;
+
     public static float getFPS() {
         return fps.getAveragePerUpdate();
     }
@@ -173,6 +177,14 @@ public final class Renderer implements AutoCloseable {
 
     public static void shutdown() {
         finished = true;
+    }
+
+    /**
+     * Sets the task run once per frame after the game loop and before the frame is drawn, or none (null). A watched
+     * harness game (aikit.harness.Watch) ticks its world there, with its own clock; normal games never set one.
+     */
+    public static void setFrameTask(@Nullable Runnable task) {
+        frame_task = task;
     }
 
     public static boolean isFinished() {
@@ -580,7 +592,8 @@ public final class Renderer implements AutoCloseable {
         logger.info("Init done after " + startup_time_init + "ms");
         ambient = new AmbientAudio(AudioManager.getManager());
 
-        Runnable load_task = setupMainMenu(network, gui, true);
+        // a watched harness game loads in place of the main menu
+        Runnable load_task = Watch.requested() ? Watch.start(network, gui) : setupMainMenu(network, gui, true);
 
         boolean reset_keyboard = false;
         boolean wasActive = false;
@@ -597,6 +610,16 @@ public final class Renderer implements AutoCloseable {
 
                 // Always run simulation and network to avoid freezing multiplayer
                 runGameLoop(network, gui);
+                Runnable task = frame_task;
+                if (task != null) {
+                    // as the load task: code under it may log deterministic values, which asserts logging is on
+                    LocalEventQueue.getQueue().getDeterministic().setEnabled(true);
+                    try {
+                        task.run();
+                    } finally {
+                        LocalEventQueue.getQueue().getDeterministic().setEnabled(false);
+                    }
+                }
 
                 if (isActive) {
                     if (reset_keyboard) {

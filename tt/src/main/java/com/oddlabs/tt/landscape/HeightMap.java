@@ -115,6 +115,31 @@ public final class HeightMap {
         return texture;
     }
 
+    /**
+     * Uploads the whole height grid to the existing height texture (none headless). editHeight uploads the one cell it
+     * changes; a watched game (aikit.harness.Watch) that restores the grid to an earlier state calls this instead.
+     */
+    public void reloadHeightTexture() {
+        if (heightTexture == null) {
+            return;
+        }
+        java.nio.FloatBuffer buffer = org.lwjgl.BufferUtils.createFloatBuffer(
+                grid_units_per_world * grid_units_per_world);
+        for (int y = 0; y < grid_units_per_world; y++) {
+            for (int x = 0; x < grid_units_per_world; x++) {
+                buffer.put(world[y][x]);
+            }
+        }
+        buffer.flip();
+        GL11.glBindTexture(GL11.GL_TEXTURE_2D, heightTexture.getHandle());
+        GL11.glPixelStorei(GL11.GL_UNPACK_ROW_LENGTH, 0);
+        GL11.glPixelStorei(GL11.GL_UNPACK_SKIP_PIXELS, 0);
+        GL11.glPixelStorei(GL11.GL_UNPACK_SKIP_ROWS, 0);
+        GL11.glPixelStorei(GL11.GL_UNPACK_ALIGNMENT, 1);
+        GL11.glTexSubImage2D(GL11.GL_TEXTURE_2D, 0, 0, 0, grid_units_per_world, grid_units_per_world, GL11.GL_RED,
+                GL11.GL_FLOAT, buffer);
+    }
+
     public com.oddlabs.tt.render.@Nullable Texture getHeightTexture() {
         return heightTexture;
     }

@@ -30,7 +30,8 @@ public final class Selection {
         Arrays.fill(shortcut_armies, null);
     }
 
-    void removeFromArmies(@NonNull Selectable<?> selectable) {
+    /** Removes a selectable that left the world; public for a watched game's world listener (aikit.harness.Watch). */
+    public void removeFromArmies(@NonNull Selectable<?> selectable) {
         current_selection.remove(selectable);
         for (Army shortcut_armie : shortcut_armies) {
             if (shortcut_armie != null) {
