@@ -5101,7 +5101,11 @@ final class Military {
         return "level " + threat_level + ": " + enemies + " enemies, " + strength + base + engage + raid;
     }
 
-    /** What a warrior of ours is doing for the military (watch view), or null when it has no role. */
+    /**
+     * What a warrior of ours is doing for the military (watch view), or null when it has no role: its role, and the
+     * enemy it hunts in place of the attack's target (which the target status line and mark show), so that the line
+     * stays whole in the inspector (PaintCheck's MAX_DESCRIBE).
+     */
     @Nullable
     String describe(@NonNull Unit u) {
         Role role = null;
@@ -5116,18 +5120,21 @@ final class Military {
                     return "lent to the economy to raze a building of ours";
             return null;
         }
-        StringBuilder sb = new StringBuilder(roleText(role));
+        Unit hunted = null;
+        for (Map.Entry<Unit, Unit> e : hunt_targets.entrySet())
+            if (e.getKey() == u) {
+                if (!e.getValue().isDead())
+                    hunted = e.getValue();
+                break;
+            }
+        StringBuilder sb = new StringBuilder(roleText(role, hunted == null));
         for (Map.Entry<Unit, Building> e : tower_assignments.entrySet())
             if (e.getKey() == u) {
                 sb.append(" at ").append(WatchView.at(e.getValue().getGridX(), e.getValue().getGridY()));
                 break;
             }
-        for (Map.Entry<Unit, Unit> e : hunt_targets.entrySet())
-            if (e.getKey() == u) {
-                if (!e.getValue().isDead())
-                    sb.append(", after ").append(WatchView.what(e.getValue()));
-                break;
-            }
+        if (hunted != null) // the inspector's order line says where
+            sb.append(", after ").append(WatchView.name(hunted.getOwner())).append(' ').append(WatchView.kind(hunted));
         for (Map.Entry<Unit, WarriorState> e : ai.intel().warrior_states.entrySet())
             if (e.getKey() == u) {
                 sb.append("; ").append(e.getValue().name().toLowerCase(Locale.ROOT).replace('_', ' '));
@@ -5136,10 +5143,13 @@ final class Military {
         return sb.toString();
     }
 
-    /** A role's job in words: what the army, the attack, a raid or a hunt is after. */
-    private @NonNull String roleText(@NonNull Role role) {
-        Selectable<?> t = target;
-        Selectable<?> prey = chase_target;
+    /**
+     * A role's job in words: what the army, the attack, a raid or a hunt is after (the attack's target or the hunt's
+     * prey only {@code with_target}).
+     */
+    private @NonNull String roleText(@NonNull Role role, boolean with_target) {
+        Selectable<?> t = with_target ? target : null;
+        Selectable<?> prey = with_target ? chase_target : null;
         String on = t != null ? " on " + WatchView.what(t) : "";
         return switch (role) {
             case ARMY -> {
