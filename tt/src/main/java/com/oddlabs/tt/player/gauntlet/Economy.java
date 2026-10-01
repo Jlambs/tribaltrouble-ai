@@ -2243,6 +2243,24 @@ final class Economy {
     // ------------------------------------------------------------------------------------------------------------
     // Armory
 
+    /** ore_reach: the main armory's walking field out to 2 x ore_reach m, made when the 400 m field has no ore. */
+    private @Nullable DistanceField ore_field;
+    private @Nullable Building ore_field_owner;
+    private float ore_field_time = -100f;
+    /** ore_reach: this plan tick's ore is beyond the 400 m field, so ore gatherers use {@link #ore_field}. */
+    private boolean ore_far;
+    /** Seconds per unit of rock, as the gatherer targets see it (for the stuck check of rock gatherers). */
+    private float rock_cycle;
+
+    private @NonNull DistanceField oreField(@NonNull Building armory) {
+        if (ore_field == null || ore_field_owner != armory || ai.time() - ore_field_time > 60f) {
+            ore_field = ai.map().computeField(armory.getGridX(), armory.getGridY(), 2 * ai.strategy().ore_reach);
+            ore_field_owner = armory;
+            ore_field_time = ai.time();
+        }
+        return ore_field;
+    }
+
     private void refreshArmoryField() {
         Building armory = ai.intel().armory();
         if (armory == null)
@@ -3980,8 +3998,33 @@ final class Economy {
             rock_filler = true;
         else if (rock_filler && (iron_stock >= 5 || armory_workers < 8))
             rock_filler = false;
-        float ore_cycle = rock_weapons ? SitePlanner.gatherSeconds(armory_field, map.getRocks(), 30, 10, 240,
-                harvest) : iron_cycle;
+        ore_far = false;
+        int ore_reach = ai.strategy().ore_reach;
+        if (ore_reach > 0 && (rock_weapons ? countReachable(map.getRocks(), 400) == 0 : iron_left == 0)) {
+            // ore_reach: the ore these weapons need is beyond the 400 m field. Iron within it comes first, then iron
+            // and then rock out to 2 x ore_reach m.
+            if (rock_weapons && iron_left > 0) {
+                rock_weapons = false;
+                ai.aiLog().count("ore_iron_fallback"); // plan ticks (3 s)
+            } else {
+                DistanceField far = oreField(armory);
+                if (countReachable(far, map.getIron(), 2 * ore_reach) > 0) {
+                    rock_weapons = false;
+                    ore_far = true;
+                    iron_cycle = SitePlanner.gatherSeconds(far, map.getIron(), 30, 10, 2 * ore_reach, harvest);
+                    ai.aiLog().count("ore_far_iron"); // plan ticks (3 s)
+                } else if (countReachable(far, map.getRocks(), 2 * ore_reach) > 0) {
+                    rock_weapons = true;
+                    ore_far = true;
+                    ai.aiLog().count("ore_far_rock"); // plan ticks (3 s)
+                } else {
+                    ai.aiLog().count("ore_none"); // plan ticks (3 s)
+                }
+            }
+        }
+        float ore_cycle = rock_weapons ? SitePlanner.gatherSeconds(ore_far ? oreField(armory) : armory_field,
+                map.getRocks(), 30, 10, ore_far ? 2 * ore_reach : 240, harvest) : iron_cycle;
+        rock_cycle = rock_weapons ? ore_cycle : 0f;
         float work = rock_weapons ? IRON_WORK / 2 : IRON_WORK;
 
         int workers = armory.getUnitContainer().getNumSupplies();
@@ -4067,13 +4110,16 @@ final class Economy {
     }
 
     private int countReachable(@NonNull List<? extends Supply> supplies, int max_meters) {
-        if (armory_field == null)
-            return 0;
+        return armory_field == null ? 0 : countReachable(armory_field, supplies, max_meters);
+    }
+
+    private static int countReachable(@NonNull DistanceField field, @NonNull List<? extends Supply> supplies,
+            int max_meters) {
         int n = 0;
         for (Supply s : supplies) {
             if (s.isEmpty())
                 continue;
-            if (armory_field.getAround(s.getGridX(), s.getGridY(), 1) <= max_meters)
+            if (field.getAround(s.getGridX(), s.getGridY(), 1) <= max_meters)
                 n++;
         }
         return n;
@@ -4212,18 +4258,37 @@ final class Economy {
         int deploy_for_gathering = 0;
         // raid_evac: no gatherer goes out for an armory emptied ahead of a wave (its evacuees would walk back to it).
         boolean raid_out = raidEvacuating(armory);
+        boolean probe = ai.strategy().gather_probe;
         for (int t = 0; t < 4; t++) {
             int need = danger || raid_out ? 0 : want[t] - have[t];
             while (need > 0) {
+                boolean from_transit = false;
                 Unit u = free.isEmpty() ? null : free.removeFirst();
-                if (u == null && !transit.isEmpty())
+                if (u == null && !transit.isEmpty()) {
                     u = transit.removeFirst();
+                    from_transit = true;
+                }
                 if (u == null) {
-                    deploy_for_gathering += need;
+                    // gather_probe: workers come out of the armory only for a supply there is to gather; else they
+                    // walk out, find nothing and walk back in, every economy tick.
+                    if (!probe || pickSupply(types[t], armory, null) != null)
+                        deploy_for_gathering += need;
+                    else
+                        ai.aiLog().count("deploy_gather_skipped"); // economy ticks (1 s)
                     break;
                 }
-                if (!sendGatherer(u, types[t], armory))
+                if (!sendGatherer(u, types[t], armory)) {
+                    ai.aiLog().count("gather_pick_failed"); // economy ticks (1 s) with a peon left unordered
+                    // gather_probe: the peon goes on to the next use (another supply or the armory) instead of
+                    // standing where it is
+                    if (probe) {
+                        if (from_transit)
+                            transit.addFirst(u);
+                        else
+                            free.addFirst(u);
+                    }
                     break;
+                }
                 need--;
             }
             if (!danger && have[t] > want[t] + 1)
@@ -4235,8 +4300,10 @@ final class Economy {
             unstickBuilders();
         int workers = armory.getUnitContainer().getNumSupplies();
         int pending = armory.getDeployContainer(DeployType.PEON).getNumSupplies();
-        if (deploy_for_gathering > 0 && workers > 3 && pending == 0)
+        if (deploy_for_gathering > 0 && workers > 3 && pending == 0) {
             ai.owner().deployUnits(armory, DeployType.PEON, Math.min(deploy_for_gathering, workers - 3));
+            ai.aiLog().count("deploy_gather"); // deploy orders for gatherers
+        }
 
         // 4. Everyone else works in the armory, unless it is being emptied: then in another armory, or they wait.
         Building work = armory;
@@ -4668,7 +4735,7 @@ final class Economy {
                 continue;
             }
             // A gatherer on a long walk carries nothing new for a whole trip; only a stall well past it is stuck.
-            float trip = type == IronSupply.class ? iron_cycle : type == TreeSupply.class ? tree_cycle : 0f;
+            float trip = type == IronSupply.class ? iron_cycle : type == TreeSupply.class ? tree_cycle : rock_cycle;
             if (now - seen[1] < Math.max(70f, ai.strategy().stuck_trip_factor * trip))
                 continue;
             Supply old = gather_targets.get(peon);
@@ -4757,17 +4824,23 @@ final class Economy {
     private boolean wood_starved;
     private float tree_null_until = -1f;
 
-    private @Nullable Supply pickSupply(@NonNull Class<?> type, @NonNull Building armory, @NonNull Unit peon) {
+    private @Nullable Supply pickSupply(@NonNull Class<?> type, @NonNull Building armory, @Nullable Unit peon) {
         if (type == RubberSupply.class)
             return pickChicken(armory);
         Strategy st = ai.strategy();
         boolean tree = type == TreeSupply.class;
         int radius = tree ? (wood_starved ? st.wood_reach : 60) : 200;
-        Supply best = scanSupplies(type, armory, radius);
+        Supply best = scanSupplies(type, armory, radius, armory_field);
+        if (best == null && !tree && ore_far && st.ore_reach > 0) {
+            // ore_reach: nothing within the 400 m field; walk to ore up to 2 x ore_reach m away
+            best = scanSupplies(type, armory, st.ore_reach, oreField(armory));
+            if (best != null)
+                ai.aiLog().count("ore_far_pick");
+        }
         if (best == null && tree && !wood_starved && st.wood_reach > 0 && ai.time() >= st.wood_reach_time) {
             // wood_reach: nothing within 60 cells; the next plan tick widens the tree cycle too
             tree_null_until = ai.time() + 30f;
-            best = scanSupplies(type, armory, st.wood_reach);
+            best = scanSupplies(type, armory, st.wood_reach, armory_field);
         }
         if (best != null && tree && MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), best.getGridX(),
                 best.getGridY()) > 60 * 60)
@@ -4775,9 +4848,12 @@ final class Economy {
         return best;
     }
 
-    /** The cheapest supply of the type within radius cells of the armory for a gatherer to walk to, or null. */
-    private @Nullable Supply scanSupplies(@NonNull Class<?> type, @NonNull Building armory, int radius) {
-        DistanceField field = armory_field;
+    /**
+     * The cheapest supply of the type within radius cells of the armory for a gatherer to walk to, by the walking
+     * distances of field, or null.
+     */
+    private @Nullable Supply scanSupplies(@NonNull Class<?> type, @NonNull Building armory, int radius,
+            @Nullable DistanceField field) {
         List<? extends Supply> supplies = type == TreeSupply.class ? ai.map().getTrees() : type == IronSupply.class ? ai.map().getIron() : ai.map().getRocks();
         int max_load = type == TreeSupply.class ? TREE_LOAD : ai.strategy().ore_load;
         float load_penalty = type == TreeSupply.class ? 9f : ai.strategy().ore_load_penalty;
@@ -4785,28 +4861,49 @@ final class Economy {
         float best_cost = Float.MAX_VALUE;
         int ax = armory.getGridX();
         int ay = armory.getGridY();
+        // Why no supply comes back (counters only): none in radius, all unreachable, near a threat, seen by a parked
+        // blob, or avoided after a stuck gatherer.
+        int in_radius = 0;
+        int unreachable = 0;
+        int threat = 0;
+        int parked = 0;
+        int avoided = 0;
         for (Supply s : supplies) {
             if (s.isEmpty())
                 continue;
             int d2 = MapAnalysis.dist2(ax, ay, s.getGridX(), s.getGridY());
             if (d2 > radius * radius)
                 continue;
+            in_radius++;
             int d = field != null ? field.getAround(s.getGridX(), s.getGridY(), 1) : (int) (Math.sqrt(d2) * 2);
-            if (d == DistanceField.UNREACHABLE)
+            if (d == DistanceField.UNREACHABLE) {
+                unreachable++;
                 continue;
-            if (ai.military().threatNearEcon(s.getGridX(), s.getGridY(), 14))
+            }
+            if (ai.military().threatNearEcon(s.getGridX(), s.getGridY(), 14)) {
+                threat++;
                 continue;
-            if (ai.strategy().gather_avoid_parked && seenByParked(s.getGridX(), s.getGridY()))
+            }
+            if (ai.strategy().gather_avoid_parked && seenByParked(s.getGridX(), s.getGridY())) {
+                parked++;
                 continue;
+            }
             Float bad = bad_supplies.get(s);
-            if (bad != null && bad > ai.time())
+            if (bad != null && bad > ai.time()) {
+                avoided++;
                 continue;
+            }
             int load = supply_load.getOrDefault(s, 0);
             float cost = d + load * load_penalty + (load >= max_load ? 60f : 0f);
             if (cost < best_cost) {
                 best_cost = cost;
                 best = s;
             }
+        }
+        if (best == null) {
+            String kind = type == TreeSupply.class ? "tree" : type == IronSupply.class ? "iron" : "rock";
+            String why = in_radius == 0 ? "none" : unreachable == in_radius ? "unreachable" : avoided > 0 ? "avoided" : threat > 0 ? "threat" : parked > 0 ? "parked" : "other";
+            ai.aiLog().count("pick_null_" + kind + "_" + why);
         }
         return best;
     }
@@ -4879,7 +4976,8 @@ final class Economy {
         if (best == null)
             ai.aiLog().count(
                     left == 0 ? "chicken_null_left" : free == 0 ? "chicken_null_taken" : "chicken_null_enemy20");
-        if (best != null && best_d > 150 * 150) {
+        int range = ai.strategy().chicken_range;
+        if (best != null && best_d > range * range) {
             ai.aiLog().count("chicken_null_range");
             return null;
         }

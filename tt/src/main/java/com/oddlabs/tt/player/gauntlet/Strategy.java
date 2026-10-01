@@ -442,6 +442,19 @@ class Strategy {
     int wood_reach = 150;
     float wood_reach_time = 2400f;
     /**
+     * ore_reach (cells, 0 = off): when the ore the weapons need has none within the main armory's 400 m walking field
+     * (rock axes when iron is far, and no rock there either, or iron gone), gatherers walk to iron, else rock, up to
+     * 2 x ore_reach m away instead of waiting: with every ore beyond 400 m the armory forged nothing and its 100-200
+     * workers sat idle while one Hard out-built us (all four N=1-2 losses of low-vs1/vs2).
+     */
+    int ore_reach = 0;
+    /**
+     * gather_probe: armory workers are deployed for gathering only when a supply of the kind can be picked, and a peon
+     * whose pick fails goes on to its next use instead of standing where it is (the play test's peons walking out of
+     * the armory and straight back in, and peons standing still in the base).
+     */
+    boolean gather_probe = false;
+    /**
      * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
      * warrior within 12 cells of its straight way to the site; with none, one peon leaves the quarters nearest the site
@@ -925,6 +938,8 @@ class Strategy {
      * two plus one per chicken_pool_div working peons.
      */
     int chicken_hunters = 7;
+    /** Farthest chicken a hunter goes for, in cells from the main armory. */
+    int chicken_range = 150;
     float chicken_time = 150f;
     int chicken_pool_div = 18;
 
@@ -1313,6 +1328,8 @@ class Strategy {
         bank_reserve_max = params.getInt("bank_reserve_max", bank_reserve_max);
         wood_reach = params.getInt("wood_reach", wood_reach);
         wood_reach_time = (float) params.getDouble("wood_reach_time", wood_reach_time);
+        ore_reach = params.getInt("ore_reach", ore_reach);
+        gather_probe = params.getBoolean("gather_probe", gather_probe);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
         rearm_reach = params.getInt("rearm_reach", rearm_reach);
         reloc = params.getBoolean("reloc", reloc);
@@ -1435,6 +1452,7 @@ class Strategy {
         creep_towers = params.getBoolean("creep_towers", creep_towers);
         hidden_info = params.getBoolean("hidden_info", hidden_info);
         chicken_hunters = params.getInt("chicken_hunters", chicken_hunters);
+        chicken_range = params.getInt("chicken_range", chicken_range);
         chicken_time = (float) params.getDouble("chicken_time", chicken_time);
         chicken_pool_div = params.getInt("chicken_pool_div", chicken_pool_div);
         tower_fire = params.getBoolean("tower_fire", tower_fire);
