@@ -1683,3 +1683,19 @@ retreat through the same pass (only the attack role is watched).
   by 8 min, 130 peons on rock that delivers ~1 unit per 800-5000 gatherer-seconds (peons 167 -> 26 by 15 min).
   Queued at N=6: recall_ratio 0.8 / 0.5, target_threat_weight 2, chickens (14 hunters, 250 cells), hopdraw,
   rearm_placer.
+- **Screens (paired with base-vs6 6001..6400 / cur8-bench-vs13 6001..6300; W base -> arm, gained / lost):**
+  | arm | N=6 | N=13 |
+  |---|---|---|
+  | gather_probe | 358 -> 364 (+15 / -9), surv60 +0.41 (z 1.5) | 6 -> 10 (+9 / -5), surv60 +0.12 |
+  | ore_reach=400 + gather_probe, fresh (6401..6800 / 8001..8300) | 365 -> 367 (+10 / -8), surv60 +0.22 (z 1.1) | 5 -> 2 (+1 / -4), surv60 -0.11 |
+  | recall_ratio=0.8 | 358 -> 359 (+4 / -3), surv60 +0.23 (z 1.7), 323 identical | |
+  | recall_ratio=0.5 | 358 -> 356 | |
+  | target_threat_weight=2 | inert (379 identical, 0 flips) | |
+  | chicken_hunters=14, chicken_range=250 | 358 -> 358 (+14 / -14), surv60 +0.44 (z 1.8); chickens by 20 min 23.2 -> 25.7 | 6 -> 6 (+4 / -4) |
+  | hopdraw (rearm_placer, reloc, reloc_slot, raid_bank, reloc_draw=2) | 357 -> 360 (+8 / -5), surv60 +0.45 (z 2.2), alive40 +7 | (earlier: surv60 up in every block) |
+  | rearm_placer | 356 -> 359 (+10 / -7), surv60 +0.24 (z 1.3) | |
+  Chickens are bounded by the map's spawns (3 flocks), not by hunters: no lever. At ludicrous the fixed AI is stronger
+  than at normal speed on the same seeds (N=6 6001..6200: 180 -> 189 W, +13 / -4, z 2.2).
+- In 10 of the 42 lost N=6 games a >= 30-strength enemy force stood at home with less than half its strength in
+  defenders and towers while the attack army (>= 0.8x) was away (the s6064 pattern); recall_ratio=0.8 answers it but
+  barely moves results.
