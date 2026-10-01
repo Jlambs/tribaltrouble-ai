@@ -14,6 +14,7 @@ import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.UnitSupplyContainer;
+import com.oddlabs.tt.model.behaviour.GatherController;
 import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.model.weapon.IronAxeWeapon;
@@ -4701,14 +4702,31 @@ final class Economy {
     }
 
     private boolean sendGatherer(@NonNull Unit peon, @NonNull Class<?> type, @NonNull Building armory) {
-        Supply supply = pickSupply(type, armory, peon);
-        if (supply == null)
-            return false;
-        ai.owner().setTarget(Selectable.newArray(peon), supply, Action.DEFAULT, false);
-        gather_targets.put(peon, supply);
-        supply_load.merge(supply, 1, Integer::sum);
-        return true;
+        boolean home = ai.strategy().gather_home && type != RubberSupply.class;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            Supply supply = pickSupply(type, armory, peon);
+            if (supply == null)
+                return false;
+            ai.owner().setTarget(Selectable.newArray(peon), supply, Action.DEFAULT, false);
+            // gather_home: the engine delivers to the supply's nearest armory (Unit.nearestSupplyBuilding), not to the
+            // one we gather for. A supply nearer an old armory sends its load there, drainSecondary recalls the
+            // gatherer every 10 s and sends it back to the main armory, which picks the same supply: peons walk to
+            // and fro between the armories. Such a supply is left to the old armory for a minute.
+            if (home && peon.getPrimaryController() instanceof GatherController<?> g && g.getAssignedBuilding() != null
+                    && g.getAssignedBuilding() != armory && attempt < 2) {
+                other_armory_supplies.put(supply, ai.time() + 60f);
+                ai.aiLog().count("gather_other_armory");
+                continue;
+            }
+            gather_targets.put(peon, supply);
+            supply_load.merge(supply, 1, Integer::sum);
+            return true;
+        }
+        return false;
     }
+
+    /** gather_home: supplies whose loads would go to another armory than the main one, until the time given. */
+    private final Map<@NonNull Supply, Float> other_armory_supplies = new LinkedHashMap<>();
 
     /**
      * A gatherer whose load has not changed for 70 seconds is stuck, most often walking to a tree it cannot reach: it
@@ -4721,6 +4739,7 @@ final class Economy {
         float now = ai.time();
         gather_progress.keySet().removeIf(Unit::isDead);
         bad_supplies.values().removeIf(until -> until < now);
+        other_armory_supplies.values().removeIf(until -> until < now);
         for (Unit peon : intel.peons) {
             PeonState s = intel.peon_states.get(peon);
             Class<?> type = s == PeonState.GATHER_TREE ? TreeSupply.class : s == PeonState.GATHER_IRON ? IronSupply.class : s == PeonState.GATHER_ROCK ? RockSupply.class : null;
@@ -4893,6 +4912,9 @@ final class Economy {
                 avoided++;
                 continue;
             }
+            Float other = other_armory_supplies.get(s);
+            if (other != null && other > ai.time())
+                continue;
             int load = supply_load.getOrDefault(s, 0);
             float cost = d + load * load_penalty + (load >= max_load ? 60f : 0f);
             if (cost < best_cost) {

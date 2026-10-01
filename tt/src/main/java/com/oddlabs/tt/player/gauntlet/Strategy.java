@@ -455,6 +455,11 @@ class Strategy {
      */
     boolean gather_probe = false;
     /**
+     * gather_home: a gatherer the engine would send to another armory than the main one (a supply nearer an old
+     * armory) is given another supply; the old armory's supply is left alone for 60 s.
+     */
+    boolean gather_home = false;
+    /**
      * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
      * warrior within 12 cells of its straight way to the site; with none, one peon leaves the quarters nearest the site
@@ -1336,6 +1341,7 @@ class Strategy {
         wood_reach_time = (float) params.getDouble("wood_reach_time", wood_reach_time);
         ore_reach = params.getInt("ore_reach", ore_reach);
         gather_probe = params.getBoolean("gather_probe", gather_probe);
+        gather_home = params.getBoolean("gather_home", gather_home);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
         rearm_reach = params.getInt("rearm_reach", rearm_reach);
         reloc = params.getBoolean("reloc", reloc);
