@@ -1,5 +1,6 @@
 package com.oddlabs.tt.aisim.play;
 
+import com.oddlabs.matchmaking.Game;
 import com.oddlabs.tt.aisim.UsageException;
 import com.oddlabs.tt.procedural.Landscape;
 import com.oddlabs.tt.util.WordsEncoding;
@@ -25,7 +26,7 @@ import java.util.List;
 public record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNull String players,
                   @NonNull List<Seat> seats, int size, int terrain, int hills, int trees, int supplies, int minutes,
                   @Nullable Long rng, boolean collapse, boolean stopWhenAOut, @NonNull String game,
-                  @Nullable String logs) {
+                  @Nullable String logs, @Nullable String speed) {
 
     /** Map sizes by {@link #size}, as in the skirmish menu (huge is the menu's "Enormous"). */
     public static final List<String> SIZES = List.of("small", "medium", "large", "huge");
@@ -33,6 +34,11 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
     private static final int[] METERS = {256, 512, 1024, 2048};
     /** Terrains by {@link #terrain}, as in the skirmish menu. */
     public static final List<String> TERRAINS = List.of("tropical", "northern");
+    /**
+     * Game speeds by name, as in the skirmish menu (Game.GAMESPEED_SLOW..GAMESPEED_LUDICROUS). A job's {@link #speed}
+     * is null at normal speed, the speed of every run before the option existed.
+     */
+    public static final List<String> SPEEDS = List.of("slow", "normal", "fast", "ludicrous");
     /** The skirmish menu's map seeds are 0..MAP_SEEDS-1. */
     public static final int MAP_SEEDS = 40000;
     /** The races a seat plays. */
@@ -78,6 +84,14 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
     @NonNull
     String teamPlayers(int team) {
         return players.split(" vs ")[team];
+    }
+
+    /**
+     * The world's game speed (Game.GAMESPEED_*): each world tick lasts 0.5, 1, 1.75 or 4 times the normal tick's game
+     * time. The harness counts world ticks (50 to its second), so at ludicrous one harness minute is four game minutes.
+     */
+    int gameSpeed() {
+        return Game.GAMESPEED_SLOW + SPEEDS.indexOf(speed == null ? "normal" : speed);
     }
 
     int meters() {

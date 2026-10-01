@@ -568,6 +568,8 @@ WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared
          growing and shrinking as it frees up or fills) --cpus N|P% (at most N or P% of the hardware threads)
          --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
 GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
+      --speed slow|normal|fast|ludicrous (the world's game speed; the harness counts world ticks, so at
+      ludicrous a harness minute, --minutes included, is four game minutes)
       --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
 ```
 
@@ -583,6 +585,11 @@ GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --n
 - **`--logs`** (batch) keeps every game's AI logs, `--logs lost` those of the games team A did not win (the others'
   are deleted as their rows come in); `play` always keeps them ([AI logs](#why-did-it-lose-show-and-replay)).
 - **`--stop-when-a-out`** ends a game as soon as team A is out ([Players](#players)).
+- **`--speed`** (default `normal`) is the world's game speed, as in the skirmish menu. A faster speed makes each world
+  tick cover more game time (1.75 times the normal tick at fast, 4 times at ludicrous), so the game plays in coarser
+  steps, and an AI that counts ticks as time runs slow. The harness keeps counting world ticks, 50 to its second:
+  at ludicrous every time it shows, and `--minutes`, is a quarter of the game time (`--minutes 90` is 360 game
+  minutes).
 - **`--rng N`** reseeds the world's random generator (per start). It is needed when two starts would seat the same
   players in the same places, which the harness otherwise refuses, because they would replay the same game.
 - **`--name`**: 1..40 characters of `A-Z a-z 0-9 . _ -`, and the run must not exist yet; delete `aisim/runs/NAME` to
@@ -665,10 +672,10 @@ count), `cpus` and `memoryMb` (null when not given); `profile` whether the worke
 A written as `A` (like `A*2 vs normal*2`) and `config` the map options and game settings (compare checks both), `logs`
 which games keep AI logs (`all`, `lost` or null), and `aPools` and `pools` the jar hashes of the frozen AIs on team A
 and on the other teams (compare checks `pools`). Each job has `run key seed side players seats size terrain hills trees
-supplies minutes rng collapse stopWhenAOut game logs`, where `seats` is each slot's `spec race team`, and `size` and
-`terrain` index `small medium large huge` and `tropical northern`.
+supplies minutes rng collapse stopWhenAOut game logs speed`, where `seats` is each slot's `spec race team`, `size` and
+`terrain` index `small medium large huge` and `tropical northern`, and `speed` is null at normal speed.
 
-**Result row** (`results.jsonl`): `v run key seed side slots players a map mapcode minutes rng collapse snap perturb
+**Result row** (`results.jsonl`): `v run key seed side slots players a map mapcode minutes rng speed collapse snap perturb
 end via winnerTeam t checksum result place score elim kd30 w15 margin teams recorderFailed problem replay wall cpu`.
 
 - `side` is the first player's slot, `slots` the number of players, `map` the settings in short (`large tropical h2 t10

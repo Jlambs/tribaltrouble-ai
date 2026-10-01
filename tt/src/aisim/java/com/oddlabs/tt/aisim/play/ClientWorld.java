@@ -110,7 +110,7 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
                 landscape.getIslandInfos(), landscape.getStartingLocations(), landscape.getBlendInfos());
         // spotless:off
         WorldParameters parameters = WorldParameters.builder()
-                .initialGameSpeed(Game.GAMESPEED_NORMAL)
+                .initialGameSpeed(job.gameSpeed())
                 .mapcode(job.mapcode())
                 .initialUnitCount(STARTING_UNITS)
                 .maxUnitCount(Game.DEFAULT_MAX_UNIT_COUNT)
