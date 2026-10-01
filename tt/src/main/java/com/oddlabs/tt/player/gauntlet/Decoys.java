@@ -43,8 +43,8 @@ final class Decoys {
 
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Decoy> decoys = new ArrayList<>();
-    private float last_tick = -10f;
-    private float nospot_trace = -100f;
+    private float last_tick = -500f;
+    private float nospot_trace = -5000f;
 
     private static final class Decoy {
         final @NonNull Player target;
@@ -92,14 +92,15 @@ final class Decoys {
 
     void tick() {
         Strategy strategy = ai.strategy();
-        if ((!strategy.decoys && decoys.isEmpty()) || ai.time() - last_tick < 1f)
+        // once a game second (50 game ticks)
+        if ((!strategy.decoys && decoys.isEmpty()) || !ai.periodDue(last_tick, 50f))
             return;
-        last_tick = ai.time();
+        last_tick = ai.now();
         Intel intel = ai.intel();
         release();
         if (!strategy.decoys)
             return;
-        if (ai.time() < strategy.decoy_time)
+        if (ai.now() < strategy.decoy_ticks)
             return;
         List<Building> active = new ArrayList<>();
         for (Building t : intel.towers)
@@ -131,7 +132,7 @@ final class Decoys {
                 d.runner = null;
             if (d.site == null || (!d.site.isPlaced() && d.runner == null)) {
                 // Never placed: the runner died or dropped an illegal site.
-                if (d.runner == null || ai.time() - d.ordered > (d.home ? 200f : 90f)) {
+                if (d.runner == null || ai.now() - d.ordered > (d.home ? 10000f : 4500f)) { // 200 s, 90 s
                     if (d.runner != null && !d.runner.isDead())
                         sendHome(d.runner);
                     it.remove();
@@ -198,8 +199,8 @@ final class Decoys {
         int[] spot = findSpot(ox, oy, real, active);
         if (spot == null) {
             ai.aiLog().count("decoy_nospot");
-            if (ai.logging() && ai.time() - nospot_trace >= 15f) {
-                nospot_trace = ai.time();
+            if (ai.logging() && ai.periodDue(nospot_trace, 750f)) { // every 15 s
+                nospot_trace = ai.now();
                 Building nb = null;
                 int nd = Integer.MAX_VALUE;
                 for (Selectable<?> sel : ai.owner().getUnits().getSet())
@@ -226,7 +227,7 @@ final class Decoys {
         Unit runner = chooseRunner(spot[0], spot[1]);
         if (runner == null)
             return;
-        Decoy d = new Decoy(p, spot[0], spot[1], ai.time());
+        Decoy d = new Decoy(p, spot[0], spot[1], ai.now());
         d.runner = runner;
         d.site = ai.placeSite(List.of(runner), Race.BUILDING_TOWER, spot[0], spot[1]);
         if (d.site == null)
@@ -249,9 +250,9 @@ final class Decoys {
     void placeHome(@NonNull Player p, int ox, int oy) {
         Strategy strategy = ai.strategy();
         Float tried = home_tried.get(p);
-        if (tried != null && ai.time() - tried < 20f)
+        if (tried != null && !ai.periodDue(tried, 1000f)) // a try every 20 s
             return;
-        home_tried.put(p, ai.time());
+        home_tried.put(p, ai.now());
         int homes = 0;
         for (Decoy d : decoys) {
             if (!d.home)
@@ -276,7 +277,7 @@ final class Decoys {
             ai.aiLog().count("site_norunner");
             return;
         }
-        Decoy d = new Decoy(p, spot[0], spot[1], ai.time());
+        Decoy d = new Decoy(p, spot[0], spot[1], ai.now());
         d.home = true;
         d.runner = runner;
         d.site = ai.placeSite(List.of(runner), Race.BUILDING_TOWER, spot[0], spot[1]);

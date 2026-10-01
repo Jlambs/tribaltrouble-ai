@@ -128,25 +128,26 @@ final class Intel {
     int version;
 
     private @Nullable EnemyIndex enemy_index;
-    private int enemy_index_tick = -1;
+    private int enemy_index_world_tick = -1;
     private int enemy_index_version = -1;
 
     /**
-     * The enemy warriors, chieftains and peons bucketed by where they stand on this tick (EnemyIndex): rebuilt whenever
-     * update() rebuilds the lists, else brought up to the units' current cells once a tick. Units only move between
-     * ticks, so every query of a tick sees what a scan over the lists would.
+     * The enemy warriors, chieftains and peons bucketed by where they stand on this world tick (EnemyIndex): rebuilt
+     * whenever update() rebuilds the lists, else brought up to the units' current cells once a world tick. Units only
+     * move between world ticks, so every query of a world tick sees what a scan over the lists would. The world tick
+     * (GauntletAI.worldTicks) is only the cache key.
      */
     @NonNull
-    EnemyIndex enemyIndex(int tick) {
+    EnemyIndex enemyIndex(int world_tick) {
         if (enemy_index == null)
             enemy_index = new EnemyIndex(owner.getWorld().getUnitGrid().getGridSize());
         if (enemy_index_version != version) {
             enemy_index.rebuild(enemy_warriors, enemy_chieftains, enemy_peons);
-            enemy_index_tick = tick;
+            enemy_index_world_tick = world_tick;
             enemy_index_version = version;
-        } else if (enemy_index_tick != tick) {
+        } else if (enemy_index_world_tick != world_tick) {
             enemy_index.refresh();
-            enemy_index_tick = tick;
+            enemy_index_world_tick = world_tick;
         }
         return enemy_index;
     }

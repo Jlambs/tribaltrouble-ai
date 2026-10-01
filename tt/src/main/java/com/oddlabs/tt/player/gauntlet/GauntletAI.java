@@ -2,7 +2,6 @@ package com.oddlabs.tt.player.gauntlet;
 
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.AiParams;
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.model.Action;
@@ -30,12 +29,21 @@ import java.util.List;
  * since, and why.
  *
  * <p>The AI only iterates insertion-ordered collections, so every peer of a multiplayer game makes the same decisions.
+ *
+ * <p>It counts time in game ticks, {@link #TICKS_PER_SECOND} to a game second at every game speed ({@link #now}), so
+ * that it plays the same at every speed: every time it keeps (parameters, constants, timestamps, durations, periods) is
+ * in game ticks, and engine values in game seconds are converted where they are read ({@link #ticks}). A world tick
+ * (one call of {@link #animate}, which runs on the real-time animation manager) covers {@link #tickStep} game ticks and
+ * is never a measure of time.
  */
 public final class GauntletAI extends AI {
-    private static final float INTEL_PERIOD = .5f;
-    private static final float ECONOMY_PERIOD = 1f;
-    private static final float PLAN_PERIOD = 3f;
-    private static final float SCAN_PERIOD = 30f;
+    /** Game ticks in a game second, at every game speed: a game tick is 0.02 s of game time. */
+    static final int TICKS_PER_SECOND = 50;
+    private static final float INTEL_PERIOD_TICKS = 25f;
+    private static final float ECONOMY_PERIOD_TICKS = 50f;
+    private static final float PLAN_PERIOD_TICKS = 150f;
+    private static final float SCAN_PERIOD_TICKS = 1500f;
+    private static final float STAT_PERIOD_TICKS = 1500f;
 
     private final @NonNull AiLog log;
     private final @NonNull Strategy strategy;
@@ -54,18 +62,22 @@ public final class GauntletAI extends AI {
     private @Nullable Jams jams;
     private @Nullable Freeze freeze;
 
-    private int ticks;
+    /** World ticks seen: a cache key and same-tick check only, never a time. */
+    private int world_ticks;
     /**
-     * Game time in normal-speed ticks: each world tick adds the game time it covers over the normal tick's (1 at normal
-     * speed, 4 at ludicrous), so that every period and timer of this AI counts game time at any game speed.
+     * Game ticks since the start: each world tick adds the game ticks it covers ({@link #tick_step}), so that every
+     * period and timer of this AI counts game time at any game speed.
      */
     private double game_ticks;
-    private float time;
+    /** {@link #game_ticks} as a float, which holds it exactly (multiples of 0.25 for 23 game hours). */
+    private float now;
+    /** Game ticks the current world tick covers: 0.5 / 1 / 1.75 / 4 at slow / normal / fast / ludicrous, 0 paused. */
+    private float tick_step;
     private float next_intel;
-    private float next_economy = .25f;
-    private float next_plan = .5f;
-    private float next_scan = SCAN_PERIOD;
-    private float next_stat = 30f;
+    private float next_economy = 12.5f;
+    private float next_plan = 25f;
+    private float next_scan = SCAN_PERIOD_TICKS;
+    private float next_stat = STAT_PERIOD_TICKS;
     private boolean initialized;
     /** Whether the decision log is written anywhere, so that describing decisions is worth the work. */
     private boolean logging;
@@ -96,13 +108,15 @@ public final class GauntletAI extends AI {
 
     @Override
     public void animate(float t) {
+        // the clock counts game time whether or not the AI runs
+        world_ticks++;
+        double before = game_ticks;
+        tick_step = getOwner().getWorld().getSecondsPerTick() / AnimationManager.ANIMATION_SECONDS_PER_TICK;
+        game_ticks += tick_step;
+        now = (float) game_ticks;
         if (!Globals.run_ai)
             return;
-        ticks++;
-        double before = game_ticks;
-        game_ticks += getOwner().getWorld().getSecondsPerTick() / AnimationManager.ANIMATION_SECONDS_PER_TICK;
-        time = (float) game_ticks / GameTime.TICKS_PER_SECOND;
-        // the world's game-time pass of this tick, as the units animate it (World.tick)
+        // the world's game-time pass of this tick in game seconds, as the units animate it (World.tick)
         float step = getOwner().getWorld().getSecondsPerTick() * t / AnimationManager.ANIMATION_SECONDS_PER_TICK;
         try {
             // weapon_sync looks at the armory before any order of this tick and plans after all of them
@@ -113,7 +127,7 @@ public final class GauntletAI extends AI {
                 military().towerReflex();
                 military().armyReflex();
             }
-            // every 5 normal ticks of game time, or every tick at a speed whose ticks are longer
+            // every 5 game ticks, or every world tick at a speed whose world ticks are longer
             if (initialized && Math.floor(game_ticks / 5) > Math.floor(before / 5)) {
                 shepherd().guard();
                 lures().guard();
@@ -137,13 +151,13 @@ public final class GauntletAI extends AI {
         }
         if (!getOwner().isAlive())
             return;
-        boolean due_intel = time >= next_intel;
-        boolean due_economy = time >= next_economy;
-        boolean due_plan = time >= next_plan;
+        boolean due_intel = now >= next_intel;
+        boolean due_economy = now >= next_economy;
+        boolean due_plan = now >= next_plan;
         if (due_intel || due_economy || due_plan)
             intel.update();
         if (due_intel) {
-            next_intel = time + INTEL_PERIOD;
+            next_intel = nextRound(next_intel, INTEL_PERIOD_TICKS);
             military().tick();
             chieftain().tick();
             shepherd().tick();
@@ -151,25 +165,36 @@ public final class GauntletAI extends AI {
                 jams.tick();
         }
         if (due_economy) {
-            next_economy = time + ECONOMY_PERIOD;
+            next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
             economy().tick();
             decoys().tick();
             freeze().tick();
         }
         if (due_plan) {
-            next_plan = time + PLAN_PERIOD;
+            next_plan = nextRound(next_plan, PLAN_PERIOD_TICKS);
             economy().plan();
             military().plan();
         }
-        if (logging && time >= next_stat) {
-            next_stat = time + 30f;
+        if (logging && now >= next_stat) {
+            next_stat = nextRound(next_stat, STAT_PERIOD_TICKS);
             log.log("STAT", debugStatus());
         }
-        if (time >= next_scan) {
-            next_scan = time + SCAN_PERIOD;
+        if (now >= next_scan) {
+            next_scan = nextRound(next_scan, SCAN_PERIOD_TICKS);
             map().scanSupplies();
         }
         military().dodgeSpells();
+    }
+
+    /**
+     * The game tick a round that was due at {@code due} and runs now is due next: a period after it was due, so that
+     * the lateness of a round (up to a world tick, at a speed whose world ticks are longer than a game tick) does not
+     * add up from round to round, but never earlier than a period after now less {@link #slack}, so that a round that
+     * ran late for longer (the AI switched off, a speed change) does not run again at once. At slow and normal speed, a
+     * period after now.
+     */
+    private float nextRound(float due, float period) {
+        return Math.max(due + period, now + period - slack());
     }
 
     private void initialize() {
@@ -299,14 +324,47 @@ public final class GauntletAI extends AI {
         return getOwner();
     }
 
-    /** Game seconds since the start, at any game speed. */
-    float time() {
-        return time;
+    /** Game ticks since the start, {@link #TICKS_PER_SECOND} to a game second at every game speed. */
+    float now() {
+        return now;
     }
 
-    /** World ticks this AI has seen. */
-    int ticks() {
-        return ticks;
+    /** World ticks this AI has seen: for cache keys and same-tick checks only, never as a time. */
+    int worldTicks() {
+        return world_ticks;
+    }
+
+    /** Game ticks the current world tick covers: 0.5 / 1 / 1.75 / 4 at slow / normal / fast / ludicrous, 0 paused. */
+    float tickStep() {
+        return tick_step;
+    }
+
+    /**
+     * Game ticks a check run in a round may come late beyond the normal tick: a whole world tick at a speed whose world
+     * ticks are longer than a game tick, 0 at slow and normal speed (so that whatever uses it is unchanged there).
+     */
+    float slack() {
+        return tick_step > 1f ? tick_step : 0f;
+    }
+
+    /**
+     * Whether a periodic check that last ran at {@code last}, and re-arms on the tick it runs ({@code last = now()}),
+     * is due again after {@code period} game ticks. It may run up to {@link #slack} early: otherwise each period would
+     * round up to whole world ticks, and the error would add up (at ludicrous a 25-tick period ran every 28). One-shot
+     * timeouts, which run once a time after an event, compare {@code now() - since >= limit} instead.
+     */
+    boolean periodDue(float last, float period) {
+        return now - last >= period - slack();
+    }
+
+    /** Game ticks in {@code seconds} game seconds, for engine values in game seconds: convert once, where read. */
+    static float ticks(float seconds) {
+        return seconds * TICKS_PER_SECOND;
+    }
+
+    /** Game seconds in {@code ticks} game ticks, for log text only. */
+    static float seconds(float ticks) {
+        return ticks / TICKS_PER_SECOND;
     }
 
     @NonNull

@@ -7,11 +7,11 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The enemy warriors, chieftains and peons of one tick, bucketed by 16-cell squares, so that towers and shepherds look
- * only at the enemies near them instead of every enemy unit (most of the AI's CPU went to that). A query returns the
- * units in range in their list order (warriors, chieftains, peons, each in Intel's order), so a scan over the result
- * picks exactly what a scan over the full lists would. Dead units stay in the index, as they stay in Intel's lists
- * until its next update: queries leave the isDead test to the caller.
+ * The enemy warriors, chieftains and peons of one world tick, bucketed by 16-cell squares, so that towers and shepherds
+ * look only at the enemies near them instead of every enemy unit (most of the AI's CPU went to that). A query returns
+ * the units in range in their list order (warriors, chieftains, peons, each in Intel's order), so a scan over the
+ * result picks exactly what a scan over the full lists would. Dead units stay in the index, as they stay in Intel's
+ * lists until its next update: queries leave the isDead test to the caller.
  */
 final class EnemyIndex {
     static final byte WARRIOR = 0;
@@ -52,8 +52,8 @@ final class EnemyIndex {
 
     /**
      * Brings the index up to where the same units stand now: only the units whose cell changed since the last rebuild
-     * or refresh move to their new buckets (most units keep their cell from one tick to the next). Queries then find
-     * what they would after a rebuild from the same lists.
+     * or refresh move to their new buckets (most units keep their cell from one world tick to the next). Queries then
+     * find what they would after a rebuild from the same lists.
      */
     void refresh() {
         for (int i = 0; i < size; i++) {

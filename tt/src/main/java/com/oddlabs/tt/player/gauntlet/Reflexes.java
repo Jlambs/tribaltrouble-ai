@@ -42,6 +42,12 @@ import java.util.Map;
  * the real-time pass the AI is on); so its hit lands in the game-time pass of tick T+n, and our order at T+n comes
  * right after it. Seen late, the order is late, never early (an early order voids the swing).
  *
+ * <p>Unlike the rest of the AI, which counts game ticks, the swing timing stays in engine seconds: each swing adds up
+ * the game seconds of the world ticks it animates, the same floats in the same order as HarvestBehaviour adds them to
+ * its anim_time, and is due once the sum passes the weapon's release time, as the hit is. So it is due on the world
+ * tick of the hit at every speed and across speed changes, float rounding included, which a count in game ticks could
+ * not promise. A paused tick (no game seconds) does nothing.
+ *
  * <p><b>Stun cancel (K1).</b> Unit.stun pushes a StunController and makes it decide at once, which sets a StunBehaviour
  * that has not animated yet (Selectable.forceDecide leaves the unit interruptible). An order in the same tick clears
  * the controller stack and decides at once, replacing the StunBehaviour before it ever runs: the stun is gone. Each
@@ -60,26 +66,20 @@ final class Reflexes {
     private final boolean tower_unstun;
     /** Per tower, the controller its garrison had on top in the previous tick. */
     private final Map<@NonNull Building, @NonNull Controller> tower_last = new LinkedHashMap<>();
-    /** The swing each harvesting peon is in, and the tick we first saw it. */
+    /** The swing each harvesting peon is in, and the game seconds it has animated since we first saw it. */
     private final Map<@NonNull Unit, @NonNull Swing> swings = new LinkedHashMap<>();
-    /**
-     * Ticks from the start of a swing to its hit, per release time (the peons of one race share it), at the game time a
-     * world tick covers ({@link #release_step}; the counts are redone when the game speed changes).
-     */
-    private final Map<Float, Integer> release_ticks = new LinkedHashMap<>();
-    /** The game seconds of a world tick, as HarvestBehaviour counts them, that {@link #release_ticks} is for. */
-    private float release_step;
     private final List<@NonNull Unit> due = new ArrayList<>();
     private final List<@NonNull Unit> stunned = new ArrayList<>();
+    /** Unpaused world ticks seen, for housekeeping only. */
     private int tick;
 
     private static final class Swing {
         final @NonNull Behaviour behaviour;
-        final int seen;
+        /** Game seconds the swing has animated since we first saw it, summed as HarvestBehaviour sums anim_time. */
+        float elapsed;
 
-        Swing(@NonNull Behaviour behaviour, int seen) {
+        Swing(@NonNull Behaviour behaviour) {
             this.behaviour = behaviour;
-            this.seen = seen;
         }
     }
 
@@ -90,15 +90,14 @@ final class Reflexes {
         this.tower_unstun = tower_unstun;
     }
 
-    /** {@code step}: the game seconds this world tick covers, as the units animate it. */
+    /** {@code step}: the game seconds this world tick covers, as the units animate it (0 while the game is paused). */
     void tick(float step) {
         if (!swing_restart && !stun_cancel && !tower_unstun)
             return;
+        // a paused tick animates nothing: no stun lands, no swing moves on
+        if (step <= 0f)
+            return;
         tick++;
-        if (step != release_step) {
-            release_ticks.clear();
-            release_step = step;
-        }
         if (tower_unstun)
             towerUnstun();
         Player me = ai.owner();
@@ -118,10 +117,13 @@ final class Reflexes {
                 continue;
             Swing sw = swings.get(u);
             if (sw == null || sw.behaviour != b) {
-                swings.put(u, new Swing(b, tick));
+                swings.put(u, new Swing(b));
                 continue;
             }
-            if (tick - sw.seen >= releaseTicks(u))
+            // as HarvestBehaviour.animate added it in this tick's game-time pass: the hit comes on the first animate
+            // whose running sum passes the release
+            sw.elapsed += step;
+            if (sw.elapsed > u.getWeaponFactory().getSecondsPerRelease(1f))
                 due.add(u);
         }
         for (Unit u : stunned)
@@ -130,23 +132,6 @@ final class Reflexes {
             restart(u);
         if (tick % 250 == 0)
             swings.keySet().removeIf(Unit::isDead);
-    }
-
-    private int releaseTicks(@NonNull Unit u) {
-        float release = u.getWeaponFactory().getSecondsPerRelease(1f);
-        Integer n = release_ticks.get(release);
-        if (n == null) {
-            // Count as HarvestBehaviour does: the hit comes on the first animate whose running sum passes the release.
-            float sum = 0f;
-            int ticks = 0;
-            while (sum <= release) {
-                sum += release_step;
-                ticks++;
-            }
-            n = ticks;
-            release_ticks.put(release, n);
-        }
-        return n;
     }
 
     private void restart(@NonNull Unit u) {

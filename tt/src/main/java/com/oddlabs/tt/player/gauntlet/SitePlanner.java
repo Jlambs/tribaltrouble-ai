@@ -15,13 +15,15 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Picks building sites. The armory goes where iron and trees can be gathered fastest, weighed against the walk from
- * the start and how exposed the spot is; quarters go into dense trees so they are built quickly; towers cover the
- * armory from the enemy's side.
+ * Picks building sites. The armory goes where iron and trees can be gathered fastest, weighed against the walk from the
+ * start and how exposed the spot is; quarters go into dense trees so they are built quickly; towers cover the armory
+ * from the enemy's side. Its costs are in game ticks (of peon time, of walking, of construction).
  */
 final class SitePlanner {
-    /** Seconds of walking per meter of distance for a round trip: out at 5 m/s, back loaded at 4 m/s. */
-    private static final float ROUND_TRIP_SECONDS_PER_METER = 1f / 5f + 1f / 4f;
+    /** Game ticks of walking per meter of distance out, at 5 m/s. */
+    private static final float WALK_TICKS_PER_METER = GauntletAI.TICKS_PER_SECOND / 5f;
+    /** Game ticks of walking per meter of distance for a round trip: out at 5 m/s, back loaded at 4 m/s. */
+    private static final float ROUND_TRIP_TICKS_PER_METER = WALK_TICKS_PER_METER + GauntletAI.TICKS_PER_SECOND / 4f;
     private static final int MISSING_DISTANCE = 140;
     /** Free cells to keep between buildings so peons and warriors can walk between them. */
     private static final int BUILDING_GAP = 3;
@@ -36,7 +38,10 @@ final class SitePlanner {
     private final int start_y;
     private final int enemy_x;
     private final int enemy_y;
-    /** How much more an exposed armory site costs against several enemies, who can all reach the middle. */
+    /**
+     * How much more an exposed armory site costs against several enemies, who can all reach the middle (peon-ticks per
+     * warrior per unit of exposure beyond 0.42).
+     */
     private final float threat_weight;
 
     SitePlanner(@NonNull MapAnalysis map, @NonNull Player owner, @NonNull Strategy strategy, int start_x, int start_y,
@@ -54,7 +59,7 @@ final class SitePlanner {
         for (Player p : owner.getWorld().getPlayers())
             if (owner.isEnemy(p))
                 enemies++;
-        this.threat_weight = strategy.armory_threat_weight * (1f + .75f * Math.min(strategy.armory_threat_cap,
+        this.threat_weight = strategy.armory_threat_weight_ticks * (1f + .75f * Math.min(strategy.armory_threat_cap,
                 Math.max(0, enemies - 1)));
     }
 
@@ -74,10 +79,10 @@ final class SitePlanner {
     }
 
     /**
-     * Seconds of peon time per unit gathered for the cheapest `units` units of the supplies around a site.
+     * Game ticks of peon time per unit gathered for the cheapest `units` units of the supplies around a site.
      */
-    static float gatherSeconds(@NonNull DistanceField field, @NonNull List<? extends Supply> supplies, int units,
-            int per_node, int max_meters, float harvest_seconds) {
+    static float gatherTicks(@NonNull DistanceField field, @NonNull List<? extends Supply> supplies, int units,
+            int per_node, int max_meters, float harvest_ticks) {
         int sx = field.getSourceX();
         int sy = field.getSourceY();
         int limit2 = (max_meters / 2) * (max_meters / 2);
@@ -104,16 +109,16 @@ final class SitePlanner {
         // Whatever is not found within the window is further away than that, however far.
         total += remaining * (float) Math.max(MISSING_DISTANCE, max_meters + 60);
         float avg = total / units;
-        return harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * avg;
+        return harvest_ticks + ROUND_TRIP_TICKS_PER_METER * avg;
     }
 
     /**
-     * Seconds of gathering per iron warrior (two wood and one iron) if the armory stood at the field's source.
+     * Game ticks of gathering per iron warrior (two wood and one iron) if the armory stood at the field's source.
      */
     float warriorGatherCost(@NonNull DistanceField field) {
         // Look far enough ahead to feed the armory well into the middle game, not just the first warriors.
-        float tree = gatherSeconds(field, map.getTrees(), 300, 10, 120, strategy.harvest_seconds);
-        float iron = gatherSeconds(field, map.getIron(), 150, 10, 200, strategy.harvest_seconds);
+        float tree = gatherTicks(field, map.getTrees(), 300, 10, 120, strategy.harvest_ticks);
+        float iron = gatherTicks(field, map.getIron(), 150, 10, 200, strategy.harvest_ticks);
         return 2 * tree + iron;
     }
 
@@ -121,7 +126,7 @@ final class SitePlanner {
     Site findArmorySite(@NonNull List<@NonNull Site> reserved) {
         Site best = findArmorySite(reserved, strategy.max_armory_distance, start_field);
         // A start boxed in by cliffs may have nothing worth building on nearby; look further before settling.
-        if (best == null || -best.score > strategy.armory_far_cost) {
+        if (best == null || -best.score > strategy.armory_far_cost_ticks) {
             Site further = findArmorySite(reserved, strategy.max_armory_distance * 2, start_field);
             if (further != null && (best == null || further.score > best.score))
                 best = further;
@@ -154,8 +159,8 @@ final class SitePlanner {
 
     /** Candidates findArmorySite(..., ok) may reject before it gives up (reloc, rearm_reach, reloc_lock). */
     private static final int MAX_REJECTED = 200;
-    /** Seconds a Search keeps its ranked candidates and each evaluated cell's costs. */
-    private static final float SEARCH_SECONDS = 60f;
+    /** Game ticks a Search keeps its ranked candidates and each evaluated cell's costs. */
+    private static final float SEARCH_TICKS = 3000f; // 60 s
     /**
      * Whether the last findArmorySite with an ok test stopped at MAX_REJECTED, and how many evaluated sites its
      * max_tree turned down (callers count them).
@@ -172,19 +177,19 @@ final class SitePlanner {
     }
 
     /**
-     * One caller's armory site search kept for SEARCH_SECONDS (reloc, rearm_reach and reloc_lock run theirs every
-     * 10-30 s for tens of minutes; one search cost ~20 ms, 0.7 % of a 158-min lock game's CPU at 26 searches, mostly
-     * the pass over every cell and the 24 walking fields): the ranked candidates for one from_field, max_distance and
-     * min_cells, and each evaluated cell's gathering cost, construction time and tree cycle. The ok test still runs
-     * afresh every time; a reused candidate is checked again against the buildings and sites placed since.
+     * One caller's armory site search kept for SEARCH_TICKS (reloc, rearm_reach and reloc_lock run theirs every 10-30 s
+     * for tens of minutes; one search cost ~20 ms, 0.7 % of a 158-min lock game's CPU at 26 searches, mostly the pass
+     * over every cell and the 24 walking fields): the ranked candidates for one from_field, max_distance and min_cells,
+     * and each evaluated cell's gathering cost, construction time and tree cycle. The ok test still runs afresh every
+     * time; a reused candidate is checked again against the buildings and sites placed since.
      */
     static final class Search {
         private @Nullable DistanceField from;
         private int max_distance;
         private int min_cells;
-        private float time = -1000f;
+        private float time = -50000f;
         private final List<@NonNull Site> candidates = new ArrayList<>();
-        /** Cell (y * size + x) -> {gathering cost, construction seconds, tree cycle, when worked out}. */
+        /** Cell (y * size + x) -> {gathering cost, construction ticks, tree cycle, game tick worked out}. */
         private final Map<Integer, float @NonNull []> costs = new LinkedHashMap<>();
     }
 
@@ -203,9 +208,10 @@ final class SitePlanner {
     /**
      * findArmorySite with two more tests and a Search to reuse (reloc, reloc_lock): min_cells from the field's source,
      * tested in the pass over every cell (a candidate by the primary, which the walk term ranks first, is never ranked
-     * and so takes none of MAX_REJECTED: reloc's 40 cells); max_tree (0: none), a tree cycle (60 units of wood within
-     * 60 cells, the economy's tree_cycle) under which an evaluated site must stand to be returned (it still counts
-     * among the 24 evaluated: reloc_lock). With min_cells 0, ok null, max_tree 0 and search null, the plain search.
+     * and so takes none of MAX_REJECTED: reloc's 40 cells); max_tree (0: none), a tree cycle in game ticks (60 units of
+     * wood within 60 cells, the economy's tree_cycle) under which an evaluated site must stand to be returned (it still
+     * counts among the 24 evaluated: reloc_lock). With min_cells 0, ok null, max_tree 0 and search null, the plain
+     * search. {@code now}: the game tick, for the Search.
      */
     @Nullable
     Site findArmorySite(@NonNull List<@NonNull Site> reserved, int max_distance, @NonNull DistanceField from_field,
@@ -215,7 +221,7 @@ final class SitePlanner {
         gave_up = false;
         tree_failed = 0;
         boolean reuse = search != null && search.from == from_field && search.max_distance == max_distance
-                && search.min_cells == min_cells && now - search.time <= SEARCH_SECONDS;
+                && search.min_cells == min_cells && now - search.time <= SEARCH_TICKS;
         List<Site> candidates = reuse ? search.candidates : new ArrayList<>();
         if (!reuse) {
             int sx = from_field.getSourceX();
@@ -232,11 +238,11 @@ final class SitePlanner {
                         continue;
                     // A rough version of the full cost below, with distances as the crow flies, to pick which sites
                     // are worth the exact evaluation.
-                    float iron_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
+                    float iron_cycle = strategy.harvest_ticks + ROUND_TRIP_TICKS_PER_METER * Math.max(0f,
                             1.25f * averageDistance(iron, x, y, 15) - 5f);
-                    float tree_cycle = strategy.harvest_seconds + ROUND_TRIP_SECONDS_PER_METER * Math.max(0f,
+                    float tree_cycle = strategy.harvest_ticks + ROUND_TRIP_TICKS_PER_METER * Math.max(0f,
                             1.25f * map.averageTreeDistance(x, y, 30, 60, 150f) - 5f);
-                    float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d / 5f + strategy.armory_distance_weight * d + threat_weight * Math.max(
+                    float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d * WALK_TICKS_PER_METER + strategy.armory_distance_weight_ticks * d + threat_weight * Math.max(
                             0f, exposure(x, y) - .42f);
                     candidates.add(new Site(x, y, -quick));
                 }
@@ -252,7 +258,7 @@ final class SitePlanner {
             }
         }
         if (search != null)
-            search.costs.values().removeIf(c -> now - c[3] > SEARCH_SECONDS);
+            search.costs.values().removeIf(c -> now - c[3] > SEARCH_TICKS);
         if (candidates.isEmpty())
             return null;
         Site best = null;
@@ -297,19 +303,20 @@ final class SitePlanner {
             } else {
                 DistanceField field = map.computeField(c.x, c.y, 220);
                 gather = warriorGatherCost(field);
-                build = constructionSeconds(c.x, c.y, QUARTERS_WOOD, strategy.armory_builders);
+                build = constructionTicks(c.x, c.y, QUARTERS_WOOD, strategy.armory_builders);
                 if (search != null || max_tree > 0f)
-                    tree = gatherSeconds(field, map.getTrees(), 60, 10, 120, strategy.harvest_seconds);
+                    tree = gatherTicks(field, map.getTrees(), 60, 10, 120, strategy.harvest_ticks);
                 if (search != null)
                     search.costs.put(c.y * size + c.x, new float[]{gather, build, tree, now});
             }
             int d = from_field.get(c.x, c.y);
             // Delays to the armory hold back the whole economy; weigh them against gathering speed, which pays off
             // on every warrior of the game.
-            float delay = strategy.armory_delay_weight * (build + d / 5f);
+            float delay = strategy.armory_delay_weight * (build + d * WALK_TICKS_PER_METER);
             float threat = threat_weight * Math.max(0f, exposure(c.x, c.y) - .42f);
-            float cost = gather + delay + strategy.armory_distance_weight * d + threat + (hasNear(map.getRocks(), c.x,
-                    c.y, 45) ? 0f : 4f);
+            // no rock within 45 cells: 200 game ticks (4 s) more
+            float cost = gather + delay + strategy.armory_distance_weight_ticks * d + threat + (hasNear(map.getRocks(),
+                    c.x, c.y, 45) ? 0f : 200f);
             if (max_tree > 0f && tree >= max_tree) {
                 tree_failed++;
                 continue;
@@ -323,8 +330,8 @@ final class SitePlanner {
     }
 
     /**
-     * What a Search last worked out for the cell (x, y): {gathering cost (warriorGatherCost), construction seconds,
-     * tree cycle}, or null.
+     * What a Search last worked out for the cell (x, y), in game ticks: {gathering cost (warriorGatherCost),
+     * construction ticks, tree cycle}, or null.
      */
     float @Nullable [] searched(@NonNull Search search, int x, int y) {
         float[] c = search.costs.get(y * map.getSize() + x);
@@ -363,8 +370,9 @@ final class SitePlanner {
     }
 
     /**
-     * Quarters site: the spot that goes up fastest, counting the walk there (anchor_weight seconds per meter from the
-     * anchor) and the builders' trips for wood, plus a pull towards (toward_x, toward_y) where the peons will work.
+     * Quarters site: the spot that goes up fastest, counting the walk there (anchor_weight game ticks per meter from
+     * the anchor) and the builders' trips for wood, plus a pull towards (toward_x, toward_y) where the peons will work
+     * (toward_weight game ticks per meter). The score is minus the cost in game ticks.
      */
     @Nullable
     Site findQuartersSite(@NonNull List<@NonNull Site> reserved, int anchor_x, int anchor_y,
@@ -385,9 +393,9 @@ final class SitePlanner {
                     continue;
                 if (!map.canPlace(quarters, x, y) || conflicts(reserved, x, y, RaceSizes.QUARTERS))
                     continue;
-                float cost = constructionSeconds(x, y, QUARTERS_WOOD,
+                float cost = constructionTicks(x, y, QUARTERS_WOOD,
                         builders) + anchor_weight * d_anchor + toward_weight * MapAnalysis.meters(x, y, toward_x,
-                                toward_y) + 120f * Math.max(0f, exposure(x, y) - .45f);
+                                toward_y) + 6000f * Math.max(0f, exposure(x, y) - .45f); // 120 s
                 if (best == null || -cost > best.score)
                     best = new Site(x, y, -cost);
             }
@@ -398,21 +406,21 @@ final class SitePlanner {
     /** Wood needed for a quarters or armory: 200 hit points at five per piece. */
     static final int QUARTERS_WOOD = 40;
     static final int TOWER_WOOD = 20;
-    /** Seconds a builder spends putting one piece of wood into a building. */
-    private static final float REPAIR_SECONDS = 5f;
+    /** Game ticks a builder spends putting one piece of wood into a building. */
+    private static final float REPAIR_TICKS = 250f; // 5 s
 
     /**
-     * Seconds for the given number of builders to raise a building needing `wood` pieces at (x, y): each piece is
-     * chopped (10 s), carried from one of the nearest trees and hammered in (5 s). Builders spread over the nearest
-     * trees, a handful per tree.
+     * Game ticks for the given number of builders to raise a building needing `wood` pieces at (x, y): each piece is
+     * chopped (harvest_ticks, 10 s), carried from one of the nearest trees and hammered in (REPAIR_TICKS, 5 s).
+     * Builders spread over the nearest trees, a handful per tree.
      */
-    float constructionSeconds(int x, int y, int wood, int builders) {
+    float constructionTicks(int x, int y, int wood, int builders) {
         builders = Math.max(1, builders);
         int trees = Math.max(3, (builders + 2) / 3);
         // Distances from the start expose trees behind cliffs that look close as the crow flies.
         float avg = map.averageTreeDistance(x, y, trees, 35, 90f, start_field);
         float walk = Math.max(0f, avg * 1.25f - 5f);
-        float cycle = strategy.harvest_seconds + REPAIR_SECONDS + ROUND_TRIP_SECONDS_PER_METER * walk;
+        float cycle = strategy.harvest_ticks + REPAIR_TICKS + ROUND_TRIP_TICKS_PER_METER * walk;
         return wood * cycle / builders;
     }
 
@@ -474,8 +482,9 @@ final class SitePlanner {
                     else if (td2 < 16 * 16)
                         spread -= 6f;
                 }
+                // .003 a game tick of construction: .15 a second
                 float score = 6f * align + .6f * Math.min(8f, map.height(x,
-                        y) - base_height) - .15f * constructionSeconds(x, y, TOWER_WOOD,
+                        y) - base_height) - .003f * constructionTicks(x, y, TOWER_WOOD,
                                 strategy.tower_builders) + spread;
                 if (best == null || score > best.score)
                     best = new Site(x, y, score);

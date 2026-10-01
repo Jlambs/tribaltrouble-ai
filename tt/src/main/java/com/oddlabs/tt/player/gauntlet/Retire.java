@@ -20,19 +20,19 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * retire: frees a slot under the 20-building cap for a flagged armory project (a reloc hop or a reloc_lock move)
- * that has waited unplaced retire_wait s at the cap, by razing one building of ours with the explicit attack order,
- * as a human does with the attack button and a click on it (Unit.setTarget attacks a friendly target on
- * Action.ATTACK; raze.md). The slot frees on the tick of the razing; nothing is refunded and units inside vanish, so
- * the building is emptied first. It looks, in this order, for a stalled site (placed, no builders, SITE_AGE s old), a
- * stranded tower (no quarters or armory within COVER_CELLS), a quiet drained armory (not primary, nobody inside, no
- * stock or gatherers, no threat within 30), a far quarters (retire_quarters_dist cells from the main armory, units >=
+ * retire: frees a slot under the 20-building cap for a flagged armory project (a reloc hop or a reloc_lock move) that
+ * has waited unplaced retire_wait_ticks at the cap, by razing one building of ours with the explicit attack order, as a
+ * human does with the attack button and a click on it (Unit.setTarget attacks a friendly target on Action.ATTACK;
+ * raze.md). The slot frees on the tick of the razing; nothing is refunded and units inside vanish, so the building is
+ * emptied first. It looks, in this order, for a stalled site (placed, no builders, SITE_AGE_TICKS old), a stranded
+ * tower (no quarters or armory within COVER_CELLS), a quiet drained armory (not primary, nobody inside, no stock or
+ * gatherers, no threat within 30), a far quarters (retire_quarters_dist cells from the main armory, units >=
  * retire_pop, another quarters within 25 cells, not training the chieftain) and, with retire_any_tower, any tower,
  * never one with a threat within 20 cells. While it empties and falls the building is doomed: tower manning, peon
  * filling and shelter, repairs, the primary armory and the chieftain's training leave it alone (isDoomed), and no
- * armory site goes within RETIRED_CELLS of it for RETIRED_MEMORY s after (retiredNear). A retirement is called off
+ * armory site goes within RETIRED_CELLS of it for RETIRED_MEMORY_TICKS after (retiredNear). A retirement is called off
  * when a threat comes, when the slot is no longer wanted, or when the building has become our main or last armory or
- * our last quarters. At most one retirement every GAP s.
+ * our last quarters. At most one retirement every GAP_TICKS. Times are in game ticks.
  */
 final class Retire {
     /** The kinds of building retired, in the order they are looked for (counter and log names). */
@@ -46,39 +46,41 @@ final class Retire {
     /** A tower with a finished quarters or armory within this many cells covers it (not stranded). */
     private static final int COVER_CELLS = 25;
     /** A placed site this old with no builders is stalled. */
-    private static final float SITE_AGE = 120f;
-    /** At most one retirement per GAP s (from its order); another try RETRY s after one called off or given up. */
-    private static final float GAP = 120f;
-    private static final float RETRY = 30f;
-    /** Seconds between searches for a building to retire while none is found. */
-    private static final float SEARCH_EVERY = 5f;
+    private static final float SITE_AGE_TICKS = 6000f; // 120 s
+    /**
+     * At most one retirement per GAP_TICKS (from its order); another try RETRY_TICKS after one called off or given up.
+     */
+    private static final float GAP_TICKS = 6000f; // 120 s
+    private static final float RETRY_TICKS = 1500f; // 30 s
+    /** Game ticks between searches for a building to retire while none is found. */
+    private static final float SEARCH_EVERY_TICKS = 250f; // 5 s
     /** A tower's gunner has this long to come out (then the tower goes down with it); others this long to empty. */
-    private static final float EMPTY_WAIT_TOWER = 10f;
-    private static final float EMPTY_WAIT = 60f;
-    /** Seconds to find razers before the retirement is given up. */
-    private static final float UNITS_WAIT = 30f;
-    /** Razers that stopped attacking are ordered again every REORDER s. */
-    private static final float REORDER = 3f;
+    private static final float EMPTY_WAIT_TOWER_TICKS = 500f; // 10 s
+    private static final float EMPTY_WAIT_TICKS = 3000f; // 60 s
+    /** Game ticks to find razers before the retirement is given up. */
+    private static final float UNITS_WAIT_TICKS = 1500f; // 30 s
+    /** Razers that stopped attacking are ordered again every REORDER_TICKS. */
+    private static final float REORDER_TICKS = 150f; // 3 s
     /** Peons, and lent warriors, are looked for within this many cells of the building. */
     private static final int UNIT_CELLS = 80;
     private static final int WARRIOR_CELLS = 60;
-    /** No armory site within RETIRED_CELLS of a retired building for RETIRED_MEMORY s. */
+    /** No armory site within RETIRED_CELLS of a retired building for RETIRED_MEMORY_TICKS. */
     private static final int RETIRED_CELLS = 12;
-    private static final float RETIRED_MEMORY = 60f;
-    /** Seconds within which the flagged project placed after a retirement counts as having used its slot. */
-    private static final float SLOT_USE = 60f;
+    private static final float RETIRED_MEMORY_TICKS = 3000f; // 60 s
+    /** Game ticks within which the flagged project placed after a retirement counts as having used its slot. */
+    private static final float SLOT_USE_TICKS = 3000f; // 60 s
 
     private final @NonNull GauntletAI ai;
     private final @NonNull Economy economy;
     private final Set<@NonNull Building> doomed = new LinkedHashSet<>();
     /** Each placed site of ours and when it was first seen (stalled sites). */
     private final Map<@NonNull Building, Float> site_seen = new LinkedHashMap<>();
-    /** {x, y, time} of the buildings retired in the last RETIRED_MEMORY s. */
+    /** {x, y, game tick} of the buildings retired in the last RETIRED_MEMORY_TICKS. */
     private final List<float @NonNull []> retired = new ArrayList<>();
-    /** Buildings passed over until the time given: no razers could be found for them (nounits). */
+    /** Buildings passed over until the game tick given: no razers could be found for them (nounits). */
     private final Map<@NonNull Building, Float> passed = new LinkedHashMap<>();
-    /** Seconds a building no razers came for is passed over. */
-    private static final float PASS_OVER = 120f;
+    /** Game ticks a building no razers came for is passed over. */
+    private static final float PASS_OVER_TICKS = 6000f; // 120 s
 
     /**
      * The retirement under way: its building and kind, whether it is being razed yet (else emptied), and since when.
@@ -93,13 +95,13 @@ final class Retire {
     /** Whether the razers are warriors the military lent (else peons). */
     private boolean lent;
     private int buildings_before;
-    private float next_deploy = -1f;
+    private float last_deploy = -500f;
 
     private float capped_since = -1f;
     private float next_allowed = -1f;
-    private float next_search = -1f;
-    private float last_done = -1000f;
-    private float next_none_log;
+    private float last_search = -SEARCH_EVERY_TICKS;
+    private float last_done = -50000f;
+    private float last_none_log = -3000f;
 
     Retire(@NonNull GauntletAI ai, @NonNull Economy economy) {
         this.ai = ai;
@@ -111,7 +113,7 @@ final class Retire {
         return b != null && !doomed.isEmpty() && doomed.contains(b);
     }
 
-    /** Whether a building of ours retired in the last RETIRED_MEMORY s stood within RETIRED_CELLS of (x, y). */
+    /** Whether a building of ours retired in the last RETIRED_MEMORY_TICKS stood within RETIRED_CELLS of (x, y). */
     boolean retiredNear(int x, int y) {
         for (float[] r : retired)
             if (MapAnalysis.dist2(x, y, (int) r[0], (int) r[1]) <= RETIRED_CELLS * RETIRED_CELLS)
@@ -119,17 +121,17 @@ final class Retire {
         return false;
     }
 
-    /** The flagged project's site was placed (counts retire_slot_used within SLOT_USE s of a retirement). */
+    /** The flagged project's site was placed (counts retire_slot_used within SLOT_USE_TICKS of a retirement). */
     void flaggedPlaced() {
-        if (ai.time() - last_done <= SLOT_USE)
+        if (ai.now() - last_done <= SLOT_USE_TICKS)
             ai.aiLog().count("retire_slot_used");
     }
 
     /** Every economy tick, after manageProjects. */
     void tick() {
-        float now = ai.time();
+        float now = ai.now();
         trackSites(now);
-        retired.removeIf(r -> now - r[2] > RETIRED_MEMORY);
+        retired.removeIf(r -> now - r[2] > RETIRED_MEMORY_TICKS);
         passed.entrySet().removeIf(e -> e.getKey().isDead() || now >= e.getValue());
         if (target != null) {
             follow(now);
@@ -143,12 +145,13 @@ final class Retire {
         }
         if (capped_since < 0f)
             capped_since = now;
-        if (now - capped_since < ai.strategy().retire_wait)
+        if (now - capped_since < ai.strategy().retire_wait_ticks)
             return;
-        ai.aiLog().count("retire_armed"); // economy ticks (1 s) a flagged project has waited retire_wait s at the cap
-        if (now < next_allowed || now < next_search)
+        // economy ticks (1 s) a flagged project has waited retire_wait_ticks at the cap
+        ai.aiLog().count("retire_armed");
+        if (now < next_allowed || !ai.periodDue(last_search, SEARCH_EVERY_TICKS))
             return;
-        next_search = now + SEARCH_EVERY;
+        last_search = now;
         // Why candidates were passed over: {kind}{threat, other}.
         int[][] why = new int[KINDS.length][2];
         Building b = stalledSite(now, why[SITE]);
@@ -170,14 +173,15 @@ final class Retire {
             k = ANY_TOWER;
         }
         if (b == null) {
-            ai.aiLog().count("retire_none"); // searches (every SEARCH_EVERY s) that found nothing to retire
-            if (ai.logging() && now >= next_none_log) {
-                next_none_log = now + 60f;
+            ai.aiLog().count("retire_none"); // searches (every SEARCH_EVERY_TICKS) that found nothing to retire
+            if (ai.logging() && ai.periodDue(last_none_log, 3000f)) { // every 60 s
+                last_none_log = now;
                 int pop = ai.owner().getUnitCountContainer().getNumSupplies();
                 ai.aiLog().log("RETIRE", () -> String.format(
                         "nothing to retire for %s (%d s at the cap): passed over (threat/other) sites %d/%d, towers %d/%d, armories %d/%d, quarters %d/%d; units %d",
-                        flagged.describe(), (int) (now - capped_since), why[SITE][0], why[SITE][1], why[TOWER][0],
-                        why[TOWER][1], why[ARMORY][0], why[ARMORY][1], why[QUARTERS][0], why[QUARTERS][1], pop));
+                        flagged.describe(), (int) GauntletAI.seconds(now - capped_since), why[SITE][0], why[SITE][1],
+                        why[TOWER][0], why[TOWER][1], why[ARMORY][0], why[ARMORY][1], why[QUARTERS][0],
+                        why[QUARTERS][1], pop));
             }
             return;
         }
@@ -193,13 +197,15 @@ final class Retire {
                 site_seen.putIfAbsent(b, now);
     }
 
-    /** The oldest placed site (decoys aside) SITE_AGE s old with no builders and no threat within 20 cells, or null. */
+    /**
+     * The oldest placed site (decoys aside) SITE_AGE_TICKS old with no builders and no threat within 20 cells, or null.
+     */
     private @Nullable Building stalledSite(float now, int @NonNull [] why) {
         Building best = null;
         float oldest = Float.MAX_VALUE;
         for (Map.Entry<Building, Float> e : site_seen.entrySet()) {
             Building b = e.getKey();
-            if (b.isDead() || now - e.getValue() < SITE_AGE || passed.containsKey(b))
+            if (b.isDead() || now - e.getValue() < SITE_AGE_TICKS || passed.containsKey(b))
                 continue;
             if (economy.buildersOn(b) > 0) {
                 why[1]++;
@@ -358,7 +364,7 @@ final class Retire {
         ai.aiLog().log("RETIRE",
                 () -> String.format("retiring the %s at %d,%d (hp %d, %d inside) for %s, %d s at the cap",
                         KINDS[k], b.getGridX(), b.getGridY(), b.getHitPoints(), in, flagged.describe(),
-                        (int) (now - capped_since)));
+                        (int) GauntletAI.seconds(now - capped_since)));
         empty(b);
     }
 
@@ -434,7 +440,7 @@ final class Retire {
             if (inside(b) > 0) {
                 empty(b);
                 boolean tower = kind == TOWER || kind == ANY_TOWER;
-                float wait = tower ? EMPTY_WAIT_TOWER : EMPTY_WAIT;
+                float wait = tower ? EMPTY_WAIT_TOWER_TICKS : EMPTY_WAIT_TICKS;
                 if (now - started < wait)
                     return;
                 if (!tower) {
@@ -443,7 +449,7 @@ final class Retire {
                 }
                 ai.aiLog().count("retire_gunner_lost"); // the gunner could not come out: it goes down with the tower
             }
-            if (!beginRaze(b, now) && now - started > UNITS_WAIT)
+            if (!beginRaze(b, now) && now - started > UNITS_WAIT_TICKS)
                 stop(b, "nounits", now);
             return;
         }
@@ -466,7 +472,7 @@ final class Retire {
             razing = false;
             return;
         }
-        if (now - last_order >= REORDER) {
+        if (ai.periodDue(last_order, REORDER_TICKS)) {
             last_order = now;
             List<Unit> idle = new ArrayList<>();
             for (Unit u : razers)
@@ -481,7 +487,7 @@ final class Retire {
         }
         // Peons hit quarters and armories for 1 HP on a 20 % roll every 2 s: 20 of them take ~100 s.
         boolean tower = b.getTemplate().getTemplateID() == Race.BUILDING_TOWER;
-        float limit = tower ? 60f : lent ? 90f : 180f;
+        float limit = tower ? 3000f : lent ? 4500f : 9000f; // 60 s, 90 s, 180 s
         if (now - raze_started > limit)
             stop(b, "giveup_raze", now);
     }
@@ -501,7 +507,7 @@ final class Retire {
             units = peons(b, n, Math.min(n, b.isComplete() ? 4 : 1));
         } else {
             int n = Math.clamp((int) Math.ceil(hp / 20f), 2, 12);
-            units = ai.military().lend(b.getGridX(), b.getGridY(), n, Math.min(n, 8), WARRIOR_CELLS, 240f);
+            units = ai.military().lend(b.getGridX(), b.getGridY(), n, Math.min(n, 8), WARRIOR_CELLS, 12000f); // 240 s
             lent = !units.isEmpty();
             // An armory only goes down to lent warriors (drainedArmory); a quarters, else to peons.
             if (!lent && kind != ARMORY) {
@@ -554,8 +560,8 @@ final class Retire {
         }
         if (candidates.size() >= min)
             return new ArrayList<>(candidates.subList(0, Math.min(n, candidates.size())));
-        float now = ai.time();
-        if (now >= next_deploy) {
+        float now = ai.now();
+        if (ai.periodDue(last_deploy, 500f)) { // 10 s
             Building from = null;
             int best = Integer.MAX_VALUE;
             for (Building a : intel.armories) {
@@ -568,7 +574,7 @@ final class Retire {
                 }
             }
             if (from != null) {
-                next_deploy = now + 10f;
+                last_deploy = now;
                 ai.owner().deployUnits(from, DeployType.PEON, n - candidates.size());
                 ai.aiLog().count("retire_deploy");
             }
@@ -623,14 +629,14 @@ final class Retire {
         ai.aiLog().count("retire_done_" + KINDS[kind]);
         retired.add(new float[]{b.getGridX(), b.getGridY(), now});
         last_done = now;
-        next_allowed = started + GAP;
+        next_allowed = started + GAP_TICKS;
         int after = ai.owner().getBuildingCountContainer().getNumSupplies();
-        float order = razing ? now - raze_started : -1f;
+        float order = razing ? GauntletAI.seconds(now - raze_started) : -1f;
         int n = razers.size();
         ai.aiLog().log("RETIRE", () -> String.format(
                 "retired the %s at %d,%d: %.0f s after it was chosen, %.0f s razing, %d %s left, buildings %d -> %d",
-                KINDS[kind], b.getGridX(), b.getGridY(), now - started, order, n, lent ? "lent warriors" : "peons",
-                buildings_before, after));
+                KINDS[kind], b.getGridX(), b.getGridY(), GauntletAI.seconds(now - started), order, n,
+                lent ? "lent warriors" : "peons", buildings_before, after));
         release(false);
     }
 
@@ -638,12 +644,12 @@ final class Retire {
     private void stop(@NonNull Building b, @NonNull String why, float now) {
         // No razers within reach: another building is taken next time (s6189 smoke: the same far tower 4 times).
         if (why.equals("nounits"))
-            passed.put(b, now + PASS_OVER);
+            passed.put(b, now + PASS_OVER_TICKS);
         ai.aiLog().count("retire_stop_" + why);
-        next_allowed = now + RETRY;
+        next_allowed = now + RETRY_TICKS;
         int hp = b.getHitPoints();
         ai.aiLog().log("RETIRE", () -> String.format("the %s at %d,%d stays (%s): hp %d, %.0f s after it was chosen",
-                KINDS[kind], b.getGridX(), b.getGridY(), why, hp, now - started));
+                KINDS[kind], b.getGridX(), b.getGridY(), why, hp, GauntletAI.seconds(now - started)));
         release(true);
     }
 

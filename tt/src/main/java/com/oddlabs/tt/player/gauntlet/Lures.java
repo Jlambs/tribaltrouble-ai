@@ -61,15 +61,15 @@ final class Lures {
 
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Lure> lures = new ArrayList<>();
-    /** Recent bait spots {x, y, time}: a spot is not baited again for 30 s. */
+    /** Recent bait spots {x, y, game tick}: a spot is not baited again for 30 s. */
     private final List<float @NonNull []> recent = new ArrayList<>();
-    private float last_plan = -100f;
+    private float last_plan = -5000f;
 
     Lures(@NonNull GauntletAI ai) {
         this.ai = ai;
     }
 
-    /** Every 5 ticks: runs the lures and, once a second, looks for a blob to bait. */
+    /** Every 5 game ticks: runs the lures and, once a game second (50 game ticks), looks for a blob to bait. */
     void guard() {
         Strategy strategy = ai.strategy();
         if (!strategy.lure)
@@ -92,8 +92,8 @@ final class Lures {
                 it.remove();
             }
         }
-        if (ai.time() - last_plan >= 1f) {
-            last_plan = ai.time();
+        if (ai.periodDue(last_plan, 50f)) {
+            last_plan = ai.now();
             plan();
         }
     }
@@ -118,8 +118,8 @@ final class Lures {
                     run(l, hunters);
                 } else if (MapAnalysis.dist2(px, py, l.bait_x, l.bait_y) <= 2 * 2) {
                     l.phase = Phase.BAIT;
-                    l.since = ai.time();
-                } else if (ai.time() - l.since > 60f) {
+                    l.since = ai.now();
+                } else if (ai.now() - l.since > 3000f) { // 60 s
                     ai.aiLog().count("lure_timeout");
                     return false;
                 }
@@ -127,7 +127,7 @@ final class Lures {
             case BAIT -> {
                 if (hunters > 0 || nearestEnemy(px, py) <= 8 * 8)
                     run(l, hunters);
-                else if (ai.time() - l.since > 8f) {
+                else if (ai.now() - l.since > 400f) { // 8 s
                     ai.aiLog().count("lure_ignored");
                     return false;
                 }
@@ -144,7 +144,7 @@ final class Lures {
                         ai.owner().setTarget(Selectable.newArray(p), l.refuge, Action.MOVE, false);
                     }
                 }
-                if (ai.time() - l.since > 90f)
+                if (ai.now() - l.since > 4500f) // 90 s
                     return false;
             }
         }
@@ -153,7 +153,7 @@ final class Lures {
 
     private void run(@NonNull Lure l, int hunters) {
         l.phase = Phase.RUN;
-        l.since = ai.time();
+        l.since = ai.now();
         l.hunters = hunters;
         ai.aiLog().count("lure_run");
         ai.landscapeOrder(Selectable.newArray(l.peon), l.route[0][0], l.route[0][1], Action.MOVE, false);
@@ -182,10 +182,10 @@ final class Lures {
 
     private void plan() {
         Strategy strategy = ai.strategy();
-        if (lures.size() >= strategy.lure_max || ai.time() < strategy.lure_time)
+        if (lures.size() >= strategy.lure_max || ai.now() < strategy.lure_ticks)
             return;
         Intel intel = ai.intel();
-        recent.removeIf(r -> ai.time() - r[2] > 30f);
+        recent.removeIf(r -> ai.now() - r[2] > 1500f); // 30 s
         List<Building> active = new ArrayList<>();
         for (Building t : intel.towers)
             if (Intel.isTowerActive(t))
@@ -344,12 +344,12 @@ final class Lures {
                 refuge.getGridY()) + 15 * 15
                 && nearestEnemy(gx, gy) > 12 * 12)
             route.add(new int[]{gx, gy});
-        Lure l = new Lure(peon, tower, refuge, bait[0], bait[1], route.toArray(new int[0][]), ai.time());
+        Lure l = new Lure(peon, tower, refuge, bait[0], bait[1], route.toArray(new int[0][]), ai.now());
         for (int i = 0; i < bait_seers; i++)
             ai.aiLog().count("lure_seers");
         lures.add(l);
         intel.lures.add(peon);
-        recent.add(new float[]{sx, sy, ai.time()});
+        recent.add(new float[]{sx, sy, ai.now()});
         ai.landscapeOrder(Selectable.newArray(peon), bait[0], bait[1], Action.MOVE, false);
         ai.aiLog().count("lure_start");
         ai.log(String.format("lure for %d parked at %d,%d: bait %d,%d, tower %d,%d, refuge %d,%d", best_n, sx, sy,
