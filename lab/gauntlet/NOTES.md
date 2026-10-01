@@ -1752,3 +1752,26 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   s9:hard at 24s: striking 20 peons ... given up: squad down to 2 peons"). New `freeze_patience_ticks` (off): within
   16 cells of a copy with at least as many idle peons as the squad has, the squad holds out of scan reach until fewer
   are idle or the patience runs out; screening at 750 / 1500 / 3000, and 1500 with freeze_eta_ticks 3000.
+- **Freeze patience, first try** (hold 16 cells from the centre of all the copy's peons): W 65 -> 66 of 500, 262
+  identical; 199 of 238 held strikes still given up (the busy peons walking to the quarters site pulled the centre,
+  and so the hold point, into the idle crowd's reach). 750 and 3000 ticks played the same games as each other.
+- **Freeze patience, reworked** (fb3d7913: keep 16 cells from the nearest idle peon, pick off busy peons more than 12
+  cells from every idle one, patience from 24 cells): **N=13 ludicrous W 65 -> 107 of 500 (+71 / -29, z 4.2), surv60
+  +4.90 min (z 7.9), alive40 +75**; freeze target out 0.3 -> 0.8 per game, kills 8.4 -> 18.1, squad lost 2.7 -> 0.2,
+  first copy out 8.8 -> 1.7 min (as at normal speed). 3000 ticks: the same 300 games as 1500; with freeze_eta_ticks
+  3000: 284 identical, W 71 -> 71. Confirmations queued (N=15, N=16, fresh 8001..8500, normal speed).
+- **Screen on the tick build without patience** (6001..6300 vs ticks-ludicrous-vs13-all, W 45): shepherd_ticks 12000
+  (240 s) W 19, surv60 -4.56 (z -5.8): the early shepherds are essential; 3000 (60 s) identical games. freeze_targets 2
+  W 31 (z -2.5, surv60 z -2.8); freeze_squad 8 W 32 (z -1.9); freeze_eta_ticks 3000 / 4500 W 44 / 43 (284 / 280
+  identical); target_defense_weight 16 W 28 (z -3.0), 4 W 46 (surv60 +0.72, z 1.7); reinforce_ratio 0.3 W 49 (z 0.7).
+- **Beta tester's feedback** (workflow: 7 investigators over 70 logged ludicrous games, N=13 and N=6; plan in the
+  session scratchpad): peon swarm: banks vanish with razed armories (~112 units per N=13 game, peons inside a razed
+  building disappear uncounted) and evacuatePeons/allocatePeons feed the besieged armory, but weapons were 0 in 101 of
+  104 falls and the threat ~7x the bank's value, so only a winnable sortie can help (sortie_engage, deferred).
+  Quarters idle: orders come within 1 game s; only the rush alarm before the first armory holds 20-90 door peons
+  (rush_hold_armory). Stockpiles: the forge is saturated and iron node-limited at 6-12 min; weapon_reserve (keep R
+  weapons undeployed) is the honest test. Far gathering: real at N=6 (3 of 4 losses); stuck_trip_factor (never
+  tested), ore_iron_first, ore_reach_fail. Rally points: a recall loop fights the engine's re-link to the nearest
+  armory (relink_guard). Idle after a siege: the army leaves in ~20 s; long idle stretches are jams (unjam_from_ticks 0,
+  mostly N=6). Shepherds: fleeing outbound shepherds pull caught waves 25 cells towards us, caught waves feed 73 % of
+  base-threat entries (shepherd_flee_side).
