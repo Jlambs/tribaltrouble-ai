@@ -52,6 +52,8 @@ final class RenderState implements ElementVisitor {
     private boolean picking;
     private boolean visible_override;
     private CameraState camera;
+    /** Every owner's objects are dots on the overview map (a watched game); otherwise enemies' only when beaten. */
+    private boolean every_owner_on_map;
 
     public RenderState(@NonNull Player local_player, @NonNull SpriteSorter sprite_sorter,
             @NonNull RenderQueues render_queues, @NonNull Picker picker, Selection selection,
@@ -68,6 +70,10 @@ final class RenderState implements ElementVisitor {
         this.default_shadow_renderer = (SelectableShadowRenderer) render_queues.getShadowRenderer(
                 render_queues.registerSelectableShadowList(RacesResources.DEFAULT_SHADOW_DESC));
         this.render_state_cache = new RenderStateCache<>(() -> new ElementRenderState<>(RenderState.this));
+    }
+
+    void showEveryOwnerOnMap() {
+        every_owner_on_map = true;
     }
 
     @NonNull
@@ -193,7 +199,7 @@ final class RenderState implements ElementVisitor {
                 camera.getFrustum(), z_offset, selection_radius, selection_height)));
         if (in_view) {
             Player owner = selectable.getOwnerNoCheck();
-            boolean point_on_map = !local_player.isEnemy(owner) || (!owner.teamHasBuilding()
+            boolean point_on_map = every_owner_on_map || !local_player.isEnemy(owner) || (!owner.teamHasBuilding()
                     && PeerHub.getFreeQuitTimeLeft(local_player.getWorld()) < 0f);
             ModelState<S> state = getCachedState(visitor, selectable, z_offset);
             int sort_status = addToRenderList(state, point_on_map);

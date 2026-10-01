@@ -22,21 +22,32 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 | `aisim.analysis` | `Runs`, `Game`, `End` | Reading run folders; one recorded game (result row and game file); how a game ended. |
 | | `Summary`, `Compare`, `Show`, `Curves`, `Fights`, `Export`, `Profile` | One command each (`Curves` also makes summary's and compare's curve tables; `Profile` reads the Flight Recorder files of `--profile`). |
 | | `Stats`, `Table` | Statistics; aligned text tables, short numbers and clock times. |
+| `aisim.watch` | `WatchCommand`, `WatchFile` | watch's parent side (`Aisim watchfile`, from the repository root): the game's job (run.json's, or rebuilt from its game file's header), its frozen and `--ai-from-run` AIs, the recording; written as the watch file, with absolute paths, that the game loads. |
+| | `WatchSession` and the HUD classes | The game side, loaded by `aikit.harness.Watch` in place of the main menu: the world built as `Match` builds it, the clock that ticks it, verification against the recording, the controls, the inspector and the AI log panel, `--selftest`. |
+| | `Rewinder`, `Checkpoints`, `Copier`, `Track` | Rewind: checkpoints that deep-copy the world as it first plays, restored into the same live World; the per-second checksum track that catches a rewind that does not replay exactly. |
+| | `RewindCheck` | rewindcheck: the rewind's fidelity test, headless or in a hidden GL window. |
 
 `play` uses `build` (snapshots, frozen AIs) and `analysis` (the summary after a run, reading games to replay them).
 `build` and `analysis` use only the root package. `analysis` reads only recorded files, which is what lets it analyse
-every AI and what makes it the library of lab tools.
+every AI and what makes it the library of lab tools. `watch` uses all three: `play`'s jobs and world, `build`'s
+snapshots and frozen AIs, `analysis`'s run folders and game files.
 
 `java/com/oddlabs/tt/player/`: `starter` (the template, spec `starter`) and `chaos` (a test AI with faults on demand).
 The harness's part of the toolkit lives in the game's source set, `tt/src/main/java/com/oddlabs/tt/aikit/harness`:
-`AiSpec` (specs), `GameRecorder` and `Census` (the game file), `PlayTest` (the `gui` hook in WorldViewer). The rest
-of `aikit` is the AI toolkit.
+`AiSpec` (specs), `GameRecorder` and `Census` (the game file), `PlayTest` (the `gui` hook in WorldViewer), `Watch`
+(the `watch` hook in Renderer, which loads `aisim.watch.WatchSession` by name, so the game compiles and runs without
+the harness). The rest of `aikit` is the AI toolkit.
 
 ## Rules
 
 - **The harness never changes the game.** Harness games must be the client's simulation: `ClientWorld` builds the
   world the way `IslandGenerator`, `TerrainMenu` and `Client` do, and the recorder only reads. When upstream changes
   those, follow it there.
+- **Watching changes nothing either.** `watch` builds the world in `Match`'s order through the same `ClientWorld`
+  helpers and only ever calls `world.tick(0.02f)`: playback speed is ticks per frame, never the world's game speed or
+  another tick length, which would simulate another game. Its engine hooks do nothing unless `aisim.watch` is set,
+  and nothing of the viewer joins the world's animation managers but the checksum probe. The viewer checks every
+  census second against the recording, and `rewindcheck` the rewind.
 - **Headless changes nothing the simulation computes.** Workers run the engine with `-Dcom.oddlabs.tt.headless=true`
   (`com.oddlabs.tt.global.Headless`), which skips what only drawing and sound read. Every headless branch in the
   engine must leave every game identical, checksum for checksum and game file for game file: run the headless check
@@ -51,6 +62,9 @@ of `aikit` is the AI toolkit.
   - `Aisim.USAGE` with the Commands section of `docs/aisim.md`, and the worker options with its Workers section;
   - the parent's JVM options in `aisim.sh` (`OPTS`) with `WorkerProcess.command`;
   - the game's JVM options in `aisim.sh` (`GUI_OPTS`) with `application` in `tt/build.gradle.kts`;
+  - the rewind's JVM options in `aisim.sh` (`WATCH_OPTS`, for `watch` and `rewindcheck`) with what `Copier` writes by
+    reflection (JDK collections and atomics, final fields), and the watch heap's default there (`AISIM_WATCH_HEAP`)
+    with `WatchCommand.DEFAULT_HEAP`;
   - the lint rules in `Lint` with the Rules section of the AI guide.
 - `aikit` itself (`AiLog`, `AiParams`, `GameTime`) is for AIs, and lint lets them use nothing else of it; keep its API
   stable, since frozen AIs link against it.

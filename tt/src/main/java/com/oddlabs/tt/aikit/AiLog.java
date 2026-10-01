@@ -57,6 +57,8 @@ public final class AiLog {
     private final @NonNull WeakReference<World> world;
     private final int slot;
     private final @Nullable Path file;
+    /** The writer lines go to instead of a file (beginWriters); the handle never opens or closes a file then. */
+    private final @Nullable Writer writer;
     private final @NonNull String header;
     private @Nullable Writer sink;
     /** Set when the handle is closed or its file failed: it writes no more lines. */
@@ -65,10 +67,12 @@ public final class AiLog {
     private @Nullable String first_error;
     private final @NonNull SortedMap<String, Integer> counters = new TreeMap<>();
 
-    private AiLog(@NonNull World world, int slot, @Nullable Path file, @NonNull String header) {
+    private AiLog(@NonNull World world, int slot, @Nullable Path file, @Nullable Writer writer,
+            @NonNull String header) {
         this.world = new WeakReference<>(world);
         this.slot = slot;
         this.file = file;
+        this.writer = writer;
         this.header = header;
     }
 
@@ -151,7 +155,24 @@ public final class AiLog {
         Player[] players = world.getPlayers();
         handles = new AiLog[players.length];
         for (int i = 0; i < players.length; i++) {
-            handles[i] = new AiLog(world, i, file_of_slot == null ? null : file_of_slot.apply(i), header);
+            handles[i] = new AiLog(world, i, file_of_slot == null ? null : file_of_slot.apply(i), null, header);
+        }
+    }
+
+    /**
+     * Like {@link #begin}, but each slot's lines (in the same format, the header line first) go to the writer
+     * {@code writer_of_slot} gives, which stays open until the handles end: a watched harness game
+     * (aikit.harness.Watch)
+     * keeps the lines in memory. Closes the handles of the previous world.
+     */
+    public static synchronized void beginWriters(@NonNull World world, @NonNull IntFunction<Writer> writer_of_slot,
+            @NonNull String header) {
+        end();
+        bound_world = new WeakReference<>(world);
+        Player[] players = world.getPlayers();
+        handles = new AiLog[players.length];
+        for (int i = 0; i < players.length; i++) {
+            handles[i] = new AiLog(world, i, null, writer_of_slot.apply(i), header);
         }
     }
 
@@ -196,20 +217,20 @@ public final class AiLog {
     // ---------------------------------------------------------------- the file
 
     private boolean on() {
-        return file != null && !off;
+        return (file != null || writer != null) && !off;
     }
 
     private synchronized void write(@NonNull String topic, @Nullable String message) {
         Path path = file;
         // The AI calling this keeps its world alive, so the world is only gone for a handle kept past its game.
         World game = world.get();
-        if (path == null || off || game == null) {
+        if ((path == null && writer == null) || off || game == null) {
             return;
         }
         try {
             Writer out = sink;
             if (out == null) {
-                out = Files.newBufferedWriter(path, StandardCharsets.UTF_8);
+                out = writer != null ? writer : Files.newBufferedWriter(path, StandardCharsets.UTF_8);
                 sink = out;
                 out.write(headerLine(game));
             }

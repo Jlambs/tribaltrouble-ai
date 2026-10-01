@@ -45,7 +45,7 @@ import java.util.function.IntFunction;
  * <p>One game at a time per JVM, always on the thread that called {@link #boot()}: the simulation keeps static
  * scratch buffers, and without {@link com.oddlabs.tt.global.Headless} the GL context belongs to that thread.
  */
-final class Match {
+public final class Match {
     /** A player with at most this many units and no chieftain or real building is collapsing, see collapsing(). */
     private static final int COLLAPSE_UNITS = 8;
     /** Collapsing this long in a row puts a player out, when the job allows collapse. */
@@ -136,7 +136,7 @@ final class Match {
     /** Creates the AIs in slot order, as the game does; an AI that fails to start fails the game with an error. */
     private static void createAIs(@NonNull Job job, @NonNull World world, @NonNull Outcome outcome) {
         // as Client creates it
-        UnitInfo unit_info = new UnitInfo(false, false, 0, false, ClientWorld.STARTING_UNITS, 0, 0, 0);
+        UnitInfo unit_info = ClientWorld.startingUnits();
         for (int slot = 0; slot < job.slots() && outcome.end == null; slot++) {
             Player player = world.getPlayers()[slot];
             String failed_start = "ai_init: slot " + slot + " " + job.spec(slot) + ": ";
@@ -155,7 +155,7 @@ final class Match {
     }
 
     /** The AI of {@code spec}; a frozen AI comes from its tag's class loader ({@link #frozen_loaders}). */
-    private static @NonNull AI createAI(@NonNull String spec, @NonNull Player player,
+    public static @NonNull AI createAI(@NonNull String spec, @NonNull Player player,
             @NonNull UnitInfo unit_info) {
         String name = AiSpec.nameOf(spec);
         if (!name.startsWith("@")) {

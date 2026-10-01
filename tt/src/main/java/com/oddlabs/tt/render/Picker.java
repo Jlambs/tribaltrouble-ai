@@ -562,6 +562,21 @@ public final class Picker implements Updatable<TimerAnimation> {
         current_tooltip = null;
     }
 
+    /**
+     * Forgets every world object this picker remembers: the hovered one and its tool tip, the last order's targets and
+     * the pick lists. A watched game calls it (through WorldViewer) after restoring its world in place.
+     */
+    public void forgetWorldObjects() {
+        resetCurrentHovered();
+        tool_tip_timer.stop();
+        render_tool_tip = false;
+        old_target_selection = Selectable.newArray(0);
+        old_target_action = null;
+        old_set_target_target = null;
+        element_pick_list.clear();
+        tree_pick_list.clear();
+    }
+
     public boolean pickLocation(@NonNull CameraState camera, @NonNull LandscapeLocation landscape_location) {
         int x = Renderer.getLocalInput().getMouseX();
         int y = Renderer.getLocalInput().getMouseY();

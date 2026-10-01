@@ -485,6 +485,11 @@ public final class LandBuilding extends Building {
                         getTemplate().getPlacingSize() - PLACING_BORDER);
     }
 
+    /** How far construction got: 0 to the template's max hit points (complete); read-only, for viewers. */
+    public int getBuildPoints() {
+        return build_points;
+    }
+
     public boolean isPlaced() {
         assert !isDead();
         return build_points != 0;

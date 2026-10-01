@@ -30,6 +30,7 @@ import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -76,8 +77,9 @@ public final class PeerHub implements Animated, RouterHandler {
     private final Map<Player, Peer> player_to_peer = new LinkedHashMap<>();
     private final Map<Peer, Player> peer_to_player = new LinkedHashMap<>();
     private final Set<Player> nonhuman_players = new HashSet<>();
-    private final @NonNull NetworkSelector network;
-    private final @NonNull RouterClient router_client;
+    private final @Nullable NetworkSelector network;
+    /** Null only for an offline hub, which has no network at all. */
+    private final @Nullable RouterClient router_client;
     private final @Nullable Router router;
     private final NotificationManager notification_manager;
     private final @NonNull Player local_player;
@@ -185,6 +187,48 @@ public final class PeerHub implements Animated, RouterHandler {
             router_client.connect(session_id, new SessionInfo(num_participants, MILLISECONDS_PER_HEARTBEAT),
                     local_peer_index);
         }
+    }
+
+    /**
+     * An offline hub for a world its caller ticks (a watched harness game, aikit.harness.Watch): no router, no peers,
+     * every player non-human, never registered to tick and synchronized from the start. Orders go nowhere (a
+     * {@link NoOpPlayerInterface}); chat, beacons and the network notifications do nothing; pausing works as in a
+     * single-player game, for the caller to read.
+     */
+    public PeerHub(@NonNull AnimationManager manager, @NonNull Player local_player,
+            @NonNull NotificationManager notification_manager) {
+        this.stall_handler = new StallHandler() {
+            @Override
+            public void stopStall() {
+            }
+
+            @Override
+            public void processStall(int tick) {
+            }
+
+            @Override
+            public void peerhubFailed() {
+            }
+        };
+        this.is_rated = false;
+        this.is_spectator = false;
+        this.local_player = local_player;
+        this.network = null;
+        this.notification_manager = notification_manager;
+        this.is_multiplayer = false;
+        this.manager = manager;
+        this.local_peer_index = -1;
+        this.router = null;
+        this.router_client = null;
+        this.everyone = (PeerHubInterface) ARMIEvent.createProxy(_ -> {
+        }, PeerHubInterface.class);
+        this.peerhubs_interface = everyone;
+        Collections.addAll(nonhuman_players, local_player.getWorld().getPlayers());
+        this.peer_index_to_peer = new Peer[0];
+        this.num_participants = 0;
+        this.player_interface = new NoOpPlayerInterface();
+        this.spectatorController = null;
+        this.is_synchronized = true;
     }
 
     @Override
@@ -606,7 +650,8 @@ public final class PeerHub implements Animated, RouterHandler {
     }
 
     private void closeNetwork() {
-        router_client.close();
+        if (router_client != null) // null for an offline hub
+            router_client.close();
         if (router != null)
             router.close();
         Object[] peers = peer_to_player.keySet().toArray();

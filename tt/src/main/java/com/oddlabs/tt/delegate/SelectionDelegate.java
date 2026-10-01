@@ -35,6 +35,7 @@ import com.oddlabs.tt.render.GUIRenderer;
 import com.oddlabs.tt.render.Renderer;
 import com.oddlabs.tt.util.Utils;
 import com.oddlabs.tt.viewer.Notification;
+import com.oddlabs.tt.viewer.WatchControls;
 import com.oddlabs.tt.viewer.WorldViewer;
 import com.oddlabs.util.Color;
 import org.joml.Vector4fc;
@@ -69,12 +70,22 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
     private boolean map_mode = false;
     private boolean observer = false;
     private int last_idle_peon_name = -1;
+    /**
+     * The time controls of a watched harness game (WorldViewer.getWatchControls), else null. Watching is observing
+     * without a spectator view: no action panel, no orders, no selection box, chat, beacons, army shortcuts or idle
+     * jumps; the camera and map mode work, a left click picks one object for the controls, and they get the keys first.
+     */
+    private final @Nullable WatchControls watch;
 
     public SelectionDelegate(@NonNull WorldViewer viewer, @NonNull GameCamera camera) {
         super(viewer, camera);
         this.game_camera = (GameCamera) getCamera();
+        this.watch = viewer.getWatchControls();
         displayChangedNotify(getGUIRoot().getWidth(), getGUIRoot().getHeight());
-        addChild(getViewer().getPanel());
+        if (watch != null)
+            observer = true;
+        else
+            addChild(getViewer().getPanel());
         chat_form = new InGameChatForm(getViewer().getGUIRoot().getInfoPrinter(), getViewer());
         chat_form.addCloseListener(() -> {
             if (Renderer.getLocalInput().getInputManager().isActive(GameAction.GLOBAL_CHAT)) {
@@ -163,6 +174,23 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
         // Prevent base GUIObject from handling UI_ACTIVATE (Space/Return as Click)
         // because we handle Space for Map Mode and Return for Chat.
         event.consumeAction(GameAction.UI_ACTIVATE);
+
+        if (watch != null) {
+            if (watch.keyboardBlocked()) {
+                // keys a text field of the controls left over (Space, F) must not move the view while typing
+                event.consume();
+                return;
+            }
+            watch.handleInput(event);
+            if (event.isConsumed())
+                return;
+            // a watched game has no chat and no own units to jump to
+            if (event.hasAction(GameAction.GLOBAL_CHAT) || event.hasAction(GameAction.GLOBAL_CHAT_TEAM)
+                    || event.hasAction(GameAction.UNIT_NEXT_IDLE)) {
+                event.consume();
+                return;
+            }
+        }
 
         // Intercept Esc for armory submenu navigation before super reaches InGameDelegate
         if ((event.getPhase() == InputPhase.PRESSED || event.getPhase() == InputPhase.REPEAT)
@@ -387,6 +415,12 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
     }
 
     private void changeGamespeed(int delta) {
+        if (watch != null) {
+            // the playback speed: the game speed would change the simulation
+            if (!watch.keyboardBlocked())
+                watch.changeSpeed(delta);
+            return;
+        }
         getViewer().getPeerHub().getPlayerInterface().changePreferredGamespeed(delta);
     }
 
@@ -542,6 +576,13 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
 
     @Override
     public void mouseClicked(@NonNull MouseButton button, int x, int y, int clicks) {
+        if (watch != null) {
+            if (button == MouseButton.LEFT && !map_mode) {
+                Selectable<?>[] picked = getViewer().getPicker().pickBoxed(getCamera().getState(), x, y, x, y, 1);
+                watch.picked(picked.length > 0 ? picked[0] : null, clicks);
+            }
+            return;
+        }
         if (button == MouseButton.LEFT && !map_mode && !observer) {
             if (selection) {
                 selection = false;
@@ -697,7 +738,7 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
 
     @Override
     public boolean keyboardBlocked() {
-        return chat_visible && chat_form.isActive();
+        return (chat_visible && chat_form.isActive()) || (watch != null && watch.keyboardBlocked());
     }
 
     @Override

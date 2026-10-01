@@ -28,7 +28,8 @@ import java.util.stream.Stream;
  * Gradle output directories, so Windows never finds them locked.
  */
 public final class Snapshot {
-    private static final Path SNAP = Aisim.ROOT.resolve("snap");
+    /** This checkout's snapshots, relative to the repository root. */
+    public static final Path SNAP = Aisim.ROOT.resolve("snap");
     /** "ID MILLIS": the newest snapshot and when it was built; aisim.sh reads the ID too. */
     private static final Path LATEST = SNAP.resolve("latest");
     /** The blobName() of the game's main classes, classes/java/main. */
@@ -273,14 +274,44 @@ public final class Snapshot {
 
     /** Snapshot {@code id}'s blob jar of the class directory with blob name {@code name}. */
     private static @NonNull Path classes(@NonNull String id, @NonNull String name) throws IOException {
-        Map<?, ?> meta = Aisim.JSON.readValue(SNAP.resolve(id).resolve(META).toFile(), Map.class);
+        Path path = classes(SNAP, id, name);
+        if (path == null) {
+            throw new UsageException("snapshot " + id + " has no " + name + " classes");
+        }
+        return path;
+    }
+
+    /**
+     * The blob jars of the game's and the harness's classes (java-main, then java-aisim) of snapshot {@code id} in
+     * {@code snap}, the {@code aisim/snap} folder of this or another checkout (watch --ai-from-run plays the AIs of the
+     * run's snapshot); empty when that folder has no snapshot {@code id}. Blob paths are absolute; the jars may be
+     * gone.
+     */
+    public static @NonNull List<Path> classJars(@NonNull Path snap, @NonNull String id) throws IOException {
+        if (!Files.exists(snap.resolve(id).resolve(META))) {
+            return List.of();
+        }
+        List<Path> jars = new ArrayList<>();
+        for (String name : List.of(MAIN_CLASSES, AISIM_CLASSES)) {
+            Path jar = classes(snap, id, name);
+            if (jar != null) {
+                jars.add(jar);
+            }
+        }
+        return jars;
+    }
+
+    /** The blob jar with blob name {@code name} of snapshot {@code id} in the snapshot folder {@code snap}, or null. */
+    private static @Nullable Path classes(@NonNull Path snap, @NonNull String id,
+            @NonNull String name) throws IOException {
+        Map<?, ?> meta = Aisim.JSON.readValue(snap.resolve(id).resolve(META).toFile(), Map.class);
         for (Object entry : (List<?>) meta.get("classpath")) {
             Path path = Path.of((String) entry);
             if (path.getFileName().toString().startsWith(name + "-")) {
                 return path;
             }
         }
-        throw new UsageException("snapshot " + id + " has no " + name + " classes");
+        return null;
     }
 
     /** Snapshot {@code id}'s class path argument file; a usage error if there is no such snapshot (replay --snap). */
