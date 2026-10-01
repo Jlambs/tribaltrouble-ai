@@ -1716,3 +1716,39 @@ retreat through the same pass (only the attack role is watched).
   6001..6500 2 -> 3 of 500 (+1 / 0, surv60 +0.08). Ludicrous (cur9, --minutes 90): N=16 0 of 200 (median game 28
   game min, 10 alive at 40), N=20 0 of 200 (24 min); N=13 was 47 of 300 (39 min, 140 alive at 40): the ludicrous
   ceiling sits between 13 and 16.
+
+### Ludicrous tuning (2026-10-01): the benchmark moves to --speed ludicrous
+
+The user plays online at ludicrous, and the stock Hards' slower decisions there (real-time cadence, every 20-28 game s)
+are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous. Only our AI is made speed-correct.
+
+- **Harness on game time** (headless 001fd17c, merged): rows, game files and AI log stamps hold game seconds at every
+  speed (non-normal rows also carry the world `ticks`); the collapse rule (60 s), the time limit (--minutes, default
+  360) and w15/kd30 are game time (at ludicrous the collapse rule used to take 240 game s). Normal speed is an exact
+  identity. Old non-normal runs (lud-*, lud9-*) keep world-tick times; lab/gauntlet/gtime.py converts them at read time,
+  and every lab tool now reads through it (the studies also count collapse-outs, which write no out event).
+- **cur9 at ludicrous, new harness, 6001..6500:** N=13 68 / 500 (13.6 %), N=14 17, N=15 7, N=16 2 (s6215, s6224), N=17
+  0, N=18 0. The ludicrous frontier is N=15-16 (normal speed: N=13 2.4 %, N=14 0.6 %).
+- **Game-time audit** (workflow, 10 agents): the AI still drifted at ludicrous. Rounds re-anchored on the world tick
+  they fired, so every period rounded up to whole 80-ms ticks (intel 0.5 s ran every 0.56 s, economy 1.04 s, plan
+  3.04 s, and every timer checked in them with it); measureYield took a round as 1 s; unjam counted scans as 5 s; the
+  swing restart hung the game in an endless loop when a human paused it (speed 0); weapon_sync horizons were world
+  ticks.
+- **Every time in game ticks** (user's call; 46911b10 / d172de4d): 64 parameters renamed `*_ticks` (50 a game second;
+  shepherd_time 120 -> shepherd_ticks 6000, rates per tick: shepherd_cells_per_tick), constants `*_TICKS`, the clock an
+  exact float game-tick count (multiples of 0.25, exact for 23 game hours), rounds on a game-tick schedule
+  (`next = max(next + P, now + P - slack)`), periodic re-armed checks via `periodDue` (one world tick of lateness
+  allowed), the audit's fixes folded in. Verification (paired, every game diverges because the old seconds clock
+  slipped by float rounding): normal N=13 300 games W 10 -> 6 (+4 / -8, z -1.2), surv60 -0.04 (z -0.1); ludicrous
+  N=13 500 games W 68 -> 65 (+43 / -46, z -0.3), surv60 -0.30. counters.py (new: counters per game minute, games
+  <= 40 min, with z): at normal no counter moves beyond |z| 2; at ludicrous the round cadence shows (shepherd_t_* +12 %,
+  peon_blocked +10 %), nothing else. One game replays VERIFIED. Adopted.
+- **Old-build screen at ludicrous N=13** (cur9 names, 6001..6300 vs ludicrous-base-vs13, W 47): attack_min_strength
+  10 / 30 W 37 / 37; attack_ratio 0.8 / 1.25 43 / 46; attack_max_strength 40 / 120 47 / 47; retreat_ratio 1.2 / 2.0
+  44 / 43; reinforce_ratio 0.8 (300 games) neutral. The campaign's defaults hold at ludicrous.
+- **The freeze opening fails at ludicrous:** first copy out at 8.8 game min (normal 1.6), freeze kills 8.9 per game
+  (17.6), squad peons lost 2.6 (0.7), aborts 0.6 (0.2). The squad (eta 21-33 s) arrives before the copy's first orders
+  and meets all 20 starting peons idle: idle peons answer through their 8-cell scan, builders never do ("squad at
+  s9:hard at 24s: striking 20 peons ... given up: squad down to 2 peons"). New `freeze_patience_ticks` (off): within
+  16 cells of a copy with at least as many idle peons as the squad has, the squad holds out of scan reach until fewer
+  are idle or the patience runs out; screening at 750 / 1500 / 3000, and 1500 with freeze_eta_ticks 3000.
