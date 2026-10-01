@@ -1,6 +1,5 @@
 package com.oddlabs.tt.delegate;
 
-import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.camera.GameCamera;
 import com.oddlabs.tt.camera.MapCamera;
 import com.oddlabs.tt.form.InGameChatForm;
@@ -33,9 +32,6 @@ import com.oddlabs.tt.model.UnitTemplate;
 import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.render.CompassRenderer;
 import com.oddlabs.tt.render.GUIRenderer;
-import com.oddlabs.tt.render.LandscapeRenderer;
-import com.oddlabs.tt.render.MatrixStack;
-import com.oddlabs.tt.render.RenderQueues;
 import com.oddlabs.tt.render.Renderer;
 import com.oddlabs.tt.util.Utils;
 import com.oddlabs.tt.viewer.Notification;
@@ -743,14 +739,6 @@ public final class SelectionDelegate extends ControllableCameraDelegate {
     @Override
     public boolean keyboardBlocked() {
         return (chat_visible && chat_form.isActive()) || (watch != null && watch.keyboardBlocked());
-    }
-
-    /** A watched game's controls draw their 3D overlay (an AI's painted plans); nothing in any other game. */
-    @Override
-    public void render3D(@NonNull LandscapeRenderer renderer, @NonNull RenderQueues render_queues,
-            @NonNull CameraState state, @NonNull MatrixStack modelViewStack, @NonNull MatrixStack projectionStack) {
-        if (watch != null)
-            watch.render3D(state, modelViewStack, projectionStack);
     }
 
     @Override

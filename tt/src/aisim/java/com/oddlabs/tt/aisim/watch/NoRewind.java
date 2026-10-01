@@ -21,7 +21,7 @@ final class NoRewind implements Rewinder {
 
     @Override
     public int restoreAtOrBefore(@NonNull World live, int tick) {
-        throw new UnsupportedOperationException("rewind " + reason);
+        throw new UnsupportedOperationException("rewind is " + describe());
     }
 
     @Override
@@ -31,6 +31,6 @@ final class NoRewind implements Rewinder {
 
     @Override
     public @NonNull String describe() {
-        return reason;
+        return "off (" + reason + ")";
     }
 }

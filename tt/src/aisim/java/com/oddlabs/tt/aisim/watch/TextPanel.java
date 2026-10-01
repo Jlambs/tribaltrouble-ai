@@ -60,18 +60,30 @@ class TextPanel extends HudPanel {
     void setLines(@NonNull List<Line> new_lines) {
         lines.clear();
         lines.addAll(new_lines);
+        resize();
+    }
+
+    /** Sets the widths the panel keeps to (the layout's, for a panel whose lines can be any length), at once. */
+    void setWidths(int min, int max) {
+        if (min != min_width || max != max_width) {
+            min_width = min;
+            max_width = max;
+            resize();
+        }
+    }
+
+    /** Sets the widest the panel gets, keeping its least width. */
+    void setMaxWidth(int max) {
+        setWidths(min_width, max);
+    }
+
+    private void resize() {
         int width = min_width;
         for (Line line : lines) {
             width = Math.max(width, textX(line) + font.getWidth(line.text()) + PADDING);
         }
         setDim(Math.min(width, Math.max(max_width, min_width)),
                 lines.isEmpty() ? 0 : lines.size() * font.getHeight() + 2 * PADDING);
-    }
-
-    /** Sets the widths the panel keeps to (the layout's, for a panel whose lines can be any length); next setLines. */
-    void setWidths(int min, int max) {
-        min_width = min;
-        max_width = max;
     }
 
     /** A darker box for a panel of many lines that the 3D view behind would make hard to read. */

@@ -15,11 +15,12 @@ import java.util.function.BooleanSupplier;
 
 /**
  * The playback clock of a watched game, run once per rendered frame on the GL thread (Renderer's frame task). It plays
- * the world tick by tick, always {@code world.tick(ANIMATION_SECONDS_PER_TICK)} at the game's normal speed: the
- * engine's own speeds scale game time per tick and would simulate another game. Playback speed is world ticks per real
- * second instead, 1x being the game's 50. Each frame gets a time budget for its ticks, so the window stays responsive
- * and a fast-forward shows as it goes; when the budget caps a speed, {@link #effectiveSpeed()} says how fast it really
- * runs.
+ * the world tick by tick, always {@code world.tick(ANIMATION_SECONDS_PER_TICK)}, at the world's recorded game speed,
+ * which the job's parameters set and playback never changes: another engine speed would scale the game time of each
+ * tick and simulate another game. Playback speed is world ticks per real second instead, 1x being 50 of them, which is
+ * the game at its recorded speed (normal unless the run used --speed); the times the view shows are world ticks / 50,
+ * as in the game file. Each frame gets a time budget for its ticks, so the window stays responsive and a fast-forward
+ * shows as it goes; when the budget caps a speed, {@link #effectiveSpeed()} says how fast it really runs.
  *
  * <p>Seeking forward plays on to the target; seeking backward, or forward past a later checkpoint, restores the latest
  * checkpoint at or before the target through the {@link Rewinder} and plays on from there. The world never plays past
@@ -49,11 +50,32 @@ final class Clock {
         /** The world's state was restored to {@code tick}: drop every reference into the old state. */
         void restored(int tick);
 
-        /** A seek reached its target; {@code restored} if it started with a restore. */
+        /**
+         * The restore {@link #beforeRestore} announced failed: the world is as it was, and a seek under way goes on
+         * ({@link #busy()} says whether one does).
+         */
+        void restoreFailed();
+
+        /**
+         * A presimulation starts from where the view is, and comes back there: remember what should be there again
+         * when it is back (what the view sees on its way out is not what it comes back to).
+         */
+        void presimulationStarts();
+
+        /**
+         * A presimulation turns back (at the recorded end, or stopped) to where it started; the way back restores
+         * first. The seek out never gets a {@link #seekDone}: the presimulation is one seek for the view.
+         */
+        void presimulationTurns();
+
+        /**
+         * A seek reached its target and nothing is queued after it; {@code restored} if it, or a seek it took over
+         * from, started with a restore.
+         */
         void seekDone(boolean restored);
     }
 
-    /** Playback speeds: world ticks per real second divided by the game's 50. The last is as fast as possible. */
+    /** Playback speeds: world ticks per real second divided by 50. The last is as fast as possible. */
     static final double[] SPEEDS = {1 / 8d, 1 / 4d, 1 / 2d, 1, 2, 4, 8, 16, 32, 64, 128, Double.POSITIVE_INFINITY};
     static final int SPEED_1X = 3;
     static final int SPEED_MAX = SPEEDS.length - 1;
@@ -151,12 +173,12 @@ final class Clock {
         return speed_index;
     }
 
-    /** The chosen speed as a factor of the game's own (infinite for MAX). */
+    /** The chosen speed as a factor of 1x (infinite for MAX). */
     double speed() {
         return SPEEDS[speed_index];
     }
 
-    /** Ticks per real second over the last second, as a factor of the game's own 50. */
+    /** Ticks per real second over the last second, as a factor of 1x (50). */
     double effectiveSpeed() {
         return effective_speed;
     }
@@ -200,6 +222,14 @@ final class Clock {
         return presimulating;
     }
 
+    /**
+     * Whether the clock plays once it is where it is going: it plays, or a seek (or presimulation) under way ends in
+     * playing. P toggles this.
+     */
+    boolean willPlay() {
+        return state == State.PLAYING || (state == State.SEEKING && (presimulating ? presim_resume : resume_playing));
+    }
+
     /** Ticks the world played since the start, first passes and re-plays alike: how much was simulated. */
     long ticksPlayed() {
         return ticks_played;
@@ -233,8 +263,10 @@ final class Clock {
         return switch (state) {
             case PLAYING -> "PLAYING " + speedText(speed_index);
             case PAUSED -> "PAUSED";
-            case SEEKING -> String.format(Locale.ROOT, "%s %d%% to %s", presimulating ? "PRESIM" : "SEEKING",
-                    (int) (seekProgress() * 100), Times.clock(seek_target));
+            case SEEKING -> String.format(Locale.ROOT, "%s %d%% to %s%s%s", presimulating ? "PRESIM" : "SEEKING",
+                    (int) (seekProgress() * 100), Times.clock(seek_target),
+                    presimulating && !pending.isEmpty() ? ", back to " + Times.clock(presim_back_to) : "",
+                    willPlay() ? ", then plays" : "");
             case ENDED -> "ENDED";
         };
     }
@@ -264,7 +296,7 @@ final class Clock {
                 state = State.PLAYING;
                 debt = 0;
             }
-            case SEEKING -> resume_playing = true;
+            case SEEKING -> resumeAfterSeek(true);
             case ENDED -> say("at the recorded end: seek back to play again");
             case PLAYING -> {
             }
@@ -274,18 +306,25 @@ final class Clock {
     void pause() {
         switch (state) {
             case PLAYING -> state = State.PAUSED;
-            case SEEKING -> resume_playing = false;
+            case SEEKING -> resumeAfterSeek(false);
             case PAUSED, ENDED -> {
             }
         }
     }
 
     void togglePause() {
-        boolean playing = state == State.PLAYING || (state == State.SEEKING && resume_playing);
-        if (playing) {
+        if (willPlay()) {
             pause();
         } else {
             play();
+        }
+    }
+
+    /** Whether to play after the seek under way; for a presimulation, once it is back where it started. */
+    private void resumeAfterSeek(boolean play) {
+        resume_playing = play;
+        if (presimulating) {
+            presim_resume = play;
         }
     }
 
@@ -342,30 +381,38 @@ final class Clock {
         }
         if (rewinder instanceof NoRewind) {
             // it could get to the end, but never back: the rest of the game would be lost to the view
-            say("cannot presimulate: rewind is off (" + rewinder.describe() + ")");
+            say("cannot presimulate: rewind is " + rewinder.describe());
             return message;
         }
         pending.clear();
+        listener.presimulationStarts();
+        // presimulating already: the seek out's restore, if it needs one, belongs to it (and ends it if it fails)
+        presimulating = true;
+        presim_back_to = back_to;
+        presim_resume = resume;
         String error = startSeek(end_tick);
         if (error == null) {
             pending.add(back_to);
-            presimulating = true;
-            presim_back_to = back_to;
-            presim_resume = resume;
             resume_playing = false;
         }
         return error;
     }
 
-    /** Stops a presimulation where it is and goes back to where it started from, as it would have at its end. */
-    void stopPresimulation() {
-        if (!presimulating) {
-            return;
+    /**
+     * Stops a presimulation on its way out and goes back to where it started from, as it would have at the end; false
+     * when there is none to stop (none under way, or on its way back already).
+     */
+    boolean stopPresimulation() {
+        if (!presimulating || pending.isEmpty()) {
+            return false;
         }
-        String error = seek(presim_back_to);
-        if (error == null) {
+        pending.clear();
+        listener.presimulationTurns();
+        // still presimulating: the way back, as from the end
+        if (startSeek(presim_back_to) == null) {
             resume_playing = presim_resume;
         }
+        return true;
     }
 
     private @Nullable String startSeek(int target) {
@@ -391,6 +438,7 @@ final class Clock {
                 say("cannot seek to " + Times.clock(target) + ": " + why);
                 pending.clear();
                 presimulating = false;
+                listener.restoreFailed();
                 return message;
             }
         }
@@ -476,7 +524,8 @@ final class Clock {
         long deadline = System.nanoTime() + budget_nanos;
         int ran = 0;
         while (ran < count && world.getTick() < limit) {
-            // the developer key DEBUG_TOGGLE_AI flips this, and every AI reads it: the recorded game had its AIs on
+            // every AI reads it, and the recorded game had its AIs on (GUIRoot's developer key DEBUG_TOGGLE_AI flips
+            // it in other games; it ignores developer keys while watching)
             Globals.run_ai = true;
             world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
             ran++;
@@ -505,14 +554,16 @@ final class Clock {
         seek_restored = false;
         debt = 0;
         state = world.getTick() >= limit ? State.ENDED : resume_playing ? State.PLAYING : State.PAUSED;
-        listener.seekDone(restored);
         Integer next = pending.poll();
-        if (next != null) {
-            if (startSeek(next) == null && pending.isEmpty()) {
-                resume_playing = presim_resume; // the way back of a presimulation: play on as before it, or not
-            }
-        } else {
+        if (next == null) {
             presimulating = false;
+            listener.seekDone(restored);
+            return;
+        }
+        // a presimulation at the recorded end: the way back, which plays on as before it (or not)
+        listener.presimulationTurns();
+        if (startSeek(next) == null && pending.isEmpty()) {
+            resume_playing = presim_resume;
         }
     }
 

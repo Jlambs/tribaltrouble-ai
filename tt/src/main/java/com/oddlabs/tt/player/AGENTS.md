@@ -163,10 +163,22 @@ over the game; the template does, so a new AI starts with a small example.
   census the change reaches (`chaos:paint=cheat` draws one random number per paint, and its game diverges within a
   minute). Keep no reference to the canvas: it is only valid during the call.
 - Engine getters assert on objects that just died. The viewer catches what `paint` and `describe` throw (exceptions,
-  assertion and linkage errors): it drops that paint, counts it, and shows `paint failed: ...` with where it was
-  thrown. The game goes on.
-- Limits: 5,000 shapes and 20 status lines per paint, 72 characters per label and status text. The AI panel shows
-  how long a paint takes; keep it well under a millisecond, as it runs on every frame the game moves.
+  assertion and linkage errors, a stack overflow): it drops that paint, counts it, and shows `paint failed: ...` with
+  where it was thrown. The game goes on.
+- Limits: 5,000 shapes and 20 status lines per paint, 120 characters per label and status text (the AI panel also
+  cuts a line wider than itself, so keep status lines short). The AI panel shows how long a paint takes; keep it well
+  under a millisecond, as it runs on every frame the game moves.
+- **Keep your AI's state copyable, or the viewer cannot rewind.** Watching any game, painted or not, rewinds by
+  deep-copying the whole world, your AI's fields included, at checkpoints. The copier refuses the following, and then
+  takes no more checkpoints, so rewind is off for the whole game when your AI holds one from the start (the status
+  panel says `rewind: off (...)` with the field path it stopped at): a lambda or method reference that captures your
+  AI or game objects, kept in a field (`Comparator.comparingDouble(this::distance)`, also as the comparator of a
+  `PriorityQueue` or `TreeMap` field; build such a comparator inside the method that sorts), `StringBuilder`,
+  `IdentityHashMap`, `WeakHashMap`, `ConcurrentHashMap`, `ThreadLocal`, threads, and subclasses of `HashMap`,
+  `HashSet` and the like (double-brace initialisation makes one). Plain fields, arrays, records, enums,
+  `ArrayList`, `ArrayDeque`, `HashMap`, `LinkedHashMap`, `HashSet`, `TreeMap`, `EnumMap`, `BitSet` and `Random` copy.
+  `./aisim.sh rewindcheck RUN KEY` checks a game of yours (`--classes` lists what was copied); `Copier`'s javadoc in
+  `tt/src/aisim/java/com/oddlabs/tt/aisim/watch/` has every rule.
 
 ## Recipes
 

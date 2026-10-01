@@ -275,8 +275,12 @@ final class Timeline extends HudPanel {
             at_x = hover_x;
         } else {
             Clock clock = game.clock();
-            middle = clock.frontier() >= scaleEnd() ? "simulated to the end" : "simulated to " + Times.clock(
-                    clock.frontier()) + (end > 0 ? "  (E: simulate it all)" : "");
+            if (end <= 0) {
+                middle = "simulated to " + Times.clock(clock.frontier()) + " (end unknown)";
+            } else {
+                middle = clock.frontier() >= end ? "simulated to the end" : "simulated to " + Times.clock(
+                        clock.frontier()) + "  (E: simulate it all)";
+            }
             color = TextPanel.DIM;
             at_x = getWidth() / 2;
         }

@@ -292,6 +292,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
         this.renderer = new DefaultRenderer(cheat, local_player, render_queues, world_info, landscape_renderer, picker,
                 selection, generator, new MatrixStack(), new MatrixStack(), null);
         renderer.showEveryOwnerOnMap();
+        renderer.drawWatchOverlay(watch_controls);
         this.gui_root = gui_root;
         this.peerhub = new PeerHub(animation_manager_local, local_player, notification_manager);
         this.camera = new GameCamera(this, camera_state);
