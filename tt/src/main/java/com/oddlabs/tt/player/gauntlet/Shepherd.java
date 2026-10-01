@@ -58,6 +58,11 @@ final class Shepherd {
     private int threat_peons;
     private int threat_hunters;
     private int threat_warriors;
+    /**
+     * shepherd_flee_side, for flee's counters and tend's log: 1 when the last threatAway turned an inward flee
+     * sideways, 2 when it found no side clear (the flee stays inward), else 0.
+     */
+    private int flee_side;
     /** findSpot's legal candidates, reused. */
     private int[] cand_x = new int[128];
     private int[] cand_y = new int[128];
@@ -77,6 +82,12 @@ final class Shepherd {
         float blocked_since = -1f;
         /** shepherd_safe_walk: after a flee the shepherd heads back for its spot only from this time on. */
         float flee_until = -1f;
+        /**
+         * shepherd_flee_side: the side (1 or -1 along the left perpendicular of the line from our start) of the last
+         * sideways flee, kept until side_until (sideAway tries it first).
+         */
+        int side_sign;
+        float side_until = -1f;
         /** Log and counters only: what the shepherd did at the last tend (walk, at, flee, nospot). */
         @NonNull
         String last_state = "walk";
@@ -93,7 +104,8 @@ final class Shepherd {
         float armory_at = -1f;
         /** Launches at our base (front_order 2). */
         int base_waves;
-        // Log only (maxn K2), never read by a decision (prev_wave aside): arrival, spot jumps and launches.
+        // Log only (maxn K2), never read by a decision (prev_wave aside, and arrived by shepherd_flee_side): arrival,
+        // spot jumps and launches.
         boolean arrived;
         int rec_x;
         int rec_y;
@@ -201,7 +213,7 @@ final class Shepherd {
             if (s == null || s.isDead() || s.isMounted())
                 continue;
             int clear = ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS;
-            int[] away = threatAway(s, intel, clear);
+            int[] away = threatAway(f, s, intel, clear);
             // 0.3 s at least between orders: a minimum spacing, not a period (the guard runs 4 or 8 game ticks
             // apart at ludicrous, where periodDue would re-order after 12 or 16)
             if (away != null && ai.now() - f.last_order >= 15f)
@@ -218,6 +230,9 @@ final class Shepherd {
         ai.landscapeOrder(Selectable.newArray(s), away[0], away[1], Action.MOVE, false);
         f.last_order = ai.now();
         f.flee_until = ai.now() + FLEE_HOLD_TICKS;
+        // shepherd_flee_side: per flee order, whether the threatAway just before turned it sideways.
+        if (flee_side != 0)
+            ai.aiLog().count(flee_side == 1 ? "shepherd_flee_side" : "shepherd_flee_side_none");
     }
 
     private @Nullable Flock flockOf(@NonNull Player p) {
@@ -425,6 +440,7 @@ final class Shepherd {
             f.arrived = false;
             f.last_state = "walk";
             f.flee_until = -1f;
+            f.side_until = -1f;
             f.rec_x = candidate.getGridX();
             f.rec_y = candidate.getGridY();
             f.rec_spot_x = probe[0];
@@ -442,13 +458,13 @@ final class Shepherd {
         f.last_x = s.getGridX();
         f.last_y = s.getGridY();
         // Flee first: any enemy near the shepherd, or a wave walking toward where it stands.
-        int[] away = threatAway(s, intel, ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS);
+        int[] away = threatAway(f, s, intel, ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS);
         if (away != null) {
             ai.aiLog().count("shepherd_t_flee");
             f.last_state = "flee";
             if (ai.logging())
                 ai.log("flee of " + name(
-                        f) + " at " + s.getGridX() + "," + s.getGridY() + " (moved " + moved + ") from " + threat_warriors + " warriors, " + threat_hunters + " hunters, " + threat_peons + " peons, " + threat_coming + " coming, to " + away[0] + "," + away[1]);
+                        f) + " at " + s.getGridX() + "," + s.getGridY() + " (moved " + moved + ") from " + threat_warriors + " warriors, " + threat_hunters + " hunters, " + threat_peons + " peons, " + threat_coming + " coming, to " + away[0] + "," + away[1] + (flee_side == 1 ? " (sideways)" : flee_side == 2 ? " (no side clear)" : ""));
             if (ai.now() - f.last_order >= 15f) // the guard's minimum spacing
                 flee(f, s, away);
             return;
@@ -562,8 +578,12 @@ final class Shepherd {
         return peon.getSupplyContainer() != null && peon.getSupplyContainer().getNumSupplies() > 0;
     }
 
-    /** A point to run to when enemies are near the shepherd or a wave is walking at it, else null. */
-    private int @Nullable [] threatAway(@NonNull Unit s, @NonNull Intel intel, int clear) {
+    /**
+     * A point to run to when enemies are near the shepherd or a wave is walking at it, else null. With
+     * shepherd_flee_side, a shepherd of f that has not reached its spot yet and would run back towards our start runs
+     * sideways instead where that is clear (sideAway).
+     */
+    private int @Nullable [] threatAway(@NonNull Flock f, @NonNull Unit s, @NonNull Intel intel, int clear) {
         int sx = s.getGridX();
         int sy = s.getGridY();
         long ex = 0;
@@ -576,6 +596,7 @@ final class Shepherd {
         threat_peons = 0;
         threat_hunters = 0;
         threat_warriors = 0;
+        flee_side = 0;
         int[] candidates = index.queryUnordered(sx, sy, Math.max(40 * 40, 2 * clear * clear));
         for (int k = 0, m = index.count(); k < m; k++) {
             byte group = index.group(candidates[k]);
@@ -619,7 +640,70 @@ final class Shepherd {
             dy = ai.planner().getStartY() - sy;
             len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
         }
+        if (ai.strategy().shepherd_flee_side && !f.arrived) {
+            // shepherd_flee_side: a wave that catches a shepherd on its way out parks about 25 cells nearer to us
+            // (logged N=13 ludicrous games), so a flee that would lose ground towards our start (away vector a, u the
+            // unit vector from our start to the shepherd: a.u < -0.3 |a|, the fallback towards our start included)
+            // goes sideways where that is clear.
+            float ux = sx - ai.planner().getStartX();
+            float uy = sy - ai.planner().getStartY();
+            float ulen = (float) Math.sqrt(ux * ux + uy * uy);
+            if (ulen >= 1f && dx * ux + dy * uy < -.3f * len * ulen) {
+                int[] side = sideAway(f, sx, sy, dx, dy, ux / ulen, uy / ulen, cx, cy, intel);
+                flee_side = side != null ? 1 : 2;
+                if (side != null)
+                    return side;
+            }
+        }
         return new int[]{sx + Math.round(22 * dx / len), sy + Math.round(22 * dy / len)};
+    }
+
+    /**
+     * shepherd_flee_side: the cell 22 cells from (sx, sy) along a perpendicular to the unit vector (ux, uy) that lies
+     * farther from the threat centroid (cx, cy) than the shepherd and that sideClear accepts, else null. The side of
+     * f's last sideways flee goes first while it is kept (FLEE_HOLD_TICKS after it), with sideClear's looser test for
+     * a kept side; else the side the away vector (dx, dy) leans to. Picked afresh at every guard and tend, the flee
+     * flipped between the two sides and inward within a second and the shepherd hardly moved (logged N=6 ludicrous
+     * game); the centroid test keeps the other side from running past the threat.
+     */
+    private int @Nullable [] sideAway(@NonNull Flock f, int sx, int sy, float dx, float dy, float ux, float uy,
+            float cx, float cy, @NonNull Intel intel) {
+        boolean held = f.side_sign != 0 && ai.now() < f.side_until;
+        int sign = held ? f.side_sign : dx * -uy + dy * ux < 0f ? -1 : 1;
+        float d2 = (sx - cx) * (sx - cx) + (sy - cy) * (sy - cy);
+        for (int k = 0; k < 2; k++) {
+            int x = sx + Math.round(22 * sign * -uy);
+            int y = sy + Math.round(22 * sign * ux);
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > d2 && sideClear(x, y, held && k == 0, intel)) {
+                f.side_sign = sign;
+                f.side_until = ai.now() + FLEE_HOLD_TICKS;
+                return new int[]{x, y};
+            }
+            sign = -sign;
+        }
+        return null;
+    }
+
+    /**
+     * shepherd_flee_side: whether (x, y) is reachable from our start, has no enemy warrior or chieftain (dead ones
+     * still in Intel's lists included) within shepherd_clear cells along both axes, and lies more than 14 cells from
+     * the target of every enemy warrior on an attack-move (the threatAway coming test, over all of them). A kept side
+     * needs only the first two, within half shepherd_clear.
+     */
+    private boolean sideClear(int x, int y, boolean kept, @NonNull Intel intel) {
+        if (!ai.planner().getStartField().reachable(x, y))
+            return false;
+        int clear = kept ? ai.strategy().shepherd_clear / 2 : ai.strategy().shepherd_clear;
+        int groups = intel.enemyIndex(ai.worldTicks()).groupsInBox(x, y, clear);
+        if ((groups & (1 << EnemyIndex.WARRIOR | 1 << EnemyIndex.CHIEFTAIN)) != 0)
+            return false;
+        if (kept)
+            return true;
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && e.getPrimaryController() instanceof WalkController w && w.isAgressive()
+                    && MapAnalysis.dist2(w.getTarget().getGridX(), w.getTarget().getGridY(), x, y) <= 14 * 14)
+                return false;
+        return true;
     }
 
     /**

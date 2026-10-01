@@ -2175,8 +2175,14 @@ final class Economy {
             hold = strategy.hold_late;
         else {
             hold = ai.now() < strategy.hold_mid_ticks ? strategy.hold_early : strategy.hold_mid;
-            if (armsRace())
-                hold = Math.min(2, hold);
+            // rush_hold_armory: the cut sends peons out to gather and arm, which needs a finished armory; without one
+            // they would stand at the door.
+            if (armsRace()) {
+                if (!strategy.rush_hold_armory || !ai.intel().armories.isEmpty())
+                    hold = Math.min(2, hold);
+                else if (hold > 2)
+                    rush_hold_waived = true; // counted by manageQuarters
+            }
         }
         if (strategy.hold_backlog > 0 && backlog_on && hold > strategy.hold_early) {
             hold = strategy.hold_early;
@@ -2184,6 +2190,11 @@ final class Economy {
         }
         return hold;
     }
+
+    /**
+     * rush_hold_armory: whether a holdFor since manageQuarters began kept a hold the alarm's cut would have lowered.
+     */
+    private boolean rush_hold_waived;
 
     /** hold_backlog: ore waits in the main armory for workers; since when. */
     private boolean backlog_on;
@@ -2215,6 +2226,7 @@ final class Economy {
             for (Project p : projects)
                 if (p.isPlaced())
                     builders_short += Math.max(0, buildersWanted(p) - builderCount(p.building));
+        rush_hold_waived = false;
         for (Building q : intel.quarters) {
             // retire: a quarters being razed is emptied by Retire.
             if (evacuating.containsKey(q) || retire.isDoomed(q))
@@ -2259,6 +2271,8 @@ final class Economy {
                         ai.aiLog().count("hold_backlog_deployed");
             }
         }
+        if (rush_hold_waived)
+            ai.aiLog().count("rush_hold_armory"); // economy ticks (1 s) the alarm's hold cut waited for an armory
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -3269,20 +3283,42 @@ final class Economy {
      */
     private void drainSecondary(@NonNull Building armory) {
         Player owner = ai.owner();
+        boolean relink_guard = ai.strategy().relink_guard;
+        if (relink_guard)
+            syncRelinkPrimary();
         if (ai.strategy().recall_old_gatherers && ai.periodDue(last_old_recall, 500f)) { // every 10 s
             last_old_recall = ai.now();
+            // relink_guard: since this armory's last recall under the main armory, and in the last 30 s, the engine
+            // linked gatherers we sent for the main armory to it (a load goes to the supply's nearest armory).
+            // Recalled, they would be sent to the same supplies again.
+            boolean guarded = relink_guard && relinkedRecently(armory);
             PeonState[] states = {PeonState.GATHER_TREE, PeonState.GATHER_IRON, PeonState.GATHER_ROCK, PeonState.GATHER_CHICKEN};
             Class<?>[] types = {TreeSupply.class, IronSupply.class, RockSupply.class, RubberSupply.class};
             int recalled = 0;
+            int kept = 0;
             for (int t = 0; t < states.length; t++) {
                 int n = ai.intel().countLinkedGatherers(states[t], armory);
-                if (n > 0) {
+                if (n > 0 && guarded) {
+                    kept += n;
+                } else if (n > 0) {
                     owner.recallGatherers(armory, supplyClass(types[t]), n);
                     recalled += n;
                 }
             }
             if (recalled > 0)
                 ai.log("recalling " + recalled + " gatherers of the old armory at " + armory.getGridX() + "," + armory.getGridY());
+            // relink_guard: an unguarded pass (the first under this main armory, or one after the guard lapsed)
+            // recalls everyone, the old armory's own workforce included, so only re-links after it start the guard.
+            if (relink_guard && !guarded) {
+                if (!relink_recalled.contains(armory))
+                    relink_recalled.add(armory);
+                relinked.remove(armory);
+            }
+            if (kept > 0) {
+                for (int i = 0; i < kept; i++)
+                    ai.aiLog().count("recall_skipped_relink");
+                ai.log("leaving " + kept + " re-linked gatherers to the old armory at " + armory.getGridX() + "," + armory.getGridY());
+            }
         }
         int workers = armory.getUnitContainer().getNumSupplies();
         if (workers == 0)
@@ -4328,6 +4364,18 @@ final class Economy {
         int[] have = {intel.countGatherers(PeonState.GATHER_TREE, armory), intel.countGatherers(PeonState.GATHER_IRON,
                 armory), intel.countGatherers(PeonState.GATHER_ROCK, armory), intel.countGatherers(
                         PeonState.GATHER_CHICKEN, armory)};
+        // relink_guard: the gatherers of an old armory guarded against recalls (relinkedRecently) stay there, so they
+        // count towards want too: else more are sent for as long as the engine keeps re-linking. Its pre-switch
+        // workforce is gone by then (the guard starts after a first recall). The recall above want still goes by the
+        // main armory's own.
+        int[] relinked_have = new int[4];
+        if (ai.strategy().relink_guard) {
+            PeonState[] kinds = {PeonState.GATHER_TREE, PeonState.GATHER_IRON, PeonState.GATHER_ROCK, PeonState.GATHER_CHICKEN};
+            for (Building b : relinked.keySet())
+                if (b != armory && !b.isDead() && relinkedRecently(b))
+                    for (int t = 0; t < 4; t++)
+                        relinked_have[t] += intel.countLinkedGatherers(kinds[t], b);
+        }
         int[] want = {want_tree, want_iron, want_rock, want_chicken};
         Class<?>[] types = {TreeSupply.class, IronSupply.class, RockSupply.class, RubberSupply.class};
         rebuildSupplyLoad();
@@ -4336,7 +4384,7 @@ final class Economy {
         boolean raid_out = raidEvacuating(armory);
         boolean probe = ai.strategy().gather_probe;
         for (int t = 0; t < 4; t++) {
-            int need = danger || raid_out ? 0 : want[t] - have[t];
+            int need = danger || raid_out ? 0 : want[t] - have[t] - relinked_have[t];
             while (need > 0) {
                 boolean from_transit = false;
                 Unit u = free.isEmpty() ? null : free.removeFirst();
@@ -4778,6 +4826,10 @@ final class Economy {
 
     private boolean sendGatherer(@NonNull Unit peon, @NonNull Class<?> type, @NonNull Building armory) {
         boolean home = ai.strategy().gather_home && type != RubberSupply.class;
+        // relink_guard: the armory the peon gathered for before this order. The engine links a re-sent gatherer of an
+        // old armory straight back to it when that is the supply's nearest, which is no new re-link.
+        Building was = ai.strategy().relink_guard
+                && peon.getPrimaryController() instanceof GatherController<?> g0 ? g0.getAssignedBuilding() : null;
         for (int attempt = 0; attempt < 3; attempt++) {
             Supply supply = pickSupply(type, armory, peon);
             if (supply == null)
@@ -4793,6 +4845,14 @@ final class Economy {
                 ai.aiLog().count("gather_other_armory");
                 continue;
             }
+            // relink_guard: the gatherer stays where the engine linked it; drainSecondary leaves that armory's
+            // gatherers alone for a while.
+            if (ai.strategy().relink_guard && peon.getPrimaryController() instanceof GatherController<?> g) {
+                Building linked = g.getAssignedBuilding();
+                if (linked != null && linked != armory && linked != was && !linked.isDead()
+                        && ai.intel().armories.contains(linked))
+                    markRelinked(linked);
+            }
             gather_targets.put(peon, supply);
             supply_load.merge(supply, 1, Integer::sum);
             return true;
@@ -4802,6 +4862,49 @@ final class Economy {
 
     /** gather_home: supplies whose loads would go to another armory than the main one, until the time given. */
     private final Map<@NonNull Supply, Float> other_armory_supplies = new LinkedHashMap<>();
+
+    /**
+     * relink_guard: when the engine last linked a gatherer we sent for the main armory (relink_primary) to each other
+     * finished armory, from idle, transit or another armory, since that armory's last unguarded recall.
+     */
+    private final Map<@NonNull Building, Float> relinked = new LinkedHashMap<>();
+    /**
+     * relink_guard: the other armories drainSecondary has recalled all gatherers of once under relink_primary. Until
+     * then an armory is never guarded: the first recall after a switch empties it of its own pre-switch workforce
+     * (the switch's tick drains the new armory as a secondary, as choosePrimaryArmory runs before onCompleted, and
+     * takes the 10-s recall slot, so the old one's first pass comes after 10 s of re-links).
+     */
+    private final List<@NonNull Building> relink_recalled = new ArrayList<>();
+    private @Nullable Building relink_primary;
+    private static final float RELINK_GUARD_TICKS = 1500f; // 30 s
+
+    /** relink_guard: a new main armory starts the marks and the first recalls afresh (also after a switch back). */
+    private void syncRelinkPrimary() {
+        Building primary = ai.intel().armory();
+        if (primary != relink_primary) {
+            relinked.clear();
+            relink_recalled.clear();
+            relink_primary = primary;
+        }
+    }
+
+    private void markRelinked(@NonNull Building linked) {
+        syncRelinkPrimary();
+        relinked.keySet().removeIf(Building::isDead);
+        relink_recalled.removeIf(Building::isDead);
+        relinked.put(linked, ai.now());
+        ai.aiLog().count("relink_sent");
+    }
+
+    /**
+     * relink_guard: whether this armory was recalled once under the current main armory and a gatherer we sent was
+     * linked to it since, in the last 30 s.
+     */
+    private boolean relinkedRecently(@NonNull Building armory) {
+        Float since = relinked.get(armory);
+        return since != null && relink_primary == ai.intel().armory() && relink_recalled.contains(armory)
+                && ai.now() - since < RELINK_GUARD_TICKS;
+    }
 
     /**
      * A gatherer whose load has not changed for 70 seconds is stuck, most often walking to a tree it cannot reach: it
@@ -4896,6 +4999,10 @@ final class Economy {
             boolean moving_over = works_for != null && works_for != armory && !works_for.isDead()
                     && intel.armories.contains(works_for);
             if (works_for != armory && works_for != null && !moving_over)
+                continue;
+            // relink_guard: those of a guarded old armory stay with it (the engine would link most back to it, and
+            // each re-send spends this tick's four).
+            if (moving_over && ai.strategy().relink_guard && relinkedRecently(works_for))
                 continue;
             Supply current = gather_targets.get(peon);
             if (!moving_over && current != null && !current.isEmpty())
