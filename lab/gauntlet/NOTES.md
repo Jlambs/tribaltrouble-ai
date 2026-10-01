@@ -1794,3 +1794,13 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   rush_opening_only 71; target_defense_weight 4 66 (surv60 z -1.7); reinforce_ratio 0.3 81 (z 1.4); chieftain_ticks
   10000 (200 s) 60, surv60 -1.81 (z -2.6), 22500 (450 s) 87 (z 1.9); towers_early/mid_ticks 15000 / 24000 82 (z 1.3).
   Confirming chieftain 450 s, reinforce 0.3, later towers and sortie 1.0 on 6301..6500 and 8001..8300.
+- **Confirmations on 6301..6500 + 8001..8300** (vs cur10): chieftain 450 s W -5 / +4 (surv60 +0.31 / +1.91);
+  reinforce_ratio 0.3 0 / -13 (z -2.1): dropped; later towers +7 / +4 (surv60 +0.56 / +1.65, z 2.3); sortie_ratio 1.0
+  0 / +2 (surv60 +0.34 / +0.68, z 2.4). Over 800 games each: towers +22, sortie +11, chieftain +15 (mixed).
+- **Stacks** (vs cur10; N=13 on the new block 6501..7000, cur10 127): towers + sortie N=13 138, N=14 59, N=15 24;
+  + chieftain 450 s 138 / 52 / 22; **+ shepherd_flee_side 145 (z 1.7, surv60 +1.79, z 3.3) / 70 (z 2.1, surv60 +1.85,
+  z 3.6) / 29 (z 2.3, surv60 +1.68, z 3.4)**. Confirmations: fresh N=14 49 -> 59 (surv60 +2.24, z 3.8), fresh N=15 30 ->
+  27 (surv60 +1.51, z 3.1, alive40 +26), N=16 10 -> 15 (surv60 +1.11, z 2.5), N=6 288 -> 287, normal speed N=13 7 -> 9.
+  The flee alone did nothing at N=15; with the later towers and the sortie it does.
+- **cur11 adopted**: towers 3 from 300 s and 6 from 480 s, sortie_ratio 1.0, shepherd_flee_side. The defaults replay the
+  explicit-param games (s6510 N=13, s6003 N=15). Over the N=13-16 blocks: W +62, survival up in every block.

@@ -516,7 +516,7 @@ class Strategy {
      * within 15 cells is gone, they fall below half that ratio of it, or the defence alone holds (Military.sorties). 0:
      * off.
      */
-    float sortie_ratio = 0f;
+    float sortie_ratio = 1f; // cur11 (see forGame); alone at N=13: W +11 over 800 games, surv60 up in every block
     /**
      * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
@@ -1193,7 +1193,7 @@ class Strategy {
      * that point is reachable, clear of enemy warriors and away from any walking wave's target: caught waves were
      * pulled 25 cells towards us per catch and fed 73 % of the base-threat entries (logged N=13 ludicrous games).
      */
-    boolean shepherd_flee_side = false;
+    boolean shepherd_flee_side = true; // cur11 (see forGame); alone: survival up at N=13-14, wins flat at N=15
     /**
      * shepherd_follow: while a copy's oldest idle warrior stands at home (40 cells from its armory) and its last wave
      * is still out, its shepherd's spot is picked around that wave's target (where its survivors go idle and lead the
@@ -1592,9 +1592,13 @@ class Strategy {
         // Every enemy sends his waves at our nearest building: towers early, and many of them, hold them all,
         // and the chieftain's stun is wanted sooner.
         strategy.towers_early = 3;
-        strategy.towers_early_ticks = Math.min(strategy.towers_early_ticks, 10000f); // 200 s
+        // cur11: towers 3 from 300 s and 6 from 480 s (were 200 s and 330 s), stacked with sortie_ratio 1.0 and
+        // shepherd_flee_side, at ludicrous speed against cur10: N=13 W 127 -> 145 of 500 (6501..7000), N=14 51 -> 70
+        // and fresh 49 -> 59, N=15 16 -> 29 and fresh 30 -> 27, N=16 10 -> 15; surv60 +1.1..+2.2 min in every block
+        // (z 2.5..3.8); N=6 and normal speed neutral. Later towers alone: N=13 W +22 over 800 games.
+        strategy.towers_early_ticks = Math.min(strategy.towers_early_ticks, 15000f); // 300 s
         strategy.towers_mid = 6;
-        strategy.towers_mid_ticks = Math.min(strategy.towers_mid_ticks, 16500f); // 330 s
+        strategy.towers_mid_ticks = 24000f; // 480 s
         strategy.towers_late = 14;
         strategy.towers_late_ticks = 30000f; // 600 s
         // The chieftain from 300 s (was 240): training takes a quarters' breeding, and an earlier chieftain costs the
