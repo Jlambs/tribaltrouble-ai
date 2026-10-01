@@ -1,12 +1,9 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.GameTime;
-import com.oddlabs.tt.aisim.Aisim;
 import com.oddlabs.tt.aisim.UsageException;
 import com.oddlabs.tt.aisim.analysis.Game;
-import com.oddlabs.tt.aisim.analysis.Runs;
 import com.oddlabs.tt.aisim.play.ClientWorld;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.aisim.play.Match;
@@ -14,15 +11,12 @@ import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.global.Headless;
 import com.oddlabs.tt.landscape.World;
-import com.oddlabs.tt.player.Player;
-import com.oddlabs.tt.player.UnitInfo;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.Writer;
 import java.lang.management.ManagementFactory;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -44,10 +38,12 @@ import java.util.TreeMap;
  * </ol>
  * It prints what each step cost and exits 0 when everything matched, 1 otherwise, 2 on usage errors.
  *
- * <p>Usage: {@code RewindCheck RUN KEY [--at SEC,SEC..] [--span SEC] [--gl] [--checkpoint SEC] [--memory MB]
- * [--limit SEC] [--no-logs] [--classes]}. RUN is a run name or a run folder; the world is built from the run's job
- * like {@link Match} builds it (frozen {@code @TAG} AIs from the pool, relative to the repository root, the working
- * directory). Headless unless {@code --gl}, which needs {@code -Dcom.oddlabs.tt.headless=false} and a desktop: it
+ * <p>Usage: {@code RewindCheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC..] [--span SEC] [--gl]
+ * [--checkpoint SEC] [--memory MB] [--limit SEC] [--no-logs] [--classes]}. The game is found as watch finds it
+ * ({@link WatchCommand#resolve}: a run name or any checkout's run folder, merged runs, frozen {@code @TAG} AIs and
+ * {@code --ai-from-run}), so it checks the very game watch plays; the world is built like {@link Match} builds it, the
+ * AIs as watch makes them ({@link SeatAis}). Headless unless {@code --gl}, which needs
+ * {@code -Dcom.oddlabs.tt.headless=false} and a desktop: it
  * simulates in a hidden GL window, as the viewer does (the element tree filled, a height texture). The JVM needs the
  * flags of {@link Copier}.
  */
@@ -57,8 +53,8 @@ public final class RewindCheck {
     /** Recorded census seconds are every 30 s. */
     private static final int CENSUS_TICKS = 30 * TPS;
 
-    private static final String USAGE_OPTIONS = String.join(" ", "[--at SEC,SEC..] [--span SEC] [--gl]",
-            "[--checkpoint SEC] [--memory MB] [--limit SEC] [--no-logs] [--classes]");
+    private static final String USAGE_OPTIONS = String.join(" ", "[--ai-from-run] [--at SEC,SEC..] [--span SEC]",
+            "[--gl] [--checkpoint SEC] [--memory MB] [--limit SEC] [--no-logs] [--classes]");
 
     private RewindCheck() {
     }
@@ -79,8 +75,9 @@ public final class RewindCheck {
     }
 
     /** What the command line asks for. */
-    private record Options(@NonNull String run, @NonNull String key, @Nullable List<Integer> at, int span, boolean gl,
-                           int checkpoint_seconds, int megabytes, int limit, boolean logs, boolean classes) {
+    private record Options(@NonNull List<String> game, boolean ai_from_run, @Nullable List<Integer> at, int span,
+                           boolean gl, int checkpoint_seconds, int megabytes, int limit, boolean logs,
+                           boolean classes) {
     }
 
     private static @NonNull Options parse(@NonNull String @NonNull [] args) {
@@ -93,6 +90,7 @@ public final class RewindCheck {
         int limit = -1;
         boolean logs = true;
         boolean classes = false;
+        boolean ai_from_run = false;
         for (int i = 0; i < args.length; i++) {
             String arg = args[i];
             switch (arg) {
@@ -109,6 +107,7 @@ public final class RewindCheck {
                 case "--limit" -> limit = number(value(args, ++i, arg), arg);
                 case "--no-logs" -> logs = false;
                 case "--classes" -> classes = true;
+                case "--ai-from-run" -> ai_from_run = true;
                 default -> {
                     if (arg.startsWith("--")) {
                         throw new UsageException("unknown option " + arg);
@@ -117,14 +116,13 @@ public final class RewindCheck {
                 }
             }
         }
-        if (positional.size() != 2) {
-            throw new UsageException("usage: rewindcheck RUN KEY " + USAGE_OPTIONS);
+        if (positional.size() != 2 && !(positional.size() == 1 && positional.getFirst().endsWith(".jsonl"))) {
+            throw new UsageException("usage: rewindcheck RUN KEY | FILE.jsonl " + USAGE_OPTIONS);
         }
         if (checkpoint <= 0 || megabytes <= 0 || span < 0) {
             throw new UsageException("--checkpoint and --memory must be positive, --span not negative");
         }
-        return new Options(positional.get(0), positional.get(1), at, span, gl, checkpoint, megabytes, limit, logs,
-                classes);
+        return new Options(positional, ai_from_run, at, span, gl, checkpoint, megabytes, limit, logs, classes);
     }
 
     private static @NonNull String value(@NonNull String @NonNull [] args, int i, @NonNull String option) {
@@ -158,9 +156,13 @@ public final class RewindCheck {
             String flag = "-D" + HEADLESS_PROPERTY + "=false";
             throw new UsageException(options.gl() ? "--gl needs " + flag : flag + " needs --gl");
         }
-        Path dir = runDir(options.run());
-        Job job = job(dir, options.key());
-        Recording recording = Recording.read(Runs.gameFile(dir, options.key()));
+        WatchCommand.Resolved game = WatchCommand.resolve(options.game(), options.ai_from_run());
+        Job job = game.job();
+        Path game_file = game.gameFile();
+        if (game_file == null) {
+            throw new UsageException("no game file to check the replays against");
+        }
+        Recording recording = Recording.read(game_file);
         int end_tick = recording.end_tick;
         if (end_tick < 0) {
             throw new UsageException("the game file has no end line");
@@ -170,7 +172,7 @@ public final class RewindCheck {
             end_tick = options.limit() * TPS;
         }
         System.out.printf(Locale.ROOT, "rewindcheck %s %s: %s, %s, %s, recorded end %s (tick %d)%s%n",
-                options.run(), options.key(), job.players(), job.map(), options.gl() ? "GL" : "headless",
+                job.run(), job.key(), job.players(), job.map(), options.gl() ? "GL" : "headless",
                 clock(recording.end_tick), recording.end_tick, limited ? ", played to " + clock(end_tick) : "");
         List<String> jvm = new ArrayList<>(ManagementFactory.getRuntimeMXBean().getInputArguments());
         jvm.removeIf(argument -> argument.startsWith("-Dorg.lwjgl") || argument.startsWith("-Daisim"));
@@ -194,10 +196,11 @@ public final class RewindCheck {
                 AiLog.begin(world, null, "");
             }
             try {
-                UnitInfo unit_info = ClientWorld.startingUnits();
-                for (int slot = 0; slot < job.slots(); slot++) {
-                    Player player = world.getPlayers()[slot];
-                    player.setAI(Match.createAI(job.spec(slot), player, unit_info));
+                try {
+                    SeatAis.create(job, world, game.loaders());
+                } catch (IllegalArgumentException e) { // an AI this build cannot make: not a rewind failure
+                    throw new UsageException(
+                            "cannot make the AIs: " + e.getMessage() + (options.ai_from_run() ? "" : " (--ai-from-run plays the recording's own AI package)"));
                 }
                 System.gc(); // as Match: the map's garbage
                 check(options, world, track, lines, recording, end_tick, limited, problems);
@@ -405,23 +408,6 @@ public final class RewindCheck {
     }
 
     // ---------------------------------------------------------------- the game and its recording
-
-    private static @NonNull Path runDir(@NonNull String run) {
-        Path path = Path.of(run);
-        return Files.exists(path.resolve("run.json")) ? path : Runs.dir(run);
-    }
-
-    private static @NonNull Job job(@NonNull Path dir, @NonNull String key) throws IOException {
-        JsonNode jobs = Aisim.JSON.readTree(dir.resolve("run.json").toFile()).get("jobs");
-        if (jobs != null) {
-            for (JsonNode job : jobs) {
-                if (key.equals(job.path("key").asText())) {
-                    return Aisim.JSON.treeToValue(job, Job.class);
-                }
-            }
-        }
-        throw new UsageException("run " + Aisim.slash(dir) + " has no job " + key);
-    }
 
     /** What the game file says: census checksums by tick (every slot's line at a tick has the same), the end. */
     private static final class Recording {

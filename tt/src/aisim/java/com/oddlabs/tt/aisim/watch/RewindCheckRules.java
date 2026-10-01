@@ -203,13 +203,14 @@ final class RewindCheckRules {
         refuses("a Writer not in the shared set", new StringWriter());
         refuses("a subclass of HashMap", new HashMap<>() {
         });
-        refuses("a record whose constructor copies its components", new Copying(new ArrayList<>(List.of("x"))));
+        refuses("a record whose constructor copies its components", new Copying(new ArrayList<>(List.of(
+                new int[]{1}))));
     }
 
-    /** A record that copies its component: its copy would hold the component before it was filled. */
-    private record Copying(@NonNull List<String> items) {
+    /** A record that copies its mutable component: its copy would copy the component before it was filled. */
+    private record Copying(@NonNull List<int[]> items) {
         Copying {
-            items = List.copyOf(items);
+            items = new ArrayList<>(items);
         }
     }
 
