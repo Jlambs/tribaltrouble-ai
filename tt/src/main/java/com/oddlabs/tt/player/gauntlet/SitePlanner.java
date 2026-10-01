@@ -112,6 +112,11 @@ final class SitePlanner {
         return harvest_ticks + ROUND_TRIP_TICKS_PER_METER * avg;
     }
 
+    /** Game ticks of one gathering trip to a supply this many meters of walk away, as gatherTicks counts it. */
+    static float tripTicks(int meters, float harvest_ticks) {
+        return harvest_ticks + ROUND_TRIP_TICKS_PER_METER * Math.max(0, meters - 5);
+    }
+
     /**
      * Game ticks of gathering per iron warrior (two wood and one iron) if the armory stood at the field's source.
      */

@@ -565,7 +565,9 @@ final class Retire {
             Building from = null;
             int best = Integer.MAX_VALUE;
             for (Building a : intel.armories) {
-                if (a.isDead() || isDoomed(a) || a.getUnitContainer().getNumSupplies() < n + 4)
+                // weapon_reserve: the workers for the weapons held back stay in too
+                if (a.isDead() || isDoomed(a)
+                        || a.getUnitContainer().getNumSupplies() < n + Math.max(4, economy.weaponReserveHeld(a)))
                     continue;
                 int d = MapAnalysis.dist2(bx, by, a.getGridX(), a.getGridY());
                 if (d < best && d <= UNIT_CELLS * UNIT_CELLS) {
@@ -606,8 +608,9 @@ final class Retire {
 
     /**
      * Whether razers can be had for the building: min peons (razerPeon) within UNIT_CELLS, or a complete armory there
-     * that can let min + 4 out. A candidate that fails is passed over (s6189 smoke: the farthest towers had no peons
-     * within reach, 12 retirements called off for no units, each after its gunner came out).
+     * that can let min out and keep 4 (or the workers weapon_reserve keeps in, if more). A candidate that fails is
+     * passed over (s6189 smoke: the farthest towers had no peons within reach, 12 retirements called off for no units,
+     * each after its gunner came out).
      */
     private boolean razersAt(@NonNull Building b, int min) {
         Intel intel = ai.intel();
@@ -617,7 +620,8 @@ final class Retire {
                     p.getGridY()) <= UNIT_CELLS * UNIT_CELLS && ++n >= min)
                 return true;
         for (Building a : intel.armories)
-            if (!a.isDead() && !isDoomed(a) && a.getUnitContainer().getNumSupplies() >= min + 4
+            if (!a.isDead() && !isDoomed(a)
+                    && a.getUnitContainer().getNumSupplies() >= min + Math.max(4, economy.weaponReserveHeld(a))
                     && MapAnalysis.dist2(b.getGridX(), b.getGridY(), a.getGridX(),
                             a.getGridY()) <= UNIT_CELLS * UNIT_CELLS)
                 return true;

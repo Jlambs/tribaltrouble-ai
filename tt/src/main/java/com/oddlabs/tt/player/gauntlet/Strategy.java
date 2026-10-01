@@ -487,6 +487,37 @@ class Strategy {
      */
     boolean relink_guard = false;
     /**
+     * ore_reach: when rock weapons are wanted but no iron is left within the 400 m field, look for iron in the far
+     * field (2 x ore_reach) before settling on rock (rock-only stretches in 73 of 500 ludicrous N=13 games; 3 of the 4
+     * logged N=6 losses were iron-window cases).
+     */
+    boolean ore_iron_first = false;
+    /**
+     * ore_reach: a near pick that finds nothing (for any reason, unless a threat or a parked enemy blob is by some of
+     * that ore) tries the far field too, as an ore_far plan tick does (failed near picks in 41 of 500 ludicrous N=13
+     * games). Meant on top of relink_guard (with ore_iron_first too): far ore often lies nearer an old armory, the
+     * engine links its gatherers there and the recall loop eats their trips (beta2-ore smoke without it: twice the
+     * recalls of the base game).
+     */
+    boolean ore_reach_fail = false;
+    /**
+     * From weapon_reserve_ticks, while the base threat is below 2, the primary armory keeps up to this many weapons in
+     * stock undeployed (iron first) with workers for them, released at threat 2: iron-made defenders for the collapse
+     * window (0.18 weapons in stock at its onset at N=13). 0: off. home_guard, which held warriors back, cost wins (N=8
+     * W 16 -> 5); this holds weapons, not deployed warriors.
+     */
+    int weapon_reserve = 0;
+    float weapon_reserve_ticks = 30000f;
+    /**
+     * A besieged armory sends its peons out to fight when they can win: at threat level 2, an armory holding 30 or more
+     * with a threat within 15 cells, when bank, defenders and towers near it reach sortie_ratio of the threat within 30
+     * cells and defenders and towers alone do not, deploys its peons onto the attackers (they vanish uncounted inside a
+     * razed armory: ~112 units per ludicrous N=13 game; the bank could win in about 14 % of falls), until the threat
+     * within 15 cells is gone, they fall below half that ratio of it, or the defence alone holds (Military.sorties). 0:
+     * off.
+     */
+    float sortie_ratio = 0f;
+    /**
      * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
      * warrior within 12 cells of its straight way to the site; with none, one peon leaves the quarters nearest the site
@@ -1404,6 +1435,11 @@ class Strategy {
         gather_probe = params.getBoolean("gather_probe", gather_probe);
         gather_home = params.getBoolean("gather_home", gather_home);
         relink_guard = params.getBoolean("relink_guard", relink_guard);
+        ore_iron_first = params.getBoolean("ore_iron_first", ore_iron_first);
+        ore_reach_fail = params.getBoolean("ore_reach_fail", ore_reach_fail);
+        weapon_reserve = params.getInt("weapon_reserve", weapon_reserve);
+        weapon_reserve_ticks = (float) params.getDouble("weapon_reserve_ticks", weapon_reserve_ticks);
+        sortie_ratio = (float) params.getDouble("sortie_ratio", sortie_ratio);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
         rearm_reach = params.getInt("rearm_reach", rearm_reach);
         reloc = params.getBoolean("reloc", reloc);

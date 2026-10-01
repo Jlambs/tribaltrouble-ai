@@ -3,6 +3,7 @@ package com.oddlabs.tt.player.gauntlet;
 import com.oddlabs.tt.model.Abilities;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
+import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
@@ -476,6 +477,9 @@ final class Military {
         updateStaging();
         updateThreat();
         manTowers();
+        // sortie_ratio: before defend, so that its evacuatePeons already leaves the peons coming out alone
+        if (ai.strategy().sortie_ratio > 0f)
+            sorties();
         if (threat_level > 0)
             defend();
         if (!raiders.isEmpty())
@@ -1389,6 +1393,9 @@ final class Military {
             Float militia = militia_orders.get(p);
             if (militia != null && ai.now() - militia < 250f)
                 continue;
+            // sortie_ratio: and so do peons out of a sortie armory.
+            if (sortie_peons.containsKey(p))
+                continue;
             if (!threatNear(p.getGridX(), p.getGridY(), 11))
                 continue;
             // rearm_placer: a peon carrying an armory site walks on while no threat is within 6 cells.
@@ -1400,6 +1407,9 @@ final class Military {
         boolean bank_full = !evacuate.isEmpty() && ai.economy().bankFull(armory);
         // raid_evac: nor one being emptied ahead of a wave.
         if (!evacuate.isEmpty() && ai.economy().raidEvacuating(armory))
+            armory = null;
+        // sortie_ratio: nor one whose peons are out fighting by it.
+        if (armory != null && sorties.containsKey(armory))
             armory = null;
         for (Unit p : evacuate) {
             Building shelter = null;
@@ -1425,6 +1435,267 @@ final class Military {
             if (shelter != null && shelter.getUnitContainer() != null)
                 ai.owner().setTarget(Selectable.newArray(p), shelter, Action.DEFAULT, false);
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // sortie_ratio
+
+    /** sortie_ratio: an armory's peons out fighting the threat by it: since when, and how many joined. */
+    private static final class Sortie {
+        final float start;
+        int joined;
+
+        Sortie(float start) {
+            this.start = start;
+        }
+    }
+
+    /** sortie_ratio: the armories whose peons are out, in the order their sorties began. */
+    private final Map<@NonNull Building, @NonNull Sortie> sorties = new LinkedHashMap<>();
+    /**
+     * sortie_ratio: the peons out of each sortie armory, which evacuatePeons and the economy's allocatePeons leave
+     * alone while the sortie lasts, and when each was last ordered onto the attackers.
+     */
+    private final Map<@NonNull Unit, @NonNull Building> sortie_peons = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, Float> sortie_orders = new LinkedHashMap<>();
+    /** sortie_ratio: the threat to an armory is what stands within this many cells of it. */
+    private static final int SORTIE_CELLS = 15;
+    /**
+     * sortie_ratio: a sortie starts, and the defence holds without one, by the threat within this many cells
+     * (threat_look's default): the head of a wave walks in ahead of the rest (beta2-sortie smoke: a sortie on a threat
+     * of 13.0 within 15 cells, 48.6 at the armory half a second later, outmatched within 28 s).
+     */
+    private static final int SORTIE_LOOK_CELLS = 30;
+    /**
+     * sortie_ratio: units an armory holds at least to sortie (the investigators' sortie_bank): a few workers by a
+     * raider
+     * would empty the armory and stop its forge for nothing.
+     */
+    private static final int SORTIE_MIN_BANK = 30;
+    /** sortie_ratio: an idle or fighting peon this close to a sortie armory came out of it (or joins it there). */
+    private static final int SORTIE_DOOR_CELLS = 8;
+
+    /** sortie_ratio: whether the armory's peons are out fighting by it (allocatePeons sends nobody in). */
+    boolean isSortie(@Nullable Building a) {
+        return a != null && sorties.containsKey(a);
+    }
+
+    /** sortie_ratio: whether the peon is out fighting by its armory (allocatePeons leaves it alone). */
+    boolean inSortie(@NonNull Unit p) {
+        return sortie_peons.containsKey(p);
+    }
+
+    /**
+     * sortie_ratio, every military tick: units inside a razed armory vanish with it, uncounted, and the peons by a
+     * threat are sent in (evacuatePeons, allocatePeons), so the bank grows during a siege it could have broken. At
+     * threat level 2 (the weapon_reserve release), a complete armory holding SORTIE_MIN_BANK or more with a threat
+     * within SORTIE_CELLS (lasting values: a stun wears off before such a fight ends) sends everyone inside out onto it
+     * when they tip the balance against all within SORTIE_LOOK_CELLS: its peons at Combat.PEON each, with our warriors
+     * within 20 cells and the manned towers within 16 (raid_evac's defence), reach sortie_ratio of that threat, which
+     * the defence alone does not (else the defenders hold it and the peons stay at work). Its weapons leave as
+     * warriors, the rest as peons (no rally point: they come out idle by the door); every idle or fighting peon by the
+     * door joins, and an idle one is attack-moved onto the threat nearest it. The sortie ends, and the economy takes
+     * its peons back, when the armory falls or is emptied (evacuate, retire), no threat is left within SORTIE_CELLS,
+     * the peons out within 20 cells, those still inside and the defence fall below half of sortie_ratio of it, or the
+     * defence alone holds the threat within SORTIE_LOOK_CELLS; in the last three the peons still queued stay in.
+     */
+    private void sorties() {
+        Intel intel = ai.intel();
+        Economy economy = ai.economy();
+        float ratio = ai.strategy().sortie_ratio;
+        float now = ai.now();
+        // Peons that came out since the last tick (and idle ones standing by) join their armory's sortie.
+        if (!sorties.isEmpty())
+            for (Unit p : intel.peons) {
+                PeonState s = intel.peon_states.get(p);
+                if ((s != PeonState.IDLE && s != PeonState.FIGHT) || sortie_peons.containsKey(p)
+                        || economy.reservedPlacer(p))
+                    continue;
+                Map.Entry<Building, Sortie> door = null;
+                int best = SORTIE_DOOR_CELLS * SORTIE_DOOR_CELLS + 1;
+                for (Map.Entry<Building, Sortie> e : sorties.entrySet()) {
+                    Building a = e.getKey();
+                    if (a.isDead())
+                        continue;
+                    int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), a.getGridX(), a.getGridY());
+                    if (d < best) {
+                        best = d;
+                        door = e;
+                    }
+                }
+                if (door == null)
+                    continue;
+                sortie_peons.put(p, door.getKey());
+                door.getValue().joined++;
+                ai.aiLog().count("sortie_peons"); // peons that joined a sortie
+            }
+        for (Iterator<Map.Entry<Building, Sortie>> it = sorties.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, Sortie> e = it.next();
+            Building a = e.getKey();
+            float threat = 0f;
+            float strength = 0f;
+            String why = null;
+            boolean standing = false;
+            if (a.isDead()) {
+                why = "the armory fell";
+            } else if (economy.isEvacuating(a) || economy.isDoomed(a)) {
+                why = "the armory is emptied";
+            } else {
+                standing = true;
+                threat = sortieThreat(a, SORTIE_CELLS);
+                strength = sortieStrength(a);
+                if (threat <= 0f)
+                    why = "no threat left";
+                else if (strength < .5f * ratio * threat)
+                    why = "outmatched";
+                // the start test's own exclusion, against the same look (else the next tick starts it again)
+                else if (sortieDefence(a) >= ratio * sortieThreat(a, SORTIE_LOOK_CELLS))
+                    why = "the defence holds";
+            }
+            if (why == null)
+                continue;
+            it.remove();
+            // The peons still queued to come out stay in (the UI's decrease button): at 0.5 s each, a big bank is still
+            // walking out one by one into a fight judged lost or over (beta2-sortie smoke: about 14 of 70 after an
+            // outmatched end at 28 s). Not when the armory is emptied: evacuate and retire want them out.
+            int kept = 0;
+            if (standing) {
+                kept = a.getDeployContainer(DeployType.PEON).getNumSupplies();
+                if (kept > 0) {
+                    ai.owner().deployUnits(a, DeployType.PEON, -kept);
+                    ai.aiLog().count("sortie_recalled"); // sortie ends that kept queued peons in
+                }
+            }
+            int out = 0;
+            for (Iterator<Map.Entry<Unit, Building>> pit = sortie_peons.entrySet().iterator(); pit.hasNext();) {
+                Map.Entry<Unit, Building> pe = pit.next();
+                if (pe.getValue() != a)
+                    continue;
+                if (!pe.getKey().isDead())
+                    out++;
+                sortie_orders.remove(pe.getKey());
+                pit.remove();
+            }
+            ai.aiLog().count("sortie_end");
+            if (ai.logging())
+                ai.log(String.format(
+                        "sortie at %d,%d ends after %.0f s (%s): %d peons joined, %d still out, %d queued kept in;" + " strength %.1f against %.1f",
+                        a.getGridX(), a.getGridY(), GauntletAI.seconds(now - e.getValue().start), why,
+                        e.getValue().joined, out, kept, strength, threat));
+        }
+        // updateThreat has run this tick: level 2 is a real attack on the base (or the threat at the main armory).
+        if (threat_level >= 2)
+            for (Building a : intel.armories) {
+                if (a.isDead() || sorties.containsKey(a) || economy.isEvacuating(a) || economy.isDoomed(a))
+                    continue;
+                int inside = a.getUnitContainer().getNumSupplies();
+                if (inside < SORTIE_MIN_BANK)
+                    continue;
+                // At the door, judged by all that comes behind it.
+                float door = sortieThreat(a, SORTIE_CELLS);
+                if (door <= 0f)
+                    continue;
+                float threat = sortieThreat(a, SORTIE_LOOK_CELLS);
+                float defence = sortieDefence(a);
+                float bank = Combat.PEON * inside;
+                if (defence >= ratio * threat || bank + defence < ratio * threat)
+                    continue;
+                sorties.put(a, new Sortie(now));
+                if (a.hasRallyPoint()) {
+                    ai.owner().setRallyPoint(a, a); // none: the peons come out idle by the door
+                    ai.aiLog().count("sortie_rally_cleared");
+                }
+                ai.aiLog().count("sortie_start");
+                if (ai.logging())
+                    ai.log(String.format(
+                            "sortie: the armory at %d,%d sends its %d inside out onto a threat of %.1f within %d cells" + " (%.1f within %d; bank %.1f, defence %.1f)",
+                            a.getGridX(), a.getGridY(), inside, threat, SORTIE_LOOK_CELLS, door, SORTIE_CELLS, bank,
+                            defence));
+            }
+        if (sorties.isEmpty())
+            return;
+        // Everyone inside comes out, those who walked in since included.
+        for (Building a : sorties.keySet())
+            economy.sortieDeploy(a);
+        // Idle sortie peons attack-move onto the threat nearest each, one order per cell (the game spreads a group
+        // over the cells around it).
+        Map<Long, List<Unit>> orders = new LinkedHashMap<>();
+        for (Iterator<Map.Entry<Unit, Building>> it = sortie_peons.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Unit, Building> e = it.next();
+            Unit p = e.getKey();
+            PeonState s = p.isDead() ? null : intel.peon_states.get(p);
+            // Dead, back inside a building, or given other work since (building, gathering, shepherding, sapping):
+            // it leaves the sortie.
+            if (s != PeonState.IDLE && s != PeonState.FIGHT && s != PeonState.MOVE && s != PeonState.STUNNED) {
+                sortie_orders.remove(p);
+                it.remove();
+                continue;
+            }
+            Float last = sortie_orders.get(p);
+            if (s != PeonState.IDLE || (last != null && !ai.periodDue(last, 50f))) // 1 s
+                continue;
+            Building a = e.getValue();
+            Unit target = null;
+            int best = Integer.MAX_VALUE;
+            for (Unit t : threats) {
+                if (t.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), a.getGridX(),
+                        a.getGridY()) > SORTIE_CELLS * SORTIE_CELLS)
+                    continue;
+                int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), t.getGridX(), t.getGridY());
+                if (d < best) {
+                    best = d;
+                    target = t;
+                }
+            }
+            if (target == null)
+                continue;
+            sortie_orders.put(p, now);
+            ai.aiLog().count("sortie_orders"); // peons attack-moved onto the threat
+            long key = ((long) target.getGridX() << 32) | (long) target.getGridY();
+            orders.computeIfAbsent(key, k -> new ArrayList<>()).add(p);
+        }
+        for (Map.Entry<Long, List<Unit>> e : orders.entrySet()) {
+            long key = e.getKey();
+            ai.landscapeOrder(e.getValue().toArray(new Selectable<?>[0]), (int) (key >> 32),
+                    (int) (key & 0xffffffffL), Action.ATTACK, true);
+        }
+    }
+
+    /** sortie_ratio: the lasting value of the threats within radius cells of the armory. */
+    private float sortieThreat(@NonNull Building a, int radius) {
+        int r2 = radius * radius;
+        float s = 0f;
+        for (Unit e : threats)
+            if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), a.getGridX(), a.getGridY()) <= r2)
+                s += Combat.lastingValue(e);
+        return s;
+    }
+
+    /**
+     * sortie_ratio: the manned towers within 16 cells of the armory and our warriors within 20 (raid_evac's defence),
+     * with the warriors in its deploy queues (a deploy order takes its workers out of the bank at once).
+     */
+    private float sortieDefence(@NonNull Building a) {
+        Intel intel = ai.intel();
+        return Combat.strengthNear(intel.towers, a.getGridX(), a.getGridY(), 16) + Combat.strengthNear(
+                intel.warriors, a.getGridX(), a.getGridY(), 20) + Combat.CHICKEN * a.getDeployContainer(
+                        DeployType.RUBBER_WARRIOR).getNumSupplies() + Combat.IRON * a.getDeployContainer(
+                                DeployType.IRON_WARRIOR).getNumSupplies() + Combat.ROCK * a.getDeployContainer(
+                                        DeployType.ROCK_WARRIOR).getNumSupplies();
+    }
+
+    /** sortie_ratio: a sortie's strength: the defence, its peons out within 20 cells, and those inside or queued. */
+    private float sortieStrength(@NonNull Building a) {
+        int ax = a.getGridX();
+        int ay = a.getGridY();
+        float s = sortieDefence(a) + Combat.PEON * (a.getUnitContainer().getNumSupplies() + a.getDeployContainer(
+                DeployType.PEON).getNumSupplies());
+        for (Map.Entry<Unit, Building> e : sortie_peons.entrySet()) {
+            Unit p = e.getKey();
+            if (e.getValue() == a && !p.isDead() && MapAnalysis.dist2(p.getGridX(), p.getGridY(), ax, ay) <= 20 * 20)
+                s += Combat.value(p);
+        }
+        return s;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -2268,17 +2539,35 @@ final class Military {
         return false;
     }
 
+    /**
+     * Warriors our main armory could deploy right away. weapon_reserve: not the weapons it holds back below threat 2,
+     * nor the workers kept in for them, which neither join an attack nor let a muster launch.
+     */
     private float stockStrength() {
         Building armory = ai.intel().armory();
-        return armory == null ? 0f : stockStrength(armory);
+        if (armory == null)
+            return 0f;
+        int[] held = ai.economy().weaponReserve(armory);
+        return held == null ? stockStrength(armory) : stockStrength(armory, held[0], held[1], held[2]);
     }
 
     /** Warriors an armory could deploy right away: weapons in stock, as far as peons inside can carry them. */
     private static float stockStrength(@NonNull Building armory) {
+        return stockStrength(armory, 0, 0, 0);
+    }
+
+    /** The same less the chicken, iron and rock axes held back, and as many workers. */
+    private static float stockStrength(@NonNull Building armory, int held_chicken, int held_iron, int held_rock) {
         int workers = armory.getUnitContainer().getNumSupplies();
         int iron = armory.getSupplyContainer(com.oddlabs.tt.model.weapon.IronAxeWeapon.class).getNumSupplies();
         int chicken = armory.getSupplyContainer(com.oddlabs.tt.model.weapon.RubberAxeWeapon.class).getNumSupplies();
         int rock = armory.getSupplyContainer(com.oddlabs.tt.model.weapon.RockAxeWeapon.class).getNumSupplies();
+        if (held_chicken + held_iron + held_rock > 0) {
+            workers = Math.max(0, workers - held_chicken - held_iron - held_rock);
+            chicken = Math.max(0, chicken - held_chicken);
+            iron = Math.max(0, iron - held_iron);
+            rock = Math.max(0, rock - held_rock);
+        }
         float s = 0f;
         int left = workers;
         int c = Math.min(chicken, left);
