@@ -205,8 +205,11 @@ final class WatchGame implements Clock.Listener {
     @Override
     public void beforeRestore() {
         Selectable<?> picked = inspected;
+        if (picked == null) {
+            return; // a restore during a seek that restored already: keep what that one remembered
+        }
         remembered = null;
-        if (picked != null && !picked.isDead()) {
+        if (!picked.isDead()) {
             remembered = new Remembered(Inspector.slotOf(world, picked.getOwnerNoCheck()), Inspector.kindOf(picked),
                     picked.getGridX(), picked.getGridY());
         }
@@ -226,7 +229,7 @@ final class WatchGame implements Clock.Listener {
     public void seekDone(boolean restored) {
         Remembered was = remembered;
         remembered = null;
-        if (restored && was != null) {
+        if (was != null && inspected == null) { // unless the user picked something else meanwhile
             inspect(nearest(was));
         }
         hud.refreshSoon();
@@ -422,7 +425,7 @@ final class WatchGame implements Clock.Listener {
     @Nullable
     String seekText(@NonNull String text) {
         try {
-            return clock.seek(Times.parse(text, clock.tick(), end_tick));
+            return clock.seek(Times.parse(text, clock.position(), end_tick));
         } catch (IllegalArgumentException e) {
             return e.getMessage();
         }

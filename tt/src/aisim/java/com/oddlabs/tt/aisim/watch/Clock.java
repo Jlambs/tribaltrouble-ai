@@ -171,6 +171,18 @@ final class Clock {
         return state == State.SEEKING || !pending.isEmpty();
     }
 
+    /**
+     * Where the user is heading: the tick a presimulation comes back to, else the current seek's target, else the
+     * world's tick. Steps and relative jumps count from here, not from a seek's half-replayed tick, so that a second
+     * step back during a replay lands one tick before the first, not somewhere near the restored checkpoint.
+     */
+    int position() {
+        if (presimulating) {
+            return presim_back_to;
+        }
+        return state == State.SEEKING ? seek_target : world.getTick();
+    }
+
     /** The target of the current seek, or -1 when not seeking. */
     int seekTarget() {
         return state == State.SEEKING ? seek_target : -1;
@@ -292,9 +304,10 @@ final class Clock {
 
     /** Plays {@code ticks} ticks on (or back, negative), pausing first. */
     void step(int ticks) {
+        int from = position(); // before pause() and seek(), which end a presimulation and a seek
         pause();
         resume_playing = false;
-        seek(world.getTick() + ticks);
+        seek(from + ticks);
     }
 
     /**
@@ -327,6 +340,11 @@ final class Clock {
             say("cannot presimulate: the recorded end is unknown");
             return message;
         }
+        if (rewinder instanceof NoRewind) {
+            // it could get to the end, but never back: the rest of the game would be lost to the view
+            say("cannot presimulate: rewind is off (" + rewinder.describe() + ")");
+            return message;
+        }
         pending.clear();
         String error = startSeek(end_tick);
         if (error == null) {
@@ -357,7 +375,8 @@ final class Clock {
             resume_playing = state == State.PLAYING;
         }
         boolean restore = target < tick || latestCheckpointAtOrBefore(target) > tick;
-        seek_restored = false;
+        // a seek that takes over from one that restored still ends a restore: the view re-picks after it
+        seek_restored = state == State.SEEKING && seek_restored;
         if (restore) {
             listener.beforeRestore();
             try {
