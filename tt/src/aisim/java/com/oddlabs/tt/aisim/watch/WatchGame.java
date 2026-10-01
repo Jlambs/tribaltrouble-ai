@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 /**
@@ -132,14 +133,19 @@ final class WatchGame implements Clock.Listener {
 
     /**
      * The one place that makes the rewinder, right after the AIs and before the first tick (the store takes tick 0's
-     * checkpoint at once). The checkpoint store (Checkpoints, part A2) slots in here:
-     * {@code new Checkpoints(world, file.checkpointSeconds() * TPS, file.checkpointMegabytes(), shared)}, where
-     * {@code shared} holds the track and every AI log writer ({@link #sharedWithCheckpoints}: they live outside the
-     * world), falling back to a NoRewind with its error's message when the world cannot be copied.
+     * checkpoint at once). The track and every AI log writer live outside the world, so every checkpoint shares them
+     * ({@link #sharedWithCheckpoints}). A world that cannot be copied (a JVM without the rewind's flags, or state the
+     * copier refuses) still plays forward, without rewind, and the status line says why.
      */
     static @NonNull Rewinder newRewinder(@NonNull World world, @NonNull WatchFile file, @NonNull Track track,
             @NonNull AiLogBook ai_log) {
-        return new NoRewind("not available yet");
+        try {
+            return new Checkpoints(world, file.checkpointSeconds() * TPS,
+                    file.checkpointMegabytes(), sharedWithCheckpoints(track, ai_log));
+        } catch (IllegalStateException e) { // Copier.CopyException included
+            logger.log(Level.WARNING, "rewind is off", e);
+            return new NoRewind(String.valueOf(e.getMessage()));
+        }
     }
 
     /** What every checkpoint shares with the live world instead of copying: the track and the AI log writers. */

@@ -22,9 +22,6 @@ import org.jspecify.annotations.Nullable;
 import java.io.IOException;
 import java.io.Writer;
 import java.lang.management.ManagementFactory;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -33,7 +30,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.function.IntFunction;
 
 /**
  * The rewind's fidelity test ({@code ./aisim.sh rewindcheck}): plays a recorded harness game exactly as the harness
@@ -456,34 +452,10 @@ public final class RewindCheck {
         }
     }
 
-    /**
-     * Binds the AI log handles to {@code lines} for every slot: through {@code AiLog.beginWriters} (the viewer's way)
-     * when the engine has it, else as file handles whose sink is set to it, so they never open their file.
-     */
+    /** Binds the AI log handles of every slot to {@code lines}, the viewer's way ({@code AiLog.beginWriters}). */
     private static @NonNull String beginAiLogs(@NonNull World world, @NonNull Writer lines, @NonNull String header) {
-        try {
-            Method begin_writers = AiLog.class.getMethod("beginWriters", World.class, IntFunction.class,
-                    String.class);
-            IntFunction<Writer> writer_of_slot = _ -> lines;
-            begin_writers.invoke(null, world, writer_of_slot, header);
-            return "AiLog.beginWriters";
-        } catch (NoSuchMethodException e) {
-            AiLog.begin(world, slot -> Path.of("rewindcheck-unused-" + slot + ".log"), header);
-            try {
-                Field handles_field = AiLog.class.getDeclaredField("handles");
-                Field sink = AiLog.class.getDeclaredField("sink");
-                handles_field.setAccessible(true);
-                sink.setAccessible(true);
-                for (Object handle : (Object[]) handles_field.get(null)) {
-                    sink.set(handle, lines);
-                }
-            } catch (ReflectiveOperationException e2) {
-                throw new IllegalStateException(e2);
-            }
-            return "file handles writing to the check's writer (no AiLog.beginWriters in this build)";
-        } catch (IllegalAccessException | InvocationTargetException e) {
-            throw new IllegalStateException(e);
-        }
+        AiLog.beginWriters(world, _ -> lines, header);
+        return "AiLog.beginWriters";
     }
 
     /**
