@@ -1627,3 +1627,25 @@ retreat through the same pass (only the attack role is watched).
   all off. Highest N beaten: 16 (3 of 1,000 fresh seeds, replay VERIFIED). cur8 benchmark: N=13 1.7 %, N=14 0.36 %, N=15
   0.25 % (plus 1 of 500 fresh), N=16 0.3 % on 8001..9000. Open leads: hopdraw adoption; freeze path (c) audit (0 of 633
   wins); the field-speed finding (wins cluster on slow fields: nothing to exploit found yet).
+
+### Play-test feedback round (2026-09-30, user played online at ludicrous)
+
+- **Game speed bug.** The user's online game (replay 12550 on tribaltrouble.org: 2 humans + gauntlet vs 6 Hards, large
+  map, 20 starting units) ran at ludicrous: its spectator stream stamps world ticks (PeerHub, every 5), and the freeze
+  target was out by tick 1200, i.e. 96 s at 80 ms a tick. World.tick runs the game-time pass with
+  getSecondsPerTick() (0.5 / 1 / 1.75 / 4 x the 20 ms tick at slow / normal / fast / ludicrous), while GauntletAI's
+  clock was ticks / 50: at ludicrous every period and timer ran 4x late in game time (shepherds from 8 game min,
+  re-plans every 12 s, the late fixes from 160 min) and the swing restart counted 0.02 s ticks against 0.08 s
+  animations (it fired a swing late, after the next swing had started: no gain, a voided swing). The stock AI counts
+  seconds (AI.shouldDoAction), so it was unaffected. Fix a9b85bae: the clock adds each tick's game time, the swing
+  restart counts the units' step, the 5-tick guards run every 5 normal ticks of game time. Harness: aisim --speed
+  (headless a2b585b5; harness times stay world ticks, so at ludicrous they are a quarter of game time).
+  N=6, normal speed, seeds 6001..6100: 87 of 100 for both builds, 100 of 100 games identical. **N=6 at ludicrous,
+  6001..6200: @cur8 93 W / 105 L, fixed 189 W / 10 L** (median win 49.5 -> 33.5 game min). Chickens by 20 game min:
+  ours 23 at normal, 9 at ludicrous with the old clock (iron 290 vs 215); each Hard ~9-11.
+- The humans' units: the AI only counts its own units and isEnemy players, so allied peons never enter its
+  thresholds. Stock waves target the nearest enemy unit if it is under 0.707 of the nearest enemy building
+  (AdvancedAI.findTarget), so allied peons parked near our base can pull waves there; in 12550 one human's 20 peons
+  stood 33 cells from our buildings all game (never died), the other's stayed at their start and vanished at ~7 game
+  min. Allying with the Hards instead would make the humans enemies of ours (counted in N, freeze and campaign
+  targets, needed for the win). Least influence: spectate, or park far from every start on our team.
