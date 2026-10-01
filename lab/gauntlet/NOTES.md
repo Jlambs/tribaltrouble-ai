@@ -1804,3 +1804,19 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   The flee alone did nothing at N=15; with the later towers and the sortie it does.
 - **cur11 adopted**: towers 3 from 300 s and 6 from 480 s, sortie_ratio 1.0, shepherd_flee_side. The defaults replay the
   explicit-param games (s6510 N=13, s6003 N=15). Over the N=13-16 blocks: W +62, survival up in every block.
+- **Timeout audit** (workflow, 4 diagnosticians + synthesis; 87 ludicrous timeouts on the tick builds, 53 seeds; plan in
+  the session scratchpad): 0.24 % of N>=13 games. Mechanisms: (M1) our fields forbid corner cuts the engine allows, so
+  pockets look sealed (stall, dead region, repeat; s6657 x4, s8462, s6206), and inDeadRegion's radius 2 falls inside a
+  7x7 building so the army cycles the sealed region's buildings for hours; (M2) wedged armies whose stall clocks are
+  reset (the calm retarget and setTarget call markCapProgress; tower kills at home count; stall_cap sits after the
+  engage returns): s6036, s8150, s6215; (M3) RETREAT never ends when 70 % cannot get home (s6409: 279 min); (M4) the
+  attack gate tests one building and counts other copies' parked masses within 60 cells; (M5) our own homeless remnant
+  (a shepherd locked for 5 h); (M6) wood/iron locks (pick_null_tree_unreachable >= 20k in 18 of the 87 vs 5 of 5364
+  wins); (M7) 47 real stalemates (fortresses at the cap, we are weaker). 16 rows are winnable positions spoiled by a
+  logic failure. Remnants across the 87: 17 lone chieftains, 54 homeless copies with a chieftain, 63 homeless with > 8
+  units and no chieftain (never launch again), 35 site-anchored.
+- **The user's pacify-then-strike idea**: the Hard launches only with NUM idle warriors (10, +5, max 40) and, from NUM 20,
+  only with an active chieftain, trained only in its quarters; a homeless copy past its second wave never attacks again.
+  Being built (off): decapitate (quarters of live copies first, move on once homeless and chieftain-less), the remnant
+  ladder (finish passive remnants late, isolated groups first), corner_fields + dead_region_reach + sealed_progress,
+  retreat_cap_ticks, stall_cap_keep, stall_engaged_ticks.
