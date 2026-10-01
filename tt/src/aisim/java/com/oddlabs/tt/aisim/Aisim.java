@@ -107,6 +107,8 @@ public final class Aisim {
                      it, growing and shrinking as it frees up or fills) --cpus N|P% (at most N or P% of the hardware
                      threads) --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
             GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
+                  --speed slow|normal|fast|ludicrous (the world's game speed; the harness counts world ticks, so at
+                  ludicrous a harness minute, --minutes included, is four game minutes)
                   --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.
@@ -117,7 +119,8 @@ public final class Aisim {
     /** Options that shape a map. */
     private static final Set<String> MAP_OPTIONS = Set.of("size", "terrain", "hills", "trees", "supplies", "map");
     /** Options that play and batch share: the players, the map's, how the game runs, and --stale-ok. */
-    private static final Set<String> GAME_OPTIONS = union(MAP_OPTIONS, "players", "minutes", "rng", "no-collapse",
+    private static final Set<String> GAME_OPTIONS = union(MAP_OPTIONS, "players", "minutes", "rng", "speed",
+            "no-collapse",
             "stop-when-a-out", "stale-ok");
     /**
      * The time limit in game minutes. A game that reaches it is a draw, so only beating every opponent wins; the
@@ -349,6 +352,12 @@ public final class Aisim {
         int minutes = options.integer("minutes", DEFAULT_MINUTES, 1, MAX_MINUTES);
         boolean collapse = !options.flag("no-collapse");
         boolean stop_when_a_out = options.flag("stop-when-a-out");
+        String speed_option = options.get("speed", "normal");
+        if (!Job.SPEEDS.contains(speed_option)) {
+            throw new UsageException("--speed is one of " + String.join(", ",
+                    Job.SPEEDS) + ", not '" + speed_option + "'");
+        }
+        String speed = speed_option.equals("normal") ? null : speed_option;
         List<Job> jobs = new ArrayList<>();
         for (Job.MapCode map : maps.maps()) {
             for (int side : sides) {
@@ -357,11 +366,11 @@ public final class Aisim {
                 jobs.add(new Job(run, key, map.seed(), side, lineup.text(), lineup.seats(side), map.size(),
                         map.terrain(), map.hills(), map.trees(), map.supplies(), minutes, rng, collapse,
                         stop_when_a_out,
-                        files + ".jsonl", logs != null ? files : null));
+                        files + ".jsonl", logs != null ? files : null, speed));
             }
         }
         noteCrowding(lineup, maps);
-        String config = maps.description() + " | " + minutes + " min" + (rng == null ? "" : " | rng " + rng) + (collapse ? "" : " | no collapse") + (stop_when_a_out ? " | stop when A is out" : "");
+        String config = maps.description() + " | " + minutes + " min" + (rng == null ? "" : " | rng " + rng) + (collapse ? "" : " | no collapse") + (stop_when_a_out ? " | stop when A is out" : "") + (speed == null ? "" : " | " + speed + " speed");
         return new Run(new Batch.Setup(lineup.text(), lineup.masked(), config, logs), jobs);
     }
 

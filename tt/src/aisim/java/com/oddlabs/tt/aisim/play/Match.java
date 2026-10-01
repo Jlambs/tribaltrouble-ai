@@ -624,6 +624,7 @@ final class Match {
         row.put("mapcode", job.mapcode());
         row.put("minutes", job.minutes());
         row.put("rng", job.rng());
+        row.put("speed", job.speed());
         row.put("collapse", job.collapse());
         row.put("snap", snapshot);
         row.put("perturb", perturb);
