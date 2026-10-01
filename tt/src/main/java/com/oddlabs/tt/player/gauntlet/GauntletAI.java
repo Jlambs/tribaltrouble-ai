@@ -3,6 +3,7 @@ package com.oddlabs.tt.player.gauntlet;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.AiParams;
 import com.oddlabs.tt.aikit.GameTime;
+import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
@@ -54,6 +55,11 @@ public final class GauntletAI extends AI {
     private @Nullable Freeze freeze;
 
     private int ticks;
+    /**
+     * Game time in normal-speed ticks: each world tick adds the game time it covers over the normal tick's (1 at normal
+     * speed, 4 at ludicrous), so that every period and timer of this AI counts game time at any game speed.
+     */
+    private double game_ticks;
     private float time;
     private float next_intel;
     private float next_economy = .25f;
@@ -93,17 +99,22 @@ public final class GauntletAI extends AI {
         if (!Globals.run_ai)
             return;
         ticks++;
-        time = ticks / (float) GameTime.TICKS_PER_SECOND;
+        double before = game_ticks;
+        game_ticks += getOwner().getWorld().getSecondsPerTick() / AnimationManager.ANIMATION_SECONDS_PER_TICK;
+        time = (float) game_ticks / GameTime.TICKS_PER_SECOND;
+        // the world's game-time pass of this tick, as the units animate it (World.tick)
+        float step = getOwner().getWorld().getSecondsPerTick() * t / AnimationManager.ANIMATION_SECONDS_PER_TICK;
         try {
             // weapon_sync looks at the armory before any order of this tick and plans after all of them
             if (initialized && strategy.weapon_sync)
                 economy().weaponSyncObserve();
-            reflexes.tick();
+            reflexes.tick(step);
             if (initialized) {
                 military().towerReflex();
                 military().armyReflex();
             }
-            if (initialized && ticks % 5 == 0) {
+            // every 5 normal ticks of game time, or every tick at a speed whose ticks are longer
+            if (initialized && Math.floor(game_ticks / 5) > Math.floor(before / 5)) {
                 shepherd().guard();
                 lures().guard();
                 dodges().guard();
@@ -288,6 +299,7 @@ public final class GauntletAI extends AI {
         return getOwner();
     }
 
+    /** Game seconds since the start, at any game speed. */
     float time() {
         return time;
     }

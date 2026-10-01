@@ -1,6 +1,5 @@
 package com.oddlabs.tt.player.gauntlet;
 
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.landscape.LandscapeTarget;
 import com.oddlabs.tt.model.Abilities;
 import com.oddlabs.tt.model.Action;
@@ -55,9 +54,6 @@ import java.util.Map;
  * deferred by the engine, so each tower is ordered only on the tick its StunController becomes current.
  */
 final class Reflexes {
-    /** Seconds a world tick lasts, as HarvestBehaviour counts them. */
-    private static final float TICK_SECONDS = 1f / GameTime.TICKS_PER_SECOND;
-
     private final @NonNull GauntletAI ai;
     private final boolean swing_restart;
     private final boolean stun_cancel;
@@ -66,8 +62,13 @@ final class Reflexes {
     private final Map<@NonNull Building, @NonNull Controller> tower_last = new LinkedHashMap<>();
     /** The swing each harvesting peon is in, and the tick we first saw it. */
     private final Map<@NonNull Unit, @NonNull Swing> swings = new LinkedHashMap<>();
-    /** Ticks from the start of a swing to its hit, per release time (the peons of one race share it). */
+    /**
+     * Ticks from the start of a swing to its hit, per release time (the peons of one race share it), at the game time a
+     * world tick covers ({@link #release_step}; the counts are redone when the game speed changes).
+     */
     private final Map<Float, Integer> release_ticks = new LinkedHashMap<>();
+    /** The game seconds of a world tick, as HarvestBehaviour counts them, that {@link #release_ticks} is for. */
+    private float release_step;
     private final List<@NonNull Unit> due = new ArrayList<>();
     private final List<@NonNull Unit> stunned = new ArrayList<>();
     private int tick;
@@ -89,10 +90,15 @@ final class Reflexes {
         this.tower_unstun = tower_unstun;
     }
 
-    void tick() {
+    /** {@code step}: the game seconds this world tick covers, as the units animate it. */
+    void tick(float step) {
         if (!swing_restart && !stun_cancel && !tower_unstun)
             return;
         tick++;
+        if (step != release_step) {
+            release_ticks.clear();
+            release_step = step;
+        }
         if (tower_unstun)
             towerUnstun();
         Player me = ai.owner();
@@ -134,7 +140,7 @@ final class Reflexes {
             float sum = 0f;
             int ticks = 0;
             while (sum <= release) {
-                sum += TICK_SECONDS;
+                sum += release_step;
                 ticks++;
             }
             n = ticks;
