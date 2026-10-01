@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -4927,5 +4928,250 @@ final class Military {
                 manned++;
         return " park=" + out + "/" + in + " man=" + manned + "/" + intel.towers.size() + " pb=" + java.util.Arrays.toString(
                 by_building).replace(" ", "") + " pt=" + java.util.Arrays.toString(by_tower).replace(" ", "");
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Watch view (AiView, GauntletAI.paint): reads fields only. No orders, log lines or counters, no Intel.enemyIndex
+    // or distance field, nothing added to or removed from a collection; the maps are walked, never looked up, so no
+    // unit's identity hash is drawn either.
+
+    /** Cells around threat_x, threat_y within which updateThreat sums the strongest group of threats. */
+    private static final int THREAT_GROUP_CELLS = 15;
+
+    /** The STAT line's military essentials: the mode, the armies with their strength, the threat. */
+    @NonNull
+    String summary() {
+        int[] n = new int[Role.values().length];
+        float[] s = new float[n.length];
+        tally(n, s, new long[n.length][3]);
+        int atk = Role.ATTACK.ordinal();
+        int home = Role.ARMY.ordinal();
+        // the STAT line's words: atk the attacking army, army the home army, with their strength
+        StringBuilder sb = new StringBuilder(mode.name()).append(':');
+        if (n[atk] > 0)
+            sb.append(String.format(Locale.ROOT, " atk %d (%.0f),", n[atk], s[atk]));
+        sb.append(String.format(Locale.ROOT, " army %d (%.0f)", n[home], s[home]));
+        if (threat_level > 0)
+            sb.append(String.format(Locale.ROOT, " | threat %d (%.0f)", threat_level, threat_strength));
+        return sb.toString();
+    }
+
+    /** The living units of each role, their value, and the sum of their cells (WatchView.add), by role ordinal. */
+    private void tally(int @NonNull [] n, float @NonNull [] s, long @NonNull [] @NonNull [] sums) {
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            if (u.isDead())
+                continue;
+            int r = e.getValue().ordinal();
+            n[r]++;
+            s[r] += Combat.value(u);
+            WatchView.add(sums[r], u);
+        }
+    }
+
+    /**
+     * Layer "army": the staging point (and the escort spot the home army guards), the campaign target with a line to
+     * it from the staging point while mustering or from the attacking army's centre, that centre with the reach the
+     * attack weighs (ENGAGE_RADIUS) and its march waypoint (or, in a retreat, its way back to the staging point), the
+     * reinforcements, the raid, the chieftain hunt and the focus copy. Layer "threat": the strongest group threatening
+     * the base, coloured by level. Status lines army, target and threat.
+     */
+    void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        Role[] all = Role.values();
+        int[] n = new int[all.length];
+        float[] s = new float[all.length];
+        long[][] sums = new long[all.length][3];
+        tally(n, s, sums);
+        int atk = Role.ATTACK.ordinal();
+        float now = ai.time();
+        boolean escorting = mode == Mode.HOME && now - escort_time < 3f;
+        canvas.status("army", armyText(n, s, now, escorting));
+        Selectable<?> t = target;
+        Player focus = focus_owner;
+        String target_text = t == null ? "none" : WatchView.what(t) + (strike ? " (strike on an intruder)" : "");
+        if (focus != null)
+            target_text += "; focus " + WatchView.name(focus);
+        canvas.status("target", target_text);
+
+        String layer = WatchView.ARMY;
+        canvas.mark(layer, staging_x, staging_y, WatchView.STAGING, "staging");
+        if (escorting) {
+            canvas.mark(layer, escort_x, escort_y, WatchView.ESCORT, "escort");
+            canvas.line(layer, staging_x, staging_y, escort_x, escort_y, WatchView.ESCORT);
+        }
+        int[] centre = WatchView.centre(sums[atk]);
+        if (t != null) {
+            String what = "target: " + WatchView.name(t.getOwner()) + " " + WatchView.kind(t);
+            canvas.mark(layer, t.getGridX(), t.getGridY(), WatchView.TARGET, what + (strike ? " (strike)" : ""));
+            // retreating, the attack keeps its target while the army walks back to the staging point
+            int[] from = mode == Mode.ATTACK && centre != null ? centre : new int[]{staging_x, staging_y};
+            if (mode != Mode.RETREAT)
+                canvas.line(layer, from[0], from[1], t.getGridX(), t.getGridY(), WatchView.MARCH);
+        }
+        if (centre != null) {
+            String army = String.format(Locale.ROOT, "army %d (%.1f)", n[atk], s[atk]);
+            canvas.mark(layer, centre[0], centre[1], WatchView.ARMY_CENTRE,
+                    army + (mode == Mode.RETREAT ? " retreating" : ""));
+            canvas.circle(layer, centre[0], centre[1], ENGAGE_RADIUS, WatchView.ARMY_CENTRE);
+            if (mode == Mode.RETREAT)
+                canvas.line(layer, centre[0], centre[1], staging_x, staging_y, WatchView.RETREAT);
+            int[] wp = march_wp;
+            if (wp != null && now - march_calm_time < 2f)
+                canvas.mark(layer, wp[0], wp[1], WatchView.MARCH, "waypoint");
+        }
+        int[] reinforcing = WatchView.centre(sums[Role.REINFORCE.ordinal()]);
+        if (reinforcing != null) {
+            String label = "reinforcing " + n[Role.REINFORCE.ordinal()];
+            canvas.mark(layer, reinforcing[0], reinforcing[1], WatchView.REINFORCE, label);
+            if (centre != null)
+                canvas.line(layer, reinforcing[0], reinforcing[1], centre[0], centre[1], WatchView.REINFORCE);
+        }
+        int[] raiding = WatchView.centre(sums[Role.RAID.ordinal()]);
+        if (raiding != null) {
+            canvas.mark(layer, raid_x, raid_y, WatchView.RAID, "raid target");
+            canvas.mark(layer, raiding[0], raiding[1], WatchView.RAID, "raid " + n[Role.RAID.ordinal()]);
+            canvas.line(layer, raiding[0], raiding[1], raid_x, raid_y, WatchView.RAID);
+        }
+        int[] hunting = WatchView.centre(sums[Role.CHASE.ordinal()]);
+        Selectable<?> prey = chase_target;
+        if (hunting != null && prey != null) {
+            String label = "hunt: " + WatchView.name(prey.getOwner()) + " " + WatchView.kind(prey);
+            canvas.mark(layer, prey.getGridX(), prey.getGridY(), WatchView.HUNT, label);
+            canvas.line(layer, hunting[0], hunting[1], prey.getGridX(), prey.getGridY(), WatchView.HUNT);
+        }
+        if (focus != null) {
+            int fx = com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(focus.getStartX());
+            int fy = com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(focus.getStartY());
+            canvas.mark(layer, fx, fy, WatchView.FOCUS, "focus: " + WatchView.name(focus));
+        }
+
+        if (threat_level > 0) {
+            int rgb = threat_level >= 2 ? WatchView.THREAT_HIGH : WatchView.THREAT_LOW;
+            String label = String.format(Locale.ROOT, "threat %d: %.1f", threat_level, threat_strength);
+            canvas.circle(WatchView.THREAT, threat_x, threat_y, THREAT_GROUP_CELLS, rgb);
+            canvas.mark(WatchView.THREAT, threat_x, threat_y, rgb, label);
+        }
+        canvas.status("threat", threatText());
+    }
+
+    /** The army status line: the mode, the units of each role with the strength of the main two, and why it waits. */
+    private @NonNull String armyText(int @NonNull [] n, float @NonNull [] s, float now, boolean escorting) {
+        int atk = Role.ATTACK.ordinal();
+        int home = Role.ARMY.ordinal();
+        StringBuilder sb = new StringBuilder(mode.name()).append(": ");
+        if (mode == Mode.ATTACK || mode == Mode.RETREAT || n[atk] > 0)
+            sb.append(String.format(Locale.ROOT, "%d attacking (%.1f), ", n[atk], s[atk]));
+        sb.append(String.format(Locale.ROOT, "%d home (%.1f)", n[home], s[home]));
+        Role[] others = {Role.REINFORCE, Role.RAID, Role.CHASE, Role.TOWER};
+        String[] doing = {" reinforcing", " raiding", " hunting", " to towers"};
+        for (int i = 0; i < others.length; i++)
+            if (n[others[i].ordinal()] > 0)
+                sb.append(", ").append(n[others[i].ordinal()]).append(doing[i]);
+        if (mode == Mode.MUSTER)
+            sb.append(", mustering for ").append((int) (now - muster_start)).append(" s");
+        if (mode == Mode.HOME && next_wave_time > now)
+            sb.append(", next attack in ").append((int) (next_wave_time - now)).append(" s at the earliest");
+        if (escorting)
+            sb.append(", guarding builders");
+        if (sweep_until >= 0f)
+            sb.append(", sweeping the parked ring");
+        if (siege_start >= 0f)
+            sb.append(", besieging towers");
+        if (attack_caution != 1f)
+            sb.append(String.format(Locale.ROOT, ", caution %.2f", attack_caution));
+        return sb.toString();
+    }
+
+    /** The threat status line: level, enemies, strength (and the part in the base), whether defenders engage. */
+    private @NonNull String threatText() {
+        int raiding = 0;
+        for (Unit e : raiders)
+            if (!e.isDead())
+                raiding++;
+        String raid = raiding > 0 ? ", " + raiding + " peons raiding" : "";
+        if (threat_level == 0)
+            return "none" + raid;
+        int enemies = 0;
+        for (Unit e : threats)
+            if (!e.isDead())
+                enemies++;
+        String engage = engage_state > 0 ? "engaged" : engage_state < 0 ? "falling back" : "new";
+        String strength = WatchView.decimal(threat_strength) + " at " + WatchView.at(threat_x, threat_y);
+        String base = " (" + WatchView.decimal(base_threat_strength) + " in the base), ";
+        return "level " + threat_level + ": " + enemies + " enemies, " + strength + base + engage + raid;
+    }
+
+    /** What a warrior of ours is doing for the military (watch view), or null when it has no role. */
+    @Nullable
+    String describe(@NonNull Unit u) {
+        Role role = null;
+        for (Map.Entry<Unit, Role> e : roles.entrySet())
+            if (e.getKey() == u) {
+                role = e.getValue();
+                break;
+            }
+        if (role == null) {
+            for (Map.Entry<Unit, Float> e : lent.entrySet())
+                if (e.getKey() == u)
+                    return "lent to the economy to raze a building of ours";
+            return null;
+        }
+        StringBuilder sb = new StringBuilder(roleText(role));
+        for (Map.Entry<Unit, Building> e : tower_assignments.entrySet())
+            if (e.getKey() == u) {
+                sb.append(" at ").append(WatchView.at(e.getValue().getGridX(), e.getValue().getGridY()));
+                break;
+            }
+        for (Map.Entry<Unit, Unit> e : hunt_targets.entrySet())
+            if (e.getKey() == u) {
+                if (!e.getValue().isDead())
+                    sb.append(", after ").append(WatchView.what(e.getValue()));
+                break;
+            }
+        for (Map.Entry<Unit, WarriorState> e : ai.intel().warrior_states.entrySet())
+            if (e.getKey() == u) {
+                sb.append("; ").append(e.getValue().name().toLowerCase(Locale.ROOT).replace('_', ' '));
+                break;
+            }
+        return sb.toString();
+    }
+
+    /** A role's job in words: what the army, the attack, a raid or a hunt is after. */
+    private @NonNull String roleText(@NonNull Role role) {
+        Selectable<?> t = target;
+        Selectable<?> prey = chase_target;
+        String on = t != null ? " on " + WatchView.what(t) : "";
+        return switch (role) {
+            case ARMY -> {
+                if (threat_level > 0)
+                    yield "home army, the base is under threat";
+                if (mode == Mode.HOME && ai.time() - escort_time < 3f)
+                    yield "home army, guarding builders at " + WatchView.at(escort_x, escort_y);
+                yield "home army, staging at " + WatchView.at(staging_x, staging_y);
+            }
+            case TOWER -> "on its way into a tower";
+            case ATTACK -> "attack" + on;
+            case REINFORCE -> "reinforcing the attack" + on;
+            case RAID -> "raid on peons at " + WatchView.at(raid_x, raid_y);
+            case CHASE -> "hunt" + (prey != null ? ": " + WatchView.what(prey) : "");
+        };
+    }
+
+    /** What a tower of ours does for the military (watch view): the gunner on its way, the target it aims at. */
+    @Nullable
+    String describe(@NonNull Building b) {
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<Unit, Building> e : tower_assignments.entrySet())
+            if (e.getValue() == b && !e.getKey().isDead())
+                parts.add("a gunner on its way");
+        for (Map.Entry<Building, Unit> e : tower_targets.entrySet())
+            if (e.getKey() == b && !e.getValue().isDead())
+                parts.add("aims at " + WatchView.what(e.getValue()));
+        for (Building c : creep_towers)
+            if (c == b)
+                parts.add("sapper tower by an enemy building");
+        if (creep_site == b)
+            parts.add("sapper tower going up");
+        return parts.isEmpty() ? null : String.join(", ", parts);
     }
 }

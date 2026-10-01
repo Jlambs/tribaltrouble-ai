@@ -35,6 +35,7 @@ import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -681,12 +682,32 @@ final class Economy {
 
         @NonNull
         String describe() {
-            String name = switch (type) {
+            return name() + "#" + id + " at " + site.x + "," + site.y;
+        }
+
+        private @NonNull String name() {
+            return switch (type) {
                 case Race.BUILDING_QUARTERS -> "quarters";
                 case Race.BUILDING_ARMORY -> "armory";
                 default -> sniper ? "sniper tower" : forward ? "forward tower" : "tower";
             };
-            return name + "#" + id + " at " + site.x + "," + site.y;
+        }
+
+        /** The project and why it is built, for the watch view: "armory#4 relocation", "quarters#0 first". */
+        @NonNull
+        String label(boolean expansion) {
+            StringBuilder sb = new StringBuilder(name()).append('#').append(id);
+            if (first)
+                sb.append(" first");
+            if (use_scout)
+                sb.append(" by the scout");
+            if (expansion)
+                sb.append(" expansion");
+            if (reloc)
+                sb.append(" relocation");
+            if (lock)
+                sb.append(" out of the wood lock");
+            return sb.toString();
         }
     }
 
@@ -4972,5 +4993,190 @@ final class Economy {
         }
         sb.append(" trx=").append(near).append('/').append(far).append('/').append(transfer);
         return sb.toString();
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Watch view (AiView, GauntletAI.paint): reads fields only. No orders, log lines or counters, no distance field,
+    // nothing added to or removed from a collection; the maps are walked, never looked up.
+
+    /** The STAT line's economy essentials: peons, armory workers, finished buildings. */
+    @NonNull
+    String summary() {
+        Intel intel = ai.intel();
+        Building armory = intel.armory();
+        String workers = "";
+        if (armory != null && !armory.isDead() && armory.getUnitContainer() != null)
+            workers = ", W " + armory.getUnitContainer().getNumSupplies() + "/" + want_workers;
+        String buildings = " | Q" + intel.quarters.size() + " A" + intel.armories.size() + " T" + intel.towers.size();
+        return "peons " + intel.peons.size() + workers + buildings;
+    }
+
+    /**
+     * Layer "economy": each building project at its site, labelled with what it is for and how far it got (planned,
+     * placer walking, placed and how much built, vetoed by a threat), the primary armory, the expansion armory and the
+     * buildings being evacuated. Status lines peons (gatherers against what the economy wants, then the rest by
+     * state), armory and buildings.
+     */
+    void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        Intel intel = ai.intel();
+        float now = ai.time();
+        String layer = WatchView.ECONOMY;
+        int placed = 0;
+        int vetoed = 0;
+        for (Project p : projects) {
+            Building b = p.building;
+            boolean alive = b != null && !b.isDead();
+            String state;
+            int rgb;
+            if (alive && b.isPlaced()) {
+                placed++;
+                state = String.format(Locale.ROOT, "placed, %d%% built", buildPercent(b));
+                rgb = WatchView.PLACED;
+            } else if (p.veto_since >= 0f) {
+                vetoed++;
+                state = String.format(Locale.ROOT, "vetoed by a threat for %d s", (int) (now - p.veto_since));
+                rgb = WatchView.VETOED;
+            } else if (alive) {
+                state = "placer walking";
+                rgb = WatchView.CARRIED;
+            } else {
+                state = "planned";
+                rgb = WatchView.PLANNED;
+            }
+            canvas.mark(layer, p.site.x, p.site.y, rgb, p.label(p == expansion_project) + ": " + state);
+        }
+        Building primary = intel.armory();
+        if (primary != null && !primary.isDead())
+            canvas.mark(layer, primary.getGridX(), primary.getGridY(), WatchView.PRIMARY, "primary armory");
+        Building expanded = expansion;
+        if (expanded != null && !expanded.isDead() && expanded != primary) {
+            String label = expanded.isComplete() ? "expansion armory" : "expansion armory site";
+            canvas.mark(layer, expanded.getGridX(), expanded.getGridY(), WatchView.EXPANSION, label);
+        }
+        for (Map.Entry<Building, Float> e : evacuating.entrySet()) {
+            Building b = e.getKey();
+            String label = "evacuating for " + (int) (now - e.getValue()) + " s";
+            if (!b.isDead())
+                canvas.mark(layer, b.getGridX(), b.getGridY(), WatchView.EVACUATING, label);
+        }
+        canvas.status("peons", peonText());
+        canvas.status("armory", armoryText(primary));
+        StringBuilder sb = new StringBuilder();
+        sb.append('Q').append(intel.quarters.size()).append('+').append(intel.quarters_sites.size());
+        sb.append(" A").append(intel.armories.size()).append('+').append(intel.armory_sites.size());
+        sb.append(" T").append(intel.towers.size()).append('+').append(intel.tower_sites.size());
+        sb.append("; ").append(projects.size()).append(" projects, ").append(placed).append(" placed, ");
+        sb.append(vetoed).append(" vetoed");
+        canvas.status("buildings", sb.toString());
+    }
+
+    /** The peons status line: each kind of gatherer against what allocatePeons wants, then the other states. */
+    private @NonNull String peonText() {
+        Intel intel = ai.intel();
+        int[] n = new int[PeonState.values().length];
+        for (PeonState s : intel.peon_states.values())
+            n[s.ordinal()]++;
+        StringBuilder sb = new StringBuilder().append(intel.peons.size()).append(':');
+        sb.append(" tree ").append(n[PeonState.GATHER_TREE.ordinal()]).append('/').append(want_tree);
+        sb.append(", iron ").append(n[PeonState.GATHER_IRON.ordinal()]).append('/').append(want_iron);
+        sb.append(", rock ").append(n[PeonState.GATHER_ROCK.ordinal()]).append('/').append(want_rock);
+        sb.append(", chicken ").append(n[PeonState.GATHER_CHICKEN.ordinal()]).append('/').append(want_chicken);
+        for (PeonState s : PeonState.values())
+            if (n[s.ordinal()] > 0 && !s.name().startsWith("GATHER_"))
+                sb.append(", ").append(s.name().toLowerCase(Locale.ROOT)).append(' ').append(n[s.ordinal()]);
+        return sb.toString();
+    }
+
+    /** How much of a placed site is built, in percent. */
+    private static int buildPercent(@NonNull Building b) {
+        int max = b.getTemplate().getMaxHitPoints();
+        return b instanceof com.oddlabs.tt.model.LandBuilding land && max > 0 ? land.getBuildPoints() * 100 / max : 0;
+    }
+
+    /** The primary armory's status line: workers against the wanted number, its stock and weapons, the cycles. */
+    private @NonNull String armoryText(@Nullable Building armory) {
+        if (armory == null || armory.isDead() || armory.getUnitContainer() == null)
+            return "none";
+        StringBuilder sb = new StringBuilder("at ").append(WatchView.at(armory.getGridX(), armory.getGridY()));
+        sb.append(": workers ").append(armory.getUnitContainer().getNumSupplies()).append('/').append(want_workers);
+        sb.append("; stock wood ").append(held(armory, TreeSupply.class));
+        sb.append(", rock ").append(held(armory, RockSupply.class));
+        sb.append(", iron ").append(held(armory, IronSupply.class));
+        sb.append(", chicken ").append(held(armory, RubberSupply.class));
+        sb.append("; axes rock ").append(held(armory, RockAxeWeapon.class));
+        sb.append(", iron ").append(held(armory, IronAxeWeapon.class));
+        sb.append(", chicken ").append(held(armory, RubberAxeWeapon.class));
+        sb.append(String.format(Locale.ROOT, "; cycles tree %.0f s, iron %.0f s", tree_cycle, iron_cycle));
+        return sb.toString();
+    }
+
+    /** What a living building holds of one kind, 0 when it has no container for it. */
+    private static int held(@NonNull Building b, @NonNull Class<?> kind) {
+        com.oddlabs.tt.model.SupplyContainer c = b.getSupplyContainer(kind);
+        return c == null ? 0 : c.getNumSupplies();
+    }
+
+    /** What a peon of ours does for the economy (watch view): its state, the site or supply it works and for whom. */
+    @NonNull
+    String describePeon(@NonNull Unit u, @NonNull PeonState state) {
+        Intel intel = ai.intel();
+        StringBuilder sb = new StringBuilder(u == scout ? "scout, " : "");
+        sb.append(state.name().toLowerCase(Locale.ROOT).replace('_', ' '));
+        for (Map.Entry<Unit, Building> e : intel.builder_sites.entrySet())
+            if (e.getKey() == u) {
+                Building b = e.getValue();
+                sb.append(" the ").append(WatchView.kind(b)).append(" at ").append(WatchView.at(b.getGridX(),
+                        b.getGridY()));
+                for (Project p : projects)
+                    if (p.building == b)
+                        sb.append(" (").append(p.label(p == expansion_project)).append(')');
+                break;
+            }
+        if (!state.name().startsWith("GATHER_"))
+            return sb.toString(); // gather_targets keeps a peon's last supply after it stopped gathering
+        for (Map.Entry<Unit, Supply> e : gather_targets.entrySet())
+            if (e.getKey() == u) {
+                sb.append(" at ").append(WatchView.at(e.getValue().getGridX(), e.getValue().getGridY()));
+                break;
+            }
+        for (Map.Entry<Unit, @Nullable Building> e : intel.gather_buildings.entrySet())
+            if (e.getKey() == u) {
+                Building b = e.getValue();
+                if (b != null)
+                    sb.append(" for the ").append(WatchView.kind(b)).append(" at ").append(WatchView.at(b.getGridX(),
+                            b.getGridY()));
+                break;
+            }
+        return sb.toString();
+    }
+
+    /**
+     * What a building of ours is to the economy (watch view): its project, primary or expansion armory, forward or
+     * sniper tower, evacuation; null for nothing special.
+     */
+    @Nullable
+    String describe(@NonNull Building b) {
+        List<String> parts = new ArrayList<>();
+        for (Project p : projects)
+            if (p.building == b) {
+                String placed = p.placed_time >= 0f ? ", placed at " + (int) p.placed_time + " s" : "";
+                parts.add("project " + p.label(p == expansion_project) + placed);
+            }
+        if (b == ai.intel().armory() && !b.isDead() && b.getUnitContainer() != null) {
+            int workers = b.getUnitContainer().getNumSupplies();
+            parts.add("primary armory (new peons and gatherers go here), workers " + workers + "/" + want_workers);
+        }
+        if (b == expansion)
+            parts.add("expansion armory");
+        for (Building t : forward_towers)
+            if (t == b)
+                parts.add("forward tower by the enemy's gatherers");
+        for (Building t : sniper_towers)
+            if (t == b)
+                parts.add("sniper tower by parked enemies");
+        for (Map.Entry<Building, Float> e : evacuating.entrySet())
+            if (e.getKey() == b)
+                parts.add("evacuating for " + (int) (ai.time() - e.getValue()) + " s");
+        return parts.isEmpty() ? null : String.join(", ", parts);
     }
 }
