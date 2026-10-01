@@ -975,4 +975,120 @@ final class Shepherd {
                 best = Math.min(best, MapAnalysis.dist2(u.getGridX(), u.getGridY(), x, y));
         return best;
     }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Watch view (AiView, GauntletAI.paint): reads fields only; no orders, log lines, counters or changed state.
+
+    /**
+     * Layer "shepherds", for each copy's flock: the spot its next wave should be drawn to, the shepherd with a line to
+     * the spot, the copy's leader (its oldest idle warrior, whose cell the next wave starts from) with its idle
+     * warriors against the wave size, and while the copy's last wave walks a line from that wave's leader to where it
+     * goes. A copy about to launch (as many idle warriors as its wave size, as tend's shepherd_hold test counts them,
+     * worked out here whether or not shepherd_hold is on) has its spot and the leader's line to it in orange. Status
+     * line shepherds.
+     */
+    void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        String layer = WatchView.SHEPHERDS;
+        // The copies' idle warriors, counted once for every flock: index i counts flocks.get(i).copy's.
+        int[] idle = new int[flocks.size()];
+        for (Unit e : ai.intel().enemy_warriors) {
+            if (e.isDead() || !(e.getPrimaryController() instanceof IdleController))
+                continue;
+            for (int i = 0; i < flocks.size(); i++)
+                if (flocks.get(i).copy == e.getOwner())
+                    idle[i]++;
+        }
+        int shepherds = 0;
+        int at_spot = 0;
+        int fleeing = 0;
+        int imminent = 0;
+        int walking = 0;
+        int waves = 0;
+        int base_waves = 0;
+        for (int i = 0; i < flocks.size(); i++) {
+            Flock f = flocks.get(i);
+            String name = name(f);
+            int wave_size = Math.min(40, 10 + 5 * f.launches);
+            boolean launching = idle[i] >= wave_size && (wave_size < 20 || f.copy.hasActiveChieftain());
+            if (launching)
+                imminent++;
+            if (!f.home) {
+                waves += f.launches;
+                base_waves += f.base_waves;
+            }
+            boolean spot = f.spot_x >= 0;
+            if (spot) {
+                int rgb = launching ? WatchView.SPOT_IMMINENT : WatchView.SPOT;
+                canvas.mark(layer, f.spot_x, f.spot_y, rgb, "spot " + name + (launching ? ": wave imminent" : ""));
+            }
+            Unit s = f.shepherd;
+            if (s != null && !s.isDead()) {
+                shepherds++;
+                boolean there = f.last_state.equals("at");
+                if (there)
+                    at_spot++;
+                else if (f.last_state.equals("flee"))
+                    fleeing++;
+                String label = "shepherd " + name + " (" + f.last_state + ")";
+                canvas.mark(layer, s.getGridX(), s.getGridY(), WatchView.SHEPHERD, label);
+                if (spot && !there)
+                    canvas.line(layer, s.getGridX(), s.getGridY(), f.spot_x, f.spot_y, WatchView.SHEPHERD);
+            }
+            Unit leader = f.leader;
+            if (leader != null && !leader.isDead() && !f.home) {
+                String label = "leader " + name + ": " + idle[i] + "/" + wave_size + " idle, " + f.launches + " waves";
+                canvas.mark(layer, leader.getGridX(), leader.getGridY(), WatchView.LEADER, label);
+                if (spot && launching)
+                    canvas.line(layer, leader.getGridX(), leader.getGridY(), f.spot_x, f.spot_y,
+                            WatchView.SPOT_IMMINENT);
+            }
+            int[] to = waveTarget(f.prev_wave);
+            if (to != null) {
+                Unit wave = f.prev_wave;
+                walking++;
+                canvas.line(layer, wave.getGridX(), wave.getGridY(), to[0], to[1], WatchView.WAVE);
+                canvas.mark(layer, to[0], to[1], WatchView.WAVE, "wave of " + name);
+            }
+        }
+        if (flocks.isEmpty()) {
+            canvas.status("shepherds", "none yet");
+            return;
+        }
+        String posts = shepherds + " shepherds (" + at_spot + " at the spot, " + fleeing + " fleeing)";
+        String launch = imminent + " copies about to launch, " + walking + " waves walking";
+        String seen = waves + " waves seen, " + base_waves + " at our base";
+        canvas.status("shepherds", flocks.size() + " flocks: " + posts + "; " + launch + "; " + seen);
+    }
+
+    /**
+     * Where a wave led by {@code leader} walks, or null when it walks nowhere: tend's test of a launch, an aggressive
+     * walk to a cell more than 20 cells off (a warrior walking back to its own cell after a hunt is no wave).
+     */
+    private static int @Nullable [] waveTarget(@Nullable Unit leader) {
+        if (leader == null || leader.isDead() || !(leader.getPrimaryController() instanceof WalkController walk)
+                || !walk.isAgressive())
+            return null;
+        int tx = walk.getTarget().getGridX();
+        int ty = walk.getTarget().getGridY();
+        return MapAnalysis.dist2(tx, ty, leader.getGridX(), leader.getGridY()) > 20 * 20 ? new int[]{tx, ty} : null;
+    }
+
+    /** A shepherd's flock and what it is doing (watch view), or null when u shepherds no flock. */
+    @Nullable
+    String describe(@NonNull Unit u) {
+        for (Flock f : flocks) {
+            if (f.shepherd != u)
+                continue;
+            String doing = switch (f.last_state) {
+                case "at" -> "at the spot " + WatchView.at(f.spot_x, f.spot_y);
+                case "flee" -> "fleeing";
+                case "nospot" -> "no spot draws the wave";
+                default -> f.spot_x >= 0 ? "walking to the spot " + WatchView.at(f.spot_x, f.spot_y) : "walking";
+            };
+            String flock = "shepherd of " + name(f) + ": " + doing;
+            int ago = (int) (ai.time() - f.recruited);
+            return flock + ", recruited " + ago + " s ago, " + f.launches + " waves seen";
+        }
+        return null;
+    }
 }

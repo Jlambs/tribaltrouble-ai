@@ -2,6 +2,7 @@ package com.oddlabs.tt.player.gauntlet;
 
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.AiParams;
+import com.oddlabs.tt.aikit.AiView;
 import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.model.Action;
@@ -29,8 +30,11 @@ import java.util.List;
  * since, and why.
  *
  * <p>The AI only iterates insertion-ordered collections, so every peer of a multiplayer game makes the same decisions.
+ *
+ * <p>When its game is watched ({@code ./aisim.sh watch}) it shows its plans and the job of each of its units through
+ * {@link AiView}, reading its modules' state without changing it.
  */
-public final class GauntletAI extends AI {
+public final class GauntletAI extends AI implements AiView {
     private static final float INTEL_PERIOD = .5f;
     private static final float ECONOMY_PERIOD = 1f;
     private static final float PLAN_PERIOD = 3f;
@@ -386,5 +390,114 @@ public final class GauntletAI extends AI {
         if (economy == null || military == null)
             return "starting";
         return economy.debugStatus() + " " + military.debugStatus();
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Watch view (AiView): what a person watching the game sees of our thinking
+
+    /**
+     * Paints the plan of each module by layer (WatchView): army, threat, economy, shepherds, freeze, chief, and the
+     * status lines under a one-line summary. Called between ticks while the game is watched, never in harness games.
+     * It only reads fields: no orders, no log lines or counters, no random draws, no Intel.enemyIndex or distance
+     * fields (they fill caches), nothing added to or removed from any collection (lab/gauntlet/PaintCheck.java plays
+     * recorded games with it called on every tick and checks they stay the same). Before the first think the modules
+     * do not exist yet; a module whose paint throws (an engine getter asserting on a unit that just died) is skipped
+     * with a status line, and the others still paint.
+     */
+    @Override
+    public void paint(@NonNull Canvas canvas) {
+        Economy e = economy;
+        Military m = military;
+        Shepherd s = shepherd;
+        Freeze f = freeze;
+        Chieftain c = chieftain;
+        if (e == null || m == null || s == null || f == null || c == null) {
+            canvas.status("summary", "starting: before the first think");
+            return;
+        }
+        paintPart(canvas, "summary", () -> canvas.status("summary", m.summary() + " | " + e.summary()));
+        paintPart(canvas, "military", () -> m.paint(canvas));
+        paintPart(canvas, "economy", () -> e.paint(canvas));
+        paintPart(canvas, "shepherd", () -> s.paint(canvas));
+        paintPart(canvas, "freeze", () -> f.paint(canvas));
+        paintPart(canvas, "chieftain", () -> c.paint(canvas));
+    }
+
+    private static void paintPart(@NonNull Canvas canvas, @NonNull String module, @NonNull Runnable paint) {
+        try {
+            paint.run();
+        } catch (RuntimeException | AssertionError e) {
+            canvas.status("paint error", module + ": " + e);
+        }
+    }
+
+    /**
+     * The job of one of our units (shepherd of a copy, freeze squad, lure, sapper, the chieftain, a peon's work, a
+     * warrior's role) or buildings (project, primary or expansion armory, tower gunner and target, chieftain training),
+     * as paint, reading only; null for another player's objects, before the first think, or for nothing to add.
+     */
+    @Override
+    public @Nullable String describe(@NonNull Selectable<?> selectable) {
+        Economy e = economy;
+        Military m = military;
+        Shepherd s = shepherd;
+        Freeze f = freeze;
+        Chieftain c = chieftain;
+        if (selectable.getOwner() != getOwner() || e == null || m == null || s == null || f == null || c == null)
+            return null;
+        try {
+            if (selectable instanceof Unit u)
+                return describeUnit(u, e, m, s, f, c);
+            if (selectable instanceof Building b)
+                return describeBuilding(b, e, m, c);
+            return null;
+        } catch (RuntimeException | AssertionError ex) {
+            return "describe failed: " + ex;
+        }
+    }
+
+    private @Nullable String describeUnit(@NonNull Unit u, @NonNull Economy e, @NonNull Military m,
+            @NonNull Shepherd s, @NonNull Freeze f, @NonNull Chieftain c) {
+        String job = s.describe(u);
+        if (job == null)
+            job = f.describe(u);
+        if (job == null)
+            job = c.describe(u);
+        if (job != null)
+            return job;
+        if (contains(intel.lures, u))
+            return "lure: draws idle enemies into our towers' reach";
+        if (contains(intel.sappers, u))
+            return "sapper: follows the army to pull down enemy towers";
+        if (contains(intel.dodging, u))
+            return "running from hunters for cover";
+        if (contains(intel.shepherds, u))
+            return "shepherd";
+        for (java.util.Map.Entry<Unit, Intel.PeonState> entry : intel.peon_states.entrySet())
+            if (entry.getKey() == u)
+                return e.describePeon(u, entry.getValue());
+        return m.describe(u);
+    }
+
+    private @Nullable String describeBuilding(@NonNull Building b, @NonNull Economy e, @NonNull Military m,
+            @NonNull Chieftain c) {
+        List<String> parts = new ArrayList<>();
+        String economic = e.describe(b);
+        if (economic != null)
+            parts.add(economic);
+        String military_job = m.describe(b);
+        if (military_job != null)
+            parts.add(military_job);
+        if (c.trains(b))
+            parts.add("training the chieftain");
+        return parts.isEmpty() ? null : String.join("; ", parts);
+    }
+
+    /** Membership by identity, walking the set: a contains() would draw the unit's identity hash. */
+    private static boolean contains(@NonNull Iterable<@NonNull Unit> units, @NonNull Unit u) {
+        for (Unit v : units)
+            if (v == u)
+                return true;
+        return false;
     }
 }

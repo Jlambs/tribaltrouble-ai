@@ -8,6 +8,7 @@ import com.oddlabs.tt.model.Unit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+
 /**
  * Trains the chieftain once the economy can spare a quarters for it, keeps him near the fighting but out of reach,
  * and blows the stun (the viking toot) when it catches enough enemies, towers included, to decide the fight.
@@ -949,5 +950,76 @@ final class Chieftain {
         if (n == 0)
             return new int[]{nearest.getGridX(), nearest.getGridY()};
         return new int[]{(int) (sx / n), (int) (sy / n)};
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Watch view (AiView, GauntletAI.paint): reads fields only; no orders, log lines, counters or changed state.
+
+    /**
+     * Layer "chief": the chieftain with his hit points, a line to where he walks, the stun's reach (STUN_REACH) while a
+     * viking's stun is charged, and the enemies his last stun was cast at until checkCatch judges it; without him, the
+     * quarters training one. Status line chief.
+     */
+    void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        String layer = WatchView.CHIEF;
+        Unit chief = ai.intel().chieftain;
+        if (chief == null || chief.isDead()) {
+            Building q = trainingQuartersAlive();
+            String none = had_chief ? "none (lost)" : "none";
+            if (q != null)
+                canvas.mark(layer, q.getGridX(), q.getGridY(), WatchView.CHIEFTAIN, "training the chieftain");
+            canvas.status("chief", q != null ? "in training at " + WatchView.at(q.getGridX(), q.getGridY()) : none);
+            return;
+        }
+        boolean ready = chief.canDoMagic(magicIndex());
+        int x = chief.getGridX();
+        int y = chief.getGridY();
+        String label = "chief " + chief.getHitPoints() + " hp" + (ready ? ", " + spellName() + " ready" : "");
+        canvas.mark(layer, x, y, WatchView.CHIEFTAIN, label);
+        if (chief.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.WalkController walk)
+            canvas.line(layer, x, y, walk.getTarget().getGridX(), walk.getTarget().getGridY(), WatchView.CHIEF_WALK);
+        if (ready && isViking())
+            canvas.circle(layer, x, y, STUN_REACH, WatchView.STUN_REACH);
+        if (cast_check >= ai.time())
+            for (Unit e : cast_candidates)
+                if (!e.isDead())
+                    canvas.mark(layer, e.getGridX(), e.getGridY(), WatchView.STUN_REACH, "");
+        canvas.status("chief", chiefText(chief, ready));
+    }
+
+    /** The chieftain's status: hit points, where, his spell, the last cast and the stuns' catch rate. */
+    private @NonNull String chiefText(@NonNull Unit chief, boolean ready) {
+        String at = WatchView.at(chief.getGridX(), chief.getGridY()) + (Intel.isStunned(chief) ? ", stunned" : "");
+        String cast = last_cast < 0f ? "never cast" : "cast " + (int) (ai.time() - last_cast) + " s ago";
+        String spell = spellName() + (ready ? " ready" : " charging");
+        int caught = Math.round(100f * catch_rate);
+        return chief.getHitPoints() + " hp at " + at + "; " + spell + ", " + cast + "; stuns caught " + caught + "%";
+    }
+
+    private @NonNull String spellName() {
+        if (isViking())
+            return "stun";
+        return ai.strategy().native_lightning ? "lightning" : "poison";
+    }
+
+    /** trainingQuarters, without the getter's assertion on a quarters that died since the last update. */
+    private @Nullable Building trainingQuartersAlive() {
+        for (Building q : ai.intel().quarters)
+            if (!q.isDead() && q.getChieftainContainer() != null && q.getChieftainContainer().isTraining())
+                return q;
+        return null;
+    }
+
+    /** The chieftain's state (watch view), or null when u is not our chieftain. */
+    @Nullable
+    String describe(@NonNull Unit u) {
+        if (u != ai.intel().chieftain || u.isDead())
+            return null;
+        return "chieftain: " + chiefText(u, u.canDoMagic(magicIndex()));
+    }
+
+    /** Whether b is the quarters training our chieftain (watch view). */
+    boolean trains(@NonNull Building b) {
+        return b == trainingQuartersAlive();
     }
 }

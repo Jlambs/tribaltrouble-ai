@@ -18,6 +18,7 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * The freeze opening (freeze_open; archaeology item A1, re-scoped from the freeze strike of lab/gauntlet/NOTES.md
@@ -755,5 +756,66 @@ final class Freeze {
 
     private void log(java.util.function.@NonNull Supplier<String> message) {
         ai.aiLog().log("FREEZE", message);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // Watch view (AiView, GauntletAI.paint): reads fields only; no orders, log lines, counters or changed state.
+
+    /**
+     * Layer "freeze": each strike under way at its copy's start, labelled with its phase and squad, the squad's centre
+     * with a line to where it is headed (the copy's start, or the stage point outside its defense in path (c)), and
+     * each frozen copy's armory site, which nothing of ours may touch. Status line freeze.
+     */
+    void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        String layer = WatchView.FREEZE;
+        List<String> status = new ArrayList<>();
+        for (Strike s : strikes) {
+            Player t = s.target;
+            if (!s.active() || t == null)
+                continue;
+            String what = String.format(Locale.ROOT, "strike on %s: %s, %d peons", name(t), s.phase, s.squad.size());
+            status.add(what);
+            canvas.mark(layer, s.start_x, s.start_y, WatchView.STRIKE, what);
+            boolean staged = s.phase == Phase.STAGE || s.phase == Phase.WAIT || s.phase == Phase.CUT;
+            if (staged)
+                canvas.mark(layer, s.stage_x, s.stage_y, WatchView.STAGE, "stage by " + name(t));
+            int[] c = WatchView.centre(s.squad);
+            if (c != null) {
+                int gx = staged ? s.stage_x : s.start_x;
+                int gy = staged ? s.stage_y : s.start_y;
+                canvas.mark(layer, c[0], c[1], WatchView.STRIKE, "squad " + s.squad.size());
+                canvas.line(layer, c[0], c[1], gx, gy, WatchView.STRIKE);
+            }
+        }
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < frozen.size(); i++) {
+            String name = name(frozen.get(i));
+            names.add(name);
+            Building site = i < frozen_sites.size() ? frozen_sites.get(i) : null;
+            if (site != null) {
+                String label = "frozen " + name + (site.isDead() ? " (site gone)" : "");
+                canvas.mark(layer, site.getGridX(), site.getGridY(), WatchView.FROZEN, label);
+            }
+        }
+        if (!names.isEmpty())
+            status.add("frozen " + String.join(", ", names));
+        if (status.isEmpty())
+            status.add(strikes.isEmpty() ? "no strike" : "strikes over, none frozen");
+        canvas.status("freeze", String.join("; ", status));
+    }
+
+    /** What a peon of the freeze squad is doing (watch view), or null when u strikes nowhere. */
+    @Nullable
+    String describe(@NonNull Unit u) {
+        for (Strike s : strikes) {
+            Player t = s.target;
+            if (!s.active() || t == null)
+                continue;
+            for (Unit m : s.squad)
+                if (m == u)
+                    return String.format(Locale.ROOT, "freeze squad: strike on %s, %s, %d peons", name(t), s.phase,
+                            s.squad.size());
+        }
+        return null;
     }
 }
