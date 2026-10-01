@@ -66,6 +66,7 @@ final class WatchGame implements Clock.Listener {
     private final @NonNull Rewinder rewinder;
     private final @NonNull Verification verification;
     private final @NonNull Clock clock;
+    private final @NonNull AiOverlay overlay;
     private final @NonNull WatchHud hud;
     private final @NonNull WorldViewer viewer;
     private final @Nullable Selftest selftest;
@@ -116,6 +117,7 @@ final class WatchGame implements Clock.Listener {
         this.rewinder = newRewinder(world, file, track, ai_log);
 
         this.verification = new Verification(recording, track);
+        this.overlay = new AiOverlay(this);
         this.hud = new WatchHud(this);
         this.clock = new Clock(world, rewinder, this, this::menuPaused, end_tick);
         this.viewer = new WorldViewer(network, gui_root, parameters, new WatchInGameInfo(), generator, world_info,
@@ -192,7 +194,7 @@ final class WatchGame implements Clock.Listener {
 
     // ---------------------------------------------------------------- the frame
 
-    /** The frame task: the selftest's next step, the clock's ticks, then the HUD. */
+    /** The frame task: the selftest's next step, the clock's ticks, the AI's overlay (between ticks), the HUD. */
     void frame() {
         long now = System.nanoTime();
         try {
@@ -201,6 +203,7 @@ final class WatchGame implements Clock.Listener {
             }
             clock.frame(now);
             dropDeadPick();
+            overlay.frame();
             hud.frame(now);
         } catch (RuntimeException | AssertionError e) {
             if (selftest != null) {
@@ -326,6 +329,12 @@ final class WatchGame implements Clock.Listener {
     @NonNull
     AiLogBook aiLog() {
         return ai_log;
+    }
+
+    /** What the followed player's AI shows of its thinking (AiView). */
+    @NonNull
+    AiOverlay aiOverlay() {
+        return overlay;
     }
 
     @NonNull

@@ -31,6 +31,10 @@ import java.util.Locale;
  * <li>{@code map} flies up to the overview map (Space), where every player's objects are dots; {@code follow} or
  * {@code select} flies back down;</li>
  * <li>{@code follow:SLOT} moves the camera to player SLOT (as the {@code ]} key does);</li>
+ * <li>{@code overlay:MODE} shows the followed AI's overlay layers as the {@code A} key does: {@code all},
+ * {@code none}, {@code next}, {@code prev} or a layer's name; {@code overlay:report} only reports, and
+ * {@code overlay:check} fails when a paint failed or an AI that implements AiView was never painted. Each reports the
+ * overlay's state after the next frame;</li>
  * <li>{@code quit} ends the script (also the end of the steps).</li>
  * </ul>
  */
@@ -160,6 +164,15 @@ final class Selftest {
                 verify();
                 return true;
             }
+            case "overlay" -> {
+                if (!argument.equals("check") && !argument.equals("report")) {
+                    String error = game.aiOverlay().choose(argument);
+                    if (error != null) {
+                        throw new IllegalArgumentException(error);
+                    }
+                }
+                return false; // reported after a frame, which paints and draws in the mode chosen
+            }
             case "presim" -> {
                 String error = clock.presimulate();
                 if (error != null) {
@@ -208,6 +221,19 @@ final class Selftest {
             case "shot" -> {
                 Path file = out_dir.resolve(current.split(":", 2)[1].trim() + ".png");
                 Screenshot.save(file);
+                yield true;
+            }
+            case "overlay" -> {
+                AiOverlay overlay = game.aiOverlay();
+                log("     " + overlay.report());
+                if (current.split(":", 2)[1].trim().equals("check")) {
+                    if (overlay.failures() > 0) {
+                        throw new IllegalStateException(overlay.failures() + " paints failed");
+                    }
+                    if (overlay.paints() == 0 && overlay.followedPaints()) {
+                        throw new IllegalStateException("the followed AI implements AiView, but was never painted");
+                    }
+                }
                 yield true;
             }
             default -> true;

@@ -1,7 +1,9 @@
 package com.oddlabs.tt.viewer;
 
+import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.input.InputEvent;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.render.MatrixStack;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -25,4 +27,13 @@ public interface WatchControls {
 
     /** Whether a text field of the watch controls has the keyboard, so that typing does not move the camera. */
     boolean keyboardBlocked();
+
+    /**
+     * Draws the controls' own 3D overlay into the scene (an AI's painted plans), after the scene's objects, with the
+     * scene's camera and matrices. Called for every pass that draws the scene, the water's reflection pass included
+     * (its camera is the view's mirrored below the sea level): draw in the view's pass only.
+     */
+    default void render3D(@NonNull CameraState state, @NonNull MatrixStack model_view,
+            @NonNull MatrixStack projection) {
+    }
 }

@@ -2,6 +2,7 @@ package com.oddlabs.tt.player.chaos;
 
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.AiParams;
+import com.oddlabs.tt.aikit.AiView;
 import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Selectable;
@@ -10,21 +11,31 @@ import com.oddlabs.tt.player.AI;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.UnitInfo;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Test fixture for the harness itself (spec {@code chaos}); it lives in the aisim source set and never ships. It
  * builds nothing, so any real opponent beats it. Params: {@code crash=S} throws at second S, {@code hang=S} spins
  * forever at second S, {@code nondet=1} moves units in {@code classifyUnits()} group order (an identity-hash order,
  * so replays in other JVMs diverge), {@code err=1} reports a swallowed error every minute, {@code count=1} counts
- * seconds. docs/aisim.md uses it to check the harness.
+ * seconds. For the watch viewer's AI overlay ({@link AiView}), {@code paint=draw} paints a line from its start through
+ * the map's centre, a circle, and a labelled mark on every unit; {@code paint=throw} paints that, then fails every
+ * other game
+ * second (describe always fails); {@code paint=heavy} paints far more shapes than the overlay takes;
+ * {@code paint=cheat} paints and draws from the world's random generator, which changes the game: the viewer must show
+ * it as DIVERGED. docs/maintaining.md uses it to check the harness.
  */
-public final class ChaosAI extends AI {
+public final class ChaosAI extends AI implements AiView {
+    /** paint=heavy paints this many lines: more than the overlay draws. */
+    private static final int HEAVY_LINES = 6_000;
+
     private final @NonNull AiLog log;
     private final int crash_second;
     private final int hang_second;
     private final boolean nondeterministic;
     private final boolean report_errors;
     private final boolean count_seconds;
+    private final @NonNull String paint_mode;
     private int ticks;
 
     public ChaosAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String spec_params) {
@@ -35,6 +46,7 @@ public final class ChaosAI extends AI {
         nondeterministic = params.getBoolean("nondet", false);
         report_errors = params.getBoolean("err", false);
         count_seconds = params.getBoolean("count", false);
+        paint_mode = params.getString("paint", "");
         log = AiLog.of(owner);
         log.log("PARAM", params.done());
     }
@@ -71,5 +83,49 @@ public final class ChaosAI extends AI {
         if (second % 30 == 0) {
             log.log("STAT", () -> "second " + second + " units " + getOwner().getUnitCountContainer().getNumSupplies());
         }
+    }
+
+    @Override
+    public void paint(@NonNull Canvas canvas) {
+        if (paint_mode.isEmpty()) {
+            return;
+        }
+        int second = ticks / GameTime.TICKS_PER_SECOND;
+        canvas.status("second", String.valueOf(second));
+        canvas.status("paint", paint_mode);
+        int size = getOwner().getWorld().getHeightMap().getGridUnitsPerWorld();
+        int x = UnitGrid.toGridCoordinate(getOwner().getStartX());
+        int y = UnitGrid.toGridCoordinate(getOwner().getStartY());
+        canvas.line("reach", x, y, size - 1 - x, size - 1 - y, 0xFF_40_40); // through the map's centre
+        canvas.circle("reach", size / 2, size / 2, size / 4f, 0xFF_80_80);
+        int index = 0;
+        for (Selectable<?> s : getOwner().getUnits().getSet()) {
+            if (!s.isDead()) {
+                canvas.mark("units", s.getGridX(), s.getGridY(), 0x80_FF_80, "u" + index++);
+            }
+        }
+        switch (paint_mode) {
+            case "throw" -> {
+                if (second % 2 == 1) {
+                    throw new IllegalStateException("chaos: paint fails at odd seconds");
+                }
+            }
+            case "heavy" -> {
+                for (int i = 0; i < HEAVY_LINES; i++) {
+                    canvas.line("heavy", i % size, 0, (i * 7) % size, size - 1, 0x40_40_FF);
+                }
+            }
+            case "cheat" -> getOwner().getWorld().getRandom().nextInt(); // what a painter must never do
+            default -> {
+            }
+        }
+    }
+
+    @Override
+    public @Nullable String describe(@NonNull Selectable<?> selectable) {
+        if (paint_mode.equals("throw")) {
+            throw new IllegalStateException("chaos: describe fails");
+        }
+        return paint_mode.isEmpty() ? null : "chaos " + paint_mode;
     }
 }

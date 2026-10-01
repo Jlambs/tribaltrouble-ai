@@ -1,5 +1,6 @@
 package com.oddlabs.tt.aisim.watch;
 
+import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.gui.EditLine;
@@ -11,6 +12,7 @@ import com.oddlabs.tt.input.InputPhase;
 import com.oddlabs.tt.input.Key;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.render.GUIRenderer;
+import com.oddlabs.tt.render.MatrixStack;
 import com.oddlabs.tt.viewer.WatchControls;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -56,12 +58,14 @@ final class WatchHud implements WatchControls {
         this.game = game;
         layer.addChild(status);
         layer.addChild(inspector);
+        layer.addChild(game.aiOverlay().panel());
         jump_box.addEnterListener(this::jump);
     }
 
     /** Puts the HUD on the viewer's delegate; once, after the viewer is made. */
     void attach(@NonNull SelectionDelegate selection_delegate) {
         this.delegate = selection_delegate;
+        game.aiOverlay().attach(selection_delegate);
         selection_delegate.addChild(layer);
         shown = false;
         refresh_now = true;
@@ -105,7 +109,16 @@ final class WatchHud implements WatchControls {
     private void refresh() {
         status.setLines(statusLines());
         Selectable<?> picked = game.inspected();
-        inspector.setLines(picked == null ? List.of() : Inspector.describe(picked, game.world(), game.job()));
+        List<TextPanel.Line> inspected = new ArrayList<>();
+        if (picked != null) {
+            inspected.addAll(Inspector.describe(picked, game.world(), game.job()));
+            TextPanel.Line ai_line = game.aiOverlay().describe(picked);
+            if (ai_line != null) {
+                inspected.add(ai_line);
+            }
+        }
+        inspector.setLines(inspected);
+        game.aiOverlay().panel().setLines(game.aiOverlay().panelLines());
     }
 
     /** Places the panels for a GUI of {@code width} x {@code height} (y grows upwards). */
@@ -122,6 +135,10 @@ final class WatchHud implements WatchControls {
         status.setPos((width - status.getWidth()) / 2, top - status.getHeight());
         jump_box.setPos((width - jump_box.getWidth()) / 2, status.getY() - jump_box.getHeight() - 2);
         inspector.setPos(width - MARGIN - inspector.getWidth(), height - MARGIN - inspector.getHeight() - 40);
+        // the AI panel under the inspector
+        TextPanel ai_panel = game.aiOverlay().panel();
+        int below = inspector.getY() - (inspector.getHeight() > 0 ? MARGIN : 0);
+        ai_panel.setPos(width - MARGIN - ai_panel.getWidth(), below - ai_panel.getHeight());
     }
 
     private @NonNull List<TextPanel.Line> statusLines() {
@@ -147,6 +164,7 @@ final class WatchHud implements WatchControls {
         if (message != null) {
             lines.add(new TextPanel.Line(message, TextPanel.WARN));
         }
+        lines.add(game.aiOverlay().statusLine());
         lines.add(new TextPanel.Line(
                 "P play/pause   +/- speed   , . step (Shift 1 s, Ctrl 10 s)   J jump   [ ] players",
                 TextPanel.DIM));
@@ -181,6 +199,9 @@ final class WatchHud implements WatchControls {
         } else if (key == Key.J) {
             jump_box.setFocus();
             event.consume();
+        } else if (key == Key.A) {
+            game.aiOverlay().cycle(event.isShiftDown() ? -1 : 1); // all, none, each layer alone
+            event.consume();
         } else if (event.hasAction(GameAction.SPECTATOR_NEXT_PLAYER)) {
             game.followNext(1);
             event.consume();
@@ -208,6 +229,12 @@ final class WatchHud implements WatchControls {
     @Override
     public boolean keyboardBlocked() {
         return jump_box.isActive();
+    }
+
+    @Override
+    public void render3D(@NonNull CameraState state, @NonNull MatrixStack model_view,
+            @NonNull MatrixStack projection) {
+        game.aiOverlay().render3D(state, model_view, projection);
     }
 
     /** The jump box's Enter: seek to the time typed. */

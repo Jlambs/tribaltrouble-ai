@@ -542,6 +542,7 @@ another snapshot diverges wherever the engine or an AI changed in between:
 | N / B | next / previous event of the timeline |
 | ] / [ | next / previous player |
 | L, I, O | the AI log, the inspector, the scoreboard: show or hide |
+| A, Shift+A | the followed AI's overlay: all layers, none, each layer alone ([AI overlays](#ai-overlays)) |
 | Space, Esc | map mode, the menu, as in a game |
 
 Click a unit or building of any player to inspect it: its owner, hit points, build progress, the units inside (and
@@ -571,7 +572,8 @@ when every check passed, else 1, and writes its report to `aisim/watch/<run>-<ke
 screenshots next to it. Steps, separated by `;`: `play:SEC` (play for SEC seconds of real time), `speed:X`, `seek:TIME`
 (as the jump box), `step:+N` / `step:-N` (ticks), `shot:NAME` (a screenshot, `NAME.png`), `select:SLOT:TYPE` (inspect
 the first object of player SLOT whose type contains TYPE, such as `select:0:quarters`), `verify` (fails on a
-divergence or a rewind mismatch, or when no census second was compared yet), `presim`, `quit`:
+divergence or a rewind mismatch, or when no census second was compared yet), `overlay:MODE`
+([AI overlays](#ai-overlays)), `presim`, `quit`:
 
 ```bash
 ./aisim.sh watch base s19-1 --selftest "play:3;shot:start;seek:10:00;select:0:quarters;shot:inspect;verify;quit"
@@ -586,6 +588,37 @@ viewer has them.
 Limits: one game per start of the client, which quits when you leave the game; a game whose recording ended in a
 crash, hang or error may fail the same way when the viewer gets there; a game file without its end line (a game still
 being played) plays on until you stop it.
+
+### AI overlays
+
+An AI can show what it thinks while you watch it: its plans as marks, lines and circles on the map, its state as
+status lines, and what each of its units and buildings is for. It does so by implementing `aikit.AiView` (the AI
+guide, `tt/src/main/java/com/oddlabs/tt/player/AGENTS.md`, Showing your AI's thinking). The template that `new`
+copies does; the stock AI and AIs frozen before AiView existed show nothing (the AI panel says so).
+
+- The overlay is the AI of the player the view follows: team A's first player at first, `]` / `[` for the next and
+  previous. The viewer asks it to paint between two ticks, at most once per frame, and only while the overlay shows.
+- Shapes are drawn over everything, so terrain, trees and units never hide them: lines and circles along the ground
+  (on the water over the sea), a mark as a pin with its label at the top. In map mode (Space) they cover the whole
+  map. Labels that would overlap one nearer the camera are left out.
+- `A` cycles the layers: all, none, then each layer the AI painted so far, alone; `Shift+A` goes back. The control bar
+  says which (`AI overlay: layer army (2 of 3)`). With none, the AI is not asked to paint at all.
+- The AI panel, under the inspector, shows the AI's status lines, how many shapes it painted and how long its paint
+  and the drawing take per frame; in red, when its paint last failed and how often (a failed paint shows nothing
+  until the next one).
+- The inspector adds the AI's line on the picked object (`AI: ...`), for any player whose AI has one.
+- Painting must only read. The viewer keeps checking the game against the recording, so an overlay that changes the
+  game shows as `DIVERGED`. The test AI `chaos` exercises the overlay: `chaos:paint=draw` paints a line, a circle
+  and a labelled mark on every unit, `paint=throw` does that and fails every other second, `paint=heavy` paints more
+  shapes than the overlay takes (it draws 5,000 shapes and 20,000 line segments per frame at most), and
+  `paint=cheat` changes the game.
+- The selftest step `overlay:MODE` sets the layers as `A` does (`all`, `none`, `next`, `prev` or a layer's name) and
+  reports the overlay after a frame; `overlay:report` only reports, and `overlay:check` fails when a paint failed, or
+  when the followed AI implements AiView and was never painted:
+
+```bash
+./aisim.sh watch base s19-1 --selftest "play:3;overlay:check;overlay:next;shot:no-overlay;overlay:all;verify;quit"
+```
 
 ## Troubleshooting
 
