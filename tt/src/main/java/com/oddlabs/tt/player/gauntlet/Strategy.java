@@ -259,6 +259,12 @@ class Strategy {
     boolean retreat_rearguard = true;
     /** No early-rush alarm once we have had an armory (Economy.checkRush): it fired after our last armory fell. */
     boolean rush_opening_only = false;
+    /**
+     * The early-rush alarm's hold cut (hold 2 in each quarters, so peons go out to gather and arm) waits for our first
+     * finished armory: before it, a cut peon has nowhere to go and stands at the quarters door (beta tester; 20-90 door
+     * peons per alarm before the armory in logged ludicrous games).
+     */
+    boolean rush_hold_armory = false;
     /** Re-targets during an attack go by walking distance from the army, not straight-line distance (Military). */
     boolean target_path = false;
     /**
@@ -474,6 +480,12 @@ class Strategy {
      * armory) is given another supply; the old armory's supply is left alone for 60 s.
      */
     boolean gather_home = false;
+    /**
+     * A gatherer the engine links to a finished secondary armory (it delivers to the supply's nearest armory) is not
+     * recalled by drainSecondary for 30 s, and counts as a gatherer of its supply meanwhile: the 10-s recall of a
+     * secondary armory's gatherers fought every such re-link (recall loop in 11 of 30 logged N=6 ludicrous games).
+     */
+    boolean relink_guard = false;
     /**
      * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
@@ -1142,6 +1154,13 @@ class Strategy {
      */
     boolean shepherd_safe_walk = false;
     /**
+     * A shepherd that flees before reaching its spot, when the way away from the threat points back towards our start,
+     * flees sideways instead (perpendicular to the line from our start, the side the threat vector leans to first) if
+     * that point is reachable, clear of enemy warriors and away from any walking wave's target: caught waves were
+     * pulled 25 cells towards us per catch and fed 73 % of the base-threat entries (logged N=13 ludicrous games).
+     */
+    boolean shepherd_flee_side = false;
+    /**
      * shepherd_follow: while a copy's oldest idle warrior stands at home (40 cells from its armory) and its last wave
      * is still out, its shepherd's spot is picked around that wave's target (where its survivors go idle and lead the
      * next launch), not at home. shepherd_home_pair (cells, 0 = off): copies starting at least this far from us get a
@@ -1209,6 +1228,7 @@ class Strategy {
         shepherd_grace_ticks = (float) params.getDouble("shepherd_grace_ticks", shepherd_grace_ticks);
         shepherd_travel = (float) params.getDouble("shepherd_travel", shepherd_travel);
         shepherd_safe_walk = params.getBoolean("shepherd_safe_walk", shepherd_safe_walk);
+        shepherd_flee_side = params.getBoolean("shepherd_flee_side", shepherd_flee_side);
         shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
         shepherd_gap_ticks = (float) params.getDouble("shepherd_gap_ticks", shepherd_gap_ticks);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
@@ -1280,6 +1300,7 @@ class Strategy {
         hold_multi = params.getBoolean("hold_multi", hold_multi);
         retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
         rush_opening_only = params.getBoolean("rush_opening_only", rush_opening_only);
+        rush_hold_armory = params.getBoolean("rush_hold_armory", rush_hold_armory);
         target_path = params.getBoolean("target_path", target_path);
         defend_stable = params.getBoolean("defend_stable", defend_stable);
         tower_cooldown = params.getBoolean("tower_cooldown", tower_cooldown);
@@ -1379,6 +1400,7 @@ class Strategy {
         ore_reach = params.getInt("ore_reach", ore_reach);
         gather_probe = params.getBoolean("gather_probe", gather_probe);
         gather_home = params.getBoolean("gather_home", gather_home);
+        relink_guard = params.getBoolean("relink_guard", relink_guard);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
         rearm_reach = params.getInt("rearm_reach", rearm_reach);
         reloc = params.getBoolean("reloc", reloc);
