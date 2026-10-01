@@ -1712,3 +1712,7 @@ retreat through the same pass (only the attack role is watched).
   comparable with the normal-speed benchmark.
 - **cur9 adopted** (defaults): clock on game time + ore_reach=400 + gather_probe + stall_cap=300; 40 of 40 N=6 games
   replay the explicit-param candidate.
+- **cur9 benchmark** (same seeds as cur8-bench): N=13 6001..6500 7 -> 12 of 500 (+11 / -6, surv60 -0.24), N=14
+  6001..6500 2 -> 3 of 500 (+1 / 0, surv60 +0.08). Ludicrous (cur9, --minutes 90): N=16 0 of 200 (median game 28
+  game min, 10 alive at 40), N=20 0 of 200 (24 min); N=13 was 47 of 300 (39 min, 140 alive at 40): the ludicrous
+  ceiling sits between 13 and 16.
