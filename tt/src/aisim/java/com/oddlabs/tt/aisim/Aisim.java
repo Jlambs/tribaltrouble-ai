@@ -96,7 +96,7 @@ public final class Aisim {
               watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
                       [--selftest SCRIPT]        a harness game in the game client, played again exactly: pause,
                                                  step, rewind, jump, any speed; click any unit or building; AI logs
-              rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]
+              rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC] [--span SEC] [--gl]
                                                  check that watch's rewind plays a game exactly as the first time
             --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
               A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team

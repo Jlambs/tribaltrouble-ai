@@ -634,11 +634,14 @@ ticks the world played and how fast, the clock's state, the verification and any
 ./aisim.sh watch base s19-1 --selftest "seek:5:00;key:P;key:N;shot:event;click:row:2;expect:follow=2;key:F1;shot:help;quit"
 ```
 
-`./aisim.sh rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]` checks the rewind itself: it plays the game with
-checkpoints, then at each `--at` second restores the checkpoint before it and plays `--span` seconds again, and exits
-1 unless every second played again equals the first pass (and the first pass the recording). It prints the
-checkpoints' count, size and copy times. `--gl` runs it with the client's resources in a hidden GL window, as the
-viewer has them.
+`./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC] [--span SEC] [--gl]` checks the rewind
+itself, on the very game `watch` plays (it finds it the same way: any checkout's run folder, merged runs, game files,
+frozen AIs, `--ai-from-run`): it plays the game with checkpoints, then at each `--at` second restores the checkpoint
+before it and plays `--span` seconds again, and exits 1 unless every second played again equals the first pass (and
+the first pass the recording); an AI this build cannot make is a usage error (2). It prints the checkpoints' count,
+size and copy times. `--gl` runs it with the client's resources in a hidden GL window, as the viewer has them. More
+options: `--checkpoint SEC`, `--memory MB`, `--limit SEC` (play only so far), `--no-logs`, `--classes` (what the
+copier copied and shared, by class).
 
 Leaving: Esc, then Quit (and confirm), or closing the window (and confirm) ends the program: one game per start of
 the client, with no main menu to go back to. Limits: a game whose recording ended in a crash, hang or error may fail
@@ -743,7 +746,7 @@ The same list as `./aisim.sh help`:
 ./aisim.sh gui     [--stale-ok] SPEC [game args]
 ./aisim.sh watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
                    [--selftest SCRIPT]
-./aisim.sh rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]
+./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC] [--span SEC] [--gl]
 --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
   A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
   is left, or to the time limit.
@@ -858,8 +861,8 @@ aisim/                                  (in the repository root, git-ignored)
     log/w<i>.log                        worker output (engine chatter, errors)
     n/                                  native libraries unpacked for the workers (ignore)
     STOP                                create this file to cancel the run
-  watch/<run>-<key>.json                what `watch` hands the game: the job, the recording, the AIs from jars, the
-                                        options (absolute paths; written anew by every watch of that game)
+  watch/<run>-<key>-<pid>.json          what `watch` hands the game: the job, the recording, the AIs from jars, the
+                                        options (absolute paths); one per start, deleted after a day
   watch/<run>-<key>/                    the watched game's output: selftest.txt, the screenshots and the AI logs
                                         (ai-s<slot>.log) of --selftest
   natives/gui, natives/watch, natives/rewindcheck   native libraries unpacked for `gui`, `watch`, `rewindcheck` (ignore)
