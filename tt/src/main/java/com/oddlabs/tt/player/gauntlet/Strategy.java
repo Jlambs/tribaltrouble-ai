@@ -886,12 +886,14 @@ class Strategy {
      */
     boolean freeze_retarget = false;
     /**
-     * Path (a) waits for the copy's peons to take orders: while at least as many of its peons stand idle as the squad
-     * has peons, the squad holds Freeze.HOLD_CELLS from them (beyond an idle peon's 8-cell scan) for up to this many
-     * game
-     * ticks, then strikes. Builders never fight back, idle peons do. The stock AI decides on real time, every 20-28
-     * game s at ludicrous speed, so there the squad arrived before the copy's first orders and met 20 idle peons
-     * (ludicrous N=13: freeze kills 8.9 per game against 17.6 at normal speed, peons lost 2.6 against 0.7). 0: off.
+     * Path (a) works around a crowd of idle peons: while at least as many of the copy's peons stand idle as the squad
+     * has peons (it has not given its orders yet), the squad takes on only its busy peons (builders never fight back)
+     * farther than 12 cells from every idle one, and otherwise keeps Freeze.HOLD_CELLS from the nearest idle peon
+     * (beyond its 8-cell scan), for up to this many game ticks from when it first came within 24 cells of the crowd;
+     * then the plain strike. The stock AI decides on real time, every 20-28 game s at ludicrous speed, so there the
+     * squad arrived before the copy's first orders and met 20 idle peons (ludicrous N=13: freeze kills 8.9 per game
+     * against 17.6 at normal speed, peons lost 2.6 against 0.7; a hold 16 cells from the centre of all its peons,
+     * 1500 ticks, changed nothing: W 65 -> 66 of 500, 199 of 238 held strikes still given up). 0: off.
      */
     float freeze_patience_ticks = 0f;
     /**
