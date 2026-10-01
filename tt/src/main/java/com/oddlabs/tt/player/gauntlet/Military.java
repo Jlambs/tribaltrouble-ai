@@ -2868,6 +2868,10 @@ final class Military {
                     ai.aiLog().count("stall_cap_retreat");
                     ai.log("attack wedged: the army walks home to re-form");
                     cap_strikes = 0;
+                    // Everyone breaks off, fighters too: a few units locked on enemies they cannot reach can plug the
+                    // pass for the rest (the rearguard rule would leave them there).
+                    for (Unit u : army)
+                        move(u, staging_x, staging_y);
                     beginRetreat();
                 }
             }
