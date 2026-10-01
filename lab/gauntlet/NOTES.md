@@ -1699,3 +1699,16 @@ retreat through the same pass (only the attack role is watched).
 - In 10 of the 42 lost N=6 games a >= 30-strength enemy force stood at home with less than half its strength in
   defenders and towers while the attack army (>= 0.8x) was away (the s6064 pattern); recall_ratio=0.8 answers it but
   barely moves results.
+- **More screens:** gather_home alone N=6 358 -> 365 (+13 / -6, surv60 +0.64, z 2.7), N=13 6 -> 6 (surv60 +0.69, z
+  1.6), but on top of ore_reach + gather_probe: fresh N=6 364 -> 366 (as without it), fresh N=13 5 -> 2, N=10 73 -> 73
+  (surv60 -0.96, z -1.2; without it 79): not adopted. ore_reach + gather_probe at N=10 (6001..6300): 73 -> 79 (+40 /
+  -34). Earlier towers (tower_parallel=2, towers_mid_time 270, towers_late_time 480): N=6 358 -> 360, N=13 6 -> 7:
+  near neutral, as before. stall_cap=300: N=13 300 of 300 identical, N=5 397 of 400 identical (+1 win). hopdraw on
+  top of the candidate, fresh N=6: 366 -> 363: not adopted.
+- **Ludicrous, N=13** (6001..6300, the old defaults with the clock fix): **47 of 300 wins vs 6 at normal speed**
+  (surv60 +14.9 min). The stock AI is on the real-time animation manager too (AI constructor) and its
+  shouldDoAction counts the real tick's 0.02 s, so at ludicrous every Hard decides every 20-28 game seconds instead of
+  5-7: the stock Hards are 4x slower in game time there (vanilla behaviour, the same online). Ludicrous results are not
+  comparable with the normal-speed benchmark.
+- **cur9 adopted** (defaults): clock on game time + ore_reach=400 + gather_probe + stall_cap=300; 40 of 40 N=6 games
+  replay the explicit-param candidate.

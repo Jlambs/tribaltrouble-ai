@@ -447,13 +447,13 @@ class Strategy {
      * 2 x ore_reach m away instead of waiting: with every ore beyond 400 m the armory forged nothing and its 100-200
      * workers sat idle while one Hard out-built us (all four N=1-2 losses of low-vs1/vs2).
      */
-    int ore_reach = 0;
+    int ore_reach = 400;
     /**
      * gather_probe: armory workers are deployed for gathering only when a supply of the kind can be picked, and a peon
      * whose pick fails goes on to its next use instead of standing where it is (the play test's peons walking out of
      * the armory and straight back in, and peons standing still in the base).
      */
-    boolean gather_probe = false;
+    boolean gather_probe = true;
     /**
      * gather_home: a gatherer the engine would send to another armory than the main one (a supply nearer an old
      * armory) is given another supply; the old armory's supply is left alone for 60 s.
@@ -949,7 +949,7 @@ class Strategy {
      * stall_cap (s, 0 = off): an attack that gains no 20 m on its target and kills fewer than stall_cap_kills units in
      * that time stalls (target skipped, as a calm stall), even while some of the army fights.
      */
-    float stall_cap = 0f;
+    float stall_cap = 300f;
     int stall_cap_kills = 10;
     float chicken_time = 150f;
     int chicken_pool_div = 18;
