@@ -318,6 +318,12 @@ final class WatchGame implements Clock.Listener {
         hud.refreshSoon();
     }
 
+    /** The HUD, for the selftest's input steps. */
+    @NonNull
+    WatchHud hud() {
+        return hud;
+    }
+
     /** The object the inspector shows (with a selection ring), or null. */
     @Nullable
     Selectable<?> inspected() {

@@ -78,9 +78,10 @@ public final class Census {
 
     /**
      * The census of {@code player}. The recorder keeps two numbers the player has no getter for: how many of its
-     * units were stunned so far, and how many errors its AI swallowed.
+     * units were stunned so far, and how many errors its AI swallowed. Public for the watch view's scoreboard, which
+     * shows a live census by the same definitions as the recorded one.
      */
-    static int @NonNull [] of(@NonNull Player player, int stunned_total, int ai_errors) {
+    public static int @NonNull [] of(@NonNull Player player, int stunned_total, int ai_errors) {
         Race race = player.getRace();
         int[] census = new int[Field.values().length];
         int warriors = 0;

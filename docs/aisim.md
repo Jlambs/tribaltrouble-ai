@@ -508,7 +508,7 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
 same AIs in the same slots, tick for tick, so what you see is the game the harness played, not one like it. You can
 play it at any speed, pause, step a tick at a time, jump to any moment and rewind, click any unit or building of any
 player to see inside it, and read each AI's decision log at the moment you are looking at. Building the world takes a
-few seconds to a minute (the map's textures); the game then starts at 0:00.
+few seconds to a minute (the map's textures); the game then starts playing at 0:00, at 1x.
 
 **Which game.** RUN is a run name or the folder of a run in any checkout; KEY is a game of it, as in `show` and
 `replay`. A game's job comes from the run's run.json, exactly as the harness played it; when run.json lacks it (a run
@@ -519,9 +519,10 @@ says). Before the game starts, `watch` prints what it found and anything that ma
 recording.
 
 **Is it the same game?** The viewer checks itself as it plays: every 30 game seconds it compares the world's checksum
-with the census checksum the recording has for that second, and its control bar shows `VERIFIED to 51:30`, or
-`DIVERGED at 12:00` from the first second that differs. The game runs on your latest build, so a game recorded by
-another snapshot diverges wherever the engine or an AI changed in between:
+with the census checksum the recording has for that second, and its status panel shows `VERIFIED to 51:30`
+(`VERIFIED to the end` once the end line's checksum matched too), or `DIVERGED at 12:00` from the first second that
+differs. The game runs on your latest build, so a game recorded by another snapshot diverges wherever the engine or an
+AI changed in between:
 
 - frozen `@TAG` AIs play from their pool jar, as in the harness (from the run's own checkout when yours does not have
   the tag; `watch` warns when the jar's hash is not the one run.json recorded);
@@ -531,29 +532,60 @@ another snapshot diverges wherever the engine or an AI changed in between:
   AI that your build does not have is refused, with that advice;
 - when the engine itself changed, the game diverges anyway: `replay` replays it on its own snapshot (headless).
 
-**Keys and mouse.** F1 or H lists every key in the game.
+**What the screen shows.** Over the game view:
+
+- **Status panel** (top middle): the game time and tick, the recorded end, what the clock does (`PLAYING x16`,
+  `PAUSED`, `SEEKING 45% to 12:00`, `PRESIM ...`, `ENDED`, `MENU (paused)`, and `runs x3.2` when the machine cannot
+  keep up with the speed), the verification (below), the rewind's checkpoints and memory, the last message (an
+  error, the event N jumped to, the player followed). The jump box is under it.
+- **Scoreboard** (top left), one row per player: its colour, slot and spec, team, `alive` or `out 12:34` (the time
+  the recording has it out, once the game you watch got there), warriors, peons, finished quarters / armories /
+  towers (`+2`: building sites), whether it has a chieftain, and the units inside its buildings (quarters and
+  armories, and tower gunners). The numbers are a live census of the world by the recorder's own definitions,
+  taken four times a second. The row of the player you follow is lit; click a row to follow that player.
+- **Inspector** (top right): the unit or building you clicked, of any player: owner, kind, cell, hit points, build
+  progress, the units inside (and a tower's gunner), what an armory stores and makes, a quarters' next peon and
+  chieftain; for a unit what it carries, its order and what it does now (with the target's owner, kind and cell),
+  its behaviour.
+- **AI log** (bottom right): the last lines (up to 25; fewer when the window or the inspector leaves less room, 6 on
+  the overview map) the followed player's AI wrote at or before the moment you watch, with their game time (m:ss.hh)
+  and topic; the lines of the last game second are yellow. A stock AI writes no log, and the panel says so. `flee
+  of` lines (most of a gauntlet log: one per fleeing peon) are hidden until Shift+L; the wheel over the panel goes
+  back to older lines.
+- **Timeline** (bottom, all along but for the compass): the whole recorded game, the part simulated so far (blue),
+  the checkpoints (ticks under the bar), where you are (white) and where a seek goes (yellow), and marks for the
+  recording's key events: players out (red for team A, grey for the others), the last team out and the end (white),
+  team A's buildings razed (orange), team A's chieftains made and lost (green, violet), and death tolls (amber,
+  inside the bar: a player losing 20 units or more within 10 game seconds, team A 10). Hover a mark to read its
+  event; click or drag and let go to jump there; N and B jump to the next and previous mark.
+
+**Keys and mouse.** F1 or H shows them all in the game.
 
 | Key | |
 |---|---|
-| P or Pause | play / pause |
+| P | play / pause |
 | + / - (the game's speed keys) | faster / slower: 1/8x, 1/4x, 1/2x, 1x, 2x ... 128x and MAX, as fast as the machine simulates |
 | . / , | one tick forward / back; with Shift a second, with Ctrl 10 seconds |
-| J | the jump box: `mm:ss`, `h:mm:ss`, `123s`, `t123` (a tick), `+30` / `-10` (seconds from now), `0`, `end` |
+| J | the jump box: `mm:ss`, `h:mm:ss`, `123s`, `t123` (a tick), `+30` / `-10` (seconds from now), `0`, `end`; Enter jumps, Esc leaves it |
 | N / B | next / previous event of the timeline |
-| ] / [ | next / previous player |
-| L, I, O | the AI log, the inspector, the scoreboard: show or hide |
-| Space, Esc | map mode, the menu, as in a game |
+| ] / [ | next / previous player: the camera goes there and the AI log follows |
+| E | simulate the rest of the game now, then come back to where you are (E again stops); afterwards every jump is quick |
+| L / Shift+L | the AI log: show or hide / its `flee of` lines |
+| O, I | the scoreboard, the inspector: show or hide |
+| F1 or H | the help; Esc closes it too |
+| Ctrl+H | hide the whole HUD (a clean view for screenshots) |
+| Space, Esc | the overview map, the menu, as in a game |
 
-Click a unit or building of any player to inspect it: its owner, hit points, build progress, the units inside (and
-a tower's garrison), what an armory stores, production; for a unit, its behaviour, its target and what it carries.
-Click a row of the scoreboard (one per player: warriors, peons, buildings, chieftain, out) to look at that player, and
-have the AI log follow it. Drag the timeline at the bottom to scrub (it jumps when you let go); its marks are the
-recording's key events: players out, team A's buildings razed and chieftains, teams out. The AI log shows the last
-lines up to the moment you are watching of the AIs that write one (the stock AI writes none); `flee of` lines are
-hidden at first.
+| Mouse | |
+|---|---|
+| left click in the view | inspect that unit or building (any player's), with a ring on it |
+| click a scoreboard row | follow that player |
+| timeline | click or drag, let go to jump; hover a mark to read its event |
+| wheel | zoom, as in the game; over the AI log, older lines |
 
-Speed 1x is the game at normal speed, 50 ticks a second; faster speeds play more ticks per frame. They never change
-the game's own speed setting, which would make it another game.
+The camera moves as in a game (arrow keys, screen edges, Home/End, Insert/Delete, the overview map); the view gives
+no orders. Speed 1x is the game at normal speed, 50 ticks a second; faster speeds play more ticks per frame. They
+never change the game's own speed setting, which would make it another game.
 
 **Rewind.** As the game plays each second for the first time, `watch` keeps a checkpoint of the whole world every
 `--checkpoint` game seconds (default 60). Going back restores the last checkpoint before that moment and plays on to
@@ -562,19 +594,42 @@ the way there. Checkpoints take memory, up to `--checkpoint-memory` MB in all (d
 reach it, every other one is dropped and the interval doubles, so a long game keeps checkpoints all the way. The game
 runs with a 6 GB heap, or `AISIM_WATCH_HEAP` (`AISIM_WATCH_HEAP=10g ./aisim.sh watch ...`). Each second played again is
 checked against its first pass, so a rewind that did not restore everything shows `REWIND MISMATCH at ...`; that is a
-bug of `watch`, which `./aisim.sh rewindcheck RUN KEY` reproduces without a window. `--presim` plays the whole game
-first, so every jump afterwards is quick; it takes as long as simulating the game in the client, several minutes for
-a long game of many players.
+bug of `watch`, which `./aisim.sh rewindcheck RUN KEY` reproduces without a window. `--presim` simulates the whole game
+first (you see it run), then waits at 0:00, paused, and every jump afterwards is quick; it takes as long as
+simulating the game in the client, a few minutes for a long game of many players (E does the same from where
+you are, at any time).
 
 **For scripts and agents**, `--selftest SCRIPT` runs steps instead of waiting for input, then quits with exit code 0
-when every check passed, else 1, and writes its report to `aisim/watch/<run>-<key>/selftest.txt`, with the
-screenshots next to it. Steps, separated by `;`: `play:SEC` (play for SEC seconds of real time), `speed:X`, `seek:TIME`
-(as the jump box), `step:+N` / `step:-N` (ticks), `shot:NAME` (a screenshot, `NAME.png`), `select:SLOT:TYPE` (inspect
-the first object of player SLOT whose type contains TYPE, such as `select:0:quarters`), `verify` (fails on a
-divergence or a rewind mismatch, or when no census second was compared yet), `presim`, `quit`:
+when every step passed, else 1. It writes its report to `aisim/watch/<run>-<key>/selftest.txt` (and stdout), the
+screenshots and each AI's collected log (`ai-s<slot>.log`) next to it. Steps, separated by `;`, each waiting until it
+is done:
+
+- `play:SEC` plays SEC seconds of real time at the current speed; `wait:SEC` waits as the clock is (paused stays
+  paused); `speed:X` sets the speed (`1/8` ... `128`, `max`);
+- `seek:TIME` (as the jump box), `step:+N` / `step:-N` (ticks), `presim` (to the end and back to 0:00), `follow:SLOT`,
+  `map` (the overview map; `follow` or `select` flies back down);
+- `select:SLOT:TYPE` inspects the first object of player SLOT whose kind contains TYPE (`quarters`, `armory`,
+  `tower`, `peon`, `warrior`, `chieftain`) and moves the camera to it;
+- `shot:NAME` saves the next frame as `NAME.png` (the window's size: Options sets it);
+- input as a user gives it, through the client's own input handling (focus, picking, the panels, the view; only the
+  window system's event delivery is left out), each waiting until the clock is idle again: `key:KEY` (a key name
+  such as `F1`, `N`, `RETURN`, `ESCAPE`, or `. , [ ] + -`, after `shift+`, `ctrl+` or `alt+`), `tap:KEY` (the same
+  without the wait, to press E again while it simulates), `type:TEXT` (into the jump box after `key:J`), and the
+  left mouse button and the wheel: `click:WHERE`, `hover:WHERE`, `press:WHERE`, `drag:WHERE`, `release`, `wheel:N`
+  (notches, up is positive), WHERE being `X,Y` (GUI units from the bottom left), `row:SLOT` (a scoreboard row),
+  `timeline:TIME`, `log` or `view` (the middle of the window);
+- checks: `verify` fails on a divergence or a rewind mismatch, or when no census second was compared yet;
+  `expect:WHAT=VALUE` fails unless `tick` (a time), `follow` (a slot), `state` (`PLAYING`, `PAUSED`, `SEEKING`,
+  `ENDED`), `help`, `log`, `scoreboard`, `inspector`, `timeline` or `flee` (`on`/`off`), `inspect` (`none` or a
+  kind) or `message` (a text the status panel's message contains) is so;
+- `quit` ends the script (so does its end).
+
+Each report line gives the step, its real time, where the game is then, the checkpoint it restored (if it did), the
+ticks the world played and how fast, the clock's state, the verification and any new message:
 
 ```bash
 ./aisim.sh watch base s19-1 --selftest "play:3;shot:start;seek:10:00;select:0:quarters;shot:inspect;verify;quit"
+./aisim.sh watch base s19-1 --selftest "seek:5:00;key:P;key:N;shot:event;click:row:2;expect:follow=2;key:F1;shot:help;quit"
 ```
 
 `./aisim.sh rewindcheck RUN KEY [--at SEC,SEC] [--span SEC] [--gl]` checks the rewind itself: it plays the game with
@@ -583,9 +638,10 @@ checkpoints, then at each `--at` second restores the checkpoint before it and pl
 checkpoints' count, size and copy times. `--gl` runs it with the client's resources in a hidden GL window, as the
 viewer has them.
 
-Limits: one game per start of the client, which quits when you leave the game; a game whose recording ended in a
-crash, hang or error may fail the same way when the viewer gets there; a game file without its end line (a game still
-being played) plays on until you stop it.
+Leaving: Esc, then Quit (and confirm), or closing the window (and confirm) ends the program: one game per start of
+the client, with no main menu to go back to. Limits: a game whose recording ended in a crash, hang or error may fail
+the same way when the viewer gets there; a game file without its end line (a game still being played) plays on
+until you stop it, and its timeline grows with what was simulated.
 
 ## Troubleshooting
 
@@ -707,7 +763,8 @@ GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --n
   `--stale-ok` runs the last build anyway (`gui --stale-ok SPEC`; every other command takes it after its arguments).
 - **`watch`** ([Watching a game](#watching-a-game)): `--checkpoint SEC` (1..3600, default 60) game seconds between
   rewind checkpoints at first, `--checkpoint-memory MB` (default 45% of the heap, at most 80%) their memory in all,
-  `--presim` plays the whole game before showing it, `--ai-from-run` plays AIs named by package from the snapshot
+  `--presim` simulates the whole game first (shown as it runs; a `--selftest` has its own `presim` step instead),
+  `--ai-from-run` plays AIs named by package from the snapshot
   that recorded the game, `--selftest SCRIPT` runs a script and quits. `AISIM_WATCH_HEAP` (default `6g`) is the heap
   of the game, and of `rewindcheck`.
 - **Exit codes**: 0 ok; 1 the run has failed games or no counted games, a replay did not reproduce its game,
@@ -770,7 +827,8 @@ aisim/                                  (in the repository root, git-ignored)
     STOP                                create this file to cancel the run
   watch/<run>-<key>.json                what `watch` hands the game: the job, the recording, the AIs from jars, the
                                         options (absolute paths; written anew by every watch of that game)
-  watch/<run>-<key>/                    the watched game's output: selftest.txt and the screenshots of --selftest
+  watch/<run>-<key>/                    the watched game's output: selftest.txt, the screenshots and the AI logs
+                                        (ai-s<slot>.log) of --selftest
   natives/gui, natives/watch, natives/rewindcheck   native libraries unpacked for `gui`, `watch`, `rewindcheck` (ignore)
 ```
 

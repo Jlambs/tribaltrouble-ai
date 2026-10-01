@@ -2,7 +2,6 @@ package com.oddlabs.tt.aisim.watch;
 
 import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.font.TextLineRenderer;
-import com.oddlabs.tt.gui.GUIObject;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.render.GUIRenderer;
 import com.oddlabs.util.Color;
@@ -15,11 +14,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Lines of text on a dark translucent box, sized to its lines: the building block of the watch HUD. It takes no
- * focus, so clicks go through it to the 3D view. Its owner sets the lines (at most a few times a second) and places
- * it; the text is drawn every frame.
+ * Lines of text on a dark translucent box, sized to its lines (between a minimum and a maximum width, longer lines are
+ * cut): the building block of the watch HUD. Its owner sets the lines (at most a few times a second) and places it;
+ * the text is drawn every frame.
  */
-class TextPanel extends GUIObject {
+class TextPanel extends HudPanel {
     /**
      * One line: its text, its colour, and an optional colour swatch drawn in front of it (a player's colour).
      */
@@ -37,20 +36,27 @@ class TextPanel extends GUIObject {
     static final Vector4fc GOOD = Color.argb4v(0xFF_7C_F0_7C);
     static final Vector4fc BAD = Color.argb4v(0xFF_FF_60_60);
     static final Vector4fc WARN = Color.argb4v(0xFF_FF_D0_40);
-    private static final Vector4fc BACKGROUND = new Vector4f(0f, 0f, 0f, .55f);
-    private static final int PADDING = 4;
+    static final Vector4fc BACKGROUND = new Vector4f(0f, 0f, 0f, .62f);
+    static final int PADDING = 4;
 
     private final @NonNull Font font;
     private final List<Line> lines = new ArrayList<>();
-    private final int min_width;
+    private int min_width;
+    private int max_width;
+    private @NonNull Vector4fc background = BACKGROUND;
 
     TextPanel(int min_width) {
+        this(min_width, Integer.MAX_VALUE);
+    }
+
+    TextPanel(int min_width, int max_width) {
         this.font = Skin.getSkin().getEditFont();
         this.min_width = min_width;
+        this.max_width = max_width;
         setDim(min_width, 0);
     }
 
-    /** Replaces the lines and resizes the panel to them (at least its minimum width); no lines hide it. */
+    /** Replaces the lines and resizes the panel to them (within its widths); no lines hide it. */
     void setLines(@NonNull List<Line> new_lines) {
         lines.clear();
         lines.addAll(new_lines);
@@ -58,7 +64,19 @@ class TextPanel extends GUIObject {
         for (Line line : lines) {
             width = Math.max(width, textX(line) + font.getWidth(line.text()) + PADDING);
         }
-        setDim(width, lines.isEmpty() ? 0 : lines.size() * font.getHeight() + 2 * PADDING);
+        setDim(Math.min(width, Math.max(max_width, min_width)),
+                lines.isEmpty() ? 0 : lines.size() * font.getHeight() + 2 * PADDING);
+    }
+
+    /** Sets the widths the panel keeps to (the layout's, for a panel whose lines can be any length); next setLines. */
+    void setWidths(int min, int max) {
+        min_width = min;
+        max_width = max;
+    }
+
+    /** A darker box for a panel of many lines that the 3D view behind would make hard to read. */
+    void setBackground(@NonNull Vector4fc color) {
+        background = color;
     }
 
     int lineHeight() {
@@ -74,7 +92,7 @@ class TextPanel extends GUIObject {
         if (lines.isEmpty()) {
             return;
         }
-        renderer.drawColoredQuad(0, 0, getWidth(), getHeight(), BACKGROUND);
+        renderer.drawColoredQuad(0, 0, getWidth(), getHeight(), background);
         int height = font.getHeight();
         int y = getHeight() - PADDING - height;
         for (Line line : lines) {

@@ -23,7 +23,8 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 | | `Summary`, `Compare`, `Show`, `Curves`, `Fights`, `Export`, `Profile` | One command each (`Curves` also makes summary's and compare's curve tables; `Profile` reads the Flight Recorder files of `--profile`). |
 | | `Stats`, `Table` | Statistics; aligned text tables, short numbers and clock times. |
 | `aisim.watch` | `WatchCommand`, `WatchFile` | watch's parent side (`Aisim watchfile`, from the repository root): the game's job (run.json's, or rebuilt from its game file's header), its frozen and `--ai-from-run` AIs, the recording; written as the watch file, with absolute paths, that the game loads. |
-| | `WatchSession` and the HUD classes | The game side, loaded by `aikit.harness.Watch` in place of the main menu: the world built as `Match` builds it, the clock that ticks it, verification against the recording, the controls, the inspector and the AI log panel, `--selftest`. |
+| | `WatchSession`, `WatchGame`, `Clock`, `Verification`, `Selftest` | The game side, loaded by `aikit.harness.Watch` in place of the main menu: the world built as `Match` builds it, the clock that ticks it, verification against the recording, `--selftest` (whose input steps go through the client's own input handling). |
+| | `WatchHud` and its panels (`HudPanel`, `TextPanel`, `Scoreboard`, `Timeline`, `Inspector`, `AiLogPanel`, `HelpPanel`) | The controls and the HUD: the keys, the status panel and jump box, the scoreboard, the timeline of the recording's events, the inspector, the followed AI's log, the help. `HelpPanel`'s table and docs/aisim.md "Watching a game" list the keys `WatchHud.command` handles. |
 | | `Rewinder`, `Checkpoints`, `Copier`, `Track` | Rewind: checkpoints that deep-copy the world as it first plays, restored into the same live World; the per-second checksum track that catches a rewind that does not replay exactly. |
 | | `RewindCheck` | rewindcheck: the rewind's fidelity test, headless or in a hidden GL window. |
 
@@ -65,6 +66,8 @@ the harness). The rest of `aikit` is the AI toolkit.
   - the rewind's JVM options in `aisim.sh` (`WATCH_OPTS`, for `watch` and `rewindcheck`) with what `Copier` writes by
     reflection (JDK collections and atomics, final fields), and the watch heap's default there (`AISIM_WATCH_HEAP`)
     with `WatchCommand.DEFAULT_HEAP`;
+  - the watch view's keys (`WatchHud.handleInput` and `command`) with `HelpPanel`'s table and the key table of
+    `docs/aisim.md` "Watching a game", and the selftest's steps (`Selftest`) with that section;
   - the lint rules in `Lint` with the Rules section of the AI guide.
 - `aikit` itself (`AiLog`, `AiParams`, `GameTime`) is for AIs, and lint lets them use nothing else of it; keep its API
   stable, since frozen AIs link against it.

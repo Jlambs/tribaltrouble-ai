@@ -63,6 +63,11 @@ final class AiLogBook {
         frontier = Math.max(frontier, tick);
     }
 
+    /** The last tick whose lines are all here (the highest tick played so far), or -1 before the first. */
+    int frontier() {
+        return frontier;
+    }
+
     int slots() {
         return lines.length;
     }
