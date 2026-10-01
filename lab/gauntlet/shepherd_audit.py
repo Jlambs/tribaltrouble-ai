@@ -18,6 +18,7 @@ Log lines (logged games only):
               drawn waves, waves caught by a shepherd off its spot (target by a shepherd, not drawn), base waves
   base by own shepherd (launch lines with the origin columns, from 2026-09-29): at the base-bound launch the copy's
               own shepherd was away from its spot, had no spot, or there was none
+All times are game seconds (gtime): results rows and log stamps of old non-normal runs are converted as they are read.
 """
 import json
 import math
@@ -25,6 +26,8 @@ import os
 import re
 import sys
 from collections import defaultdict
+
+import gtime
 
 RUNS = os.path.join(os.path.dirname(__file__), '..', '..', 'aisim', 'runs')
 
@@ -49,12 +52,14 @@ def dist(ax, ay, bx, by):
 
 
 def game_starts(path):
+    """The players' starts of the game file at path, and its gtime factor (its AI logs' stamps share it)."""
     with open(path) as fh:
         first = json.loads(fh.readline())
-    return {p['name']: (p['x'], p['y']) for p in first['players']}
+    return {p['name']: (p['x'], p['y']) for p in first['players']}, gtime.factor(first)
 
 
-def audit_log(log_path, starts):
+def audit_log(log_path, starts, gf=1.):
+    """gf: game seconds per log stamp unit (gtime.factor of the sibling game file)."""
     me = starts.get('s0:gauntlet') or next(iter(starts.values()))
     g = defaultdict(float)
     arrived = {}
@@ -78,7 +83,7 @@ def audit_log(log_path, starts):
                 continue
             m = RE_JUMP.match(line)
             if m:
-                t = float(m.group(1))
+                t = float(m.group(1)) * gf
                 c = m.group(2)
                 a = (int(m.group(3)), int(m.group(4)))
                 b = (int(m.group(5)), int(m.group(6)))
@@ -123,7 +128,7 @@ def audit_log(log_path, starts):
 def audit_run(name, seeds=None):
     folder = name if os.path.isdir(name) else os.path.join(RUNS, name)
     name = os.path.basename(os.path.normpath(folder))
-    rows = [json.loads(l) for l in open(os.path.join(folder, 'results.jsonl')) if l.strip()]
+    rows = [gtime.row(json.loads(l)) for l in open(os.path.join(folder, 'results.jsonl')) if l.strip()]
     if seeds:
         rows = [r for r in rows if seeds[0] <= r['seed'] <= seeds[1]]
     n = len(rows)
@@ -153,7 +158,7 @@ def audit_run(name, seeds=None):
         if not (os.path.exists(log) and os.path.exists(jl)):
             continue
         nl += 1
-        for k, v in audit_log(log, game_starts(jl)).items():
+        for k, v in audit_log(log, *game_starts(jl)).items():
             logs[k] += v
     if nl:
         def mean(k):

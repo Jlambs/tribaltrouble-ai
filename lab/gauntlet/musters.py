@@ -5,13 +5,16 @@ Needs a run played with --logs. For each game: our five nearest copies by start 
 out), then every muster of the first 25 minutes (army, defense, and whose start the target is nearest, with that
 copy's rank by distance among the copies still in) and the retreats and attack ends between them. Tells whether the
 campaign marches past near copies to far ones (Military.chooseTarget; the "muster candidates" log line next to each
-muster gives the score parts of the best few candidates).
+muster gives the score parts of the best few candidates). Times are game seconds (gtime: the log's stamps take its game
+file's factor); a copy is out at its first out or collapse event.
 """
 import json
 import math
 import os
 import re
 import sys
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 HORIZON = 1500.0
@@ -29,13 +32,14 @@ def main():
         key = f[:-len('-ai-s0.log')]
         record = os.path.join(d, key + '.jsonl')
         g = json.loads(open(record, encoding='utf-8').readline())
+        fac = gtime.factor(g)
         me = g['players'][0]
         starts = {p['s']: (p['x'], p['y']) for p in g['players'][1:]}
         outs = {}
         for line in open(record, encoding='utf-8'):
             x = json.loads(line)
-            if x['ev'] == 'out':
-                outs[x['s']] = x['t']
+            if x['ev'] in gtime.OUTS:
+                outs.setdefault(x['s'], x['t'] * fac)
 
         def cells(s):
             return math.hypot(starts[s][0] - me['x'], starts[s][1] - me['y'])
@@ -47,10 +51,10 @@ def main():
             m = MUSTER.match(line)
             if not m:
                 m2 = END.match(line)
-                if m2 and float(m2.group(1)) < HORIZON:
-                    print(f'   {float(m2.group(1)):6.0f}s {m2.group(2)[:70]}')
+                if m2 and float(m2.group(1)) * fac < HORIZON:
+                    print(f'   {float(m2.group(1)) * fac:6.0f}s {m2.group(2)[:70]}')
                 continue
-            t, army, dfn = float(m.group(1)), float(m.group(2)), float(m.group(4))
+            t, army, dfn = float(m.group(1)) * fac, float(m.group(2)), float(m.group(4))
             x, y = int(m.group(5)), int(m.group(6))
             if t > HORIZON:
                 continue
