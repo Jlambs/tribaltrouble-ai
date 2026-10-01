@@ -476,7 +476,9 @@ macOS and `~/.local/state/tribaltrouble/logs/<start millis>/` on Linux):
   has no `places` and ends when one team is left: `winnerTeam` is the winning team number; `end` is `quit` when you
   left the game before it ended; a game you quit by closing the program has no `end` line.
 - `game-<n>-ai-s<slot>.log`: the AI's decision log.
-- `t` counts world ticks / 50, which is game time at normal speed only; `speed` events mark speed changes.
+- `t` is game time at every speed, following the speed changes that `speed` events mark. Play-tests from before the
+  recorder counted game time stamped world ticks / 50, which is game time at normal speed only; the analysis commands
+  convert them.
 
 Read them with `./aisim.sh show "<folder>/game-1.jsonl"`. `./aisim.sh play --map "WORDS" --players "..."`, with as
 many players as the game had, recreates the map in the harness, with the default advanced settings and without
@@ -567,29 +569,31 @@ LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random
 WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared with the other runs on it,
          growing and shrinking as it frees up or fills) --cpus N|P% (at most N or P% of the hardware threads)
          --memory SIZE|P% (at most SIZE, such as 6g, or P% of the memory, for all workers)
-GAME: --minutes M (the time limit; a game that reaches it is a draw) --rng N --no-collapse
-      --speed slow|normal|fast|ludicrous (the world's game speed; the harness counts world ticks, so at
-      ludicrous a harness minute, --minutes included, is four game minutes)
+GAME: --minutes M (the time limit in game minutes; a game that reaches it is a draw) --rng N --no-collapse
+      --speed slow|normal|fast|ludicrous (the game speed; the harness counts game time at every speed)
       --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
 ```
 
 - **Defaults**: vikings, every map setting random, 360 minutes, `--seeds tune` from every start, `--workers auto`
   ([Workers](#workers)). `play` also defaults to `--players "hard vs hard" --seed 1 --side 0`; `batch` needs
   `--players`. [Players](#players) and [Maps](#maps) explain the players and the map options.
-- **`--minutes`** (1..600, default 360) is the time limit. A game that reaches it is a draw, however far ahead
-  anyone is: only beating every opponent wins. A limit far below the natural length of a game turns late-game
-  play into draws. Games that run to the limit cost the most CPU, so shorten it for quick opening experiments.
+- **`--minutes`** (1..600, default 360) is the time limit, in game minutes. A game that reaches it is a draw,
+  however far ahead anyone is: only beating every opponent wins. A limit far below the natural length of a game turns
+  late-game play into draws. Games that run to the limit cost the most CPU, so shorten it for quick opening
+  experiments.
 - **Start positions**: maps are rarely fair (resources can lie much farther from one start than from another), so a
   batch plays every map once from each start of every player, rotating the seating ([Players](#players)). `--side S`
   plays only the games where the first player starts in slot S.
 - **`--logs`** (batch) keeps every game's AI logs, `--logs lost` those of the games team A did not win (the others'
   are deleted as their rows come in); `play` always keeps them ([AI logs](#why-did-it-lose-show-and-replay)).
 - **`--stop-when-a-out`** ends a game as soon as team A is out ([Players](#players)).
-- **`--speed`** (default `normal`) is the world's game speed, as in the skirmish menu. A faster speed makes each world
-  tick cover more game time (1.75 times the normal tick at fast, 4 times at ludicrous), so the game plays in coarser
-  steps, and an AI that counts ticks as time runs slow. The harness keeps counting world ticks, 50 to its second:
-  at ludicrous every time it shows, and `--minutes`, is a quarter of the game time (`--minutes 90` is 360 game
-  minutes).
+- **`--speed`** (default `normal`) is the world's game speed, as in the skirmish menu. The world ticks 50 times a
+  real second at every speed; the speed sets how much game time a tick covers (half the normal tick's 0.02 s at slow,
+  1.75 times at fast, 4 times at ludicrous), so the game plays in coarser steps, and an AI that counts ticks as time
+  acts less often per game second (the stock AIs do: at ludicrous the Hards decide four times less often per game
+  second, which is how the game plays). The harness counts game time at every speed (`GameTime`, in the AI guide):
+  `--minutes`, the collapse rule's 60 s, the milestones at 15:00 and 30:00, the census every 30 s, and every time in
+  rows, game files, AI logs and reports. A moment that falls between two ticks happens on the tick before it.
 - **`--rng N`** reseeds the world's random generator (per start). It is needed when two starts would seat the same
   players in the same places, which the harness otherwise refuses, because they would replay the same game.
 - **`--name`**: 1..40 characters of `A-Z a-z 0-9 . _ -`, and the run must not exist yet; delete `aisim/runs/NAME` to
@@ -676,7 +680,8 @@ supplies minutes rng collapse stopWhenAOut game logs speed`, where `seats` is ea
 `terrain` index `small medium large huge` and `tropical northern`, and `speed` is null at normal speed.
 
 **Result row** (`results.jsonl`): `v run key seed side slots players a map mapcode minutes rng speed collapse snap perturb
-end via winnerTeam t checksum result place score elim kd30 w15 margin teams recorderFailed problem replay wall cpu`.
+end via winnerTeam t ticks checksum result place score elim kd30 w15 margin teams recorderFailed problem replay wall
+cpu`.
 
 - `side` is the first player's slot, `slots` the number of players, `map` the settings in short (`large tropical h2 t10
   s10`).
@@ -689,18 +694,26 @@ end via winnerTeam t checksum result place score elim kd30 w15 margin teams reco
 - Crash, `ai_init` and `link error` rows have every field, with the results, places and scores null. Hang,
   dead-worker and harness-error rows have only the fields up to `perturb` plus `end winnerTeam t result problem
   replay`.
-- `t` is the game length, `wall` the wall-clock time and `cpu` the simulation thread's CPU time (unlike `wall`, not
-  slowed by other load), all in seconds.
+- `t` is the game length in game seconds, `wall` the wall-clock time and `cpu` the simulation thread's CPU time
+  (unlike `wall`, not slowed by other load), all in seconds. `minutes`, `out`, `kd30` and `w15` count game time
+  too.
+- `ticks`, the world ticks played, is there only at a speed other than normal, where `t` is not ticks / 50. Rows of
+  such runs from before the harness counted game time have a `speed` but no `ticks`: their `t`, `out` and
+  `minutes` count world ticks / 50 (a quarter of the game time at ludicrous). The analysis commands convert their
+  `t` and `out` to game seconds.
 
 In Python: `pandas.read_json("aisim/runs/<run>/results.jsonl", lines=True)`.
 
 **Game file** (`g/<key>.jsonl`, and `game-<n>.jsonl` from play-tests): one JSON object per line, `t` in game seconds
-(world ticks / 50) and `s` the player slot.
+(world ticks / 50 at normal speed; at others what the ticks covered at the speed then in effect) and `s` the player
+slot. Files from before the recorder counted game time stamped world ticks / 50 at every speed; a newer file played
+at another speed has `clock: "game"` in its header or its `speed` events, and the analysis commands convert the
+older ones.
 
 | `ev` | Meaning |
 |---|---|
-| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (team A's players), `players`, map, seed, map code, snapshot, and per player `s name team race ai x y` (start). |
-| `census` | Census of player `s` every 30 s and at the end (fields below), plus `checksum` (the world's). |
+| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (team A's players), `players`, map, seed, map code, snapshot, `secondsPerTick` (the game time of a tick at the start), `clock: "game"` when that is not the normal 0.02, and per player `s name team race ai x y` (start). |
+| `census` | Census of player `s` every 30 game seconds and at the end (fields below), plus `checksum` (the world's). |
 | `placed`, `built`, `razed` | A building (`b` quarters/armory/tower, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). |
 | `chief`, `chief_died` | The player gained or lost an active chieftain. |
 | `cast` | The chieftain cast `magic` (e.g. `Stun`, `PoisonFog`) at `x`, `y`. |
@@ -708,7 +721,7 @@ In Python: `pandas.read_json("aisim/runs/<run>/results.jsonl", lines=True)`.
 | `deaths` | `n` of the player's units in the field were killed in the last second (by kind), around `x`, `y`. |
 | `collapse`, `out` | The collapse rule fired for the player / the player is out by the game's rule. |
 | `team_out` | Every player of `team` is out (`via` `engine` or `collapse`); no `s`. |
-| `speed` | The game speed changed (`secondsPerTick`; play-tests only). |
+| `speed` | The game speed changed between two game seconds (`secondsPerTick`, `clock: "game"`; play-tests only; a pause shows only if the game resumes at another speed). |
 | `recorder_error` | The recorder stopped; later data is missing (the row has `recorderFailed: true`). |
 | `end` | `end via winnerTeam places checksum`: `places` by team number (harness games only). |
 

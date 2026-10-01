@@ -88,7 +88,7 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
 
     /**
      * The world's game speed (Game.GAMESPEED_*): each world tick lasts 0.5, 1, 1.75 or 4 times the normal tick's game
-     * time. The harness counts world ticks (50 to its second), so at ludicrous one harness minute is four game minutes.
+     * time. The harness counts game time ({@code GameTime}), so minutes are game minutes at every speed.
      */
     int gameSpeed() {
         return Game.GAMESPEED_SLOW + SPEEDS.indexOf(speed == null ? "normal" : speed);
