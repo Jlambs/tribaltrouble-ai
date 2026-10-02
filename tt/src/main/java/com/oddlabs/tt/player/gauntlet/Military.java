@@ -2461,6 +2461,30 @@ final class Military {
         return best;
     }
 
+    /**
+     * deny_rebuild: the quarters or armory site of a homeless copy still in nearest (from_x, from_y) within
+     * deny_rebuild_cells, outside stalled targets, dead regions and frozen sites, or null.
+     */
+    private @Nullable Building rebuildSite(int from_x, int from_y) {
+        int r2 = ai.strategy().deny_rebuild_cells * ai.strategy().deny_rebuild_cells;
+        Building best = null;
+        int best_d = Integer.MAX_VALUE;
+        for (Building b : ai.intel().enemy_buildings) {
+            if (b.isDead() || b.isComplete() || !b.getOwner().isAlive() || stalled_targets.containsKey(b)
+                    || inDeadRegion(b) || ai.freeze().isFrozenSite(b))
+                continue;
+            int id = b.getTemplate().getTemplateID();
+            if (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY)
+                continue;
+            int d = MapAnalysis.dist2(from_x, from_y, b.getGridX(), b.getGridY());
+            if (d <= r2 && d < best_d && homeless(b.getOwner())) {
+                best_d = d;
+                best = b;
+            }
+        }
+        return best;
+    }
+
     /** finish_lean: a copy already collapsing, or a remnant stronger than finish_ratio x our army. */
     private boolean leanSkip(@NonNull Player p, int fx, int fy, float ref) {
         Strategy s = ai.strategy();
@@ -2521,6 +2545,16 @@ final class Military {
         boolean decap = decapitating();
         decap_pick = null;
         decap_alt = null;
+        // deny_rebuild: a homeless copy's quarters or armory site first, before it can stand
+        if (strategy.deny_rebuild) {
+            Building site = rebuildSite(from_x, from_y);
+            if (site != null) {
+                ai.aiLog().count("deny_rebuild_target");
+                ai.log(String.format("deny rebuild: %s's %s site at %d,%d", site.getOwner().getPlayerInfo().getName(),
+                        Intel.kind(site), site.getGridX(), site.getGridY()));
+                return site;
+            }
+        }
         if (!decap) {
             Selectable<?> finish = finishFirst(from_x, from_y);
             if (finish != null)

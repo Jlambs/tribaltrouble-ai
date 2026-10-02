@@ -187,6 +187,16 @@ class Strategy {
      * our army (0 = off) and targets guarded by other copies' awake warriors (Military.finishTarget).
      */
     boolean finish_skip_out = false;
+    /**
+     * deny_rebuild: a quarters or armory site of a homeless copy (no finished quarters or armory) within
+     * deny_rebuild_cells of the army or staging point is target choice's first pick (Military.rebuildSite), before
+     * finishing or the campaign. 27 % of the copies left homeless rebuilt one (cur13 0/10/10 bases, 6,385 cases, a
+     * median 10.5 min later), and a rebuilt copy killed 2.24 of our units a minute against 0.51 while homeless (2.51
+     * with its first base); 64 % of them fielded a chieftain again. A site has few hit points and only the copy's band
+     * by it.
+     */
+    boolean deny_rebuild = false;
+    int deny_rebuild_cells = 150;
     int finish_units = -1;
     float finish_ratio = 0f;
     /**
@@ -1613,6 +1623,8 @@ class Strategy {
         weapon_sync = params.getBoolean("weapon_sync", weapon_sync);
         weapon_sync_three = params.getBoolean("weapon_sync_three", weapon_sync_three);
         finish_range = params.getInt("finish_range", finish_range);
+        deny_rebuild = params.getBoolean("deny_rebuild", deny_rebuild);
+        deny_rebuild_cells = params.getInt("deny_rebuild_cells", deny_rebuild_cells);
         tower_cap = params.getBoolean("tower_cap", tower_cap);
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);
         shepherd_range = params.getInt("shepherd_range", shepherd_range);
