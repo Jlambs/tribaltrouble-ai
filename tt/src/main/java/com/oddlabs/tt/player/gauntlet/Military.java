@@ -1601,7 +1601,11 @@ final class Military {
     }
 
     private void evacuatePeons() {
+        // shelter_off: nobody is sheltered
+        if (ai.strategy().shelter_off)
+            return;
         Intel intel = ai.intel();
+        int reach = ai.strategy().shelter_reach;
         Building armory = intel.armory();
         boolean swarm = ai.strategy().repair_swarm;
         boolean salvage = ai.strategy().salvage;
@@ -1645,12 +1649,13 @@ final class Military {
         for (Unit p : evacuate) {
             Building shelter = null;
             int best = Integer.MAX_VALUE;
-            if (armory != null && !bank_full && !threatNear(armory.getGridX(), armory.getGridY(), 6))
+            if (armory != null && !bank_full && !threatNear(armory.getGridX(), armory.getGridY(), reach))
                 shelter = armory;
             for (Building q : intel.quarters) {
-                // retire: not into a quarters being razed (the main armory never is).
-                if (threatNear(q.getGridX(), q.getGridY(), 6) || ai.economy().isDoomed(q)
-                        || (salvage && ai.economy().isEvacuating(q)))
+                // retire: not into a quarters being razed (the main armory never is); quarters_sortie: nor one whose
+                // peons are out fighting by it.
+                if (threatNear(q.getGridX(), q.getGridY(), reach) || ai.economy().isDoomed(q)
+                        || (salvage && ai.economy().isEvacuating(q)) || sorties.containsKey(q))
                     continue;
                 int d = MapAnalysis.dist2(q.getGridX(), q.getGridY(), p.getGridX(), p.getGridY());
                 int da = shelter == armory && armory != null ? MapAnalysis.dist2(armory.getGridX(),
@@ -1660,7 +1665,8 @@ final class Military {
                     shelter = q;
                 }
             }
-            if (shelter == null && bank_full && armory != null && !threatNear(armory.getGridX(), armory.getGridY(), 6))
+            if (shelter == null && bank_full && armory != null && !threatNear(armory.getGridX(), armory.getGridY(),
+                    reach))
                 shelter = armory; // no quarters qualifies: as without bank_guard
             else if (bank_full && shelter != null)
                 ai.aiLog().count("bank_shelter_quarters");
@@ -1798,6 +1804,9 @@ final class Military {
                     ai.aiLog().count("sortie_recalled"); // sortie ends that kept queued peons in
                 }
             }
+            // quarters_sortie: its door rally goes again (none: deployees walk to the nearest armory as before)
+            if (!a.isDead() && a.getTemplate().getTemplateID() != Race.BUILDING_ARMORY)
+                ai.owner().setRallyPoint(a, a);
             int out = 0;
             for (Iterator<Map.Entry<Unit, Building>> pit = sortie_peons.entrySet().iterator(); pit.hasNext();) {
                 Map.Entry<Unit, Building> pe = pit.next();
@@ -1816,12 +1825,17 @@ final class Military {
                         e.getValue().joined, out, kept, strength, threat));
         }
         // updateThreat has run this tick: level 2 is a real attack on the base (or the threat at the main armory).
-        if (threat_level >= 2)
-            for (Building a : intel.armories) {
+        if (threat_level >= 2) {
+            // quarters_sortie: quarters too, from a smaller bank
+            List<Building> banks = new ArrayList<>(intel.armories);
+            if (ai.strategy().quarters_sortie)
+                banks.addAll(intel.quarters);
+            for (Building a : banks) {
                 if (a.isDead() || sorties.containsKey(a) || economy.isEvacuating(a) || economy.isDoomed(a))
                     continue;
+                boolean quarters = a.getTemplate().getTemplateID() != Race.BUILDING_ARMORY;
                 int inside = a.getUnitContainer().getNumSupplies();
-                if (inside < SORTIE_MIN_BANK)
+                if (inside < (quarters ? ai.strategy().quarters_sortie_min : SORTIE_MIN_BANK))
                     continue;
                 // At the door, judged by all that comes behind it.
                 float door = sortieThreat(a, SORTIE_CELLS);
@@ -1833,17 +1847,25 @@ final class Military {
                 if (defence >= ratio * threat || bank + defence < ratio * threat)
                     continue;
                 sorties.put(a, new Sortie(now));
-                if (a.hasRallyPoint()) {
+                if (quarters)
+                    // quarters_sortie: with no rally point a quarters' peons walk into the nearest armory
+                    // (TransferUnitController): rallied to its own cell they stop by the door instead
+                    ai.owner().setRallyPoint(a, a.getGridX(), a.getGridY());
+                else if (a.hasRallyPoint()) {
                     ai.owner().setRallyPoint(a, a); // none: the peons come out idle by the door
                     ai.aiLog().count("sortie_rally_cleared");
                 }
                 ai.aiLog().count("sortie_start");
+                if (quarters)
+                    ai.aiLog().count("sortie_start_quarters");
                 if (ai.logging())
                     ai.log(String.format(
-                            "sortie: the armory at %d,%d sends its %d inside out onto a threat of %.1f within %d cells" + " (%.1f within %d; bank %.1f, defence %.1f)",
-                            a.getGridX(), a.getGridY(), inside, threat, SORTIE_LOOK_CELLS, door, SORTIE_CELLS, bank,
+                            "sortie: the %s at %d,%d sends its %d inside out onto a threat of %.1f within %d cells" + " (%.1f within %d; bank %.1f, defence %.1f)",
+                            quarters ? "quarters" : "armory", a.getGridX(), a.getGridY(), inside, threat,
+                            SORTIE_LOOK_CELLS, door, SORTIE_CELLS, bank,
                             defence));
             }
+        }
         if (sorties.isEmpty())
             return;
         // Everyone inside comes out, those who walked in since included.

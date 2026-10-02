@@ -328,6 +328,23 @@ class Strategy {
      * razing on average). Meant with enter_move=true, the retune's baseline (no accidental repairs).
      */
     boolean shelter_repair = false;
+    /**
+     * quarters_sortie: a quarters holding quarters_sortie_min or more sorties like an armory (Military.sorties: its
+     * peons out onto the attackers when with the defence they reach sortie_ratio of the threat the defence alone does
+     * not hold), instead of keeping them in to vanish if it falls (manageQuarters holds a threatened quarters' peons).
+     */
+    boolean quarters_sortie = false;
+    int quarters_sortie_min = 8;
+    /**
+     * shelter_reach: evacuatePeons shelters peons only in a building with no threat within this many cells (6 before;
+     * attackers hit a quarters or armory from up to ~12 cells, so a shelter with none within 6 is often under fire).
+     */
+    int shelter_reach = 6;
+    /**
+     * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
+     * apart).
+     */
+    boolean shelter_off = false;
     boolean swarm_cold = true;
     float swarm_margin = 1.25f;
     float swarm_catchup_ticks = 1000f; // 20 s
@@ -1620,6 +1637,10 @@ class Strategy {
         repair_swarm = params.getBoolean("repair_swarm", repair_swarm);
         swarm_default = params.getBoolean("swarm_default", swarm_default);
         shelter_repair = params.getBoolean("shelter_repair", shelter_repair);
+        quarters_sortie = params.getBoolean("quarters_sortie", quarters_sortie);
+        quarters_sortie_min = params.getInt("quarters_sortie_min", quarters_sortie_min);
+        shelter_reach = params.getInt("shelter_reach", shelter_reach);
+        shelter_off = params.getBoolean("shelter_off", shelter_off);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
         swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);
         swarm_catchup_ticks = (float) params.getDouble("swarm_catchup_ticks", swarm_catchup_ticks);

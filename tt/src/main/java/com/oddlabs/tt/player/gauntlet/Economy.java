@@ -434,6 +434,11 @@ final class Economy {
         int inside = a.getUnitContainer().getNumSupplies();
         if (inside == 0)
             return;
+        // quarters_sortie: a quarters has peons only (and no warrior queues)
+        if (a.getTemplate().getTemplateID() != com.oddlabs.tt.model.Race.BUILDING_ARMORY) {
+            ai.owner().deployUnits(a, DeployType.PEON, inside);
+            return;
+        }
         deployWarriors(a, inside, stock(a, RubberAxeWeapon.class), stock(a, IronAxeWeapon.class),
                 stock(a, RockAxeWeapon.class));
         int peons = a.getUnitContainer().getNumSupplies();
