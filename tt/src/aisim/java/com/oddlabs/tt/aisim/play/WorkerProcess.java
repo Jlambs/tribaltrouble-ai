@@ -12,6 +12,13 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.lang.ProcessBuilder.Redirect;
+import java.lang.foreign.Arena;
+import java.lang.foreign.FunctionDescriptor;
+import java.lang.foreign.Linker;
+import java.lang.foreign.MemorySegment;
+import java.lang.foreign.SymbolLookup;
+import java.lang.foreign.ValueLayout;
+import java.lang.invoke.MethodHandle;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +27,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * One worker JVM as its parent sees it: started from a snapshot, it plays one job per line written to its stdin
@@ -29,6 +37,13 @@ import java.util.concurrent.TimeUnit;
 final class WorkerProcess {
     /** Starts the one line per game on a worker's stdout that carries the game's row. */
     static final String ROW_PREFIX = "@@";
+    private static final boolean WINDOWS = System.getProperty("os.name").toLowerCase(Locale.ROOT).startsWith(
+            "windows");
+    /** For {@link #lowerPriority}: the access right SetPriorityClass needs, and the class it sets. */
+    private static final int PROCESS_SET_INFORMATION = 0x0200;
+    private static final int BELOW_NORMAL_PRIORITY_CLASS = 0x4000;
+    /** Whether a worker's priority could not be lowered, which the run says once. */
+    private static final AtomicBoolean priority_failed = new AtomicBoolean();
 
     private final @NonNull Process process;
     private final @NonNull BufferedReader stdout;
@@ -52,6 +67,10 @@ final class WorkerProcess {
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectError(Redirect.appendTo(log.toFile()));
         process = builder.start();
+        // elsewhere nice starts it lower (command)
+        if (WINDOWS && !lowerPriority(process.pid()) && !priority_failed.getAndSet(true)) {
+            System.out.println("note: workers keep normal priority (SetPriorityClass failed)");
+        }
         stdout = new BufferedReader(new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
         stdin = new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8);
     }
@@ -90,13 +109,19 @@ final class WorkerProcess {
 
     /**
      * The command line: the options every worker shares (aisim.sh gives the parent the same, keep them in sync), then
-     * {@code AISIM_JAVA_OPTS}, split at spaces (so an option cannot contain one), then the snapshot's class path.
+     * {@code AISIM_JAVA_OPTS}, split at spaces (so an option cannot contain one), then the snapshot's class path. Off
+     * Windows, {@code nice} starts the worker below the machine's other programs ({@link #lowerPriority} on Windows).
      */
     private static @NonNull List<String> command(@NonNull Path natives, @NonNull String snap, @NonNull String heap,
             @Nullable Path profile) {
         String java = ProcessHandle.current().info().command().orElse("java");
-        List<String> command = new ArrayList<>(List.of(java, "-ea", "--enable-native-access=ALL-UNNAMED",
-                "-Xmx" + heap, "-XX:+UseSerialGC", "-Djava.awt.headless=true", "-Dcom.oddlabs.tt.headless=true"));
+        List<String> command = new ArrayList<>();
+        Path nice = Path.of("/usr/bin/nice");
+        if (!WINDOWS && Files.isExecutable(nice)) {
+            command.addAll(List.of(nice.toString(), "-n", "10")); // nice runs java in its own process: same pid
+        }
+        command.addAll(List.of(java, "-ea", "--enable-native-access=ALL-UNNAMED", "-Xmx" + heap, "-XX:+UseSerialGC",
+                "-Djava.awt.headless=true", "-Dcom.oddlabs.tt.headless=true"));
         if (System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac")) {
             command.add("-XstartOnFirstThread"); // GLFW must own the first thread on macOS
         }
@@ -104,6 +129,9 @@ final class WorkerProcess {
         if (profile != null) {
             command.add(
                     "-XX:StartFlightRecording=filename=" + profile.toAbsolutePath() + ",settings=profile," + "dumponexit=true");
+            // Without it the JIT records code positions only at safepoints, and a sample inside an inlined method
+            // counts for its caller; it changes what profiles attribute, not the code.
+            command.addAll(List.of("-XX:+UnlockDiagnosticVMOptions", "-XX:+DebugNonSafepoints"));
         }
         String extra = System.getenv("AISIM_JAVA_OPTS");
         if (extra != null && !extra.isBlank()) {
@@ -161,5 +189,33 @@ final class WorkerProcess {
     @NonNull
     ProcessHandle handle() {
         return process.toHandle();
+    }
+
+    /**
+     * Puts Windows process {@code pid} below normal priority (SetPriorityClass), so the machine's other programs, the
+     * desktop among them, come first and workers take the rest; the games are the same at any priority. Returns
+     * whether it did; on failure the worker keeps normal priority.
+     */
+    private static boolean lowerPriority(long pid) {
+        try {
+            Linker linker = Linker.nativeLinker();
+            SymbolLookup kernel32 = SymbolLookup.libraryLookup("kernel32", Arena.global());
+            MethodHandle open_process = linker.downcallHandle(kernel32.findOrThrow("OpenProcess"),
+                    FunctionDescriptor.of(ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.JAVA_INT,
+                            ValueLayout.JAVA_INT));
+            MethodHandle set_priority_class = linker.downcallHandle(kernel32.findOrThrow("SetPriorityClass"),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_INT));
+            MethodHandle close_handle = linker.downcallHandle(kernel32.findOrThrow("CloseHandle"),
+                    FunctionDescriptor.of(ValueLayout.JAVA_INT, ValueLayout.ADDRESS));
+            MemorySegment handle = (MemorySegment) open_process.invokeExact(PROCESS_SET_INFORMATION, 0, (int) pid);
+            if (handle.equals(MemorySegment.NULL)) {
+                return false;
+            }
+            int lowered = (int) set_priority_class.invokeExact(handle, BELOW_NORMAL_PRIORITY_CLASS);
+            int _ = (int) close_handle.invokeExact(handle);
+            return lowered != 0;
+        } catch (Throwable e) {
+            return false;
+        }
     }
 }

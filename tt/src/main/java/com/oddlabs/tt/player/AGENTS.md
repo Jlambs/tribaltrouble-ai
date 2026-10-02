@@ -31,10 +31,12 @@ first opponent to beat.
   them with `AiParams params = AiParams.parse(spec_params)`: `params.getInt("wave", 12)`, `getDouble`, `getBoolean`
   (true/false/1/0) and `getString`, each with your default, then `params.done()`, which fails on keys nobody read, so
   a typo cannot silently play the defaults.
-- **`animate(float t)`** is called on every world tick, `GameTime.TICKS_PER_SECOND` (50) per game second at normal
-  speed, the harness's only speed. (It runs on the world's real-time animation manager, so in a GUI game at another
-  speed, paused included, it keeps ticking 50 times per real second.) Decide once every second or few seconds, not
-  every tick. The template counts ticks and calls `think(second)`; `GameTime.seconds(world)` is the game time.
+- **`animate(float t)`** is called on every world tick, 50 times a real second (`GameTime.TICKS_PER_SECOND`) at
+  every game speed, paused included: it runs on the world's real-time animation manager. The game speed sets how much
+  game time, the time units move, build and fight in, a tick covers: 0.02 s at normal speed, 0.08 s at ludicrous
+  (`--speed`), none while paused. So count time in game time: `GameTime.seconds(world)` (or `millis`) is the game
+  time, and `new GameTime.Every(1000)` strikes once a game second, on every 50th tick at normal speed. Decide once
+  every second or few seconds, not every tick. The template calls `think(second)` once a game second.
 - **State**: one AI object plays one game. Keep all state in its fields and in objects it owns, never in statics.
 - **`AiLog`**: get it once in the constructor with `log = AiLog.of(getOwner())`. `log.log(TOPIC, () -> text)` writes
   a decision log line (only in `play`, `replay` and GUI play-tests; otherwise it costs one field check).

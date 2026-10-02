@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -149,7 +148,7 @@ public final class Curves {
         double[][][] sums = new double[series.size()][minutes.size()][fields.size()];
         int[][][] counts = new int[series.size()][minutes.size()][fields.size()];
         // each game once, with every series that holds it; per series the games are added in the series' order
-        Map<Game, List<Integer>> series_of = new IdentityHashMap<>();
+        IdentityHashMap<Game, List<Integer>> series_of = new IdentityHashMap<>();
         List<Game> games = new ArrayList<>();
         for (int s = 0; s < series.size(); s++) {
             for (Game game : series.get(s).games()) {

@@ -36,7 +36,7 @@ public final class ChaosAI extends AI implements AiView {
     private final boolean report_errors;
     private final boolean count_seconds;
     private final @NonNull String paint_mode;
-    private int ticks;
+    private final GameTime.@NonNull Every every_second = new GameTime.Every(1000);
 
     public ChaosAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String spec_params) {
         super(owner, units);
@@ -53,10 +53,10 @@ public final class ChaosAI extends AI implements AiView {
 
     @Override
     public void animate(float t) {
-        if (++ticks % GameTime.TICKS_PER_SECOND != 0) { // act once per game second
+        if (!every_second.due(getOwner().getWorld())) { // act once per game second
             return;
         }
-        int second = ticks / GameTime.TICKS_PER_SECOND;
+        int second = (int) (every_second.struck() / 1000);
         if (count_seconds) {
             log.count("second");
         }
@@ -64,7 +64,7 @@ public final class ChaosAI extends AI implements AiView {
             throw new IllegalStateException("chaos: crash at " + second + " s");
         }
         if (second == hang_second) {
-            while (ticks > 0) { // always true: spins until the worker's hang watchdog kills it
+            while (every_second.struck() > 0) { // always true: spins until the worker's hang watchdog kills it
                 Thread.onSpinWait();
             }
         }
@@ -90,7 +90,7 @@ public final class ChaosAI extends AI implements AiView {
         if (paint_mode.isEmpty()) {
             return;
         }
-        int second = ticks / GameTime.TICKS_PER_SECOND;
+        int second = (int) GameTime.seconds(getOwner().getWorld());
         canvas.status("second", String.valueOf(second));
         canvas.status("paint", paint_mode);
         int size = getOwner().getWorld().getHeightMap().getGridUnitsPerWorld();
