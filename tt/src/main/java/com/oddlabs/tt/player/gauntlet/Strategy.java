@@ -600,12 +600,15 @@ class Strategy {
     int unjam_progress = 10;
     float unjam_ticks = 1500f; // 30 s
     /**
-     * unjam acts only from this game time (game ticks). 2400 s (cur8; was 0 with unjam off): from 40 min it only acts
-     * in a jam; on the cur7 benchmark games alive at 40 min it changed nothing but s6028 (N=13, 225 warriors wedged in
-     * a cliff pocket against 3 copies with 3 warriors: draw at 360 -> win), and it freed the same wedge against two
-     * Experts.
+     * unjam acts only from this game time (game ticks). 0 since cur13 (cur8 to cur12: 2400 s, so the late screens
+     * stayed
+     * identical to 40 min): from the start it fired in 6-11 % of games at N=13-15 (81 of 103 column marches got
+     * through),
+     * wins +4 / -2 over 1,424 games (1,362 identical), and it ended s6274 (cur11 N=17: the army jammed in a 1-cell
+     * canyon from 22 min, a 360 min draw) as a loss at 34 min. On the cur7 benchmark games alive at 40 min the late
+     * version changed nothing but s6028 (N=13, 225 warriors wedged in a cliff pocket: draw at 360 -> win).
      */
-    float unjam_from_ticks = 120000f; // 2400 s
+    float unjam_from_ticks = 0f;
     /**
      * bank_guard (late/spec S2): from bank_guard_ticks the main armory keeps only the workers its measured iron income
      * and stock can keep forging (bank_min once it cannot forge for bank_noforge_ticks); the rest wait in the quarters
