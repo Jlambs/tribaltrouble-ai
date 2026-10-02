@@ -253,6 +253,15 @@ class Strategy {
      * gunners, s8389 (cur12 N=15) a peon, a gunner and a site nobody built.
      */
     boolean last_stand = false;
+    /**
+     * enter_move: orders that send our units into a finished building of ours (shelter, a quarters to breed or train
+     * in, home) use MOVE instead of DEFAULT, under which a peon repairs a damaged quarters or tower rather than
+     * entering it (GauntletAI.enterAction). Peons sheltering in a quarters under attack then stood outside it as
+     * repairers: s6689 (N=13) had 60-69 peons blocked 40 cells from a quarters they all were "repairing" for 10+
+     * min, s6129 (N=14) a column of them for 10 min; such jams cost up to 45 % of all peon time in the worst games
+     * (median 1 %). Repairs stay manageRepairs' (at most 4 a building, never under threat).
+     */
+    boolean enter_move = false;
     float last_stand_ticks = 15000f; // 300 s
     /**
      * mopup and last_stand act only from this game tick (0: from the start; 120000 keeps games identical to 40 min).
@@ -1505,6 +1514,7 @@ class Strategy {
         push_quiet_ticks = (float) params.getDouble("push_quiet_ticks", push_quiet_ticks);
         push_period_ticks = (float) params.getDouble("push_period_ticks", push_period_ticks);
         last_stand = params.getBoolean("last_stand", last_stand);
+        enter_move = params.getBoolean("enter_move", enter_move);
         last_stand_ticks = (float) params.getDouble("last_stand_ticks", last_stand_ticks);
         endgame_from_ticks = (float) params.getDouble("endgame_from_ticks", endgame_from_ticks);
         defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);

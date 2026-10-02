@@ -1499,7 +1499,7 @@ final class Military {
                     close |= MapAnalysis.dist2(p.getGridX(), p.getGridY(), e.getGridX(), e.getGridY()) <= 8 * 8;
                 Building shelter = close ? MapAnalysis.nearest(intel.quarters, p.getGridX(), p.getGridY()) : null;
                 if (shelter != null && shelter.getUnitContainer() != null)
-                    ai.owner().setTarget(Selectable.newArray(p), shelter, Action.DEFAULT, false);
+                    ai.owner().setTarget(Selectable.newArray(p), shelter, ai.enterAction(shelter), false);
             }
             return;
         }
@@ -1629,7 +1629,7 @@ final class Military {
             else if (bank_full && shelter != null)
                 ai.aiLog().count("bank_shelter_quarters");
             if (shelter != null && shelter.getUnitContainer() != null)
-                ai.owner().setTarget(Selectable.newArray(p), shelter, Action.DEFAULT, false);
+                ai.owner().setTarget(Selectable.newArray(p), shelter, ai.enterAction(shelter), false);
         }
     }
 
@@ -3762,7 +3762,7 @@ final class Military {
             Building home = intel.armory();
             for (Unit p : intel.sappers)
                 if (home != null && home.getUnitContainer() != null)
-                    ai.owner().setTarget(Selectable.newArray(p), home, Action.DEFAULT, false);
+                    ai.owner().setTarget(Selectable.newArray(p), home, ai.enterAction(home), false);
             ai.log(intel.sappers.size() + " sappers go home");
             intel.sappers.clear();
             return;

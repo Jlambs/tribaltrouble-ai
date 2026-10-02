@@ -281,7 +281,7 @@ final class Shepherd {
         if (home == null && !ai.intel().quarters.isEmpty())
             home = ai.intel().quarters.getFirst();
         if (home != null && !home.isDead())
-            ai.owner().setTarget(Selectable.newArray(u), home, Action.DEFAULT, false);
+            ai.owner().setTarget(Selectable.newArray(u), home, ai.enterAction(home), false);
     }
 
     private void tend(@NonNull Flock f, @NonNull Intel intel) {

@@ -252,6 +252,17 @@ public final class GauntletAI extends AI {
         return map().computeField(xs, ys, Integer.MAX_VALUE);
     }
 
+    /**
+     * enter_move: the action of an order meant to put our units into a building of ours. With enter_move a finished
+     * building gets MOVE, which enters it (or walks there while it is full); DEFAULT, the right-click, makes a peon
+     * repair a damaged quarters or tower instead of entering it (Unit.setTarget: canRepair comes before canEnter for
+     * buildings without a stock), so peons sent into a quarters under attack stand outside it repairing.
+     */
+    @NonNull
+    Action enterAction(@NonNull Building b) {
+        return strategy().enter_move && b.isComplete() ? Action.MOVE : Action.DEFAULT;
+    }
+
     /** Enemy players still in the game. */
     int enemiesAlive() {
         int n = 0;

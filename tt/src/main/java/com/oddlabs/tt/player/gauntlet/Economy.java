@@ -4473,7 +4473,7 @@ final class Economy {
                 takeNearest(walkers, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
                 if (walkers != transit)
                     transit.removeAll(chosen);
-                order(chosen, trainer, Action.DEFAULT);
+                order(chosen, trainer, ai.enterAction(trainer));
                 if (near)
                     for (Unit u : chosen) {
                         topup_sent.put(u, trainer);
@@ -4491,7 +4491,7 @@ final class Economy {
                 Building q = MapAnalysis.nearest(intel.quarters, u.getGridX(), u.getGridY());
                 if (q != null && !evacuating.containsKey(q) && !retire.isDoomed(q)
                         && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q))
-                    order(u, q, Action.DEFAULT);
+                    order(u, q, ai.enterAction(q));
             }
             return;
         }
@@ -4595,7 +4595,7 @@ final class Economy {
                 for (int i = 0; i < free.size(); i++)
                     ai.aiLog().count("raid_evac_refuged");
             } else if (shelter != null && sheltered && !free.isEmpty()) {
-                order(free, shelter, Action.DEFAULT);
+                order(free, shelter, ai.enterAction(shelter));
                 holdEvacuees(shelter, free.size());
                 for (int i = 0; i < free.size(); i++)
                     ai.aiLog().count("raid_evac_sheltered");
@@ -4606,7 +4606,7 @@ final class Economy {
             // bank_guard: the armory takes what its cap has room for, the rest waits in the reserve quarters.
             List<Unit> in = new ArrayList<>();
             takeNearest(free, in, Math.max(0, bank_room), armory.getGridX(), armory.getGridY());
-            order(in, armory, Action.DEFAULT);
+            order(in, armory, ai.enterAction(armory));
             bank_room -= in.size();
             if (hasUnplacedProject())
                 // choosePlacer needs an idle, walking or tree-gathering peon: two stay unordered
@@ -4614,11 +4614,11 @@ final class Economy {
                     free.removeFirst();
             Building q = reserveQuarters();
             if (q == null) {
-                order(free, armory, Action.DEFAULT);
+                order(free, armory, ai.enterAction(armory));
                 for (int i = 0; i < free.size(); i++)
                     ai.aiLog().count("bank_reserve_none");
             } else {
-                order(free, q, Action.DEFAULT);
+                order(free, q, ai.enterAction(q));
                 bank_reserve.merge(q, free.size(), Integer::sum);
                 for (int i = 0; i < free.size(); i++) {
                     ai.aiLog().count("bank_reserve");
@@ -4806,7 +4806,7 @@ final class Economy {
                 }
             }
             if (shelter != null) {
-                order(u, shelter, Action.DEFAULT);
+                order(u, shelter, ai.enterAction(shelter));
                 ai.aiLog().count("refuge_quarters");
             }
         }
@@ -4865,7 +4865,7 @@ final class Economy {
             if (chosen.isEmpty())
                 continue;
             free.removeAll(chosen);
-            order(chosen, q, Action.DEFAULT);
+            order(chosen, q, ai.enterAction(q));
             for (Unit u : chosen) {
                 seed_sent.put(u, q);
                 seed_sent_time.put(u, now);
@@ -5142,7 +5142,7 @@ final class Economy {
         for (Unit u : wedged) {
             Building home = MapAnalysis.nearest(intel.armories, u.getGridX(), u.getGridY());
             if (home != null)
-                order(u, home, Action.DEFAULT);
+                order(u, home, ai.enterAction(home));
             ai.aiLog().count("builder_unstuck");
         }
         Unit first = wedged.getFirst();
