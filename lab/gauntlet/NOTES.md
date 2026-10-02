@@ -1837,3 +1837,12 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   draws 5 -> 6 (s6657 draw -> win at 74 min; new draws s8091, s8039, s8367). Not adopted as a stack; components queued
   one by one on the cand-tsf bases' games alive at 40 min.
 - Harness merged (headless 6f8d7d6b): automatic runs leave a thread free and run below normal priority; games identical.
+- **Decapitation from the start: rejected** (500-game blocks vs the cand-tsf bases, 6001..6500): N=15 W 29 -> 15
+  (+11 / -25, z -2.3), with the ladder 16 (z -2.1); N=14 W 70 -> 58 (+33 / -45, z -1.4), with the ladder 56 (z -1.6).
+  The base's lead on these seeds is partly luck (cand-ts 24 / 59, cand-tsc 22 / 52 at N=15 / 14), but at N=15 the arm
+  falls to the pre-cur11 level (flee-side 15, crowd 16). It overrides the best-scoring target in 73 % of its picks
+  (decapitate_changed 0.156 vs decapitate_target 0.215 per game min). Shared wins at N=15 come faster (median 99 -> 81
+  min): a late-only arm (decapitate_from_ticks 120000) is queued on the bases' games alive at 40 min instead of the N=13
+  blocks (stopped after 27 and 9 games). Partial-batch caveat: pair.py on a batch's first ~130 rows showed z -3 (the
+  longest-first order plays the base's lucky wins first); compare sibling runs on the same seeds before calling it.
+- Record attempts paused (user, 2026-10-01): cur11-vs20 and cur11-fresh-vs18 left out until the experiments are done.
