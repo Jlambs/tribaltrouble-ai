@@ -1915,6 +1915,21 @@ tick: s6081-0 47 of 47 census, end checksum same, counters same, 0 differences; 
 label 50, describe 75; 2:13 of wall time). Painted times agree with the replay's log: "cast 121 s ago" at 20:00 after
 the stun at 1078.56, cycles 34/54 s as STAT cyc=34/54.
 
+Review fixes (2026-10-01, snapshot ca44022142): the modules' painter methods were called describe(Unit) and
+describe(Building), and the gauntlet's Military has a private static describe(Selectable<?>) of its own for log text.
+Java binds a call to the most specific overload, so after the merge three of its log calls whose argument is a Unit
+(followChief's "decapitate: following", remnantNext's two "remnant ladder" lines) went to the painter's, which returns
+null for an enemy unit: those lines read "null" (only with decapitate or the remnant ladder on, both off by default;
+decisions, counters and checksums unchanged). The painter's methods are now describeUnit and describeBuilding in every
+module, so none overloads a gauntlet method; javap shows all 13 calls on describe(Selectable) again, and every
+gauntlet method's bytecode equals the cur11 run snapshot's (9635b3b0df) but checkCatch (stuns_judged), Project's
+constructor and manageProjects (Project.held). PaintCheck names a dump file by the same whole game seconds as the
+dump's header and its other times (cut, as the viewer's clock): a clock strikes on the last world tick at or before
+its moment, so --dump-every 45 at ludicrous strikes at world tick 562 (44.96 s), now 0:44 and paint-s0-000044.txt
+(the name said 000045). Proof: `replay --snap latest` SAME on s6081-0 (lost at 23:58) and s6220-0 (won at 114:24,
+checksum 1334996688); PaintCheck every world tick on s6220-0: 228 of 228 census, end checksum same, counters same,
+0 differences (paint 119 us, describe 251 us a round; longest status 83, label 50, describe 75).
+
 Not shown, because the AI keeps it nowhere: why it is not attacking yet (considerAttack's army, potential, defense and
 caution are locals, logged only when the attack goes), the next target while at home (chooseTarget computes distance
 fields), and the battle numbers between traceBattle lines. Showing them means the AI keeping them in fields, which

@@ -923,7 +923,7 @@ final class Freeze {
 
     /** What a peon of the freeze squad is doing (watch view), or null when u strikes nowhere. */
     @Nullable
-    String describe(@NonNull Unit u) {
+    String describeUnit(@NonNull Unit u) {
         for (Strike s : strikes) {
             Player t = s.target;
             if (!s.active() || t == null)

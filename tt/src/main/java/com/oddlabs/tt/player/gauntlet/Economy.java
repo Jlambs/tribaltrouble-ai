@@ -5709,7 +5709,7 @@ final class Economy {
      * nothing special.
      */
     @Nullable
-    String describe(@NonNull Building b) {
+    String describeBuilding(@NonNull Building b) {
         List<String> parts = new ArrayList<>();
         for (Project p : projects)
             if (p.building == b && !b.isComplete()) {

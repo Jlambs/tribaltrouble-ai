@@ -528,11 +528,11 @@ public final class GauntletAI extends AI implements AiView {
 
     private @Nullable String describeUnit(@NonNull Unit u, @NonNull Economy e, @NonNull Military m,
             @NonNull Shepherd s, @NonNull Freeze f, @NonNull Chieftain c) {
-        String job = s.describe(u);
+        String job = s.describeUnit(u);
         if (job == null)
-            job = f.describe(u);
+            job = f.describeUnit(u);
         if (job == null)
-            job = c.describe(u);
+            job = c.describeUnit(u);
         if (job != null)
             return job;
         if (contains(intel.lures, u))
@@ -546,16 +546,16 @@ public final class GauntletAI extends AI implements AiView {
         for (java.util.Map.Entry<Unit, Intel.PeonState> entry : intel.peon_states.entrySet())
             if (entry.getKey() == u)
                 return e.describePeon(u, entry.getValue());
-        return m.describe(u);
+        return m.describeUnit(u);
     }
 
     private @Nullable String describeBuilding(@NonNull Building b, @NonNull Economy e, @NonNull Military m,
             @NonNull Chieftain c) {
         List<String> parts = new ArrayList<>();
-        String economic = e.describe(b);
+        String economic = e.describeBuilding(b);
         if (economic != null)
             parts.add(economic);
-        String military_job = m.describe(b);
+        String military_job = m.describeBuilding(b);
         if (military_job != null)
             parts.add(military_job);
         if (c.trains(b))

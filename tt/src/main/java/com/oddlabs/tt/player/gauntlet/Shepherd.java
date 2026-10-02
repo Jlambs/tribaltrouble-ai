@@ -1189,7 +1189,7 @@ final class Shepherd {
 
     /** A shepherd's flock and what it is doing (watch view), or null when u shepherds no flock. */
     @Nullable
-    String describe(@NonNull Unit u) {
+    String describeUnit(@NonNull Unit u) {
         for (Flock f : flocks) {
             if (f.shepherd != u)
                 continue;

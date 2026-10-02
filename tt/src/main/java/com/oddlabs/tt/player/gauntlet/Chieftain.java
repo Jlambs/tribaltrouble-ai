@@ -1028,7 +1028,7 @@ final class Chieftain {
      * where he is.
      */
     @Nullable
-    String describe(@NonNull Unit u) {
+    String describeUnit(@NonNull Unit u) {
         if (u != ai.intel().chieftain || u.isDead())
             return null;
         return "chieftain" + (Intel.isStunned(u) ? ", stunned: " : ": ") + spellText(u.canDoMagic(magicIndex()));

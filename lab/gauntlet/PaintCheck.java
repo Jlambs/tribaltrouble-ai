@@ -215,10 +215,17 @@ static Job atSpeed(Job job, String speed) {
             job.game(), job.logs(), speed);
 }
 
-/// World tick {@code tick} as game time, m:ss or h:mm:ss (the whole game seconds played by then, as the viewer's
-/// clock).
+/// The whole game seconds played by world tick {@code tick}, cut (as the viewer's clock), not rounded: every time
+/// PaintCheck prints, and the dump files' names. A census or dump clock strikes on the last world tick at or before
+/// its moment, so a strike between two world ticks reads a second early (--dump-every 45 at ludicrous strikes at
+/// world tick 562, 44.96 game seconds: 0:44, paint-s0-000044.txt).
+static long gameSeconds(int tick) {
+    return (long) tick * millis_per_tick / 1000;
+}
+
+/// World tick {@code tick} as game time, m:ss or h:mm:ss (gameSeconds).
 static String clock(int tick) {
-    long s = (long) tick * millis_per_tick / 1000;
+    long s = gameSeconds(tick);
     return s >= 3600 ? "%d:%02d:%02d".formatted(s / 3600, s / 60 % 60, s % 60) : "%d:%02d".formatted(s / 60, s % 60);
 }
 
@@ -538,7 +545,7 @@ static final class Watcher {
                 texts.values().stream().mapToInt(Integer::intValue).sum()));
         texts.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).forEach(e -> sb.append(
                 "  %5d  %s%n".formatted(e.getValue(), e.getKey())));
-        long seconds = Math.round((double) tick * millis_per_tick / 1000); // game seconds, to the nearest
+        long seconds = gameSeconds(tick); // the header's clock
         Path file = out.resolve("paint-s%d-%02d%02d%02d.txt".formatted(slot, seconds / 3600, seconds / 60 % 60,
                 seconds % 60));
         Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);

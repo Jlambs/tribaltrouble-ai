@@ -6707,7 +6707,7 @@ final class Military {
      * stays whole in the inspector (PaintCheck's MAX_DESCRIBE).
      */
     @Nullable
-    String describe(@NonNull Unit u) {
+    String describeUnit(@NonNull Unit u) {
         Role role = null;
         for (Map.Entry<Unit, Role> e : roles.entrySet())
             if (e.getKey() == u) {
@@ -6769,7 +6769,7 @@ final class Military {
 
     /** What a tower of ours does for the military (watch view): the gunner on its way, the target it aims at. */
     @Nullable
-    String describe(@NonNull Building b) {
+    String describeBuilding(@NonNull Building b) {
         List<String> parts = new ArrayList<>();
         for (Map.Entry<Unit, Building> e : tower_assignments.entrySet())
             if (e.getValue() == b && !e.getKey().isDead())
