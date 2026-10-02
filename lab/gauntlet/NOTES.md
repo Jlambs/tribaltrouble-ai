@@ -1859,4 +1859,4 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   40 min (default-identity checked on s6657, s6827, s6192). Draws they do not fix: 2 at fresh N=14, 1 at fresh N=15.
 - **Decapitation late only** (decapitate_from_ticks 120000, same 654 games): N=13 +15 / -9 (draws 1 -> 4), N=14
   +6 / -8, N=15 +1 / -2: neutral with more draws; not adopted. The pacify-then-strike idea is done for now: the copies
-  do go passive, but going for their quarters and chieftains first beats no target choice the army already has.
+  do go passive, but going for their quarters and chieftains first does no better than the army's own target choice.
