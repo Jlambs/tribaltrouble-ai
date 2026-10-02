@@ -26,7 +26,7 @@ For coding agents and people changing the harness itself. Using it is in `docs/a
 | | `WatchSession`, `WatchGame`, `Clock`, `Verification`, `Selftest` | The game side, loaded by `aikit.harness.Watch` in place of the main menu: the world built as `Match` builds it, the clock that ticks it, verification against the recording, `--selftest` (whose input steps go through the client's own input handling). |
 | | `WatchHud` and its panels (`HudPanel`, `TextPanel`, `Scoreboard`, `Timeline`, `Inspector`, `AiLogPanel`, `HelpPanel`) | The controls and the HUD: the keys, the status panel and jump box, the scoreboard, the timeline of the recording's events, the inspector, the followed AI's log, the help. `HelpPanel`'s table and docs/aisim.md "Watching a game" list the keys `WatchHud.command` handles. |
 | | `AiOverlay`, `OverlayPaint`, `OverlayRenderer`, `OverlayLabels` | The followed AI's overlay (`aikit.AiView`): calls its paint between ticks, at most once a frame, and catches what it throws; the shapes it painted, drawn into the 3D scene (through `WatchControls.render3D`, which DefaultRenderer calls last in the view's pass) and their labels on screen; the layer key, the AI panel and the inspector's line. |
-| | `Rewinder`, `Checkpoints`, `Copier`, `Track` | Rewind: checkpoints that deep-copy the world as it first plays, restored into the same live World; the per-second checksum track that catches a rewind that does not replay exactly. |
+| | `Rewinder`, `Checkpoints`, `Copier`, `Track`, `Times` | Rewind: checkpoints that deep-copy the world as it first plays, restored into the same live World; the per-tick checksum track that catches a rewind that does not replay exactly; `Times`, how the view quotes ticks as time (at its clock speed, ludicrous unless T picks another) and turns recorded game seconds into ticks. |
 | | `RewindCheck` | rewindcheck: the rewind's fidelity test, headless or in a hidden GL window. |
 
 `play` uses `build` (snapshots, frozen AIs) and `analysis` (the summary after a run, reading games to replay them).
@@ -49,7 +49,7 @@ the harness). The rest of `aikit` is the AI toolkit.
   helpers and only ever calls `world.tick(0.02f)`: playback speed is ticks per frame, never the world's game speed or
   another tick length, which would simulate another game. Its engine hooks do nothing unless `aisim.watch` is set,
   and nothing of the viewer joins the world's animation managers but the checksum probe. The viewer checks every
-  census second against the recording, and `rewindcheck` the rewind. The viewer calls an AI's `AiView` methods (its
+  census against the recording, and `rewindcheck` the rewind. The viewer calls an AI's `AiView` methods (its
   overlay) only between ticks, and nothing calls them in harness games; they must only read, and a painter that
   changes the game shows as `DIVERGED`.
 - **Headless changes nothing the simulation computes.** Workers run the engine with `-Dcom.oddlabs.tt.headless=true`

@@ -1,54 +1,58 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.oddlabs.tt.aikit.GameTime;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Whether the watched game is the recorded one: every census second the world first plays (each 30 s) has the world
- * checksum the game file recorded then, and the world after its last tick has the end line's checksum. A rewind that
- * plays a second differently from its first pass is the {@link Track}'s to find (REWIND MISMATCH).
+ * Whether the watched game is the recorded one: every census tick the world first plays (each 30 game seconds) has the
+ * world checksum the game file recorded then, and the world after its last tick has the end line's checksum. A rewind
+ * that plays a tick differently from its first pass is the {@link Track}'s to find (REWIND MISMATCH).
  */
 final class Verification {
-    /** The recorder's census period in game seconds: the seconds with a checksum to compare. */
-    private static final int CENSUS_SECONDS = 30;
-
     private final @Nullable Recording recording;
     private final @NonNull Track track;
-    /** The next second to compare once the track's first pass reaches it. */
-    private int next_second = CENSUS_SECONDS;
+    private final @NonNull Times times;
+    /** The census ticks of the recording, ascending. */
+    private final int @NonNull [] census_ticks;
+    /** The index in census_ticks of the next to compare once the track's first pass reaches it. */
+    private int next;
     private int compared;
-    /** The last compared second that matched, or -1. */
+    /** The last compared tick that matched, or -1. */
     private int verified_to = -1;
-    /** The first compared second that differed, or -1. */
+    /** The first compared tick that differed, or -1. */
     private int diverged_at = -1;
     /** Whether the end checksum was compared, and whether it matched. */
     private boolean end_compared;
     private boolean end_matched;
 
-    Verification(@Nullable Recording recording, @NonNull Track track) {
+    /** Checks the track against {@code recording}; {@code times} quotes the ticks of the status line. */
+    Verification(@Nullable Recording recording, @NonNull Track track, @NonNull Times times) {
         this.recording = recording;
         this.track = track;
+        this.times = times;
+        this.census_ticks = recording == null ? new int[0] : recording.censusTicks().stream().mapToInt(
+                Integer::intValue).toArray();
     }
 
-    /** Compares the census seconds the track's first pass reached since the last call. */
+    /** Compares the census ticks the track's first pass reached since the last call: cheap, call it every tick. */
     void check() {
         if (recording == null) {
             return;
         }
         int frontier = track.frontier();
-        for (; next_second <= frontier; next_second += CENSUS_SECONDS) {
-            Integer recorded = recording.censusChecksum(next_second);
+        for (; next < census_ticks.length && census_ticks[next] <= frontier; next++) {
+            int tick = census_ticks[next];
+            Integer recorded = recording.censusChecksum(tick);
             if (recorded == null) {
                 continue;
             }
             compared++;
-            if (recorded == track.checksum(next_second)) {
+            if (recorded == track.checksum(tick)) {
                 if (diverged_at < 0) {
-                    verified_to = next_second;
+                    verified_to = tick;
                 }
             } else if (diverged_at < 0) {
-                diverged_at = next_second;
+                diverged_at = tick;
             }
         }
     }
@@ -62,11 +66,11 @@ final class Verification {
         end_matched = recording.endChecksum() == world_checksum;
         compared++;
         if (!end_matched && diverged_at < 0) {
-            diverged_at = recording.endTick() / GameTime.TICKS_PER_SECOND;
+            diverged_at = recording.endTick();
         }
     }
 
-    /** Checksums compared so far (census seconds and the end). */
+    /** Checksums compared so far (census ticks and the end). */
     int compared() {
         return compared;
     }
@@ -81,7 +85,7 @@ final class Verification {
         return track.firstMismatch() >= 0;
     }
 
-    /** The game second the watched game first differed from the recording, or -1. */
+    /** The tick the watched game first differed from the recording at, or -1. */
     int divergedAt() {
         return diverged_at;
     }
@@ -94,18 +98,20 @@ final class Verification {
         }
         StringBuilder text = new StringBuilder();
         if (diverged_at >= 0) {
-            text.append("DIVERGED at ").append(Times.clock(diverged_at * GameTime.TICKS_PER_SECOND));
+            text.append("DIVERGED at ").append(times.precise(diverged_at));
         } else if (end_compared) {
             text.append("VERIFIED to the end");
         } else if (verified_to >= 0) {
-            text.append("VERIFIED to ").append(Times.clock(verified_to * GameTime.TICKS_PER_SECOND));
+            text.append("VERIFIED to ").append(times.precise(verified_to));
+        } else if (census_ticks.length > 0) {
+            text.append("verifying (first census at ").append(times.precise(census_ticks[0])).append(')');
         } else {
-            text.append("verifying (first census at 0:30)");
+            text.append("verifying (the game file has no census checksums)");
         }
         int mismatch = track.firstMismatch();
         if (mismatch >= 0) {
-            text.append(", REWIND MISMATCH at ").append(Times.clock(mismatch * GameTime.TICKS_PER_SECOND)).append(
-                    " (").append(track.mismatches()).append(" s)");
+            text.append(", REWIND MISMATCH at ").append(times.precise(mismatch)).append(" (").append(
+                    track.mismatches()).append(track.mismatches() == 1 ? " tick)" : " ticks)");
         }
         return text.toString();
     }

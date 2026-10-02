@@ -146,11 +146,11 @@ AISIM_JAVA_OPTS=-Daisim.hangCpu=15 ./aisim.sh batch --players "chaos:hang=30 vs 
 # the watch viewer's AI overlay (opens the game window): the starter's paints, VERIFIED; a failing painter is
 # reported and the game stays VERIFIED (overlay:check fails, exit 1); a painter that changes the game, DIVERGED (exit 1)
 ./aisim.sh play --players "starter vs hard" --seed 3 --size small --name check-overlay &&
-    ./aisim.sh watch check-overlay s3-0 --selftest "play:3;overlay:check;seek:3:00;verify;quit"
+    ./aisim.sh watch check-overlay s3-0 --selftest "play:3;overlay:check;seek:t9000;verify;quit"
 ./aisim.sh play --players "chaos:paint=throw vs hard" --seed 3 --size small --name check-overlay-throw &&
-    ./aisim.sh watch check-overlay-throw s3-0 --selftest "play:3;seek:2:00;verify;overlay:check;quit"
+    ./aisim.sh watch check-overlay-throw s3-0 --selftest "play:3;seek:t6000;verify;overlay:check;quit"
 ./aisim.sh play --players "chaos:paint=cheat vs hard" --seed 3 --size small --name check-overlay-cheat &&
-    ./aisim.sh watch check-overlay-cheat s3-0 --selftest "play:2;seek:2:00;verify;quit"
+    ./aisim.sh watch check-overlay-cheat s3-0 --selftest "play:2;seek:t6000;verify;quit"
 # the analyses
 ./aisim.sh curves check-replay --split && ./aisim.sh fights check-teams && ./aisim.sh export check-teams
 ./aisim.sh compare check-replay check-nondeterminism check-ai-errors --force   # the several-variant table

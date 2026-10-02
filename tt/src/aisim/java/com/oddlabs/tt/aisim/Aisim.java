@@ -93,10 +93,10 @@ public final class Aisim {
               lab     FILE.java [args]           run your own tool (lab/NAME/) on the last build's class path
               freeze  TAG NAME|CLASS [--from DIR|JAR]   freeze an AI package as opponent @TAG
               gui     [--stale-ok] SPEC [game args]     play the game yourself; SPEC plays the skirmish Hard slots
-              watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
+              watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint TICKS] [--checkpoint-memory MB] [--presim]
                       [--selftest SCRIPT]        a harness game in the game client, played again exactly: pause,
                                                  step, rewind, jump, any speed; click any unit or building; AI logs
-              rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC] [--span SEC] [--gl]
+              rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at TIME,TIME] [--span TIME] [--gl]
                                                  check that watch's rewind plays a game exactly as the first time
             --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
               A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
@@ -336,7 +336,7 @@ public final class Aisim {
     }
 
     /**
-     * watchfile RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
+     * watchfile RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint TICKS] [--checkpoint-memory MB] [--presim]
      * [--selftest SCRIPT] [--stale-ok]: checks the options and the build's freshness (the viewer's code must be in the
      * snapshot), then writes the watch file and prints its path last, for ./aisim.sh watch to start the game with.
      */
@@ -344,7 +344,7 @@ public final class Aisim {
         options.check(Set.of("ai-from-run", "checkpoint", "checkpoint-memory", "presim", "selftest", "stale-ok"),
                 options.args.size() == 1 ? 1 : 2); // FILE.jsonl or RUN KEY
         Snapshot.requireFresh(options.flag("stale-ok"));
-        int checkpoint = options.integer("checkpoint", WatchCommand.DEFAULT_CHECKPOINT_SECONDS, 1, 3600);
+        int checkpoint = options.integer("checkpoint", WatchCommand.DEFAULT_CHECKPOINT_TICKS, 50, 1_000_000);
         // the checkpoints live in the game's heap, which aisim.sh sets from the same variable
         int heap = WatchCommand.heapMegabytes(System.getenv(WatchCommand.HEAP_VARIABLE));
         int most = heap * WatchCommand.MAX_CHECKPOINT_PERCENT / 100;

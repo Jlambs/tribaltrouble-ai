@@ -1,7 +1,6 @@
 package com.oddlabs.tt.aisim.watch;
 
 import com.oddlabs.tt.aikit.AiLog;
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.landscape.World;
 import com.oddlabs.tt.player.Player;
 import org.jspecify.annotations.NonNull;
@@ -30,7 +29,7 @@ import java.util.logging.Logger;
  *
  * <p>When a checkpoint cannot be taken (an object the copier has no rule for: {@link Copier.CopyException}), the first
  * one throws (no rewind at all), and a later one stops taking checkpoints: those taken so far stay usable, and
- * {@link #describe()} and {@link #failure()} say why.
+ * {@link #describe} and {@link #failure()} say why.
  */
 final class Checkpoints implements Rewinder {
     private static final Logger logger = Logger.getLogger(Checkpoints.class.getName());
@@ -66,6 +65,8 @@ final class Checkpoints implements Rewinder {
     private int interval;
     private long bytes;
     private @Nullable String failure;
+    /** The tick of the checkpoint that failed, or -1. */
+    private int failure_tick = -1;
     private long copy_nanos;
     private int copies;
     private long last_restore_nanos = -1;
@@ -110,7 +111,8 @@ final class Checkpoints implements Rewinder {
         try {
             checkpoint = take();
         } catch (RuntimeException e) { // a CopyException, or anything else a copy hits: the earlier ones stay usable
-            failure = "no checkpoints after " + clock(tick) + ": " + e.getMessage();
+            failure = "no checkpoints after tick " + tick + ": " + e.getMessage();
+            failure_tick = tick;
             logger.log(Level.WARNING, failure, e);
             return;
         }
@@ -161,13 +163,20 @@ final class Checkpoints implements Rewinder {
         return checkpoints.stream().mapToInt(Checkpoint::tick).toArray();
     }
 
-    /** Such as "42 checkpoints every 60 s, 1.1 GB of 2.7 GB", and why there are no more if one failed. */
+    /**
+     * Such as "42 checkpoints every 4:00 (3000 ticks), 1.1 GB of 2.7 GB", and why there are no more if one failed, its
+     * times quoted by {@code times}.
+     */
     @Override
-    public @NonNull String describe() {
+    public @NonNull String describe(@NonNull Times times) {
         int count = checkpoints.size();
         String how_many = count + (count == 1 ? " checkpoint" : " checkpoints");
-        String text = how_many + " every " + seconds(interval) + ", " + size(bytes) + " of " + size(budget);
-        return failure == null ? text : text + "; " + shorten(failure, 120);
+        String text = how_many + " every " + times.span(interval) + " (" + interval + " ticks), " + size(
+                bytes) + " of " + size(budget);
+        if (failure == null) {
+            return text;
+        }
+        return text + "; " + shorten("at " + times.clock(failure_tick) + ", " + failure, 120);
     }
 
     // ---------------------------------------------------------------- for RewindCheck and the view
@@ -256,7 +265,7 @@ final class Checkpoints implements Rewinder {
         for (Checkpoint c : checkpoints) {
             bytes += c.bytes();
         }
-        logger.info("rewind: " + describe());
+        logger.info("rewind: " + describe(new Times()));
         return true;
     }
 
@@ -285,18 +294,6 @@ final class Checkpoints implements Rewinder {
         if (world != live) {
             throw new IllegalArgumentException("checkpoints of another world");
         }
-    }
-
-    private static @NonNull String seconds(int ticks) {
-        return ticks % GameTime.TICKS_PER_SECOND == 0 ? ticks / GameTime.TICKS_PER_SECOND + " s" : ticks + " ticks";
-    }
-
-    private static @NonNull String clock(int tick) {
-        int s = tick / GameTime.TICKS_PER_SECOND;
-        if (s >= 3600) {
-            return String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60);
-        }
-        return String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60);
     }
 
     private static @NonNull String size(long bytes) {

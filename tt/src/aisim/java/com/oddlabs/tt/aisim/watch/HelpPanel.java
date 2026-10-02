@@ -25,8 +25,9 @@ final class HelpPanel extends HudPanel {
             Keys
             P | play / pause
             +  - | faster / slower: 1/8x ... 1x (50 ticks a second) ... 128x, MAX
-            .  , | one tick on / back; with Shift one second, with Ctrl ten seconds
-            J | jump box: 12:30, 1:02:03, 90s, t4500, +30, -10, end (Enter jumps, Esc leaves it)
+            .  , | one tick on / back; with Shift 50 ticks, with Ctrl 500
+            J | jump box: 12:30, 1:02:03, 90s, t4500, +30, -10, +t500, end (Enter jumps, Esc leaves it)
+            T  Shift+T | clock speed: the speed times are shown and typed at (ludicrous, normal, fast, slow)
             N  B | next / previous event of the timeline
             ]  [ | next / previous player: the camera goes there, the AI log follows
             E | simulate to the recorded end, then come back here (E again stops)

@@ -3,7 +3,6 @@ package com.oddlabs.tt.aisim.watch;
 import com.oddlabs.net.NetworkSelector;
 import com.oddlabs.tt.Main;
 import com.oddlabs.tt.aikit.AiLog;
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aisim.play.ClientWorld;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.camera.MapCamera;
@@ -46,7 +45,6 @@ import java.util.logging.Logger;
  */
 final class WatchGame implements Clock.Listener {
     private static final Logger logger = Logger.getLogger(WatchGame.class.getName());
-    private static final int TPS = GameTime.TICKS_PER_SECOND;
     /** After a rewind, the picked object is found again among its owner's objects of its kind this close (cells). */
     private static final int RESELECT_CELLS = 6;
 
@@ -56,6 +54,8 @@ final class WatchGame implements Clock.Listener {
     private final @NonNull World world;
     private final @NonNull Track track;
     private final @NonNull AiLogBook ai_log;
+    /** How the view quotes ticks as time: at ludicrous speed until the user picks another (T). */
+    private final @NonNull Times times = new Times();
     private final @NonNull Rewinder rewinder;
     private final @NonNull Verification verification;
     private final @NonNull Clock clock;
@@ -106,15 +106,15 @@ final class WatchGame implements Clock.Listener {
         this.track = new Track();
         world.getAnimationManagerRealTime().registerAnimation(new Track.Probe(world, track));
         // before the AIs, which fetch their log handles when created
-        this.ai_log = new AiLogBook(job.slots());
+        this.ai_log = new AiLogBook(job.slots(), world.getGameMillisPerTick());
         AiLog.beginWriters(world, ai_log::writer, "key=" + job.key() + " snap=" + file.snap());
         createAIs();
         this.rewinder = newRewinder(world, file, track, ai_log);
 
-        this.verification = new Verification(recording, track);
+        this.verification = new Verification(recording, track, times);
         this.overlay = new AiOverlay(this);
         this.hud = new WatchHud(this);
-        this.clock = new Clock(world, rewinder, this, this::menuPaused, end_tick);
+        this.clock = new Clock(world, rewinder, this, this::menuPaused, times, end_tick);
         this.viewer = new WorldViewer(network, gui_root, parameters, new WatchInGameInfo(), generator, world_info,
                 world, render_queues, (short) job.side(), hud);
         gui_root.pushDelegate(viewer.getDelegate());
@@ -124,8 +124,8 @@ final class WatchGame implements Clock.Listener {
             clock.presimulate();
         }
         logger.info(
-                "watching " + job.run() + " " + job.key() + ": " + job.slots() + " players, end " + (end_tick < 0 ? "unknown" : Times.clock(
-                        end_tick)) + ", rewind: " + rewinder.describe());
+                "watching " + job.run() + " " + job.key() + ": " + job.slots() + " players, end " + (end_tick < 0 ? "unknown" : "tick " + end_tick + " = " + times.clock(
+                        end_tick) + " at " + times.speedName()) + ", rewind: " + rewinder.describe(times));
     }
 
     /**
@@ -137,8 +137,8 @@ final class WatchGame implements Clock.Listener {
     static @NonNull Rewinder newRewinder(@NonNull World world, @NonNull WatchFile file, @NonNull Track track,
             @NonNull AiLogBook ai_log) {
         try {
-            return new Checkpoints(world, file.checkpointSeconds() * TPS,
-                    file.checkpointMegabytes(), sharedWithCheckpoints(track, ai_log));
+            return new Checkpoints(world, file.checkpointTicks(), file.checkpointMegabytes(), sharedWithCheckpoints(
+                    track, ai_log));
         } catch (IllegalStateException e) { // Copier.CopyException included
             logger.log(Level.WARNING, "rewind is off", e);
             return new NoRewind(String.valueOf(e.getMessage()));
@@ -196,9 +196,7 @@ final class WatchGame implements Clock.Listener {
     public void frontier(int tick) {
         rewinder.atFrontier(world);
         ai_log.frontier(tick);
-        if (tick % TPS == 0) {
-            verification.check();
-        }
+        verification.check(); // census ticks need not be whole seconds: at ludicrous every 375th tick
         if (tick == end_tick) {
             verification.checkEnd(world.getChecksum());
         }
@@ -347,6 +345,12 @@ final class WatchGame implements Clock.Listener {
         return end_tick;
     }
 
+    /** How the view quotes ticks as time (the clock speed, T). */
+    @NonNull
+    Times times() {
+        return times;
+    }
+
     /** How the view names slot {@code slot}: {@code s3 hard}. */
     @NonNull
     String playerName(int slot) {
@@ -449,11 +453,11 @@ final class WatchGame implements Clock.Listener {
         }
     }
 
-    /** Seeks to the time a jump box text names (Times.parse); null, or the error for the user. */
+    /** Seeks to the time a jump box text names ({@link Times#parse}); null, or the error for the user. */
     @Nullable
     String seekText(@NonNull String text) {
         try {
-            return clock.seek(Times.parse(text, clock.position(), end_tick));
+            return clock.seek(times.parse(text, clock.position(), end_tick));
         } catch (IllegalArgumentException e) {
             return e.getMessage();
         }

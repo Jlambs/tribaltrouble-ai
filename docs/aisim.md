@@ -539,10 +539,10 @@ AI changed in between:
 
 **What the screen shows.** Over the game view:
 
-- **Status panel** (top middle): the game time and tick, the recorded end, what the clock does (`PLAYING x16`,
-  `PAUSED`, `SEEKING 45% to 12:00`, `PRESIM 45% to 1:42:41, back to 10:00`, with `, then plays` when it plays once
-  there, `ENDED`, `MENU (paused)`, and `runs x3.2` when the machine cannot keep up with the speed), the game speed
-  when the run used `--speed`, the verification (below), the rewind's checkpoints and memory (or why rewind is off),
+- **Status panel** (top middle): the time and tick, the recorded end and the clock speed the times are at (below),
+  what the clock does (`PLAYING x16`, `PAUSED`, `SEEKING 45% to 12:00`, `PRESIM 45% to 1:42:41, back to 10:00`, with
+  `, then plays` when it plays once there, `ENDED`, `MENU (paused)`, and `runs x3.2` when the machine cannot keep up
+  with the speed), a warning when the game was played at another speed than the clock's, the verification (below), the rewind's checkpoints and memory (or why rewind is off),
   the last message (an error, the event N jumped to, the player followed). The jump box is under it.
 - **Scoreboard** (top left), one row per player: its colour, slot and spec, team, `alive` or `out 12:34` (the time
   the recording has it out, once the game you watch got there), warriors, peons, finished quarters / armories /
@@ -554,15 +554,15 @@ AI changed in between:
   chieftain; for a unit what it carries, its order and what it does now (with the target's owner, kind and cell),
   its behaviour.
 - **AI log** (bottom right): the last lines (up to 25; fewer when the window or the inspector leaves less room, 6 on
-  the overview map) the followed player's AI wrote at or before the moment you watch, with their game time (m:ss.hh)
-  and topic; the lines of the last game second are yellow. A stock AI writes no log, and the panel says so. `flee
+  the overview map) the followed player's AI wrote at or before the moment you watch, with their time (m:ss.hh, at
+  the clock speed) and topic; the lines of the last 50 ticks are yellow. A stock AI writes no log, and the panel says so. `flee
   of` lines (most of a gauntlet log: one per fleeing peon) are hidden until Shift+L; the wheel over the panel goes
   back to older lines.
 - **Timeline** (bottom, all along but for the compass): the whole recorded game, the part simulated so far (blue),
   the checkpoints (ticks under the bar), where you are (white) and where a seek goes (yellow), and marks for the
   recording's key events: players out (red for team A, grey for the others), the last team out and the end (white),
   team A's buildings razed (orange), team A's chieftains made and lost (green, violet), and death tolls (amber,
-  inside the bar: a player losing 20 units or more within 10 game seconds, team A 10). Hover a mark to read its
+  inside the bar: a player losing 20 units or more within 250 ticks, 20 s at ludicrous, team A 10). Hover a mark to read its
   event; click or drag and let go to jump there; N and B jump to the next and previous mark.
 
 **Keys and mouse.** F1 or H shows them all in the game.
@@ -571,8 +571,9 @@ AI changed in between:
 |---|---|
 | P | play / pause |
 | + / - (the game's speed keys) | faster / slower: 1/8x, 1/4x, 1/2x, 1x, 2x ... 128x and MAX, as fast as the machine simulates |
-| . / , | one tick forward / back; with Shift a second, with Ctrl 10 seconds |
-| J | the jump box: `mm:ss`, `h:mm:ss`, `123s`, `t123` (a tick), `+30` / `-10` (seconds from now), `0`, `end`; Enter jumps, Esc leaves it |
+| . / , | one tick forward / back; with Shift 50 ticks, with Ctrl 500 |
+| J | the jump box: `mm:ss`, `h:mm:ss`, `123s` (at the clock speed), `t123` (a tick), `+30` / `-10` (seconds from now), `+t500` / `-t500` (ticks from now), `0`, `end`; Enter jumps, Esc leaves it |
+| T / Shift+T | the clock speed: the game speed every time is shown and typed at (ludicrous first, then normal, fast, slow) |
 | N / B | next / previous event of the timeline |
 | ] / [ | next / previous player: the camera goes there and the AI log follows |
 | E | simulate the rest of the game now, then come back to where you are (E again stops); afterwards every jump is quick |
@@ -591,18 +592,25 @@ AI changed in between:
 | wheel | zoom, as in the game; over the AI log, older lines |
 
 The camera moves as in a game (arrow keys, screen edges, Home/End, Insert/Delete, the overview map); the view gives
-no orders. Speed 1x is 50 world ticks a second: the game at its recorded speed, which is normal unless the run used
-`--speed` (then units move 1.75 or 4 times as fast as at normal speed, and the status panel names the speed). Faster
-speeds play more ticks per frame. They never change the game's own speed setting, which would make it another game.
-Every time the view shows (the clock, the timeline, the jump box, the AI log) is world ticks / 50, as in the game
-file, which is game time at normal speed only (`--speed` in [Commands](#commands)).
+no orders. Speed 1x is 50 world ticks a second: the game at its recorded speed (`--speed` in
+[Commands](#commands); at ludicrous units move 4 times as fast as at normal speed). Faster speeds play more ticks per
+frame. They never change the game's own speed setting, which would make it another game.
 
-**Rewind.** As the game plays each second for the first time, `watch` keeps a checkpoint of the whole world every
-`--checkpoint` game seconds (default 60). Going back restores the last checkpoint before that moment and plays on to
-it, which takes at most one interval of simulation, shown as it runs; a jump forward past what was played so far plays
-the way there. Checkpoints take memory, up to `--checkpoint-memory` MB in all (default 45% of the heap); when they
+**Ticks and times.** The view counts world ticks: every step, checkpoint, census and log line is at a tick, and the
+status panel shows the tick (`t62859`) next to the time. A time is the game time those ticks cover at the view's
+clock speed: ludicrous (80 ms a tick, 12.5 ticks a game second) unless T picks slow (10 ms), normal (20 ms) or fast
+(35 ms), whatever speed the game was played at. The clock, the timeline, the jump box, the scoreboard's out times
+and the AI log all follow it. For a game played at ludicrous the clock is its game time, as the run's rows and the
+game file give it; for a game played at another speed the status panel warns that the clock is not its game time
+(a game played at normal speed shows 4 times its recorded time at ludicrous; T to normal gives its own). An AI's
+overlay (its status lines and labels) is the AI's own text, in the AI's own time.
+
+**Rewind.** As the game plays each tick for the first time, `watch` keeps a checkpoint of the whole world every
+`--checkpoint` ticks (default 3000: a minute of play at 1x, 4 game minutes at ludicrous). Going back restores the
+last checkpoint before that moment and plays on to it, which takes at most one interval of simulation, shown as it
+runs; a jump forward past what was played so far plays the way there. Checkpoints take memory, up to `--checkpoint-memory` MB in all (default 45% of the heap); when they
 reach it, every other one is dropped and the interval doubles, so a long game keeps checkpoints all the way. The game
-runs with a 6 GB heap, or `AISIM_WATCH_HEAP` (`AISIM_WATCH_HEAP=10g ./aisim.sh watch ...`). Each second played again is
+runs with a 6 GB heap, or `AISIM_WATCH_HEAP` (`AISIM_WATCH_HEAP=10g ./aisim.sh watch ...`). Each tick played again is
 checked against its first pass, so a rewind that did not restore everything shows `REWIND MISMATCH at ...`; that is a
 bug of `watch`, which `./aisim.sh rewindcheck RUN KEY` reproduces without a window. `--presim` simulates the whole game
 first (you see it run), then waits at 0:00, paused, and every jump afterwards is quick; it takes as long as
@@ -643,8 +651,8 @@ is done:
   `timeline:TIME`, `log` or `view` (the middle of the window). `key:ESCAPE` with no help or jump box open opens the
   Esc menu, which stops the clock: a step that waits on the clock fails while it is open (`key:ESCAPE` again closes
   it);
-- checks: `verify` fails on a divergence or a rewind mismatch, or when no census second was compared yet;
-  `expect:WHAT=VALUE` fails unless `tick` (a time), `follow` (a slot), `state` (`PLAYING`, `PAUSED`, `SEEKING`,
+- checks: `verify` fails on a divergence or a rewind mismatch, or when no census was compared yet;
+  `expect:WHAT=VALUE` fails unless `tick` (a time as the jump box reads it), `follow` (a slot), `state` (`PLAYING`, `PAUSED`, `SEEKING`,
   `ENDED`), `help`, `log`, `scoreboard`, `inspector`, `timeline` or `flee` (`on`/`off`), `inspect` (`none` or a
   kind) or `message` (a text the status panel's message contains) is so;
 - `overlay:MODE` sets the AI overlay's layers ([AI overlays](#ai-overlays));
@@ -658,14 +666,15 @@ ticks the world played and how fast, the clock's state, the verification and any
 ./aisim.sh watch base s19-1 --selftest "seek:5:00;key:P;key:N;shot:event;click:row:1;expect:follow=1;key:F1;shot:help;quit"
 ```
 
-`./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC] [--span SEC] [--gl]` checks the rewind
-itself, on the very game `watch` plays (it finds it the same way: any checkout's run folder, merged runs, game files,
-frozen AIs, `--ai-from-run`): it plays the game with checkpoints, then at each `--at` second restores the checkpoint
-before it and plays `--span` seconds again, and exits 1 unless every second played again equals the first pass (and
-the first pass the recording), also when it crashes (with the stack trace); an AI this build cannot make is a usage
+`./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at TIME,TIME] [--span TIME] [--gl]` checks the
+rewind itself, on the very game `watch` plays (it finds it the same way: any checkout's run folder, merged runs, game
+files, frozen AIs, `--ai-from-run`): it plays the game with checkpoints, then at each `--at` time restores the
+checkpoint before it and plays `--span` again (default 6000 ticks), and exits 1 unless every tick played again equals
+the first pass (and the first pass the recording), also when it crashes (with the stack trace); an AI this build cannot make is a usage
 error (2). It prints the checkpoints' count, size and copy times. `--gl` runs it with the client's resources in a
-hidden GL window, as the viewer has them. More options: `--checkpoint SEC`, `--memory MB`, `--limit SEC` (play only so
-far), `--no-logs`, `--classes` (what the copier copied and shared, by class).
+hidden GL window, as the viewer has them. More options: `--checkpoint TICKS`, `--memory MB`, `--limit TIME` (play
+only so far), `--no-logs`, `--classes` (what the copier copied and shared, by class). Its times are read and printed
+as the viewer's are at its default clock speed, ludicrous (`12:30`, `90`, `t4500`).
 
 Leaving: Esc, then Quit (and confirm), or closing the window (and confirm) ends the program: one game per start of
 the client, with no main menu to go back to. Limits: a game whose recording ended in a crash, hang or error may fail
@@ -769,9 +778,9 @@ The same list as `./aisim.sh help`:
 ./aisim.sh lab     FILE.java [args]
 ./aisim.sh freeze  TAG NAME|CLASS [--from DIR|JAR]
 ./aisim.sh gui     [--stale-ok] SPEC [game args]
-./aisim.sh watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint SEC] [--checkpoint-memory MB] [--presim]
+./aisim.sh watch   RUN KEY | FILE.jsonl [--ai-from-run] [--checkpoint TICKS] [--checkpoint-memory MB] [--presim]
                    [--selftest SCRIPT]
-./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC] [--span SEC] [--gl]
+./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at TIME,TIME] [--span TIME] [--gl]
 --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
   A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
   is left, or to the time limit.
@@ -824,8 +833,8 @@ GAME: --minutes M (the time limit in game minutes; a game that reaches it is a d
   `replay --snap latest`, `gui` and `watch` refuse to run when a `.java` file under `tt/src/main/java` or
   `tt/src/aisim/java` changed after the last `build`: nothing is more confusing than measuring the old code.
   `--stale-ok` runs the last build anyway (`gui --stale-ok SPEC`; every other command takes it after its arguments).
-- **`watch`** ([Watching a game](#watching-a-game)): `--checkpoint SEC` (1..3600, default 60) game seconds between
-  rewind checkpoints at first, `--checkpoint-memory MB` (default 45% of the heap, at most 80%) their memory in all,
+- **`watch`** ([Watching a game](#watching-a-game)): `--checkpoint TICKS` (50..1000000, default 3000) world ticks
+  between rewind checkpoints at first, `--checkpoint-memory MB` (default 45% of the heap, at most 80%) their memory in all,
   `--presim` simulates the whole game first (shown as it runs; a `--selftest` has its own `presim` step instead),
   `--ai-from-run` plays AIs named by package from the snapshot
   that recorded the game, `--selftest SCRIPT` runs a script and quits. `AISIM_WATCH_HEAP` (default `6g`) is the heap

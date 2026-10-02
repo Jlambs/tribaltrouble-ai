@@ -18,8 +18,9 @@ import java.util.function.BooleanSupplier;
  * the world tick by tick, always {@code world.tick(ANIMATION_SECONDS_PER_TICK)}, at the world's recorded game speed,
  * which the job's parameters set and playback never changes: another engine speed would scale the game time of each
  * tick and simulate another game. Playback speed is world ticks per real second instead, 1x being 50 of them, which is
- * the game at its recorded speed (normal unless the run used --speed); the times the view shows are world ticks / 50,
- * as in the game file. Each frame gets a time budget for its ticks, so the window stays responsive and a fast-forward
+ * the game at its recorded speed (normal unless the run used --speed); the times the view shows are the game time of
+ * those ticks at the view's clock speed ({@link Times}). Each frame gets a time budget for its ticks, so the window
+ * stays responsive and a fast-forward
  * shows as it goes; when the budget caps a speed, {@link #effectiveSpeed()} says how fast it really runs.
  *
  * <p>Seeking forward plays on to the target; seeking backward, or forward past a later checkpoint, restores the latest
@@ -94,6 +95,7 @@ final class Clock {
     private final @NonNull Rewinder rewinder;
     private final @NonNull Listener listener;
     private final @NonNull BooleanSupplier menu_paused;
+    private final @NonNull Times times;
     /** The recorded end tick, or -1 when unknown. */
     private final int end_tick;
     /** The world never plays past this tick. */
@@ -137,8 +139,9 @@ final class Clock {
     private @Nullable String last_seek_report;
 
     Clock(@NonNull World world, @NonNull Rewinder rewinder, @NonNull Listener listener,
-            @NonNull BooleanSupplier menu_paused, int end_tick) {
+            @NonNull BooleanSupplier menu_paused, @NonNull Times times, int end_tick) {
         this.world = world;
+        this.times = times;
         this.rewinder = rewinder;
         this.listener = listener;
         this.menu_paused = menu_paused;
@@ -264,8 +267,8 @@ final class Clock {
             case PLAYING -> "PLAYING " + speedText(speed_index);
             case PAUSED -> "PAUSED";
             case SEEKING -> String.format(Locale.ROOT, "%s %d%% to %s%s%s", presimulating ? "PRESIM" : "SEEKING",
-                    (int) (seekProgress() * 100), Times.clock(seek_target),
-                    presimulating && !pending.isEmpty() ? ", back to " + Times.clock(presim_back_to) : "",
+                    (int) (seekProgress() * 100), times.clock(seek_target),
+                    presimulating && !pending.isEmpty() ? ", back to " + times.clock(presim_back_to) : "",
                     willPlay() ? ", then plays" : "");
             case ENDED -> "ENDED";
         };
@@ -381,7 +384,7 @@ final class Clock {
         }
         if (rewinder instanceof NoRewind) {
             // it could get to the end, but never back: the rest of the game would be lost to the view
-            say("cannot presimulate: rewind is " + rewinder.describe());
+            say("cannot presimulate: rewind is " + rewinder.describe(times));
             return message;
         }
         pending.clear();
@@ -435,7 +438,7 @@ final class Clock {
             } catch (RuntimeException e) {
                 // the rewinder left the world as it was: a seek under way goes on
                 String why = e.getMessage() == null ? e.toString() : e.getMessage();
-                say("cannot seek to " + Times.clock(target) + ": " + why);
+                say("cannot seek to " + times.clock(target) + ": " + why);
                 pending.clear();
                 presimulating = false;
                 listener.restoreFailed();
@@ -547,7 +550,7 @@ final class Clock {
         double seconds = (System.nanoTime() - seek_start_nanos) / 1e9;
         if (ticks > 0) {
             last_seek_report = String.format(Locale.ROOT, "%s to %s: %d ticks in %.1f s = %.0f ticks/s (x%.1f)",
-                    Times.clock(seek_from), Times.clock(world.getTick()), ticks, seconds, ticks / Math.max(seconds,
+                    times.clock(seek_from), times.clock(world.getTick()), ticks, seconds, ticks / Math.max(seconds,
                             1e-9), ticks / Math.max(seconds, 1e-9) / TPS);
         }
         boolean restored = seek_restored;

@@ -332,7 +332,7 @@ final class AiOverlay {
         if (last != null) {
             lines.add(new TextPanel.Line(last, TextPanel.BAD));
             lines.add(new TextPanel.Line(
-                    failures + (failures == 1 ? " failure" : " failures") + ", the last at " + Times.clockTicks(
+                    failures + (failures == 1 ? " failure" : " failures") + ", the last at " + game.times().precise(
                             failure_tick), TextPanel.BAD));
         }
         return lines;

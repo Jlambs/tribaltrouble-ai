@@ -109,7 +109,7 @@ final class Scoreboard extends HudPanel {
             row[1] = String.valueOf((char) ('A' + job.team(slot)));
             boolean alive = Field.alive.of(census) != 0;
             if (out_ticks[slot] <= tick) {
-                row[2] = "out " + Times.clock(out_ticks[slot]);
+                row[2] = "out " + game.times().clock(out_ticks[slot]);
             } else {
                 row[2] = alive ? "alive" : "out"; // out without the recording's time: diverged, or not recorded
             }

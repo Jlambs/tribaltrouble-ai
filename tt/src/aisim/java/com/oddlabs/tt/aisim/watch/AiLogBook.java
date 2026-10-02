@@ -1,6 +1,5 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.oddlabs.tt.aikit.GameTime;
 import org.jspecify.annotations.NonNull;
 
 import java.io.Writer;
@@ -33,11 +32,15 @@ final class AiLogBook {
 
     private final Lines[] lines;
     private final LineWriter[] writers;
+    /** The game time of a world tick in this game, in ms: what turns a line's game seconds into its tick. */
+    private final int millis_per_tick;
     /** The highest tick the world played so far: lines of this tick or earlier are re-plays. -1 before the first. */
     private int frontier = -1;
     private int malformed;
 
-    AiLogBook(int slots) {
+    /** The book of a game of {@code slots} players whose world ticks cover {@code millis_per_tick} ms of game time. */
+    AiLogBook(int slots, int millis_per_tick) {
+        this.millis_per_tick = millis_per_tick;
         lines = new Lines[slots];
         writers = new LineWriter[slots];
         for (int slot = 0; slot < slots; slot++) {
@@ -114,7 +117,7 @@ final class AiLogBook {
         if (line.startsWith("#")) {
             return;
         }
-        int tick = tickOf(line);
+        int tick = tickOf(line, millis_per_tick);
         if (tick < 0) {
             malformed++;
             return;
@@ -124,8 +127,11 @@ final class AiLogBook {
         }
     }
 
-    /** The tick of a line that starts with its game seconds ({@code "%8.2f s%d ..."}), or -1. */
-    static int tickOf(@NonNull String line) {
+    /**
+     * The tick of a line that starts with its game seconds ({@code "%8.2f s%d ..."}, AiLog), in a game whose ticks
+     * cover {@code millis_per_tick} ms; -1 for a line without them.
+     */
+    static int tickOf(@NonNull String line, int millis_per_tick) {
         int start = 0;
         while (start < line.length() && line.charAt(start) == ' ') {
             start++;
@@ -135,7 +141,7 @@ final class AiLogBook {
             return -1;
         }
         try {
-            return (int) Math.round(Double.parseDouble(line.substring(start, end)) * GameTime.TICKS_PER_SECOND);
+            return Times.tickOf(Double.parseDouble(line.substring(start, end)), millis_per_tick);
         } catch (NumberFormatException e) {
             return -1;
         }
