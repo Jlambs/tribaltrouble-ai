@@ -3758,15 +3758,19 @@ final class Military {
 
     /**
      * corner_fields: the target field does not reach the staging point. The field with corner cuts, which the engine
-     * walks units through, reaches every cell the strict one does and maybe more, so it takes the strict one's place:
-     * the march, its progress and the dead-region test then follow the engine's rule. Counted by whether it reaches
-     * the staging point (corner_field) or not (corner_field_sealed: still a dead region if the attack stalls).
+     * walks units through, reaches every cell the strict one does and maybe more; when it reaches the staging point it
+     * takes the strict one's place (corner_field): the march, its progress and the dead-region test then follow the
+     * engine's rule. When it does not (corner_field_sealed: still a dead region if the attack stalls), the strict one
+     * stays: the corner cuts only shorten its distances, which moved the march for nothing (s6099 N=14: it diverged at
+     * 71 min, and the game won at 168 min was lost at 117).
      */
     private void cornerField(@NonNull DistanceField strict) {
         DistanceField corner = ai.map().computeField(target_x, target_y, Integer.MAX_VALUE, true);
-        target_field = corner;
-        target_corner = true;
         boolean reaches = corner.getAround(staging_x, staging_y, 2) != DistanceField.UNREACHABLE;
+        if (reaches) {
+            target_field = corner;
+            target_corner = true;
+        }
         ai.aiLog().count(reaches ? "corner_field" : "corner_field_sealed");
         if (ai.logging()) {
             int strict_cells = 0;
