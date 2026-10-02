@@ -255,6 +255,7 @@ public final class Game {
     public @NonNull List<Map<String, Object>> events() {
         if (events == null) {
             List<Map<String, Object>> lines = read(() -> Runs.readJsonl(file));
+            toGameTime(lines);
             for (Map<String, Object> line : lines) {
                 if ("census".equals(line.get("ev"))) {
                     census_by_slot.computeIfAbsent(slot(line), slot -> new ArrayList<>()).add(line);
@@ -264,6 +265,44 @@ public final class Game {
             events = lines;
         }
         return events;
+    }
+
+    /**
+     * A game file from before the recorder counted game time stamps t in world ticks / 50 at every game speed: at a
+     * speed other than normal (the header's secondsPerTick, then each speed event's) this turns those into game
+     * seconds, as newer files give them. A newer file has clock "game" in its header or in its speed events, unless
+     * it played at normal speed throughout, where the two agree.
+     */
+    private static void toGameTime(@NonNull List<Map<String, Object>> lines) {
+        if (lines.isEmpty() || lines.stream().anyMatch(line -> "game".equals(line.get("clock")))) {
+            return;
+        }
+        double factor = tickFactor(lines.get(0));
+        if (factor == 1 && lines.stream().noneMatch(line -> "speed".equals(line.get("ev")))) {
+            return;
+        }
+        double world_start = 0;
+        double game_start = 0;
+        for (Map<String, Object> line : lines) {
+            if (!(line.get("t") instanceof Number t)) {
+                continue; // the header
+            }
+            double game = game_start + (t.doubleValue() - world_start) * factor;
+            line.put("t", Math.round(game * 100) / 100.0);
+            if ("speed".equals(line.get("ev"))) {
+                world_start = t.doubleValue();
+                game_start = game;
+                factor = tickFactor(line);
+            }
+        }
+    }
+
+    /**
+     * The game time of a world tick at the speed a header or speed event gives, in normal ticks; 1 when it has none.
+     */
+    private static double tickFactor(@NonNull Map<String, Object> line) {
+        return line.get("secondsPerTick") instanceof Number seconds ? Math.round(
+                seconds.doubleValue() * 1000) / 20.0 : 1;
     }
 
     /**

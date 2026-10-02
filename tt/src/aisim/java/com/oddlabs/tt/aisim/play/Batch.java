@@ -344,7 +344,7 @@ public final class Batch {
         private @NonNull Map<String, Object> deadWorkerRow(@NonNull Job job, @NonNull WorkerProcess worker,
                 int index) {
             String problem = "worker exited with " + worker.exitCode() + " (see " + Aisim.slash(workerLog(index)) + ")";
-            return Match.errorRow(job, snap, End.error, problem, 0);
+            return Match.errorRow(job, snap, End.error, problem, 0, 0);
         }
 
         /** Appends a game's row to results.jsonl, counts it and prints the progress line. */

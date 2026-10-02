@@ -1,6 +1,5 @@
 package com.oddlabs.tt.aisim.play;
 
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aisim.Aisim;
 import com.oddlabs.tt.aisim.analysis.End;
 import org.jspecify.annotations.NonNull;
@@ -68,7 +67,7 @@ public final class WorkerMain {
                 row = Match.run(job, snap);
             } catch (IOException | RuntimeException | Error e) {
                 e.printStackTrace();
-                row = Match.errorRow(job, snap, End.error, "harness: " + e, 0);
+                row = Match.errorRow(job, snap, End.error, "harness: " + e, 0, 0);
             }
             current = null;
             answer(protocol, game, row);
@@ -97,6 +96,7 @@ public final class WorkerMain {
         ThreadMXBean threads = ManagementFactory.getThreadMXBean();
         CurrentGame watched = null;
         int tick = -1;
+        long millis = 0;
         long cpu_at_tick = 0;
         long wall_at_tick = 0;
         while (true) {
@@ -105,10 +105,11 @@ public final class WorkerMain {
             CurrentGame game = current;
             long cpu = threads.getThreadCpuTime(simulation.threadId());
             long wall = System.nanoTime();
-            if (game == null || game != watched || Match.progress != tick) {
+            if (game == null || game != watched || Match.progress != tick || Match.progress_millis != millis) {
                 // idle, a new game, or the game advanced: restart both clocks
                 watched = game;
                 tick = Match.progress;
+                millis = Match.progress_millis;
                 cpu_at_tick = cpu;
                 wall_at_tick = wall;
                 continue;
@@ -118,8 +119,8 @@ public final class WorkerMain {
             if (stuck_cpu > HANG_CPU_SECONDS || stuck_wall > HANG_WALL_SECONDS) {
                 StackTraceElement[] stack = simulation.getStackTrace();
                 String stuck = stuck_cpu + " s CPU / " + stuck_wall + " s wall";
-                String symptom = "no tick for " + stuck + " at game second " + tick / GameTime.TICKS_PER_SECOND;
-                reportHang(protocol, snap, game, tick, symptom, stack);
+                String symptom = "no tick for " + stuck + " at game second " + millis / 1000;
+                reportHang(protocol, snap, game, tick, millis, symptom, stack);
                 Runtime.getRuntime().halt(3);
             }
         }
@@ -130,16 +131,15 @@ public final class WorkerMain {
      * without a row, the parent records the worker's exit code instead.
      */
     private static void reportHang(@NonNull PrintStream protocol, @NonNull String snap, @NonNull CurrentGame game,
-            int tick, @NonNull String symptom, StackTraceElement @NonNull [] stack) {
+            int tick, long millis, @NonNull String symptom, StackTraceElement @NonNull [] stack) {
         StringBuilder text = new StringBuilder();
         for (StackTraceElement frame : stack) {
             text.append("\tat ").append(frame).append('\n');
         }
         try {
             Files.writeString(Path.of(game.job().errFile()), symptom + "\n" + text);
-            double t = tick / (double) GameTime.TICKS_PER_SECOND;
             String problem = symptom + ", in " + topFrames(stack);
-            answer(protocol, game, Match.errorRow(game.job(), snap, End.hang, problem, t));
+            answer(protocol, game, Match.errorRow(game.job(), snap, End.hang, problem, millis / 1000.0, tick));
         } catch (IOException | RuntimeException e) {
             e.printStackTrace();
         }

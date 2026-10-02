@@ -26,7 +26,7 @@ public final class StarterAI extends AI implements AiView {
     private static final float BASE_RADIUS = 8f;
 
     private final @NonNull AiLog log;
-    private int ticks;
+    private final GameTime.@NonNull Every every_second = new GameTime.Every(1000);
 
     public StarterAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String spec_params) {
         super(owner, units); // first: registers this AI and creates the starting units
@@ -37,14 +37,17 @@ public final class StarterAI extends AI implements AiView {
         log.log("PARAM", params.done()); // fails on unknown keys, so a typo cannot silently play the defaults
     }
 
-    /** Runs every tick; deciding once a game second is plenty to start with. */
+    /**
+     * Runs every world tick, 50 times a real second at any game speed; deciding once a game second is plenty to start
+     * with (game time is what units move and fight in, and the game speed sets how much of it a tick covers).
+     */
     @Override
     public void animate(float t) {
-        if (++ticks % GameTime.TICKS_PER_SECOND != 0) {
+        if (!every_second.due(getOwner().getWorld())) {
             return;
         }
         try {
-            think(ticks / GameTime.TICKS_PER_SECOND);
+            think((int) (every_second.struck() / 1000));
         } catch (RuntimeException | AssertionError e) {
             // engine getters assert on units that just died, and the harness runs with assertions on: count the
             // error (every result row shows it), log the first stack traces, and let the game go on
@@ -70,7 +73,7 @@ public final class StarterAI extends AI implements AiView {
     @Override
     public void paint(@NonNull Canvas canvas) {
         Player owner = getOwner();
-        canvas.status("second", String.valueOf(ticks / GameTime.TICKS_PER_SECOND));
+        canvas.status("second", String.valueOf((int) GameTime.seconds(getOwner().getWorld())));
         canvas.status("units", String.valueOf(owner.getUnitCountContainer().getNumSupplies()));
         int start_x = UnitGrid.toGridCoordinate(owner.getStartX());
         int start_y = UnitGrid.toGridCoordinate(owner.getStartY());

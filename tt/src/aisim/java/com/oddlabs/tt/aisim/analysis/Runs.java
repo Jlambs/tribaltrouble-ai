@@ -20,6 +20,8 @@ import java.util.stream.Stream;
  */
 public final class Runs {
     public static final Path RUNS = Aisim.ROOT.resolve("runs");
+    /** The game time of a world tick at each game speed other than normal, in normal ticks. */
+    private static final Map<String, Double> TICK_FACTORS = Map.of("slow", 0.5, "fast", 1.75, "ludicrous", 4.0);
 
     private Runs() {
     }
@@ -38,9 +40,38 @@ public final class Runs {
         return Aisim.JSON.readValue(dir(run).resolve("run.json").toFile(), Map.class);
     }
 
-    /** Every result row of a run in completion order, failed games included. */
+    /**
+     * Every result row of a run in completion order, failed games included, with times in game seconds (see
+     * {@link #toGameTime}).
+     */
     public static @NonNull List<Map<String, Object>> rows(@NonNull String run) throws IOException {
-        return readJsonl(dir(run).resolve("results.jsonl"));
+        List<Map<String, Object>> rows = readJsonl(dir(run).resolve("results.jsonl"));
+        rows.forEach(Runs::toGameTime);
+        return rows;
+    }
+
+    /**
+     * A row of a run at a game speed other than normal from before the harness counted game time (it has a speed but
+     * no ticks) gives t and each team's out in world ticks / 50, a quarter of the game time at ludicrous speed: this
+     * turns them into game seconds, as newer rows give them. Its time limit, minutes, stays as it was run.
+     */
+    private static void toGameTime(@NonNull Map<String, Object> row) {
+        Double factor = row.get("speed") == null || row.containsKey("ticks") ? null : TICK_FACTORS.get(row.get(
+                "speed"));
+        if (factor == null) {
+            return;
+        }
+        if (row.get("t") instanceof Number t) {
+            row.put("t", Math.round(t.doubleValue() * factor * 10) / 10.0);
+        }
+        if (row.get("teams") instanceof List<?> teams) {
+            for (Object team : teams) {
+                if (team instanceof Map<?, ?> block && block.get("out") instanceof Number out) {
+                    @SuppressWarnings("unchecked") Map<String, Object> writable = (Map<String, Object>) block;
+                    writable.put("out", Math.round(out.doubleValue() * factor * 100) / 100.0);
+                }
+            }
+        }
     }
 
     /** The result row of game {@code key} in {@code run}; a usage error if the run has none. */

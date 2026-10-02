@@ -29,13 +29,16 @@ import java.util.function.Supplier;
  * <ul>
  * <li>every run registers itself in a folder of the temp directory ({@link #LANES}) with its live workers and the
  * threads they keep busy, so runs of any checkout or agent see each other;</li>
- * <li>the threads that neither aisim workers nor fixed runs use are split evenly among the automatic runs, and a run
- * takes what another leaves unused;</li>
+ * <li>the threads that neither aisim workers nor fixed runs use, less a {@linkplain #reserve reserve} for the rest of
+ * the machine, are split evenly among the automatic runs (what does not divide evenly goes one thread each to the runs
+ * that started first, so the shares add up to the free threads), and a run takes what another leaves unused;</li>
  * <li>a worker needs its {@linkplain WorkerProcess#footprint footprint} of available memory, above a margin;</li>
  * <li>{@code --cpus} and {@code --memory} cap it.</li>
  * </ul>
  * The target grows by at most a quarter of the machine per look, so runs starting together share rather than both grab
- * everything, and shrinks at once; a worker beyond it retires after its game, never during one.
+ * everything, and shrinks at once; a worker beyond it retires after its game, never during one. Workers run at a lower
+ * priority than the rest of the machine ({@link WorkerProcess}), so the desktop stays responsive however many there
+ * are.
  */
 public final class Pace {
     /** The most workers a run may have. */
@@ -144,6 +147,8 @@ public final class Pace {
     private final @NonNull Supplier<List<ProcessHandle>> workers;
     private final @NonNull AtomicInteger target = new AtomicInteger();
     private final @NonNull Path lane = LANES.resolve(ProcessHandle.current().pid() + ".json");
+    /** When the run started (epoch ms), which ranks it among the automatic runs for the threads left over. */
+    private final long started = System.currentTimeMillis();
     /** Per live worker process, its CPU time at the last look, for the threads it keeps busy. */
     private final @NonNull Map<Long, Long> cpu_seen = new HashMap<>();
     private long last_look = System.nanoTime();
@@ -243,9 +248,14 @@ public final class Pace {
         // Threads busy with anything but aisim workers: the machine's load less every registered run's workers.
         double load = cpuLoad();
         double foreign = load < 0 ? 0 : Math.max(0, load * cores - busy - others.busy);
-        int free = (int) Math.floor(cores - foreign + .25) - others.fixed_workers;
-        int fair = Math.max(1, free / (others.automatic_runs + 1));
-        int share = Math.max(1, free - Math.min(others.automatic_workers, fair * others.automatic_runs));
+        int free = Math.max(0, (int) Math.floor(cores - foreign + .25) - others.fixed_workers - reserve(cores));
+        // An even split, and what is left over one thread each to the runs that started first: every run claiming
+        // the leftover itself made 4 runs keep 36 workers on 28 threads.
+        int runs = others.automatic_runs + 1;
+        int fair = free / runs;
+        int left_over = free % runs;
+        int others_due = fair * others.automatic_runs + left_over - (others.earlier_runs < left_over ? 1 : 0);
+        int share = Math.max(1, free - Math.min(others.automatic_workers, others_due));
         int running = workers.get().size();
         long room = availableMemory() - Math.max(512 * MB, OS.getTotalMemorySize() / 20);
         int by_memory = running + (int) Math.max(0, room / footprint);
@@ -272,15 +282,29 @@ public final class Pace {
         busy = cpu / 1e9 / seconds;
     }
 
-    /** What the other registered runs use: workers of fixed runs, and automatic runs with their workers. */
-    private record Others(int fixed_workers, int automatic_runs, int automatic_workers, double busy) {
+    /**
+     * Threads the automatic runs leave to the rest of the machine on top of what it uses at the moment, so the desktop
+     * and builds have room at once: one in sixteen (1 of 28).
+     */
+    static int reserve(int cores) {
+        return cores / 16;
+    }
+
+    /**
+     * What the other registered runs use: workers of fixed runs, and automatic runs with their workers;
+     * {@code earlier_runs} of the automatic runs started before this one.
+     */
+    private record Others(int fixed_workers, int automatic_runs, int automatic_workers, int earlier_runs,
+                          double busy) {
     }
 
     private @NonNull Others others() {
         int fixed = 0;
         int runs = 0;
         int automatic = 0;
+        int earlier = 0;
         double threads = 0;
+        long my_pid = ProcessHandle.current().pid();
         long now = System.currentTimeMillis();
         try (DirectoryStream<Path> files = Files.newDirectoryStream(LANES, "*.json")) {
             for (Path file : files) {
@@ -305,6 +329,11 @@ public final class Pace {
                 if ("auto".equals(entry.get("mode"))) {
                     runs++;
                     automatic += count;
+                    // an entry without a start (an older harness) counts as the earliest; the pid breaks ties
+                    long other_started = ((Number) entry.getOrDefault("started", 0L)).longValue();
+                    if (other_started < started || (other_started == started && pid < my_pid)) {
+                        earlier++;
+                    }
                 } else {
                     fixed += count;
                 }
@@ -312,7 +341,7 @@ public final class Pace {
         } catch (IOException e) {
             // no registry yet: no other runs
         }
-        return new Others(fixed, runs, automatic, threads);
+        return new Others(fixed, runs, automatic, earlier, threads);
     }
 
     /** Writes the run's registry entry: its mode, live workers and the threads they keep busy. */
@@ -322,6 +351,7 @@ public final class Pace {
         entry.put("run", run);
         entry.put("dir", Path.of("").toAbsolutePath().toString());
         entry.put("mode", automatic() ? "auto" : "fixed");
+        entry.put("started", started);
         entry.put("workers", workers.get().size());
         entry.put("busy", Math.round(busy * 100) / 100.0);
         entry.put("updated", System.currentTimeMillis());
