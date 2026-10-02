@@ -47,6 +47,10 @@ final class Shepherd {
     private static final int SAFE_TRIES = 12;
     /** shepherd_home_pair and shepherd_follow: a copy's warrior this near its armory stands at home. */
     private static final int HOME_CELLS = 40;
+    /** Log only: a flee line at most this often while a flee lasts (12 s; its destination moves with it). */
+    private static final float FLEE_LOG_TICKS = 600f;
+    /** Log only: a spot jump to the same place is logged again only after this long (30 s). */
+    private static final float JUMP_LOG_TICKS = 1500f;
     /** shepherd_safe_walk: game ticks a flee runs before the shepherd heads back for its spot. */
     private static final float FLEE_HOLD_TICKS = 150f; // 3 s
 
@@ -91,6 +95,16 @@ final class Shepherd {
         /** Log and counters only: what the shepherd did at the last tend (walk, at, flee, nospot). */
         @NonNull
         String last_state = "walk";
+        /**
+         * Log only: when the current flee began, and when its last flee line was written (a line when a flee begins,
+         * every FLEE_LOG_TICKS while it lasts, and at the end of one that ran FLEE_LOG_TICKS / 2 or longer).
+         */
+        float flee_began;
+        float flee_log_at;
+        /** Log only: the destination and time of the last spot-jump line (a spot that flips back and forth). */
+        int jump_log_x = -1;
+        int jump_log_y = -1;
+        float jump_log_at = -50000f;
         /** When the copy's last shepherd was lost (shepherd_gap_ticks). */
         float lost_at = -50000f;
         float recruited;
@@ -463,14 +477,27 @@ final class Shepherd {
         int[] away = threatAway(f, s, intel, ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS);
         if (away != null) {
             ai.aiLog().count("shepherd_t_flee");
+            boolean begins = !"flee".equals(f.last_state);
             f.last_state = "flee";
-            if (ai.logging())
-                ai.log("flee of " + name(
+            if (begins)
+                f.flee_began = ai.now();
+            // log only: one line when the flee begins and every FLEE_LOG_TICKS while it lasts (the tend runs every half
+            // second, and a line each time was most of a replay's log)
+            if (ai.logging() && (begins || ai.periodDue(f.flee_log_at,
+                    FLEE_LOG_TICKS))) {
+                f.flee_log_at = ai.now();
+                ai.log((begins ? "flee of " : "flee goes on: ") + name(
                         f) + " at " + s.getGridX() + "," + s.getGridY() + " (moved " + moved + ") from " + threat_warriors + " warriors, " + threat_hunters + " hunters, " + threat_peons + " peons, " + threat_coming + " coming, to " + away[0] + "," + away[1] + (flee_side == 1 ? " (sideways)" : flee_side == 2 ? " (no side clear)" : ""));
+            }
             if (ai.now() - f.last_order >= 15f) // the guard's minimum spacing
                 flee(f, s, away);
             return;
         }
+        // log only: the end of a flee that ran FLEE_LOG_TICKS / 2 or longer (most last 2-5 s: their start line is enough)
+        if (ai.logging() && "flee".equals(f.last_state) && ai.now() - f.flee_began >= FLEE_LOG_TICKS / 2f)
+            ai.log("flee of " + name(
+                    f) + " over at " + s.getGridX() + "," + s.getGridY() + " after " + (int) GauntletAI.seconds(
+                            ai.now() - f.flee_began) + " s");
         int[] spot = findSpot(f, ox, oy, s, intel);
         if (spot == null) {
             // No spot draws this copy's wave: a shepherd left standing there only gets killed, so after a while it
@@ -489,10 +516,16 @@ final class Shepherd {
         f.nospot_since = -1f;
         if (f.prev_spot_x >= 0 && MapAnalysis.dist2(f.prev_spot_x, f.prev_spot_y, spot[0], spot[1]) > 30 * 30) {
             ai.aiLog().count("shepherd_spot_jump");
-            if (ai.logging())
+            // log only: a jump back to where the last logged one went, within JUMP_LOG_TICKS, is not logged again
+            if (ai.logging() && (MapAnalysis.dist2(spot[0], spot[1], f.jump_log_x, f.jump_log_y) > 8 * 8
+                    || ai.periodDue(f.jump_log_at, JUMP_LOG_TICKS))) {
+                f.jump_log_x = spot[0];
+                f.jump_log_y = spot[1];
+                f.jump_log_at = ai.now();
                 ai.log("spot of " + name(f) + " jumps " + (int) Math.sqrt(MapAnalysis.dist2(
                         f.prev_spot_x, f.prev_spot_y, spot[0],
                         spot[1])) + " cells from " + f.prev_spot_x + "," + f.prev_spot_y + " (origin " + f.origin + ") to " + spot[0] + "," + spot[1] + " (origin " + origin + ")");
+            }
         }
         if (spot[0] != f.spot_x || spot[1] != f.spot_y)
             f.blocked_since = -1f;
