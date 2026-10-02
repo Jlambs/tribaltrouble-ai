@@ -5,6 +5,7 @@ import com.oddlabs.tt.landscape.TreeSupply;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.BuildProductionContainer;
 import com.oddlabs.tt.model.Building;
+import com.oddlabs.tt.model.DeployContainer;
 import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Race;
@@ -97,10 +98,16 @@ final class Economy {
     private boolean had_armory;
     /** retire: razings of our own buildings that free a slot for a flagged armory project, and the doomed set. */
     private final @NonNull Retire retire;
+    /** How our buildings hold up under attack (always on: it only reads and counts), for repair_swarm and salvage. */
+    private final @NonNull Siege siege;
+    /** repair_swarm: repairs under attack, fed with wood. */
+    private final @NonNull RepairSwarm swarm;
 
     Economy(@NonNull GauntletAI ai) {
         this.ai = ai;
         retire = new Retire(ai, this);
+        siege = new Siege(ai, this);
+        swarm = new RepairSwarm(ai, this, siege);
         openingPlan();
     }
 
@@ -234,6 +241,8 @@ final class Economy {
 
     void tick() {
         Intel intel = ai.intel();
+        // first, before any order of this tick: it samples what the last second did
+        siege.update();
         choosePrimaryArmory();
         refreshArmoryField();
         Strategy st = ai.strategy();
@@ -246,10 +255,16 @@ final class Economy {
             retire.tick();
         escortForward();
         evacuate();
+        // salvage before the swarm, so the swarm sees this tick's salvages; both before allocatePeons, which leaves
+        // the peons they order alone
+        if (st.salvage)
+            salvage();
         measureYield();
         manageQuarters();
         manageArmory();
         guardBank();
+        if (st.repair_swarm)
+            swarm.tick();
         allocatePeons();
         manageRepairs();
     }
@@ -267,6 +282,56 @@ final class Economy {
         return evacuating.containsKey(b);
     }
 
+    /** salvage: whether the building is being emptied into a refuge before it falls. */
+    boolean isSalvaging(@NonNull Building b) {
+        return salvages.containsKey(b);
+    }
+
+    /** salvage: the refuge the building's units walk into while it is salvaged, or null (none, or stranded). */
+    @Nullable
+    Building salvageDest(@NonNull Building b) {
+        Salvage s = salvages.isEmpty() ? null : salvages.get(b);
+        return s != null ? s.dest : null;
+    }
+
+    /**
+     * salvage: where units sent home into the armory go: its refuge while it is salvaged, none while it is stranded
+     * (it falls with them inside), else the armory itself.
+     */
+    @Nullable
+    Building homeFor(@Nullable Building armory) {
+        Salvage s = armory == null || salvages.isEmpty() ? null : salvages.get(armory);
+        if (s == null)
+            return armory;
+        return s.dest != null && !s.dest.isDead() ? s.dest : null;
+    }
+
+    /**
+     * salvage: whether the peon walks within SALVAGE_THREAT_CELLS of a building being salvaged: its evacuees on their
+     * way to the refuge, which the builders, trainer top-up and gatherers of allocatePeons would turn back towards the
+     * attackers (an EnterController's building cannot be read).
+     */
+    private boolean nearSalvage(@NonNull Unit u) {
+        for (Building b : salvages.keySet())
+            if (!b.isDead() && MapAnalysis.dist2(u.getGridX(), u.getGridY(), b.getGridX(),
+                    b.getGridY()) <= SALVAGE_THREAT_CELLS * SALVAGE_THREAT_CELLS)
+                return true;
+        return false;
+    }
+
+    /** salvage: whether a running salvage empties into this building. */
+    private boolean isSalvageRefuge(@NonNull Building a) {
+        for (Salvage s : salvages.values())
+            if (s.dest == a)
+                return true;
+        return false;
+    }
+
+    /** repair_swarm: whether the peon is the swarm's (its crew, or a fresh wood transporter it claims). */
+    boolean swarmExempt(@NonNull Unit u) {
+        return swarm.exempt(u);
+    }
+
     /**
      * Units inside a razed building die with it, uncounted (LandBuilding.removeDying): ~123 per game at N=10, 39 per
      * armory. A quarters or armory below evac_hp of its hit points with at least evac_min enemy warriors within 10
@@ -277,7 +342,9 @@ final class Economy {
         Strategy strategy = ai.strategy();
         if (!raid_evacs.isEmpty())
             endRaidEvacs();
-        evacuating.entrySet().removeIf(e -> e.getKey().isDead() || ai.now() - e.getValue() > 3000f); // 60 s
+        // salvage ends its own window (endSalvage)
+        evacuating.entrySet().removeIf(e -> e.getKey().isDead() || (!salvages.containsKey(e.getKey())
+                && ai.now() - e.getValue() > 3000f)); // 60 s
         // raid_evac runs before the early return: evacuate is off by default.
         if (strategy.raid_evac)
             raidEvacuate();
@@ -286,7 +353,8 @@ final class Economy {
         Intel intel = ai.intel();
         List<Building> homes = intel.homes();
         for (Building b : homes) {
-            if (b.isDead() || !b.isComplete() || b.getUnitContainer() == null)
+            // salvage empties its buildings itself (an arm may turn both on)
+            if (b.isDead() || !b.isComplete() || b.getUnitContainer() == null || salvages.containsKey(b))
                 continue;
             int inside = b.getUnitContainer().getNumSupplies();
             if (inside == 0 && !evacuating.containsKey(b))
@@ -371,6 +439,374 @@ final class Economy {
         int peons = a.getUnitContainer().getNumSupplies();
         if (peons > 0)
             ai.owner().deployUnits(a, DeployType.PEON, peons);
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // salvage
+
+    /**
+     * salvage: a building being emptied into a refuge before it falls: the refuge (null while none qualifies), since
+     * when, its kind, the units ordered out, and since when no threat stands within SALVAGE_THREAT_CELLS (-1: one
+     * does).
+     */
+    private static final class Salvage {
+        @Nullable
+        Building dest;
+        final float start;
+        final @NonNull String kind;
+        int out;
+        int weapons;
+        float calm_since = -1f;
+
+        Salvage(@NonNull Building dest, float start, @NonNull String kind) {
+            this.dest = dest;
+            this.start = start;
+            this.kind = kind;
+        }
+    }
+
+    private final Map<@NonNull Building, @NonNull Salvage> salvages = new LinkedHashMap<>();
+    /** salvage: quarters that stood after a salvage, refilled with up to n free peons until the time given. */
+    private final Map<@NonNull Building, float @NonNull []> refill = new LinkedHashMap<>();
+    /** salvage: a salvage ends after this long whatever happens. */
+    private static final float SALVAGE_MAX_TICKS = 6000f; // 120 s
+    /** salvage: a refuge stands at least this many cells farther from the threat than the building. */
+    private static final int SALVAGE_DEST_GAIN = 8;
+    /** salvage: enemy warriors within this many cells make the threat (its centroid, sortieThreat). */
+    private static final int SALVAGE_THREAT_CELLS = 15;
+    /** salvage: enemy warriors this close count as at the door. */
+    private static final int SALVAGE_DOOR_CELLS = 12;
+    /** salvage: a quarters that stood takes free peons within this many cells for this long. */
+    private static final int SALVAGE_REFILL_CELLS = 40;
+    private static final float SALVAGE_REFILL_TICKS = 3000f; // 60 s
+
+    /**
+     * salvage, every economy tick after evacuate: units inside a razed building vanish with it, uncounted
+     * (LandBuilding.removeDying; Siege counts them as inside_lost_*). The running salvages go on, or end; then a
+     * quarters or armory holding salvage_min or more (inside and queued) with salvage_attackers enemy warriors within
+     * SALVAGE_DOOR_CELLS is emptied when it would fall (Siege.timeToFall, approaching warriors at
+     * salvage_approach_weight) before everyone is out plus salvage_margin_ticks, the threat within
+     * SALVAGE_THREAT_CELLS is at least salvage_ratio x its defence (at least 1), and no sortie could win with its bank
+     * (one that could has started a round earlier): every unit comes out with a rally on a refuge (salvageRefuge),
+     * into which it walks without scanning. The building counts as evacuating meanwhile, so nothing sends units back
+     * in.
+     */
+    private void salvage() {
+        Strategy st = ai.strategy();
+        Intel intel = ai.intel();
+        Military military = ai.military();
+        float now = ai.now();
+        for (Iterator<Map.Entry<Building, Salvage>> it = salvages.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, Salvage> e = it.next();
+            Building b = e.getKey();
+            Salvage s = e.getValue();
+            if (b.isDead()) {
+                it.remove();
+                evacuating.remove(b);
+                int lost = siege.lastInside(b);
+                ai.aiLog().count("salvage_fell");
+                for (int i = 0; i < lost; i++)
+                    ai.aiLog().count("salvage_lost");
+                logSalvageEnd(b, s, "fell", lost);
+                continue;
+            }
+            if (military.threatNearEcon(b.getGridX(), b.getGridY(), SALVAGE_THREAT_CELLS))
+                s.calm_since = -1f;
+            else if (s.calm_since < 0f)
+                s.calm_since = now;
+            boolean stood = s.calm_since >= 0f && now - s.calm_since >= st.salvage_calm_ticks;
+            if (stood || now - s.start >= SALVAGE_MAX_TICKS) {
+                it.remove();
+                endSalvage(b, s, stood ? "stood" : "timeout");
+                continue;
+            }
+            Building dest = s.dest;
+            if (dest == null || !refugeOk(b, dest)) {
+                Building other = salvageRefuge(b);
+                if (other != null) {
+                    ai.owner().setRallyPoint(b, other);
+                    s.dest = other;
+                    ai.aiLog().count("salvage_redest");
+                } else if (dest != null) {
+                    // nowhere to go: nothing more comes out, and nothing is sent in (still evacuating)
+                    dropSalvageRally(b);
+                    s.dest = null;
+                    ai.aiLog().count("salvage_stranded");
+                }
+            }
+            if (s.dest != null)
+                continueSalvage(b, s);
+        }
+        List<Building> homes = new ArrayList<>(intel.armories);
+        homes.addAll(intel.quarters);
+        for (Building b : homes) {
+            if (b.isDead() || !b.isComplete() || salvages.containsKey(b) || evacuating.containsKey(b)
+                    || retire.isDoomed(b) || military.isSortie(b) || raidEvacuating(b))
+                continue;
+            if (Siege.atStake(b) < st.salvage_min)
+                continue;
+            int x = b.getGridX();
+            int y = b.getGridY();
+            if (Combat.countNear(intel.enemy_warriors, x, y, SALVAGE_DOOR_CELLS) < st.salvage_attackers)
+                continue;
+            ai.aiLog().count("salvage_check"); // economy ticks (1 s) of a building with attackers at its door
+            float falls = siege.timeToFall(b, st.salvage_approach_weight);
+            float margin = GauntletAI.seconds(st.salvage_margin_ticks);
+            float needs = emptySeconds(b) + margin;
+            if (falls > needs)
+                continue;
+            float threat = military.sortieThreat(b, SALVAGE_THREAT_CELLS);
+            float defence = military.sortieDefence(b);
+            if (threat < st.salvage_ratio * Math.max(1f, defence)) {
+                ai.aiLog().count("salvage_defended");
+                continue;
+            }
+            if (military.sortieCouldWin(b)) {
+                ai.aiLog().count("salvage_sortie");
+                continue;
+            }
+            Building dest = salvageRefuge(b);
+            if (dest == null) {
+                ai.aiLog().count("salvage_nodest");
+                continue;
+            }
+            startSalvage(b, dest, falls, needs, margin, threat, defence);
+        }
+    }
+
+    /**
+     * salvage: game seconds to let everyone out of the building, as one queue: an armory's weapons leave as warriors
+     * (chicken first, then iron, then rock: 2, 1.5 and 1 s each), the rest as peons (0.5 s each), and what is queued
+     * already at its own pace (parallel queues share the building's time, LandBuilding.doAnimate).
+     */
+    private static float emptySeconds(@NonNull Building b) {
+        int inside = b.getUnitContainer().getNumSupplies();
+        if (b.getTemplate().getTemplateID() != Race.BUILDING_ARMORY)
+            return .5f * (inside + b.getDeployContainer(DeployType.PEON).getNumSupplies());
+        int c = Math.min(stock(b, RubberAxeWeapon.class), inside);
+        int i = Math.min(stock(b, IronAxeWeapon.class), inside - c);
+        int r = Math.min(stock(b, RockAxeWeapon.class), inside - c - i);
+        float t = 2f * c + 1.5f * i + r + .5f * (inside - c - i - r);
+        for (DeployType type : DeployType.values()) {
+            DeployContainer q = b.getDeployContainer(type);
+            if (q != null)
+                t += q.getNumSupplies() * deploySeconds(type);
+        }
+        return t;
+    }
+
+    /** Game seconds an armory takes to let one unit of the type out (LandBuilding's deploy containers). */
+    private static float deploySeconds(@NonNull DeployType type) {
+        return switch (type) {
+            case RUBBER_WARRIOR -> 2f;
+            case IRON_WARRIOR -> 1.5f;
+            case ROCK_WARRIOR -> 1f;
+            default -> .5f;
+        };
+    }
+
+    /**
+     * salvage: where the building's units go: the nearest of our armories, else of our quarters (undamaged: a rally on
+     * a damaged one makes peons repair it), within salvage_reach cells, complete and not emptied, razed or out on a
+     * sortie, with no threat within salvage_safe cells and at least SALVAGE_DEST_GAIN cells farther from the threat
+     * (the warriors within SALVAGE_THREAT_CELLS) than the building; the shortest walk in the open. Null with none.
+     */
+    private @Nullable Building salvageRefuge(@NonNull Building b) {
+        Intel intel = ai.intel();
+        int x = b.getGridX();
+        int y = b.getGridY();
+        long sx = 0;
+        long sy = 0;
+        int n = 0;
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead() || MapAnalysis.dist2(x, y, e.getGridX(),
+                    e.getGridY()) > SALVAGE_THREAT_CELLS * SALVAGE_THREAT_CELLS)
+                continue;
+            sx += e.getGridX();
+            sy += e.getGridY();
+            n++;
+        }
+        float tx = n > 0 ? sx / (float) n : x;
+        float ty = n > 0 ? sy / (float) n : y;
+        float own = (float) Math.sqrt((x - tx) * (x - tx) + (y - ty) * (y - ty));
+        int reach2 = ai.strategy().salvage_reach * ai.strategy().salvage_reach;
+        for (List<Building> group : List.of(intel.armories, intel.quarters)) {
+            Building best = null;
+            int best_d = reach2 + 1;
+            for (Building c : group) {
+                if (c == b || c.isDead() || !c.isComplete())
+                    continue;
+                int d = MapAnalysis.dist2(x, y, c.getGridX(), c.getGridY());
+                if (d >= best_d || !refugeOk(b, c) || ai.military().isSortie(c))
+                    continue;
+                float cx = c.getGridX() - tx;
+                float cy = c.getGridY() - ty;
+                if (n > 0 && (float) Math.sqrt(cx * cx + cy * cy) < own + SALVAGE_DEST_GAIN)
+                    continue;
+                if (c.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS && c.isDamaged())
+                    continue;
+                best_d = d;
+                best = c;
+            }
+            if (best != null)
+                return best;
+        }
+        return null;
+    }
+
+    /** salvage: whether a refuge still takes the building's units: alive, not emptied or razed, quiet. */
+    private boolean refugeOk(@NonNull Building b, @NonNull Building c) {
+        return c != b && !c.isDead() && !evacuating.containsKey(c) && !retire.isDoomed(c)
+                && !ai.military().threatNearEcon(c.getGridX(), c.getGridY(), ai.strategy().salvage_safe);
+    }
+
+    private void startSalvage(@NonNull Building b, @NonNull Building dest, float falls, float needs, float margin,
+            float threat, float defence) {
+        float now = ai.now();
+        String kind = Intel.kind(b);
+        ai.owner().setRallyPoint(b, dest);
+        evacuating.put(b, now);
+        Salvage s = new Salvage(dest, now, kind);
+        salvages.put(b, s);
+        ai.aiLog().count("salvage_start_" + kind);
+        ai.aiLog().count("salvage_to_" + Intel.kind(dest));
+        if (falls < needs - margin)
+            ai.aiLog().count("salvage_late"); // it falls before everyone is out
+        if (ai.logging()) {
+            boolean armory = b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY;
+            int inside = b.getUnitContainer().getNumSupplies();
+            String stock = armory ? String.format("%d weapons; iron %d rubber %d rock %d wood %d",
+                    stock(b, IronAxeWeapon.class) + stock(b, RubberAxeWeapon.class) + stock(b, RockAxeWeapon.class),
+                    stock(b, IronSupply.class), stock(b, RubberSupply.class), stock(b, RockSupply.class),
+                    stock(b, TreeSupply.class)) : "peons";
+            String text = String.format(
+                    "salvage: %s at %d,%d (hp %d/%d, %.1f hp/s measured, model %.1f, falls in %.1f s, needs %.1f s) empties %d (%s) into the %s at %d,%d (%d cells): threat %.1f vs defence %.1f",
+                    kind, b.getGridX(), b.getGridY(), b.getHitPoints(), b.getTemplate().getMaxHitPoints(),
+                    siege.measuredLoss(b), siege.damageModel(b, ai.strategy().salvage_approach_weight), falls, needs,
+                    inside, stock, Intel.kind(dest), dest.getGridX(), dest.getGridY(), (int) Math.sqrt(
+                            MapAnalysis.dist2(b.getGridX(), b.getGridY(), dest.getGridX(), dest.getGridY())), threat,
+                    defence);
+            ai.aiLog().log("SALVAGE", () -> text);
+        }
+        continueSalvage(b, s);
+    }
+
+    /**
+     * salvage, every tick of it: everyone still inside is ordered out (a deploy order takes its workers and stock at
+     * once, so those inside are the ones not ordered yet): an armory's weapons as warriors, then, into an armory, its
+     * iron, rubber, rock and wood as transporters (a load entering a quarters is lost), the rest as peons. Each comes
+     * out with the rally order (Unit: setTarget(rally, DEFAULT)), which enters the refuge without scanning on the way.
+     */
+    private void continueSalvage(@NonNull Building b, @NonNull Salvage s) {
+        Building dest = s.dest;
+        int inside = b.getUnitContainer().getNumSupplies();
+        if (inside == 0 || dest == null)
+            return;
+        Player owner = ai.owner();
+        int w = 0;
+        if (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY) {
+            w = deployWarriors(b, inside, stock(b, RubberAxeWeapon.class), stock(b, IronAxeWeapon.class),
+                    stock(b, RockAxeWeapon.class));
+            int left = inside - w;
+            if (dest.getTemplate().getTemplateID() == Race.BUILDING_ARMORY) {
+                Class<?>[] supplies = {IronSupply.class, RubberSupply.class, RockSupply.class, TreeSupply.class};
+                DeployType[] types = {DeployType.PEON_TRANSPORT_IRON, DeployType.PEON_TRANSPORT_RUBBER, DeployType.PEON_TRANSPORT_ROCK, DeployType.PEON_TRANSPORT_TREE};
+                for (int t = 0; t < supplies.length && left > 0; t++) {
+                    int k = Math.min(left, stock(b, supplies[t]));
+                    if (k <= 0)
+                        continue;
+                    owner.deployUnits(b, types[t], k);
+                    left -= k;
+                    for (int i = 0; i < k; i++)
+                        ai.aiLog().count("salvage_res");
+                }
+            }
+            if (left > 0)
+                owner.deployUnits(b, DeployType.PEON, left);
+        } else {
+            owner.deployUnits(b, DeployType.PEON, inside);
+        }
+        s.out += inside;
+        s.weapons += w;
+        for (int i = 0; i < inside; i++)
+            ai.aiLog().count("salvage_units");
+        for (int i = 0; i < w; i++)
+            ai.aiLog().count("salvage_weapons");
+    }
+
+    /**
+     * salvage: the building stood (no threat within SALVAGE_THREAT_CELLS for salvage_calm_ticks) or the salvage timed
+     * out: its rally point is dropped when it is still the refuge, it takes units again, and a quarters that stood is
+     * refilled with free peons (breeding goes with the cube root of the peons inside: an empty quarters breeds
+     * slowly); one that timed out, its threat maybe still about, is not.
+     */
+    private void endSalvage(@NonNull Building b, @NonNull Salvage s, @NonNull String why) {
+        if (s.dest != null && b.getRallyPoint() == s.dest)
+            dropSalvageRally(b);
+        evacuating.remove(b);
+        ai.aiLog().count("salvage_" + why);
+        if (b.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS && s.out > 0 && why.equals("stood"))
+            refill.put(b, new float[]{s.out, ai.now() + SALVAGE_REFILL_TICKS});
+        logSalvageEnd(b, s, why, 0);
+    }
+
+    /**
+     * salvage: the building's rally point once it names no refuge: none, or with quarters_rally a quarters' main
+     * armory (quarters_rally sets it again only when the main armory changes, and skipped this one while emptied).
+     */
+    private void dropSalvageRally(@NonNull Building b) {
+        Building home = ai.intel().armory();
+        if (ai.strategy().quarters_rally && b.getTemplate().getTemplateID() == Race.BUILDING_QUARTERS
+                && home != null && home != b && !home.isDead() && !evacuating.containsKey(home))
+            ai.owner().setRallyPoint(b, home);
+        else
+            ai.owner().setRallyPoint(b, b);
+    }
+
+    private void logSalvageEnd(@NonNull Building b, @NonNull Salvage s, @NonNull String why, int lost) {
+        float secs = GauntletAI.seconds(ai.now() - s.start);
+        ai.aiLog().log("SALVAGE", () -> String.format(
+                "salvage at %d,%d ends after %.0f s (%s): %d out (%d weapons), %d lost inside", b.getGridX(),
+                b.getGridY(), secs, why, s.out, s.weapons, lost));
+    }
+
+    /**
+     * salvage: a quarters that stood after its salvage takes the nearest free peons within SALVAGE_REFILL_CELLS, up to
+     * as many as it let out and no more than its hold (manageQuarters lets the rest out again), for
+     * SALVAGE_REFILL_TICKS, while no threat is within SALVAGE_THREAT_CELLS (MOVE: never DEFAULT, which would make them
+     * repair it).
+     */
+    private void refillQuarters(@NonNull List<@NonNull Unit> free) {
+        float now = ai.now();
+        for (Iterator<Map.Entry<Building, float[]>> it = refill.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, float[]> e = it.next();
+            Building q = e.getKey();
+            float[] r = e.getValue();
+            if (q.isDead() || now >= r[1] || r[0] < 1f) {
+                it.remove();
+                continue;
+            }
+            if (free.isEmpty() || evacuating.containsKey(q) || retire.isDoomed(q)
+                    || ai.military().threatNearEcon(q.getGridX(), q.getGridY(), SALVAGE_THREAT_CELLS))
+                continue;
+            int want = Math.min((int) r[0], holdFor(q) - q.getUnitContainer().getNumSupplies() - countHeadingTo(q));
+            if (want <= 0)
+                continue;
+            List<Unit> near = new ArrayList<>();
+            for (Unit u : free)
+                if (u != scout && MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(),
+                        q.getGridY()) <= SALVAGE_REFILL_CELLS * SALVAGE_REFILL_CELLS)
+                    near.add(u);
+            List<Unit> chosen = new ArrayList<>();
+            takeNearest(near, chosen, want, q.getGridX(), q.getGridY());
+            if (chosen.isEmpty())
+                continue;
+            free.removeAll(chosen);
+            order(chosen, q, Action.MOVE);
+            r[0] -= chosen.size();
+            for (int i = 0; i < chosen.size(); i++)
+                ai.aiLog().count("salvage_refill");
+        }
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -2279,6 +2715,15 @@ final class Economy {
                 ai.aiLog().count("hold_danger");
                 continue;
             }
+            // salvage: peons out of a quarters with no rally point walk into the nearest armory (TransferUnitController),
+            // which may be the one being emptied.
+            if (!salvages.isEmpty() && inside > hold) {
+                Building near = MapAnalysis.nearest(intel.armories, q.getGridX(), q.getGridY());
+                if (near != null && salvages.containsKey(near)) {
+                    ai.aiLog().count("salvage_q_hold"); // economy ticks (1 s) a quarters kept its peons in
+                    continue;
+                }
+            }
             if (inside > hold) {
                 ai.owner().deployUnits(q, DeployType.PEON, inside - hold);
                 if (backlog_on)
@@ -3189,7 +3634,7 @@ final class Economy {
     /** bank_guard: peons parked in each quarters above its hold. */
     private final Map<@NonNull Building, Integer> bank_reserve = new LinkedHashMap<>();
 
-    private static int stock(@NonNull Building armory, @NonNull Class<?> type) {
+    static int stock(@NonNull Building armory, @NonNull Class<?> type) {
         return armory.getSupplyContainer(type).getNumSupplies();
     }
 
@@ -3351,6 +3796,9 @@ final class Economy {
         // danger_refuge and raid_evac: peons sheltering here stay in.
         boolean refuge = armory == refuge_armory && ai.now() < refuge_until;
         if (!raid_evacs.isEmpty() && raidRefuge(armory))
+            refuge = true;
+        // salvage: and so do a salvage's evacuees (step 4 would send them straight back in)
+        if (!salvages.isEmpty() && isSalvageRefuge(armory))
             refuge = true;
         // reloc_lock: the locked armory's workers wait inside until the new one can forge.
         if (lock_old == armory && lockHold(armory))
@@ -4382,14 +4830,19 @@ final class Economy {
         List<Unit> free = new ArrayList<>();
         List<Unit> transit = new ArrayList<>();
         boolean sortie = ai.strategy().sortie_ratio > 0f;
+        boolean swarm_on = ai.strategy().repair_swarm;
         for (Unit peon : intel.peons) {
             PeonState s = intel.peon_states.get(peon);
             // sortie_ratio: peons out fighting by their armory are the military's until the sortie ends
             if (sortie && ai.military().inSortie(peon))
                 continue;
+            // repair_swarm: its fresh wood transporters are neither built with, deposited nor sheltered
+            if (swarm_on && swarm.exempt(peon))
+                continue;
             if (s == PeonState.IDLE)
                 free.add(peon);
-            else if (s == PeonState.TRANSIT)
+            // salvage: not its evacuees by the building emptied
+            else if (s == PeonState.TRANSIT && (salvages.isEmpty() || !nearSalvage(peon)))
                 transit.add(peon);
         }
         if (scout != null && (scout.isDead() || !scoutHasWork()))
@@ -4481,6 +4934,10 @@ final class Economy {
                     }
             }
         }
+
+        // salvage: a quarters that stood after its salvage is refilled
+        if (!refill.isEmpty())
+            refillQuarters(free);
 
         if (ai.strategy().seed_quarters_ticks > 0f)
             seedQuarters(free, armory != null);
@@ -4601,6 +5058,10 @@ final class Economy {
                     ai.aiLog().count("raid_evac_sheltered");
                 return;
             }
+            // salvage: into the armory the main one is emptied into (the pick above has no threat test).
+            Building dest = salvages.isEmpty() ? null : salvageDest(armory);
+            if (dest != null && !dest.isDead() && dest.getTemplate().getTemplateID() == Race.BUILDING_ARMORY)
+                work = dest;
         }
         if (bank_active && work == armory && !free.isEmpty()) {
             // bank_guard: the armory takes what its cap has room for, the rest waits in the reserve quarters.
@@ -4634,7 +5095,7 @@ final class Economy {
     }
 
     /** Whether the peon carries wood: a transporter out of an armory, or a builder whose site stands or fell. */
-    private static boolean carriesWood(@NonNull Unit u) {
+    static boolean carriesWood(@NonNull Unit u) {
         UnitSupplyContainer c = u.getSupplyContainer();
         return c != null && c.getSupplyType() == TreeSupply.class && c.getNumSupplies() > 0;
     }
@@ -5405,7 +5866,11 @@ final class Economy {
         for (Building b : intel.quarters)
             if (b.isDamaged())
                 damaged.add(b);
+        boolean swarm_on = ai.strategy().repair_swarm;
         for (Building b : damaged) {
+            // repair_swarm: what it works on this tick is its own
+            if (swarm_on && swarm.handled(b))
+                continue;
             // retire: nothing we raze on purpose is repaired.
             if (ai.military().threatNearEcon(b.getGridX(), b.getGridY(), 12) || retire.isDoomed(b))
                 continue;

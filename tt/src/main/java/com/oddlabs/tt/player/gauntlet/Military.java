@@ -5,8 +5,10 @@ import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
+import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.behaviour.EnterController;
 import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.gauntlet.Intel.PeonState;
@@ -1061,9 +1063,16 @@ final class Military {
             engageSpread(defenders, threats, threat_x, threat_y, false);
             huntChieftains(defenders);
         } else if (armory != null) {
-            // Too many: fall back under the towers and wait for the armory to empty out.
+            // Too many: fall back under the towers and wait for the armory to empty out. salvage: to where the main
+            // armory is emptied into, while it is.
+            Building back = armory;
+            Building dest = ai.strategy().salvage ? ai.economy().salvageDest(armory) : null;
+            if (dest != null && !dest.isDead()) {
+                back = dest;
+                ai.aiLog().count("salvage_fallback"); // military ticks (0.5 s)
+            }
             for (Unit u : defenders)
-                attackGround(u, armory.getGridX(), armory.getGridY(), false);
+                attackGround(u, back.getGridX(), back.getGridY(), false);
         }
         evacuatePeons();
     }
@@ -1592,6 +1601,8 @@ final class Military {
     private void evacuatePeons() {
         Intel intel = ai.intel();
         Building armory = intel.armory();
+        boolean swarm = ai.strategy().repair_swarm;
+        boolean salvage = ai.strategy().salvage;
         List<Unit> evacuate = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
@@ -1609,6 +1620,13 @@ final class Military {
             // rearm_placer: a peon carrying an armory site walks on while no threat is within 6 cells.
             if (ai.economy().evacExempt(p))
                 continue;
+            // repair_swarm: its repairers stand by the attackers on purpose (else re-sheltered every 0.5 s)
+            if (swarm && ai.economy().swarmExempt(p))
+                continue;
+            // salvage: an evacuee whose spawn scan started a hunt under its rally order is FIGHT, not TRANSIT, while
+            // it walks into the refuge: it is on its way into a building of ours already.
+            if (salvage && p.getCurrentController() instanceof EnterController)
+                continue;
             evacuate.add(p);
         }
         // bank_guard: a main armory at its cap shelters peons only when no quarters can (Economy.guardBank).
@@ -1619,6 +1637,9 @@ final class Military {
         // sortie_ratio: nor one whose peons are out fighting by it.
         if (armory != null && sorties.containsKey(armory))
             armory = null;
+        // salvage: nor a building being emptied: its 6-cell test misses attackers 7-12 cells out.
+        if (salvage && armory != null && ai.economy().isEvacuating(armory))
+            armory = null;
         for (Unit p : evacuate) {
             Building shelter = null;
             int best = Integer.MAX_VALUE;
@@ -1626,7 +1647,8 @@ final class Military {
                 shelter = armory;
             for (Building q : intel.quarters) {
                 // retire: not into a quarters being razed (the main armory never is).
-                if (threatNear(q.getGridX(), q.getGridY(), 6) || ai.economy().isDoomed(q))
+                if (threatNear(q.getGridX(), q.getGridY(), 6) || ai.economy().isDoomed(q)
+                        || (salvage && ai.economy().isEvacuating(q)))
                     continue;
                 int d = MapAnalysis.dist2(q.getGridX(), q.getGridY(), p.getGridX(), p.getGridY());
                 int da = shelter == armory && armory != null ? MapAnalysis.dist2(armory.getGridX(),
@@ -1869,8 +1891,8 @@ final class Military {
         }
     }
 
-    /** sortie_ratio: the lasting value of the threats within radius cells of the armory. */
-    private float sortieThreat(@NonNull Building a, int radius) {
+    /** sortie_ratio, salvage: the lasting value of the threats within radius cells of the armory (or quarters). */
+    float sortieThreat(@NonNull Building a, int radius) {
         int r2 = radius * radius;
         float s = 0f;
         for (Unit e : threats)
@@ -1880,16 +1902,38 @@ final class Military {
     }
 
     /**
-     * sortie_ratio: the manned towers within 16 cells of the armory and our warriors within 20 (raid_evac's defence),
-     * with the warriors in its deploy queues (a deploy order takes its workers out of the bank at once).
+     * sortie_ratio, salvage: the manned towers within 16 cells of the armory and our warriors within 20 (raid_evac's
+     * defence), with the warriors in its deploy queues (a deploy order takes its workers out of the bank at once). A
+     * quarters (salvage) has no warrior queues.
      */
-    private float sortieDefence(@NonNull Building a) {
+    float sortieDefence(@NonNull Building a) {
         Intel intel = ai.intel();
-        return Combat.strengthNear(intel.towers, a.getGridX(), a.getGridY(), 16) + Combat.strengthNear(
-                intel.warriors, a.getGridX(), a.getGridY(), 20) + Combat.CHICKEN * a.getDeployContainer(
-                        DeployType.RUBBER_WARRIOR).getNumSupplies() + Combat.IRON * a.getDeployContainer(
-                                DeployType.IRON_WARRIOR).getNumSupplies() + Combat.ROCK * a.getDeployContainer(
-                                        DeployType.ROCK_WARRIOR).getNumSupplies();
+        float near = Combat.strengthNear(intel.towers, a.getGridX(), a.getGridY(), 16) + Combat.strengthNear(
+                intel.warriors, a.getGridX(), a.getGridY(), 20);
+        if (a.getTemplate().getTemplateID() != Race.BUILDING_ARMORY)
+            return near;
+        return near + Combat.CHICKEN * a.getDeployContainer(
+                DeployType.RUBBER_WARRIOR).getNumSupplies() + Combat.IRON * a.getDeployContainer(
+                        DeployType.IRON_WARRIOR).getNumSupplies() + Combat.ROCK * a.getDeployContainer(
+                                DeployType.ROCK_WARRIOR).getNumSupplies();
+    }
+
+    /**
+     * salvage, repair_swarm: whether sorties()' start test would pass for this armory now, without its threat-level
+     * and door gates: SORTIE_MIN_BANK inside, a threat within SORTIE_LOOK_CELLS that the defence alone does not hold
+     * (sortie_ratio of it), and the bank's peons with the defence reach it. Such a bank is the sortie's: salvage does
+     * not empty it, the swarm does not spend it. With no threat, or one the defence holds, no sortie starts.
+     */
+    boolean sortieCouldWin(@NonNull Building a) {
+        float ratio = ai.strategy().sortie_ratio;
+        if (ratio <= 0f || a.isDead() || a.getTemplate().getTemplateID() != Race.BUILDING_ARMORY)
+            return false;
+        int inside = a.getUnitContainer().getNumSupplies();
+        if (inside < SORTIE_MIN_BANK)
+            return false;
+        float threat = sortieThreat(a, SORTIE_LOOK_CELLS);
+        float defence = sortieDefence(a);
+        return threat > 0f && defence < ratio * threat && Combat.PEON * inside + defence >= ratio * threat;
     }
 
     /** sortie_ratio: a sortie's strength: the defence, its peons out within 20 cells, and those inside or queued. */
@@ -3745,8 +3789,10 @@ final class Military {
         List<Unit> pool = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
+            // repair_swarm: not its repairers nor its fresh wood transporters
             if ((s == PeonState.IDLE || s == PeonState.GATHER_TREE || s == PeonState.GATHER_ROCK
-                    || s == PeonState.GATHER_IRON || s == PeonState.MOVE) && !ai.economy().reservedPlacer(p))
+                    || s == PeonState.GATHER_IRON || s == PeonState.MOVE) && !ai.economy().reservedPlacer(p)
+                    && !(ai.strategy().repair_swarm && ai.economy().swarmExempt(p)))
                 pool.add(p);
         }
         if (pool.size() < want + 15)
@@ -3772,7 +3818,8 @@ final class Military {
             return;
         int[] c = mode == Mode.ATTACK ? attackCenter() : null;
         if (c == null) {
-            Building home = intel.armory();
+            // salvage: into the refuge while the main armory is emptied
+            Building home = ai.economy().homeFor(intel.armory());
             for (Unit p : intel.sappers)
                 if (home != null && home.getUnitContainer() != null)
                     ai.owner().setTarget(Selectable.newArray(p), home, ai.enterAction(home), false);

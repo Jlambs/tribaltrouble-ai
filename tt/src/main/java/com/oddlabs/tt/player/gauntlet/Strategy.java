@@ -273,6 +273,55 @@ class Strategy {
      * (median 1 %). Repairs stay manageRepairs' (at most 4 a building, never under threat).
      */
     boolean enter_move = false;
+    /**
+     * repair_swarm (RepairSwarm, design-2 A): manageRepairs never repairs under threat and sends at most 4 tree
+     * gatherers (who walk for wood), so a quarters or armory under attack falls at the attackers' pace, with the units
+     * inside. The swarm gives each damaged quarters, armory and tower as many repairers as hold its damage,
+     * swarm_margin x the damage rate (Siege: measured, or modelled from the enemy warriors in reach) plus the missing
+     * hit points over swarm_catchup_ticks, at most swarm_ring_qa of the 32 cells around a quarters or armory and
+     * swarm_ring_tower of the 16 around a tower (repairers block the way; the rest stays free for spawns, entries and
+     * a gunner), and at most swarm_peon_share of our peons in all (at least 8). Only peons carrying wood repair (a
+     * piece is 5 HP at
+     * 1 HP/s): carriers nearby; wood transporters out of the armory itself, which keeps 6 workers, its wood reserve
+     * (swarm_wood_reserve and two per iron in stock under attack, swarm_cold_reserve otherwise) and a bank a sortie
+     * could win with (swarm_lee: they walk to the side away from the attackers first); or out of a quiet armory within
+     * swarm_reach cells; and tree gatherers only with a tree within 6 cells. A spent repairer walks into an armory to
+     * be sent out again. swarm_cold: damaged buildings with no threat too (else manageRepairs keeps them). A building
+     * it cannot hold (damage above its ring, falling, below half) is given up for 20 s. Forces enter_move's MOVE: with
+     * DEFAULT, peons sheltering in a damaged quarters stood outside it as unfed repairers.
+     */
+    boolean repair_swarm = false;
+    boolean swarm_cold = true;
+    float swarm_margin = 1.25f;
+    float swarm_catchup_ticks = 1000f; // 20 s
+    int swarm_ring_qa = 20;
+    int swarm_ring_tower = 10;
+    float swarm_peon_share = .5f;
+    int swarm_reach = 40;
+    int swarm_wood_reserve = 6;
+    int swarm_cold_reserve = 20;
+    boolean swarm_lee = true;
+    /**
+     * salvage (Economy.salvage, design-2 B): units inside a razed building vanish with it, uncounted (13 per quarters
+     * razing with enter_move, a median 15 per armory). A quarters or armory holding salvage_min or more (inside and
+     * queued) with salvage_attackers enemy warriors within 12 cells is emptied once it would fall (Siege.timeToFall,
+     * approaching warriors at salvage_approach_weight) before everyone is out plus salvage_margin_ticks, the threat
+     * within 15 cells is salvage_ratio x its defence (at least 1) or more, and no sortie could win with its bank. Each
+     * unit comes out with a rally on our nearest armory, else quarters (undamaged), within salvage_reach cells with no
+     * threat within salvage_safe and at least 8 cells farther from the threat, and walks in without scanning; into an
+     * armory the stock goes along as transporters. It ends when the building falls, after salvage_calm_ticks with no
+     * threat within 15 cells, or after 120 s; a quarters that stood takes free peons back. The old evacuate fired on HP
+     * alone, too late, and let its evacuees out idle by the door or into the attackers.
+     */
+    boolean salvage = false;
+    float salvage_ratio = 2f;
+    float salvage_margin_ticks = 300f; // 6 s
+    int salvage_min = 4;
+    int salvage_attackers = 2;
+    float salvage_approach_weight = .5f;
+    int salvage_safe = 20;
+    int salvage_reach = 90;
+    float salvage_calm_ticks = 1000f; // 20 s
     float last_stand_ticks = 15000f; // 300 s
     /**
      * mopup and last_stand act only from this game tick (0: from the start; 120000 keeps games identical to 40 min).
@@ -1531,6 +1580,26 @@ class Strategy {
         push_soft = params.getBoolean("push_soft", push_soft);
         last_stand = params.getBoolean("last_stand", last_stand);
         enter_move = params.getBoolean("enter_move", enter_move);
+        repair_swarm = params.getBoolean("repair_swarm", repair_swarm);
+        swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
+        swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);
+        swarm_catchup_ticks = (float) params.getDouble("swarm_catchup_ticks", swarm_catchup_ticks);
+        swarm_ring_qa = params.getInt("swarm_ring_qa", swarm_ring_qa);
+        swarm_ring_tower = params.getInt("swarm_ring_tower", swarm_ring_tower);
+        swarm_peon_share = (float) params.getDouble("swarm_peon_share", swarm_peon_share);
+        swarm_reach = params.getInt("swarm_reach", swarm_reach);
+        swarm_wood_reserve = params.getInt("swarm_wood_reserve", swarm_wood_reserve);
+        swarm_cold_reserve = params.getInt("swarm_cold_reserve", swarm_cold_reserve);
+        swarm_lee = params.getBoolean("swarm_lee", swarm_lee);
+        salvage = params.getBoolean("salvage", salvage);
+        salvage_ratio = (float) params.getDouble("salvage_ratio", salvage_ratio);
+        salvage_margin_ticks = (float) params.getDouble("salvage_margin_ticks", salvage_margin_ticks);
+        salvage_min = params.getInt("salvage_min", salvage_min);
+        salvage_attackers = params.getInt("salvage_attackers", salvage_attackers);
+        salvage_approach_weight = (float) params.getDouble("salvage_approach_weight", salvage_approach_weight);
+        salvage_safe = params.getInt("salvage_safe", salvage_safe);
+        salvage_reach = params.getInt("salvage_reach", salvage_reach);
+        salvage_calm_ticks = (float) params.getDouble("salvage_calm_ticks", salvage_calm_ticks);
         last_stand_ticks = (float) params.getDouble("last_stand_ticks", last_stand_ticks);
         endgame_from_ticks = (float) params.getDouble("endgame_from_ticks", endgame_from_ticks);
         defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);

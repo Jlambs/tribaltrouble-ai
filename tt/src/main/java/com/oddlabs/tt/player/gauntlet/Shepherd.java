@@ -277,8 +277,10 @@ final class Shepherd {
     }
 
     private void sendHome(@NonNull Unit u) {
-        Building home = ai.intel().armory();
-        if (home == null && !ai.intel().quarters.isEmpty())
+        Building armory = ai.intel().armory();
+        // salvage: into the refuge while the main armory is emptied
+        Building home = ai.economy().homeFor(armory);
+        if (armory == null && !ai.intel().quarters.isEmpty())
             home = ai.intel().quarters.getFirst();
         if (home != null && !home.isDead())
             ai.owner().setTarget(Selectable.newArray(u), home, ai.enterAction(home), false);
@@ -558,6 +560,9 @@ final class Shepherd {
                     && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
                 continue;
             if (intel.shepherds.contains(p) || ai.economy().reservedPlacer(p))
+                continue;
+            // repair_swarm: not its repairers nor its fresh wood transporters
+            if (ai.strategy().repair_swarm && ai.economy().swarmExempt(p))
                 continue;
             int danger = nearestEnemy(intel.enemy_warriors, p.getGridX(), p.getGridY());
             if (danger >= 0 && danger <= 14)
