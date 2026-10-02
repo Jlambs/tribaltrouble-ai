@@ -1550,6 +1550,72 @@ class Strategy {
     int shepherd_safe_look = 40;
     int shepherd_safe_clear = 10;
     /**
+     * shepherd_site_origin (0 = off; shepherd spec S1): a copy with no idle warrior and no finished armory has its
+     * spot picked around its first placed armory site (1), else its first finished quarters (2), not left without a
+     * shepherd until the armory is done. Armory sites are placed at about 100 s while recruits came at 162-173 s, and
+     * a shepherd that walks out 50-70 s earlier stands inside a far copy's huge first-wave disc, so a first wave that
+     * went straight at our base is caught (early shepherds pay: shepherd_ticks 240 s instead of 120 s cut N=13 W 45 ->
+     * 19). shepherd_far_first: far copies are tended first (as with shepherd_lead), so their shepherds get the scarce
+     * early peons. A copy the freeze opening froze gets none (its armory site never finishes, Freeze).
+     */
+    int shepherd_site_origin = 0;
+    boolean shepherd_far_first = false;
+    /**
+     * shepherd_calm_peons (Chebyshev cells, 0 = off; S2a): an enemy peon that is neither idle, defending, attacking,
+     * hunting nor walking aggressively counts as a shepherd's flee threat and blocks a spot only within this many
+     * cells (such a peon starts no fight, and one beyond 8 that turns idle still cannot see the shepherd). Meant with
+     * shepherd_all_circles: alone (a 16-seed smoke) it gave more spots but fewer arrivals.
+     */
+    int shepherd_calm_peons = 0;
+    /**
+     * shepherd_all_circles (S2b): spots and sideways flee points keep DEFENSE_CELLS from every copy's finished quarters
+     * and armories, not only from the shepherd's own copy's buildings (the Hard defends around its first finished
+     * quarters, else its armory; every finished one is a conservative superset).
+     */
+    boolean shepherd_all_circles = false;
+    /**
+     * shepherd_flee_clear (S2c): a shepherd flees from enemy warriors and peons within this many Chebyshev cells (12
+     * before, a constant): a spot cleared below 12 cells (shepherd_clear) otherwise sets off a flee on arrival.
+     */
+    int shepherd_flee_clear = 12;
+    /**
+     * shepherd_flee_pick (S3): a fleeing shepherd runs to the best of 32 checked points (16 headings, shepherd_flee_r
+     * and 0.6 of it), reachable, clear of enemy warriors along the way and at the end, out of tower reach and defense
+     * circles and 14 cells from every walking wave's target, at least 6 cells farther from the threat; the score adds
+     * shepherd_flee_out per cell gained away from our start and takes off shepherd_tether per cell beyond the copy's
+     * leash disc (0.66 of its origin's distance to our nearest building, minus 2; origins within 150 cells only), and
+     * a pick is held 1.5 s. With no legal point the flee goes as before (shepherd_flee_side, else straight away). The
+     * precedent is shepherd_flee_side (+4.2 pp W at N=13): at launches that hit our base the copy's own shepherd was
+     * away in 62-70 %, three quarters of those after a flee in the 8 s before. shepherd_hunted: an enemy hunting the
+     * shepherd counts as a threat anywhere within 40 cells (not only within the flee box), and holds the walk back to
+     * the spot for 4 s after it was last seen.
+     */
+    boolean shepherd_flee_pick = false;
+    int shepherd_flee_r = 22;
+    float shepherd_flee_out = .5f;
+    float shepherd_tether = 0f;
+    boolean shepherd_hunted = false;
+    /**
+     * shepherd_predict (S4): while a copy's oldest warrior, in its Army order, is out on an attack-move (its last wave
+     * marching, or a hunter walking back), and the copy cannot launch yet (fewer idle warriors than its wave size, or
+     * no chieftain from the third wave on), the spot is picked around that walk's target, where the warrior goes idle
+     * and leads the next launch, not around the current idle leader at home (the spot flipped 30+ cells home and
+     * back, 942 jumps a game at N=13); spots then keep clear of the wave's landing zone and its walk. Only a target
+     * that leashes a spot (our shepherds near it left out) is taken: a wave aimed at our buildings, army or a field
+     * peon fights where it lands, and around its target no spot was found for the whole walk (the first smoke:
+     * shepherd_t_nospot +44 %). It replaces shepherd_follow.
+     */
+    boolean shepherd_predict = false;
+    /**
+     * shepherd_fallback_r (cells, 0 = off; S5a): when no ring cell up to shepherd_max_r makes a spot, rings 26, 30, ...
+     * up to this (and the leash) are tried, 32 cells to a ring. shepherd_clear_parked (cells, 0 = off; S5b): when those
+     * fail too, a parked enemy warrior (idle on its default controller, blind beyond 8 cells) blocks a ring cell only
+     * within this many cells, and the shepherd on such a spot flees from parked warriors only that near. No spot made
+     * 15-19 % of tends at N=13-17, and its share of base waves grows with N and with hills.
+     */
+    int shepherd_fallback_r = 0;
+    int shepherd_clear_parked = 0;
+    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -1607,6 +1673,19 @@ class Strategy {
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
+        shepherd_site_origin = params.getInt("shepherd_site_origin", shepherd_site_origin);
+        shepherd_far_first = params.getBoolean("shepherd_far_first", shepherd_far_first);
+        shepherd_calm_peons = params.getInt("shepherd_calm_peons", shepherd_calm_peons);
+        shepherd_all_circles = params.getBoolean("shepherd_all_circles", shepherd_all_circles);
+        shepherd_flee_clear = params.getInt("shepherd_flee_clear", shepherd_flee_clear);
+        shepherd_flee_pick = params.getBoolean("shepherd_flee_pick", shepherd_flee_pick);
+        shepherd_flee_r = params.getInt("shepherd_flee_r", shepherd_flee_r);
+        shepherd_flee_out = (float) params.getDouble("shepherd_flee_out", shepherd_flee_out);
+        shepherd_tether = (float) params.getDouble("shepherd_tether", shepherd_tether);
+        shepherd_hunted = params.getBoolean("shepherd_hunted", shepherd_hunted);
+        shepherd_predict = params.getBoolean("shepherd_predict", shepherd_predict);
+        shepherd_fallback_r = params.getInt("shepherd_fallback_r", shepherd_fallback_r);
+        shepherd_clear_parked = params.getInt("shepherd_clear_parked", shepherd_clear_parked);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
         front_tower_max = params.getInt("front_tower_max", front_tower_max);
