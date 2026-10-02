@@ -1820,3 +1820,11 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   Being built (off): decapitate (quarters of live copies first, move on once homeless and chieftain-less), the remnant
   ladder (finish passive remnants late, isolated groups first), corner_fields + dead_region_reach + sealed_progress,
   retreat_cap_ticks, stall_cap_keep, stall_engaged_ticks.
+- **Highest N at ludicrous: 18** (cur11, snapshot of the cand-tsf builds; 6001..6500): N=17 3 of 500 (s6081 101 min,
+  s6257 111, s6366 155; 30 games alive at 40 min; 1 draw, margin -0.95), N=18 1 of 500 (s6220 114 min; 18 alive at 40
+  min). Replays VERIFIED: N=18 s6220 won at 114:24 (checksum 1334996688), N=17 s6081 at 101:27 (495448014). cur9 had 0
+  of 500 at both. N=19, N=20 and a fresh N=18 block queued.
+- **Timeout fixes and decapitation built** (d389da8c, all off; flags-off identity checked): the four timeout smokes
+  s6206 (N=6), s6657 (N=13), s8462 (N=13), s6409 (N=14) went draw -> win (48.8, 74, 96.5 min, and s6409 after the
+  retreat cap released the army and the ladder finished the lone chieftain and homeless bands). Screens queued: the
+  games alive at 40 min of the cur11 bases (1092 games, N=13-16) and 500-game decapitation blocks at N=13-15.
