@@ -84,6 +84,40 @@ class Strategy {
      */
     boolean gate_freeze = false;
     /**
+     * decapitate: a campaign that makes the copies passive before it puts them out. A Hard copy sends a wave of 20 or
+     * more (its third wave on) only with an active chieftain, trains one only in a finished quarters, and defends only
+     * near its first quarters or armory (AdvancedAI). So a copy is live while it has a finished quarters or an active
+     * or training chieftain, and pacified once it has neither: it never sends a wave again unless it rebuilds its
+     * quarters, which it does when it lacks idle warriors and its armory lacks the peons to arm more (so fighting its
+     * warriors or razing its armory can wake it). With decapitate, from decapitate_from_ticks on, target choice
+     * (Military.chooseTarget) takes first, by the usual score: every enemy quarters (a finished one is a live copy's;
+     * a site would make its copy live again), the finished armory of a copy without either that may still send a
+     * wave of 10 or 15 without a chieftain (fewer than two waves seen by the shepherds, or not watched), and every
+     * active enemy chieftain within decapitate_chief_cells of the army, scored like a quarters (a quarterless copy's
+     * chieftain without the quarters' 60 m priority: his death pacifies it for good). Everything else, the armories,
+     * towers and units of pacified copies among it, is attacked only when none of those is a candidate, or when the
+     * muster's best campaign target fails the gate: then the best other building target choice scored, if it passes
+     * (decapitate_alt; without it a quarters guarded by a parked blob, or a capped army's failed capped_ratio test,
+     * held the army home for good while the pacified copies' cheap buildings were never weighed), or with
+     * remnant_ladder_ticks the ladder's first that passes instead; finish_copies and focus_finish wait for the same. So
+     * the army moves on from a copy once its quarters is razed and its chieftain dead, instead of staying to put it
+     * out. gate_freeze (quarters first by score, chieftains ignored) did not pay: 78 of 142 copies that lost their
+     * quarters kept waving with their chieftain, 59 rebuilt (lab/gauntlet/NOTES.md, quarters_gate.py), hence the
+     * chieftains and the sites here. A chieftain target is followed: its field is computed again once it has walked 8
+     * cells off, at most every 5 s (Military.DECAP_FOLLOW_TICKS), while within twice decapitate_chief_cells of the
+     * army's centre; the stall clocks keep running across a follow (gains measured from where the army stands on the
+     * new field), so a chieftain the army cannot catch stalls as any target does. Every gate (strength, stalls, dead
+     * regions, frozen copies, wedges) stays as it is. Counts: decapitate_target (and _quarters, _site, _armory, _chief)
+     * per attack target it took, decapitate_changed when that passed over a better-scoring other target,
+     * decapitate_alt, decapitate_follow, and per copy decapitate_pacified (once), decapitate_pacified_early (it may
+     * still send a small wave), decapitate_relive.
+     */
+    boolean decapitate = false;
+    /** decapitate: cells from the army (the staging point at a muster) within which an enemy chieftain is a target. */
+    int decapitate_chief_cells = 60;
+    /** decapitate acts from this game tick (0: from the start; 120000 keeps games identical to 40 min for late.py). */
+    float decapitate_from_ticks = 0f;
+    /**
      * Attack targets score meters from the army, plus target_defense_weight meters per unit of the defense expected
      * there, plus target_home_weight times the meters from our staging point (keeps the campaign near home).
      */
@@ -106,6 +140,38 @@ class Strategy {
     boolean tower_unstun = true;
     /** Skip, for 10 minutes, a target whose attack stalled (Military.stalled_targets). */
     boolean skip_stalled = true;
+    /**
+     * corner_fields: a target field that does not reach our staging point is computed again with corner cuts (a
+     * diagonal step needs only the diagonal cell open, as in the engine's pathfinder; our fields also want both
+     * straight cells beside it open), and the attack marches, measures progress and judges the region dead on that
+     * field (Military.setTarget). The engine walks units through a corner cut, so a pocket joined to the map only by
+     * one looked sealed: the army stalled 75 s after each launch ("staging cut off") and skipped the region, 24 to
+     * 102 times a game, in 6 ludicrous timeouts that were all won positions (s6206 N=6, s6657 x4 and s8462 N=13).
+     */
+    boolean corner_fields = false;
+    /**
+     * Cells around a building's centre that the dead-region test looks at (Military.inDeadRegion; units: 2). A
+     * quarters' or armory's 7 x 7 footprint covers every cell within 2 of its centre, and no field but its own reaches
+     * into it, so at 2 a dead region never excluded the other buildings in it and the army cycled over them (s6657
+     * N=13: s1's and s4's armories and quarters for 300 min). 2: as before; 4 reaches the ring around the footprint,
+     * as chooseTarget's path test does. A building is tested no farther than the ring around its own footprint
+     * (placing size - 1, at least 2): 4 for a quarters or armory, 2 for a tower, whose 3 x 3 footprint has its ring at
+     * 2, so that a tower 2-3 cells past it, across a thin wall from a dead pocket, stays a target.
+     */
+    int dead_region_reach = 2;
+    /**
+     * sealed_progress: while no attacking unit stands where the target's field reaches (no pivot, as for a target in a
+     * pocket the field calls sealed), a 20 m gain in straight-line distance from the army's centre to the target counts
+     * as progress (Military.attack). Without it such a march can never progress and stalls 75 s after launch, far
+     * from the target (s8462 N=13: 23 stalls, each ~85 cells short of a lone chieftain in a 15-cell pocket); with it
+     * the army walks up to the pocket, where the target may be in throw reach, before the stall.
+     */
+    boolean sealed_progress = false;
+    /**
+     * corner_fields, dead_region_reach and sealed_progress act only from this game tick (0: from the start), so games
+     * stay identical up to it (late.py with T = 2400 s).
+     */
+    float pocket_from_ticks = 120000f; // 40 min
     /** Owner-aware attack gate against several enemies (Military.defenseFor) and a local chieftain malus. */
     boolean gate_owner = false;
     /** Reinforce the attack under base threat while the threat is worth less than this share of all our warriors. */
@@ -121,6 +187,38 @@ class Strategy {
     boolean finish_skip_out = false;
     int finish_units = -1;
     float finish_ratio = 0f;
+    /**
+     * remnant_ladder_ticks (game ticks, 0 = off; arm 120000 = 40 min): from this game tick, when the muster's best
+     * target fails the attack gate, or no building is left to attack (the nearest enemy unit, or nothing), the gate
+     * is tried on a ladder of other targets, and the first that passes is attacked (Military.walkLadder): the other
+     * buildings target choice scored, by their score; then the quarters and armory sites of homeless copies (no
+     * finished quarters or armory; never a frozen copy's armory site, Freeze.isFrozenSite); then one remnant of each
+     * homeless copy still in (more than 8 units or an active chieftain, or any unit while a frozen site keeps it in),
+     * its chieftain if it has one, lone chieftains included, else its unit nearest the centre of its units. Sites and
+     * remnants rank by meters from the staging point plus target_defense_weight per unit of defense, and remnants with
+     * no other copy's warrior or chieftain within 20 cells come first, so that one parked blob fights at a time;
+     * frozen_last and wedge-memory buildings stay last, and so do sites and remnants whose way from the staging point
+     * runs through a remembered wedge (stall_engaged_ticks). After a remnant or site of the ladder falls, the attack
+     * goes on to the same copy's next remnant until it is out (8 units or fewer and no chieftain; a frozen copy:
+     * none): its chieftain, else its unit nearest the army, as long as that stands within finish_range cells of the
+     * army (remnant_chain_far: else the chain ends, since it is never gated again and a scattered copy would march the
+     * army back and forth across the map while the base stood unguarded). Only
+     * the single best building was weighed, so one guarded base hid every cheap out: s6074 (N=13, 10 arms) idled 266
+     * min at home with 198 warriors against six remnants and one copy guarded by a wedged mass; across the 87
+     * ludicrous timeouts remnants kept 169 copies in (17 lone chieftains, 54 homeless copies with a chieftain, 63 with
+     * more than 8 units, 35 copies by a site).
+     */
+    float remnant_ladder_ticks = 0f;
+    /**
+     * With gate_owner, other copies' warriors and chieftains count in a target's defense, and their chieftains in the
+     * gate's chieftain malus, only within this many cells (0: defense_radius, as before; arm 20), from
+     * defense_others_from_ticks on (Military.defenseFor). A copy defends with its own warriors only
+     * (AdvancedAI.nodeDefendBase); another copy's units join only through their 8-cell scans. s6074's last base read
+     * 284.7 with a wedged mass of four copies' 309 warriors 14-60 cells off, about 44 without it, and the capped gate
+     * failed it by 3 % for 4.4 hours.
+     */
+    int defense_others_radius = 0;
+    float defense_others_from_ticks = 120000f; // 40 min
     /**
      * chief_hunt: a squad of chief_hunt_size iron warriors kills the chieftain of a copy with no finished quarters or
      * armory and at most 8 other units (it is then out); hunt_sites: its quarters/armory sites too. Target within
@@ -1030,6 +1128,57 @@ class Strategy {
      */
     float stall_cap_ticks = 15000f; // 300 s
     int stall_cap_kills = 10;
+    /**
+     * retreat_cap_ticks (game ticks, 0 = off; arm 6000 = 120 s): a retreat ends anyway, the army back home to be
+     * weighed for the next attack, once for this long no further attacker has come within 14 cells of the staging
+     * point and those still out have got no 20 m nearer it on average (walking, Military.retreatCap). A retreat ended
+     * only with 70 % of the attackers home, so a way home plugged for good locked the mode, and attacks are weighed
+     * only at home: s6409 (N=14), 89 attackers turned back in a dead end whose only way home was a canyon held by an
+     * idle blob, RETREAT for 279 min while 136 warriors and 58 weapons waited at home. The attackers a capped retreat
+     * leaves out keep walking home, and while one stands more than 30 cells from the staging point it counts neither
+     * in the musters' strength and gathering nor in the launches (retreat_stranded_kept, per launch that left some
+     * out): counted in, the next attack marched the home army off with the stranded group, its centre between the
+     * two, and turned back or was capped again (rep-fix-s6409: three launches within 190 s each, the same group 612 m
+     * away every time). It counts again once home (14 cells) or with the army as a reinforcement.
+     */
+    float retreat_cap_ticks = 0f;
+    /**
+     * stall_cap_keep: the calm stall's retarget (75 s with no gain) no longer restarts the stall_cap clock, nor does
+     * the first measure on the new target's field; only a 20 m gain, stall_cap_kills kills, a new field after a
+     * fallen target, a launch or stall_cap's own first strike do (Military.stalled, Military.attack). Each calm stall
+     * restarted it, so a wedged army retargeted every 75 s for hours and stall_cap never struck (s8150 N=14: 169
+     * retargets in 222 min; s6036 N=6: 261, both with stall_cap 0). Now strike 1 retargets at 300 s and strike 2
+     * walks the army home at 600 s.
+     */
+    boolean stall_cap_keep = false;
+    /** retreat_cap_ticks and stall_cap_keep act only from this game tick (0: from the start). */
+    float unlock_from_ticks = 120000f; // 40 min
+    /**
+     * stall_engaged_ticks (game ticks, 0 = off; arm 15000 = 300 s): a wedge watchdog, first in every attack round, so
+     * that no charge, siege, pillage, hold or engage path returns before it looks (Military.wedgeWatch). Progress: a
+     * 20 m gain of the march pivot on the target field (of the straight line while no attacker stands on it), the
+     * target falling or losing a tenth of its hit points, or stall_cap_kills deaths among the enemy units seen within
+     * 30 cells of the army since the last progress (those that came up later count too: another copy's units joining
+     * through their scans, late defenders), or among the attackers at it; a new target's field is a new baseline,
+     * not progress. After this long without: strike 1 stalls the target (skipped, the next one from where the army
+     * stands), strike 2 in a row walks every attacker home and remembers the wedge (wedge_memory_ticks). stall_cap is
+     * left out meanwhile: this does its job on every path and counts kills near the army, where stall_cap counted the
+     * player's (tower kills at home restarted it). s6215 (N=15): 216 warriors stood 260 min at a 1-cell pass engaging
+     * enemies they could not reach, no stall line and no stall_cap (it comes after the engage return), against five
+     * copies with 0 warriors.
+     */
+    float stall_engaged_ticks = 0f;
+    /**
+     * stall_engaged_ticks: game ticks a wedge the army was walked home from is remembered (0: never). Target choice
+     * passes over buildings whose way from the staging point runs within 12 cells of a remembered wedge (a detour
+     * through it costs at most 24 cells more than the best way, walking with corner cuts, on a field from the staging
+     * point computed again every 60 s as trees fall and buildings rise), and takes the best of them only when no
+     * other building is left (Military.chooseTarget): otherwise the next muster marches into the same pass (s6021 N=6
+     * under stall_cap). The remnant ladder ranks such sites and remnants last too.
+     */
+    float wedge_memory_ticks = 60000f; // 1200 s
+    /** stall_engaged_ticks acts only from this game tick (0: from the start). */
+    float stall_engaged_from_ticks = 120000f; // 40 min
     float chicken_ticks = 7500f; // 150 s
     int chicken_pool_div = 18;
 
@@ -1276,6 +1425,9 @@ class Strategy {
         rock_share = (float) params.getDouble("rock_share", rock_share);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
+        decapitate = params.getBoolean("decapitate", decapitate);
+        decapitate_chief_cells = params.getInt("decapitate_chief_cells", decapitate_chief_cells);
+        decapitate_from_ticks = (float) params.getDouble("decapitate_from_ticks", decapitate_from_ticks);
         target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         target_threat_weight = (float) params.getDouble("target_threat_weight", target_threat_weight);
@@ -1283,12 +1435,19 @@ class Strategy {
         snipers = params.getBoolean("snipers", snipers);
         tower_unstun = params.getBoolean("tower_unstun", tower_unstun);
         skip_stalled = params.getBoolean("skip_stalled", skip_stalled);
+        corner_fields = params.getBoolean("corner_fields", corner_fields);
+        dead_region_reach = params.getInt("dead_region_reach", dead_region_reach);
+        sealed_progress = params.getBoolean("sealed_progress", sealed_progress);
+        pocket_from_ticks = (float) params.getDouble("pocket_from_ticks", pocket_from_ticks);
         gate_owner = params.getBoolean("gate_owner", gate_owner);
         reinforce_threat_ratio = (float) params.getDouble("reinforce_threat_ratio", reinforce_threat_ratio);
         finish_copies = params.getBoolean("finish_copies", finish_copies);
         finish_skip_out = params.getBoolean("finish_skip_out", finish_skip_out);
         finish_units = params.getInt("finish_units", finish_units);
         finish_ratio = (float) params.getDouble("finish_ratio", finish_ratio);
+        remnant_ladder_ticks = (float) params.getDouble("remnant_ladder_ticks", remnant_ladder_ticks);
+        defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);
+        defense_others_from_ticks = (float) params.getDouble("defense_others_from_ticks", defense_others_from_ticks);
         chief_hunt = params.getBoolean("chief_hunt", chief_hunt);
         hunt_sites = params.getBoolean("hunt_sites", hunt_sites);
         chief_hunt_size = params.getInt("chief_hunt_size", chief_hunt_size);
@@ -1566,6 +1725,12 @@ class Strategy {
         chicken_range = params.getInt("chicken_range", chicken_range);
         stall_cap_ticks = (float) params.getDouble("stall_cap_ticks", stall_cap_ticks);
         stall_cap_kills = params.getInt("stall_cap_kills", stall_cap_kills);
+        retreat_cap_ticks = (float) params.getDouble("retreat_cap_ticks", retreat_cap_ticks);
+        stall_cap_keep = params.getBoolean("stall_cap_keep", stall_cap_keep);
+        unlock_from_ticks = (float) params.getDouble("unlock_from_ticks", unlock_from_ticks);
+        stall_engaged_ticks = (float) params.getDouble("stall_engaged_ticks", stall_engaged_ticks);
+        wedge_memory_ticks = (float) params.getDouble("wedge_memory_ticks", wedge_memory_ticks);
+        stall_engaged_from_ticks = (float) params.getDouble("stall_engaged_from_ticks", stall_engaged_from_ticks);
         chicken_ticks = (float) params.getDouble("chicken_ticks", chicken_ticks);
         chicken_pool_div = params.getInt("chicken_pool_div", chicken_pool_div);
         tower_fire = params.getBoolean("tower_fire", tower_fire);
