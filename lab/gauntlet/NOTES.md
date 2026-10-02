@@ -1828,3 +1828,12 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   s6206 (N=6), s6657 (N=13), s8462 (N=13), s6409 (N=14) went draw -> win (48.8, 74, 96.5 min, and s6409 after the
   retreat cap released the army and the ladder finished the lone chieftain and homeless bands). Screens queued: the
   games alive at 40 min of the cur11 bases (1092 games, N=13-16) and 500-game decapitation blocks at N=13-15.
+- **Highest N at ludicrous: 19** (cur11, cur11-vs19 6001..6500): 2 of 500 (12 alive at 40 min, no draws). Replays
+  VERIFIED: s6045 won at 250:29 (checksum 1230984288), s6076 at 130:04 (2121349707). Spawn check (first armory per copy):
+  s6045 is clean (only the freeze target, out at 121 s, has no armory); in s6076 copy s11 finished its first quarters only
+  at 51 min (a stuck spawn: effectively N=18 until then). The N=18 s6220 and N=17 s6081 wins are clean likewise (freeze
+  target only; the slowest armories at 323-403 s).
+- **Timeout fix stack** on the games alive at 40 min of the cur11 bases (1092 games, N=13-16): W 344 -> 340 (+17 / -21),
+  draws 5 -> 6 (s6657 draw -> win at 74 min; new draws s8091, s8039, s8367). Not adopted as a stack; components queued
+  one by one on the cand-tsf bases' games alive at 40 min.
+- Harness merged (headless 6f8d7d6b): automatic runs leave a thread free and run below normal priority; games identical.
