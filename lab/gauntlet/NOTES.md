@@ -1846,3 +1846,17 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   blocks (stopped after 27 and 9 games). Partial-batch caveat: pair.py on a batch's first ~130 rows showed z -3 (the
   longest-first order plays the base's lucky wins first); compare sibling runs on the same seeds before calling it.
 - Record attempts paused (user, 2026-10-01): cur11-vs20 and cur11-fresh-vs18 left out until the experiments are done.
+- **Timeout fixes one by one** (late.py on the games alive at 40 min of cand-tsf-new-vs13 / cand-tsf-vs14 /
+  cand-tsf-vs15, 654 games; every arm identical to its base up to 40 min): pocket (corner_fields + sealed_progress +
+  dead_region_reach 4) +1 / -1 at first. Its loss, s6099 N=14 (won at 168 min, lost at 117), came from a corner field
+  taking the strict one's place although it did not reach the staging point either (corner_field_sealed): same
+  cells, shorter distances, the march moved. Fixed (38541fe9: the strict field stays then): s6099 = base again,
+  s6657 still draw -> win at 74 min, the other changed games = base. retreat_cap_ticks 6000 +1 / -0 (s6192 N=14 draw ->
+  win), stall_cap_keep and stall_engaged_ticks 15000 no result changed (2 and 5 games changed), remnant ladder
+  +13 / -12 over ~200 changed games (the whole stack's losses and new draws were the ladder's). The four clean ones
+  together: +2 / -0 on the base sets, and no result changed on 438 games alive at 40 min of tsf-fresh-vs14,
+  tsf-fresh-vs15 and tsf-vs16 (4 changed; the full stack there had +3 / -9). **cur12** = cur11 + those four, all from
+  40 min (default-identity checked on s6657, s6827, s6192). Draws they do not fix: 2 at fresh N=14, 1 at fresh N=15.
+- **Decapitation late only** (decapitate_from_ticks 120000, same 654 games): N=13 +15 / -9 (draws 1 -> 4), N=14
+  +6 / -8, N=15 +1 / -2: neutral with more draws; not adopted. The pacify-then-strike idea is done for now: the copies
+  do go passive, but going for their quarters and chieftains first beats no target choice the army already has.
