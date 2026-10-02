@@ -65,6 +65,8 @@ final class Checkpoints implements Rewinder {
     private int interval;
     private long bytes;
     private @Nullable String failure;
+    /** Why the checkpoint at failure_tick failed, for the view; null while they go on. */
+    private @Nullable String failure_reason;
     /** The tick of the checkpoint that failed, or -1. */
     private int failure_tick = -1;
     private long copy_nanos;
@@ -112,6 +114,7 @@ final class Checkpoints implements Rewinder {
             checkpoint = take();
         } catch (RuntimeException e) { // a CopyException, or anything else a copy hits: the earlier ones stay usable
             failure = "no checkpoints after tick " + tick + ": " + e.getMessage();
+            failure_reason = String.valueOf(e.getMessage());
             failure_tick = tick;
             logger.log(Level.WARNING, failure, e);
             return;
@@ -176,7 +179,9 @@ final class Checkpoints implements Rewinder {
         if (failure == null) {
             return text;
         }
-        return text + "; " + shorten("at " + times.clock(failure_tick) + ", " + failure, 120);
+        return text + "; " + shorten(
+                "no checkpoints after " + times.clock(failure_tick) + " (tick " + failure_tick + "): " + failure_reason,
+                120);
     }
 
     // ---------------------------------------------------------------- for RewindCheck and the view
