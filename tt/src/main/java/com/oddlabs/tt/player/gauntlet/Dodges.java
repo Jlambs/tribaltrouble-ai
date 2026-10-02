@@ -29,9 +29,9 @@ import java.util.Map;
  */
 final class Dodges {
     private final @NonNull GauntletAI ai;
-    /** Peons running for cover, and since when: kept out of the economy for 12 s. */
+    /** Peons running for cover, and since when (game tick): kept out of the economy for 12 s. */
     private final Map<@NonNull Unit, Float> running = new LinkedHashMap<>();
-    private float chief_move = -10f;
+    private float chief_move = -500f;
 
     Dodges(@NonNull GauntletAI ai) {
         this.ai = ai;
@@ -39,17 +39,17 @@ final class Dodges {
 
     /** Whether the chieftain was moved away from hunters in the last 2 s (Chieftain leaves him alone then). */
     boolean chiefBusy() {
-        return ai.time() - chief_move < 2f;
+        return ai.now() - chief_move < 100f; // 2 s
     }
 
-    /** Every 5 ticks. */
+    /** Every 5 game ticks. */
     void guard() {
         Strategy strategy = ai.strategy();
         if (!strategy.peon_dodge && !strategy.chief_dodge)
             return;
         Intel intel = ai.intel();
         if (!running.isEmpty()) {
-            running.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 12f);
+            running.entrySet().removeIf(e -> e.getKey().isDead() || ai.now() - e.getValue() > 600f); // 12 s
             intel.dodging.retainAll(running.keySet());
         }
         // Who hunts whom: our unit -> the enemies whose hunt or attack target it is.
@@ -105,7 +105,7 @@ final class Dodges {
             best_d = d;
             best = b;
         }
-        running.put(p, ai.time());
+        running.put(p, ai.now());
         intel.dodging.add(p);
         intel.peon_states.put(p, Intel.PeonState.SHEPHERD);
         ai.aiLog().count("peon_dodge");
@@ -118,8 +118,9 @@ final class Dodges {
     }
 
     private void dodgeChief(@NonNull Unit chief, @Nullable List<@NonNull Unit> hunters) {
+        // a new step at most once a game second (50 game ticks)
         if (hunters == null || hunters.isEmpty() || Intel.isStunned(chief)
-                || chief.getCurrentController() instanceof MagicController || ai.time() - chief_move < 1f)
+                || chief.getCurrentController() instanceof MagicController || !ai.periodDue(chief_move, 50f))
             return;
         int x = chief.getGridX();
         int y = chief.getGridY();
@@ -149,7 +150,7 @@ final class Dodges {
             }
         }
         int[] step = goal != null ? stepTowards(x, y, goal[0], goal[1], 8) : awayFrom(x, y, cx, cy, 8);
-        chief_move = ai.time();
+        chief_move = ai.now();
         ai.aiLog().count("chief_dodge");
         ai.landscapeOrder(Selectable.newArray(chief), step[0], step[1], Action.MOVE, false);
     }

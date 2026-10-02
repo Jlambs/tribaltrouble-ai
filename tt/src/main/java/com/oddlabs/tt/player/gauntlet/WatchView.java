@@ -10,12 +10,15 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.Locale;
 
-
 /**
  * What the modules share to show the AI's thinking when its game is watched (AiView, GauntletAI.paint): the layer
  * names, the colours, and small helpers for labels. Everything here only reads: a watched game must stay the recorded
  * one, so no orders, log lines, counters, random draws, caches or lazily made state (lab/gauntlet/PaintCheck.java
  * checks it).
+ *
+ * <p>Times: the AI keeps every time in game ticks ({@link GauntletAI#TICKS_PER_SECOND} to a game second at every game
+ * speed), and the painter compares them in game ticks too; only the text it shows turns them into game time, a span
+ * as whole game seconds ({@link #seconds}) and a moment as the game clock ({@link #clock}), never world ticks.
  */
 final class WatchView {
     /** Mode, staging point, campaign target, the attacking army, reinforcements, raid, hunt, focus copy. */
@@ -92,6 +95,19 @@ final class WatchView {
     /** A strength or other value with one decimal, as the logs write it: 12.5. */
     static @NonNull String decimal(float value) {
         return String.format(Locale.ROOT, "%.1f", value);
+    }
+
+    /** Whole game seconds in a span of {@code ticks} game ticks, as the log lines give spans. */
+    static int seconds(float ticks) {
+        return (int) GauntletAI.seconds(ticks);
+    }
+
+    /** The moment {@code ticks} game ticks from the start as a game clock: m:ss, h:mm:ss from an hour on. */
+    static @NonNull String clock(float ticks) {
+        int s = Math.max(0, seconds(ticks));
+        if (s >= 3600)
+            return String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60);
+        return String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60);
     }
 
     /** A cell as the logs write it: 120,88. */

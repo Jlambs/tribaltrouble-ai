@@ -10,23 +10,33 @@ import org.jspecify.annotations.NonNull;
  * enemies), {@link #forMapSize} adjusts them for other sizes, and new styles of play can subclass or copy this. Every
  * field is a param of the spec (gauntlet:name=value, {@link #apply}); the ones that default to off are experiments
  * kept for reference, lab/gauntlet/NOTES.md records how each one did.
+ *
+ * <p><b>Units.</b> Every time here is in game ticks, 50 a game second at every game speed
+ * ({@link GauntletAI#TICKS_PER_SECOND}), so that the AI plays the same at every speed: times since the start,
+ * durations, cooldowns, windows, ETAs, and the gathering costs of the armory site model (peon-ticks per warrior). Such
+ * a param's name ends in _ticks (or _per_tick for a rate), and the comment by its default gives it in seconds; history
+ * notes keep the seconds the experiments ran with, marked "s". Distances are in grid cells or walking meters, as each
+ * doc says.
  */
 class Strategy {
     /** Quarters to raise before or alongside the armory. */
     int initial_quarters = 4;
     /** Quarters to have once the economy is running. More than five pays off little. */
     int max_quarters = 4;
-    /** Seconds after which to aim for max_quarters. */
-    float expand_time = 300f;
+    /** Game ticks after which to aim for max_quarters. */
+    float expand_ticks = 15000f; // 300 s
 
     /** Upper bound on how far the armory may be from the start, as walking meters. */
     int max_armory_distance = 260;
-    /** Peon-seconds per warrior of gathering that one meter of walking from the start is worth. */
-    float armory_distance_weight = .03f;
-    /** Peon-seconds per warrior of gathering that one second of delay to the armory is worth. */
+    /** Peon-ticks per warrior of gathering that one meter of walking from the start is worth. */
+    float armory_distance_weight_ticks = 1.5f; // .03 s a meter
+    /** Peon-ticks per warrior of gathering that one game tick of delay to the armory is worth. */
     float armory_delay_weight = .4f;
-    /** How strongly to avoid putting the armory towards the enemy. */
-    float armory_threat_weight = 60f;
+    /**
+     * How strongly to avoid putting the armory towards the enemy: peon-ticks per warrior of gathering per unit of the
+     * site's exposure beyond 0.42 (SitePlanner).
+     */
+    float armory_threat_weight_ticks = 3000f; // 60 s
 
     /** Builders for the first quarters, the rest of the starting peons scout and lay out the base. */
     int scouts = 1;
@@ -40,18 +50,18 @@ class Strategy {
      * from the nearest complete armory within tower_wood_reach cells that can spare it (the armory's transport-wood
      * deploy, 1 piece of 5 HP per peon), at most tower_wood_max pieces per project, while the armory keeps
      * tower_wood_reserve wood and half its workers (at least 4). Idle peons carrying wood are kept for such sites. From
-     * tower_wood_time (game seconds) on. Treeless sites take a median 116 s against 45-69 s for sites with trees: their
+     * tower_wood_ticks (game ticks) on. Treeless sites take a median 116 s against 45-69 s for sites with trees: their
      * builders walk for wood (tower13 audit, 53 % of the 10-25-min sites at N=13). Smoke N=13 s2001-2012 (smoke-wood2
      * against logs-cur5-vs13): treeless sites placed at 10-25 min finish in a median 61 s instead of 127 s, and those
-     * placed before 10 min in 46 s instead of 89 s; 44 % of the wood leaves before 10 min, when the armory needs it
-     * for weapons (w15 68 -> 54 over the 12 games, noisy): tower_wood_time=600 keeps it to the audited window.
+     * placed before 10 min in 46 s instead of 89 s; 44 % of the wood leaves before 10 min, when the armory needs it for
+     * weapons (w15 68 -> 54 over the 12 games, noisy): tower_wood_ticks=30000 (600 s) keeps it to the audited window.
      */
     boolean tower_wood_drop = false;
     int tower_wood_trees = 0;
     int tower_wood_reach = 40;
     int tower_wood_reserve = 8;
     int tower_wood_max = 20;
-    float tower_wood_time = 0f;
+    float tower_wood_ticks = 0f;
     /** Tower projects waiting to be placed at once, and non-armory sites standing unfinished at once. */
     int tower_parallel = 1;
     /** Cells from the building it covers that a front tower (one facing each enemy) stands. */
@@ -73,6 +83,40 @@ class Strategy {
      * wave leaves without one (AdvancedAI); its armory, army and peons are left until every copy is quarterless.
      */
     boolean gate_freeze = false;
+    /**
+     * decapitate: a campaign that makes the copies passive before it puts them out. A Hard copy sends a wave of 20 or
+     * more (its third wave on) only with an active chieftain, trains one only in a finished quarters, and defends only
+     * near its first quarters or armory (AdvancedAI). So a copy is live while it has a finished quarters or an active
+     * or training chieftain, and pacified once it has neither: it never sends a wave again unless it rebuilds its
+     * quarters, which it does when it lacks idle warriors and its armory lacks the peons to arm more (so fighting its
+     * warriors or razing its armory can wake it). With decapitate, from decapitate_from_ticks on, target choice
+     * (Military.chooseTarget) takes first, by the usual score: every enemy quarters (a finished one is a live copy's;
+     * a site would make its copy live again), the finished armory of a copy without either that may still send a
+     * wave of 10 or 15 without a chieftain (fewer than two waves seen by the shepherds, or not watched), and every
+     * active enemy chieftain within decapitate_chief_cells of the army, scored like a quarters (a quarterless copy's
+     * chieftain without the quarters' 60 m priority: his death pacifies it for good). Everything else, the armories,
+     * towers and units of pacified copies among it, is attacked only when none of those is a candidate, or when the
+     * muster's best campaign target fails the gate: then the best other building target choice scored, if it passes
+     * (decapitate_alt; without it a quarters guarded by a parked blob, or a capped army's failed capped_ratio test,
+     * held the army home for good while the pacified copies' cheap buildings were never weighed), or with
+     * remnant_ladder_ticks the ladder's first that passes instead; finish_copies and focus_finish wait for the same. So
+     * the army moves on from a copy once its quarters is razed and its chieftain dead, instead of staying to put it
+     * out. gate_freeze (quarters first by score, chieftains ignored) did not pay: 78 of 142 copies that lost their
+     * quarters kept waving with their chieftain, 59 rebuilt (lab/gauntlet/NOTES.md, quarters_gate.py), hence the
+     * chieftains and the sites here. A chieftain target is followed: its field is computed again once it has walked 8
+     * cells off, at most every 5 s (Military.DECAP_FOLLOW_TICKS), while within twice decapitate_chief_cells of the
+     * army's centre; the stall clocks keep running across a follow (gains measured from where the army stands on the
+     * new field), so a chieftain the army cannot catch stalls as any target does. Every gate (strength, stalls, dead
+     * regions, frozen copies, wedges) stays as it is. Counts: decapitate_target (and _quarters, _site, _armory, _chief)
+     * per attack target it took, decapitate_changed when that passed over a better-scoring other target,
+     * decapitate_alt, decapitate_follow, and per copy decapitate_pacified (once), decapitate_pacified_early (it may
+     * still send a small wave), decapitate_relive.
+     */
+    boolean decapitate = false;
+    /** decapitate: cells from the army (the staging point at a muster) within which an enemy chieftain is a target. */
+    int decapitate_chief_cells = 60;
+    /** decapitate acts from this game tick (0: from the start; 120000 keeps games identical to 40 min for late.py). */
+    float decapitate_from_ticks = 0f;
     /**
      * Attack targets score meters from the army, plus target_defense_weight meters per unit of the defense expected
      * there, plus target_home_weight times the meters from our staging point (keeps the campaign near home).
@@ -96,6 +140,38 @@ class Strategy {
     boolean tower_unstun = true;
     /** Skip, for 10 minutes, a target whose attack stalled (Military.stalled_targets). */
     boolean skip_stalled = true;
+    /**
+     * corner_fields: a target field that does not reach our staging point is computed again with corner cuts (a
+     * diagonal step needs only the diagonal cell open, as in the engine's pathfinder; our fields also want both
+     * straight cells beside it open), and the attack marches, measures progress and judges the region dead on that
+     * field (Military.setTarget). The engine walks units through a corner cut, so a pocket joined to the map only by
+     * one looked sealed: the army stalled 75 s after each launch ("staging cut off") and skipped the region, 24 to
+     * 102 times a game, in 6 ludicrous timeouts that were all won positions (s6206 N=6, s6657 x4 and s8462 N=13).
+     */
+    boolean corner_fields = false;
+    /**
+     * Cells around a building's centre that the dead-region test looks at (Military.inDeadRegion; units: 2). A
+     * quarters' or armory's 7 x 7 footprint covers every cell within 2 of its centre, and no field but its own reaches
+     * into it, so at 2 a dead region never excluded the other buildings in it and the army cycled over them (s6657
+     * N=13: s1's and s4's armories and quarters for 300 min). 2: as before; 4 reaches the ring around the footprint,
+     * as chooseTarget's path test does. A building is tested no farther than the ring around its own footprint
+     * (placing size - 1, at least 2): 4 for a quarters or armory, 2 for a tower, whose 3 x 3 footprint has its ring at
+     * 2, so that a tower 2-3 cells past it, across a thin wall from a dead pocket, stays a target.
+     */
+    int dead_region_reach = 2;
+    /**
+     * sealed_progress: while no attacking unit stands where the target's field reaches (no pivot, as for a target in a
+     * pocket the field calls sealed), a 20 m gain in straight-line distance from the army's centre to the target counts
+     * as progress (Military.attack). Without it such a march can never progress and stalls 75 s after launch, far
+     * from the target (s8462 N=13: 23 stalls, each ~85 cells short of a lone chieftain in a 15-cell pocket); with it
+     * the army walks up to the pocket, where the target may be in throw reach, before the stall.
+     */
+    boolean sealed_progress = false;
+    /**
+     * corner_fields, dead_region_reach and sealed_progress act only from this game tick (0: from the start), so games
+     * stay identical up to it (late.py with T = 2400 s).
+     */
+    float pocket_from_ticks = 120000f; // 40 min
     /** Owner-aware attack gate against several enemies (Military.defenseFor) and a local chieftain malus. */
     boolean gate_owner = false;
     /** Reinforce the attack under base threat while the threat is worth less than this share of all our warriors. */
@@ -112,18 +188,50 @@ class Strategy {
     int finish_units = -1;
     float finish_ratio = 0f;
     /**
+     * remnant_ladder_ticks (game ticks, 0 = off; arm 120000 = 40 min): from this game tick, when the muster's best
+     * target fails the attack gate, or no building is left to attack (the nearest enemy unit, or nothing), the gate
+     * is tried on a ladder of other targets, and the first that passes is attacked (Military.walkLadder): the other
+     * buildings target choice scored, by their score; then the quarters and armory sites of homeless copies (no
+     * finished quarters or armory; never a frozen copy's armory site, Freeze.isFrozenSite); then one remnant of each
+     * homeless copy still in (more than 8 units or an active chieftain, or any unit while a frozen site keeps it in),
+     * its chieftain if it has one, lone chieftains included, else its unit nearest the centre of its units. Sites and
+     * remnants rank by meters from the staging point plus target_defense_weight per unit of defense, and remnants with
+     * no other copy's warrior or chieftain within 20 cells come first, so that one parked blob fights at a time;
+     * frozen_last and wedge-memory buildings stay last, and so do sites and remnants whose way from the staging point
+     * runs through a remembered wedge (stall_engaged_ticks). After a remnant or site of the ladder falls, the attack
+     * goes on to the same copy's next remnant until it is out (8 units or fewer and no chieftain; a frozen copy:
+     * none): its chieftain, else its unit nearest the army, as long as that stands within finish_range cells of the
+     * army (remnant_chain_far: else the chain ends, since it is never gated again and a scattered copy would march the
+     * army back and forth across the map while the base stood unguarded). Only
+     * the single best building was weighed, so one guarded base hid every cheap out: s6074 (N=13, 10 arms) idled 266
+     * min at home with 198 warriors against six remnants and one copy guarded by a wedged mass; across the 87
+     * ludicrous timeouts remnants kept 169 copies in (17 lone chieftains, 54 homeless copies with a chieftain, 63 with
+     * more than 8 units, 35 copies by a site).
+     */
+    float remnant_ladder_ticks = 0f;
+    /**
+     * With gate_owner, other copies' warriors and chieftains count in a target's defense, and their chieftains in the
+     * gate's chieftain malus, only within this many cells (0: defense_radius, as before; arm 20), from
+     * defense_others_from_ticks on (Military.defenseFor). A copy defends with its own warriors only
+     * (AdvancedAI.nodeDefendBase); another copy's units join only through their 8-cell scans. s6074's last base read
+     * 284.7 with a wedged mass of four copies' 309 warriors 14-60 cells off, about 44 without it, and the capped gate
+     * failed it by 3 % for 4.4 hours.
+     */
+    int defense_others_radius = 0;
+    float defense_others_from_ticks = 120000f; // 40 min
+    /**
      * chief_hunt: a squad of chief_hunt_size iron warriors kills the chieftain of a copy with no finished quarters or
      * armory and at most 8 other units (it is then out); hunt_sites: its quarters/armory sites too. Target within
      * chief_hunt_range cells, at most chief_hunt_escort enemy warriors within 15 cells, no enemy tower within 22; the
-     * squad gives up after chief_hunt_time s or when outmatched (Military.considerChase). Six never set off a Viking
-     * blast (7 of our selectables within 18 cells).
+     * squad gives up after chief_hunt_ticks game ticks or when outmatched (Military.considerChase). Six never set off a
+     * Viking blast (7 of our selectables within 18 cells).
      */
     boolean chief_hunt = false;
     boolean hunt_sites = false;
     int chief_hunt_size = 6;
     int chief_hunt_range = 150;
     int chief_hunt_escort = 3;
-    float chief_hunt_time = 90f;
+    float chief_hunt_ticks = 4500f; // 90 s
     /**
      * weapon_sync: an armory takes a weapon's cost when the weapon is done, clamped at zero, so weapons done on the
      * same tick share what they have in common. While the main armory can forge a rubber axe and the iron it shares
@@ -153,7 +261,7 @@ class Strategy {
     /**
      * The armory site's exposure weight grows by 0.75 per enemy beyond the first, up to this many (SitePlanner): past
      * N=6 it kept the first armory from the good iron (vs hard*9 atcap5-vs9-hv-b W 15 vs 11 of 200, elim +.024 z 2.1;
-     * N=10 with the same weight via armory_threat_weight=37: W 6 vs 2 of 200; N=8 W 65 vs 65).
+     * N=10 with the same weight via an armory threat weight of 37 s: W 6 vs 2 of 200; N=8 W 65 vs 65).
      */
     int armory_threat_cap = 5;
     /** Tower targets out to the garrison's full reach (15.9 cells) instead of 15 (Military.towerReach2). */
@@ -202,25 +310,26 @@ class Strategy {
      * staging point outweighs the threat; the small-threat attack test counts only the army near staging (Military).
      */
     boolean launch_recheck = false;
-    /** Seconds before the next attack after the army was called home (20 after any other attack end). */
-    float recall_cooldown = 20f;
+    /** Game ticks before the next attack after the army was called home (20 s after any other attack end). */
+    float recall_cooldown_ticks = 1000f; // 20 s
     /**
      * The worn retreat (Military.attack): the army turns back once it is worth less than worn_ratio of worn_basis and
      * the enemy around it more than the army. 0: the launch strength plus every reinforcement that ever joined (1.31 x
      * the army's own peak in a median attack); 1: the peak of the army's strength since the launch; 2: its peak over
-     * the last worn_window seconds.
+     * the last worn_window_ticks game ticks.
      */
     int worn_basis = 0;
-    float worn_window = 120f;
+    float worn_window_ticks = 6000f; // 120 s
     float worn_ratio = .2f;
     /**
-     * Enemy stun fear (Military.enemyThreatReady): an enemy chieftain counts as ready to stun enemy_spell_recharge s
-     * after he was seen casting, and with enemy_first_seen only that long after he was first seen (newborns start with
-     * no charge); ready ones near a fight multiply its enemy by enemy_stun_mult, and at 1 or less no longer veto a
-     * charge on stunned enemies. Our own stun timing keeps the 40 s (Chieftain.shouldStun).
+     * Enemy stun fear (Military.enemyThreatReady): an enemy chieftain counts as ready to stun
+     * enemy_spell_recharge_ticks game ticks after he was seen casting, and with enemy_first_seen only that long after
+     * he was first seen (newborns start with no charge); ready ones near a fight multiply its enemy by enemy_stun_mult,
+     * and at 1 or less no longer veto a charge on stunned enemies. Our own stun timing keeps the 40 s
+     * (Chieftain.shouldStun).
      */
     float enemy_stun_mult = 1.5f;
-    float enemy_spell_recharge = 40f;
+    float enemy_spell_recharge_ticks = 2000f; // 40 s
     boolean enemy_first_seen = false;
     /**
      * The outmatched retreat weighs the whole attacking army, not only the part within 18 cells of its centre, when
@@ -248,6 +357,12 @@ class Strategy {
     boolean retreat_rearguard = true;
     /** No early-rush alarm once we have had an armory (Economy.checkRush): it fired after our last armory fell. */
     boolean rush_opening_only = false;
+    /**
+     * The early-rush alarm's hold cut (hold 2 in each quarters, so peons go out to gather and arm) waits for our first
+     * finished armory: before it, a cut peon has nowhere to go and stands at the quarters door (beta tester; 20-90 door
+     * peons per alarm before the armory in logged ludicrous games).
+     */
+    boolean rush_hold_armory = false;
     /** Re-targets during an attack go by walking distance from the army, not straight-line distance (Military). */
     boolean target_path = false;
     /**
@@ -272,7 +387,8 @@ class Strategy {
     /** Rally point of every quarters on the primary armory (Economy.choosePrimaryArmory). */
     boolean quarters_rally = false;
     /**
-     * Rock stream from measured yields (Economy.computeGatherTargets): from rock_stream_time, above rock_stream_iron_s.
+     * Rock stream from measured yields (Economy.computeGatherTargets): from rock_stream_ticks, above
+     * rock_stream_iron_ticks gatherer-ticks per unit of iron.
      */
     boolean rock_stream = false;
     /** Hunted peons run for cover before the hunter is in range (Dodges). */
@@ -296,8 +412,8 @@ class Strategy {
     boolean tower_reaim = true;
     /** Queue the next tower target for any hit chance, not only sure hits (Military.prequeue). */
     boolean tower_prequeue_any = true;
-    float rock_stream_time = 540f;
-    float rock_stream_iron_s = 70f;
+    float rock_stream_ticks = 27000f; // 540 s
+    float rock_stream_iron_ticks = 3500f; // 70 s
     int rock_stream_max = 30;
     int site_max = 3;
     int rock_filler_div = 10;
@@ -306,18 +422,18 @@ class Strategy {
     int lure_max = 2;
     int lure_min = 3;
     int lure_range = 45;
-    float lure_time = 420f;
+    float lure_ticks = 21000f; // 420 s
     /**
-     * From tower_parallel_late_time on: tower projects and placed sites at a time (the siege razes towers). 2 and 3
+     * From tower_parallel_late_ticks on: tower projects and placed sites at a time (the siege razes towers). 2 and 3
      * (were 1 and 2): two placed sites shared with quarters were the real bound on tower completions in the collapse
      * window (tower13 audit), so more towers stand; towers20 +0.7 to +1.3 and surv60 +0.3 to +1.3 in every one of 11
      * blocks at N=12-14; wins on 1,200 fresh seeds N=13 0 -> 3, N=14 1 -> 2; N=12 over 400 W 15 -> 13.
      */
     int tower_parallel_late = 2;
     int sites_parallel_late = 3;
-    float tower_parallel_late_time = 600f;
+    float tower_parallel_late_ticks = 30000f; // 600 s
     /**
-     * From tower_parallel_late_time on, a quarters project may not take the last free construction-site slot while a
+     * From tower_parallel_late_ticks on, a quarters project may not take the last free construction-site slot while a
      * tower project that could start waits to be placed (tower13 audit: a quarters site holds a slot while a tower
      * waits in 9.3 % of the 12-25-min samples at N=13, and quarters, priority 5, claim a freed slot before towers, 8).
      */
@@ -347,17 +463,17 @@ class Strategy {
     /**
      * When the enemy arms early (six warriors out, or an armory up with fewer than rush_quarters quarters) while ours
      * is not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
-     * rush_seconds.
+     * rush_ticks game ticks.
      */
     boolean rush_response = true;
     int rush_quarters = 2;
-    float rush_seconds = 240f;
+    float rush_ticks = 12000f; // 240 s
     /**
-     * Until pressure_time, while enemies in the base outnumber our warriors, keep gathering away from the fighting
+     * Until pressure_ticks, while enemies in the base outnumber our warriors, keep gathering away from the fighting
      * instead of hiding while the armory starves.
      */
     boolean pressure_response = true;
-    float pressure_time = 720f;
+    float pressure_ticks = 36000f; // 720 s
 
     /** Peons to keep inside each quarters to speed up reproduction, early and later in the game. */
     int hold_early = 4;
@@ -367,72 +483,75 @@ class Strategy {
      */
     int hold_mid = 10;
     int hold_late = 8;
-    float hold_mid_time = 240f;
+    float hold_mid_ticks = 12000f; // 240 s
     /**
-     * seed_quarters (seconds, 0 = off): once the first armory stands, a quarters finished less than this long ago takes
-     * its hold from idle peons within seed_quarters_reach cells (the builders at its door) instead of breeding it up
-     * from empty: breeding is n^(1/3) / 11 a second with an empty quarters counted as 0.5, so filling 0 -> 10 takes
-     * ~77 s and a seeded quarters breeds ~5 more peons meanwhile. Before the first armory, idle peons already fill
-     * quarters below their hold.
+     * seed_quarters_ticks (game ticks, 0 = off): once the first armory stands, a quarters finished less than this long
+     * ago takes its hold from idle peons within seed_quarters_reach cells (the builders at its door) instead of
+     * breeding it up from empty: breeding is n^(1/3) / 11 a second with an empty quarters counted as 0.5, so filling 0
+     * -> 10 takes ~77 s and a seeded quarters breeds ~5 more peons meanwhile. Before the first armory, idle peons
+     * already fill quarters below their hold.
      */
-    float seed_quarters = 0f;
+    float seed_quarters_ticks = 0f;
     int seed_quarters_reach = 12;
     /**
      * While the main armory could forge at least hold_backlog weapons (0 = off), quarters hold only hold_early: a held
      * peon above 4 buys ~8 peons per 1000 s, a worker with ore ~12.5 weapons (Economy.holdFor). Off again once 1 or
-     * fewer can be forged and 30 s have passed; hold_backlog_until > 0 limits it to the early game.
+     * fewer can be forged and 30 s have passed; hold_backlog_until_ticks > 0 limits it to the early game.
      */
     int hold_backlog = 0;
-    float hold_backlog_until = 0f;
+    float hold_backlog_until_ticks = 0f;
     /**
-     * veto_resite (s, 0 = off; late/spec S1): from veto_resite_time, a tower project that projectMayStart has vetoed
-     * for a threat near its site this long moves to the nearest site with no threat within veto_resite_clear cells,
-     * or is dropped and tower planning pauses for veto_resite s (Economy.manageProjects): one vetoed project stopped
-     * all tower planning for 225-794 s in 14 of 16 logged N=12 games while the standing towers fell.
+     * veto_resite (veto_resite_ticks game ticks, 0 = off; late/spec S1): from veto_resite_from_ticks, a tower project
+     * that projectMayStart has vetoed for a threat near its site this long moves to the nearest site with no threat
+     * within veto_resite_clear cells, or is dropped and tower planning pauses for veto_resite_ticks
+     * (Economy.manageProjects): one vetoed project stopped all tower planning for 225-794 s in 14 of 16 logged N=12
+     * games while the standing towers fell.
      */
     // Adopted 20 s (2026-09-29): survival up at every N (surv60 +1.0 to +1.9 min, z 2.2-4.4; towers at 20 min +1.3 to
     // +1.8, z 6-8; N=11 W 15 -> 19; veto-resite-vs11/12/13-hv, -vs12-hv-b).
-    float veto_resite = 20f;
-    float veto_resite_time = 600f;
+    float veto_resite_ticks = 1000f; // 20 s
+    float veto_resite_from_ticks = 30000f; // 600 s
     int veto_resite_clear = 20;
     /** The same for quarters projects (the second arm of veto_resite). */
     boolean veto_resite_quarters = false;
     /**
      * unjam (units, 0 = off; arm 8): when the Jams scan finds at least this many attack units blocked (walking but on
-     * the same cell as 5 s before) on every scan for unjam_after s, with no enemy warrior, chieftain or tower within
-     * 30 cells of them, while the army's pivot got less than unjam_progress m closer to the target, the attack marches
-     * as a column until unjam_time s after the last jammed scan: no pivot hold, and every unit walks towards its own
-     * point `lead` meters on along the target field (the front at most two leads past the pivot) instead of the
-     * pivot's waypoint (Military.noteBlocked, Military.attack). s97 and s98 at N=11 (lab note 2026-09-29, jam
-     * pictures): the first units through a 1-3-cell pass reach their spread cells at its exit and stand idle; the
-     * engine's pathfinder treats idle and blocked units as walls, so the column behind them blocks, the pivot in it
-     * never moves the waypoint on, and the idle plug, "already there" and ahead of the pivot, is never re-ordered.
+     * the same cell as 5 s before) on every scan for unjam_after_ticks game ticks, with no enemy warrior, chieftain or
+     * tower within 30 cells of them, while the army's pivot got less than unjam_progress m closer to the target, the
+     * attack marches as a column until unjam_ticks game ticks after the last jammed scan: no pivot hold, and every unit
+     * walks towards its own point `lead` meters on along the target field (the front at most two leads past the pivot)
+     * instead of the pivot's waypoint (Military.noteBlocked, Military.attack). s97 and s98 at N=11 (lab note
+     * 2026-09-29, jam pictures): the first units through a 1-3-cell pass reach their spread cells at its exit and stand
+     * idle; the engine's pathfinder treats idle and blocked units as walls, so the column behind them blocks, the pivot
+     * in it never moves the waypoint on, and the idle plug, "already there" and ahead of the pivot, is never
+     * re-ordered.
      */
     int unjam = 8;
-    float unjam_after = 15f;
+    float unjam_after_ticks = 750f; // 15 s
     int unjam_progress = 10;
-    float unjam_time = 30f;
+    float unjam_ticks = 1500f; // 30 s
     /**
-     * unjam acts only from this game time (s). 2400 (cur8; was 0 with unjam off): from 40 min it only acts in a jam;
-     * on the cur7 benchmark games alive at 40 min it changed nothing but s6028 (N=13, 225 warriors wedged in a cliff
-     * pocket against 3 copies with 3 warriors: draw at 360 -> win), and it freed the same wedge against two Experts.
+     * unjam acts only from this game time (game ticks). 2400 s (cur8; was 0 with unjam off): from 40 min it only acts
+     * in a jam; on the cur7 benchmark games alive at 40 min it changed nothing but s6028 (N=13, 225 warriors wedged in
+     * a cliff pocket against 3 copies with 3 warriors: draw at 360 -> win), and it freed the same wedge against two
+     * Experts.
      */
-    float unjam_from = 2400f;
+    float unjam_from_ticks = 120000f; // 2400 s
     /**
-     * bank_guard (late/spec S2): from bank_guard_time the main armory keeps only the workers its measured iron income
-     * and stock can keep forging (bank_min once it cannot forge for bank_noforge_s); the rest wait in the quarters
+     * bank_guard (late/spec S2): from bank_guard_ticks the main armory keeps only the workers its measured iron income
+     * and stock can keep forging (bank_min once it cannot forge for bank_noforge_ticks); the rest wait in the quarters
      * farthest from the threat and come out for builders or when the armory has room again (Economy.guardBank): 105
      * units per game vanish in razed buildings by 20 min at N=12, 42 per armory razing.
      */
     boolean bank_guard = false;
-    float bank_guard_time = 600f;
+    float bank_guard_ticks = 30000f; // 600 s
     int bank_min = 6;
     float bank_margin = 1.5f;
-    float bank_noforge_s = 20f;
+    float bank_noforge_ticks = 1000f; // 20 s
     /** Most peons bank_guard parks in one quarters above its hold. */
     int bank_reserve_max = 60;
     /**
-     * wood_reach (cells, 0 = off; late/spec S3): from wood_reach_time, when the main armory's 60-cell tree ring is
+     * wood_reach (cells, 0 = off; late/spec S3): from wood_reach_ticks, when the main armory's 60-cell tree ring is
      * exhausted (tree cycle >= 90 s) or a 60-cell tree search finds nothing, trees up to this far are gathered
      * (Economy.pickSupply): the wood lock that left ~200 peons idle in the armory in s63, s60 and s315. 150 (cur8; was
      * 0): the lock is 42-56 % of the 1-3-h gaps in the long wins (trees 43-122 cells away in every lock); on the cur7
@@ -440,7 +559,62 @@ class Strategy {
      * 30-190 min shorter (s6189 319 -> 113 min, s6022 305 -> 117).
      */
     int wood_reach = 150;
-    float wood_reach_time = 2400f;
+    float wood_reach_ticks = 120000f; // 2400 s
+    /**
+     * ore_reach (cells, 0 = off): when the ore the weapons need has none within the main armory's 400 m walking field
+     * (rock axes when iron is far, and no rock there either, or iron gone), gatherers walk to iron, else rock, up to
+     * 2 x ore_reach m away instead of waiting: with every ore beyond 400 m the armory forged nothing and its 100-200
+     * workers sat idle while one Hard out-built us (all four N=1-2 losses of low-vs1/vs2).
+     */
+    int ore_reach = 400;
+    /**
+     * gather_probe: armory workers are deployed for gathering only when a supply of the kind can be picked, and a peon
+     * whose pick fails goes on to its next use instead of standing where it is (the play test's peons walking out of
+     * the armory and straight back in, and peons standing still in the base).
+     */
+    boolean gather_probe = true;
+    /**
+     * gather_home: a gatherer the engine would send to another armory than the main one (a supply nearer an old
+     * armory) is given another supply; the old armory's supply is left alone for 60 s.
+     */
+    boolean gather_home = false;
+    /**
+     * A gatherer the engine links to a finished secondary armory (it delivers to the supply's nearest armory) is not
+     * recalled by drainSecondary for 30 s, and counts as a gatherer of its supply meanwhile: the 10-s recall of a
+     * secondary armory's gatherers fought every such re-link (recall loop in 11 of 30 logged N=6 ludicrous games).
+     */
+    boolean relink_guard = false;
+    /**
+     * ore_reach: when rock weapons are wanted but no iron is left within the 400 m field, look for iron in the far
+     * field (2 x ore_reach) before settling on rock (rock-only stretches in 73 of 500 ludicrous N=13 games; 3 of the 4
+     * logged N=6 losses were iron-window cases).
+     */
+    boolean ore_iron_first = false;
+    /**
+     * ore_reach: a near pick that finds nothing (for any reason, unless a threat or a parked enemy blob is by some of
+     * that ore) tries the far field too, as an ore_far plan tick does (failed near picks in 41 of 500 ludicrous N=13
+     * games). Meant on top of relink_guard (with ore_iron_first too): far ore often lies nearer an old armory, the
+     * engine links its gatherers there and the recall loop eats their trips (beta2-ore smoke without it: twice the
+     * recalls of the base game).
+     */
+    boolean ore_reach_fail = false;
+    /**
+     * From weapon_reserve_ticks, while the base threat is below 2, the primary armory keeps up to this many weapons in
+     * stock undeployed (iron first) with workers for them, released at threat 2: iron-made defenders for the collapse
+     * window (0.18 weapons in stock at its onset at N=13). 0: off. home_guard, which held warriors back, cost wins (N=8
+     * W 16 -> 5); this holds weapons, not deployed warriors.
+     */
+    int weapon_reserve = 0;
+    float weapon_reserve_ticks = 30000f;
+    /**
+     * A besieged armory sends its peons out to fight when they can win: at threat level 2, an armory holding 30 or more
+     * with a threat within 15 cells, when bank, defenders and towers near it reach sortie_ratio of the threat within 30
+     * cells and defenders and towers alone do not, deploys its peons onto the attackers (they vanish uncounted inside a
+     * razed armory: ~112 units per ludicrous N=13 game; the bank could win in about 14 % of falls), until the threat
+     * within 15 cells is gone, they fall below half that ratio of it, or the defence alone holds (Military.sorties). 0:
+     * off.
+     */
+    float sortie_ratio = 1f; // cur11 (see forGame); alone at N=13: W +11 over 800 games, surv60 up in every block
     /**
      * rearm_placer (expand/critique #1, D1a): an armory project's placer (Economy.choosePlacer) is the nearest idle,
      * walking or tree-gathering peon, else one walking into a building, that has no threat within 11 cells and no enemy
@@ -467,28 +641,28 @@ class Strategy {
      */
     int rearm_reach = 0;
     /**
-     * reloc (expand/critique #2, the hop): from reloc_time, the expansion check no longer needs a quiet base and a lone
-     * armory. With no armory site or project, a primary armory and every other armory drained (not primary, nobody
-     * inside, iron + rock <= 1, no gatherers linked, not evacuating), every 30 s and reloc_gap s after the last
-     * expansion ended (completed or dropped), Economy.considerRelocation moves the armory when the current one is poor
-     * (iron cycle >= 70 s or cost >= 110, the expansion rule) or has fewer than reloc_nodes live iron nodes within 30
-     * cells, to the best site within reloc_reach m of the primary (a Search reused for a minute; reloc_reach above 400
-     * computes a field per check) that is quiet (quietOk), at least 40 cells from it (tested in the pass over every
-     * cell, so the candidates by the primary take none of the 200 rejections), with at least reloc_nodes live iron
-     * nodes within 30 cells (the verify smokes moved to sites with 0 nodes against 0 on the cost ratio alone) and no
-     * enemy warrior within 12 cells of the straight way, and costs at most 0.75 of the current armory (0.9 from
-     * desperate_iron_cycle). One armory project at a time; a hop project unplaced for 90 s (with reloc_slot: 90 s with
-     * a slot open) is dropped. Its builders may come out of the primary above want_workers + 5. Once the hop falls, the
-     * primary is chosen once (no threat within 16 cells, lowest gathering cost, newest on ties) and switched only after
-     * 20 s with a threat within 16 and at least 60 s after the last switch, since every switch recalls the old armory's
-     * gatherers. Why: the global threat gate stopped 100 % of the one-armory checks after 13 min at N=14, the
-     * two-armory gate 66 % of 8-13-min plan ticks (stall.md); the expansion mines out its 25-cell pile 2-6 min after
-     * completion (34 -> 3 -> 0 loads) while a site 40-80 cells deeper holds a median 158 loads within 30 cells
+     * reloc (expand/critique #2, the hop): from reloc_ticks, the expansion check no longer needs a quiet base and a
+     * lone armory. With no armory site or project, a primary armory and every other armory drained (not primary, nobody
+     * inside, iron + rock <= 1, no gatherers linked, not evacuating), every 30 s and reloc_gap_ticks game ticks after
+     * the last expansion ended (completed or dropped), Economy.considerRelocation moves the armory when the current one
+     * is poor (iron cycle >= 70 s or cost >= 110, the expansion rule) or has fewer than reloc_nodes live iron nodes
+     * within 30 cells, to the best site within reloc_reach m of the primary (a Search reused for a minute; reloc_reach
+     * above 400 computes a field per check) that is quiet (quietOk), at least 40 cells from it (tested in the pass over
+     * every cell, so the candidates by the primary take none of the 200 rejections), with at least reloc_nodes live
+     * iron nodes within 30 cells (the verify smokes moved to sites with 0 nodes against 0 on the cost ratio alone) and
+     * no enemy warrior within 12 cells of the straight way, and costs at most 0.75 of the current armory (0.9 from
+     * desperate_iron_cycle_ticks). One armory project at a time; a hop project unplaced for 90 s (with reloc_slot: 90 s
+     * with a slot open) is dropped. Its builders may come out of the primary above want_workers + 5. Once the hop
+     * falls, the primary is chosen once (no threat within 16 cells, lowest gathering cost, newest on ties) and switched
+     * only after 20 s with a threat within 16 and at least 60 s after the last switch, since every switch recalls the
+     * old armory's gatherers. Why: the global threat gate stopped 100 % of the one-armory checks after 13 min at N=14,
+     * the two-armory gate 66 % of 8-13-min plan ticks (stall.md); the expansion mines out its 25-cell pile 2-6 min
+     * after completion (34 -> 3 -> 0 loads) while a site 40-80 cells deeper holds a median 158 loads within 30 cells
      * (critique hop.py), and expansion=false cost surv60 -1.3 min (z -3.0).
      */
     boolean reloc = false;
-    float reloc_time = 600f;
-    float reloc_gap = 120f;
+    float reloc_ticks = 30000f; // 600 s
+    float reloc_gap_ticks = 6000f; // 120 s
     int reloc_reach = 260;
     /**
      * reloc: the node trigger, fewer than this many live iron nodes within 30 cells of the primary, and the least a hop
@@ -505,20 +679,20 @@ class Strategy {
      */
     boolean reloc_slot = false;
     /**
-     * raid_bank (expand/critique #4, D3): from raid_bank_time, a forward primary armory (not the finished armory
+     * raid_bank (expand/critique #4, D3): from raid_bank_ticks, a forward primary armory (not the finished armory
      * nearest our start, Economy.homeArmory) keeps only the workers its measured iron income can keep forging
      * (bank_margin x income x 80 s a weapon) plus a backlog of min(raid_bank_extra, its iron, + half its rock while
-     * rock axes are made), bank_min once it has been unable to forge for bank_noforge_s; the rest wait in the quarters
-     * farthest from the threat (bank_guard's machinery: Economy.guardBank, reserveQuarters, the reserve kept above the
-     * quarters' hold). The expansion was razed in all 850 of 1,000 N=14 games that built it, a median 6.0 min after
-     * completion, and our units dropped a median 60 in that census step with 81 inside just before (raze.md);
+     * rock axes are made), bank_min once it has been unable to forge for bank_noforge_ticks; the rest wait in the
+     * quarters farthest from the threat (bank_guard's machinery: Economy.guardBank, reserveQuarters, the reserve kept
+     * above the quarters' hold). The expansion was razed in all 850 of 1,000 N=14 games that built it, a median 6.0 min
+     * after completion, and our units dropped a median 60 in that census step with 81 inside just before (raze.md);
      * drainSecondary moves the home armory's bank into the forward one as soon as the home one cannot forge, and each
      * hop (reloc) does it again. raid_bank_extra is bank_guard's fixed backlog of 12 as a param (the dry-spell judge's
-     * caveat: 12 keeps an armory small when wood comes back to a full iron bank). Arm raid_bank_time=0: the first
+     * caveat: 12 keeps an armory small when wood comes back to a full iron bank). Arm raid_bank_ticks=0: the first
      * expansion from its completion (~7-8 min) too.
      */
     boolean raid_bank = false;
-    float raid_bank_time = 600f;
+    float raid_bank_ticks = 30000f; // 600 s
     int raid_bank_extra = 12;
     /**
      * reloc_draw (copies, 0 = off; arm 2; expand/critique #5): a hop site (Economy.considerRelocation) is turned down
@@ -534,7 +708,7 @@ class Strategy {
      * raid_evac (expand/critique #6, D3): when Shepherd sees a copy launch (its oldest idle warrior walks off
      * aggressively to a cell more than 20 cells away) a wave of at least 12 warriors (the copy's warriors walking to
      * within 12 cells of that cell; one sent elsewhere since drops out) at a cell within 20 cells of a complete armory
-     * of ours holding at least raid_evac_min units (from raid_evac_time), and the wave's strength is at least
+     * of ours holding at least raid_evac_min units (from raid_evac_ticks), and the wave's strength is at least
      * raid_evac_ratio x the armory's defence (manned towers within 16 cells, our warriors within 20), the armory is
      * emptied once the wave's front is 45 s out (at 2.5 cells/s; not under 10 s, which would send the evacuees into
      * it): weapons leave as warriors and the rest as peons, towards the home armory's cell when that is another armory
@@ -549,58 +723,58 @@ class Strategy {
     int raid_evac_min = 12;
     float raid_evac_ratio = 1f;
     /**
-     * raid_evac (arms 780, and 2400 for the late track, where an arm must not act before 40 min): no armory is emptied
-     * before this time (s; 0 = from the start). An evacuation stops the armory's forge and every gatherer sent for it
-     * for 60 s: in the verify smoke (8 N=14 games) raid_evac alone cut our iron at 8-13 min 833 -> 674, and 10 of its
-     * 12 evacuations before 13 min were false alarms (the armory stood), against 6 of the 12 later ones, which fell
-     * with up to 115 inside; the big falls come late (39 of 53 long losses lost 100+ units in one armory razing, 34 of
-     * them after 40 min, dryspell judge).
+     * raid_evac_ticks (arms 39000 = 780 s, and 120000 = 2400 s for the late track, where an arm must not act before
+     * 40 min): no armory is emptied before this game tick (0 = from the start). An evacuation stops the armory's forge
+     * and every gatherer sent for it for 60 s: in the verify smoke (8 N=14 games) raid_evac alone cut our iron at
+     * 8-13 min 833 -> 674, and 10 of its 12 evacuations before 13 min were false alarms (the armory stood), against 6
+     * of the 12 later ones, which fell with up to 115 inside; the big falls come late (39 of 53 long losses lost 100+
+     * units in one armory razing, 34 of them after 40 min, dryspell judge).
      */
-    float raid_evac_time = 0f;
+    float raid_evac_ticks = 0f;
     /**
-     * reloc_lock (seconds held, 0 = off; arm 120; expand/critique #8, dryspell/judge.md fix 3): from reloc_lock_time,
-     * once the wood lock has held this long (Economy.trackLock: the primary armory's tree cycle >= 90 s, i.e. no usable
-     * tree within its 60-cell ring, its wood < 2 and its workers >= want_workers + 20), the armory moves to trees
-     * (Economy.lockRelocate): with no armory site or project, and no global threat gate, the best armory site by
-     * gathering cost (2 x tree + iron: the banked iron stays behind) within reloc_reach m that is quiet (quietOk: no
-     * threat and no enemy within 30 cells, no razing of ours within 25 in 180 s) and has no enemy warrior within 12
-     * cells of the straight way, both tested down the ranked candidates, and a tree cycle of its own under 60 s; after
-     * a miss it looks again in 10 s (the search reused for a minute). The project is added at the 20-building cap too:
-     * its placer waits for a slot, and while it waits unplaced with the count at the cap less one no tower is planned
-     * or started (reloc_slot's reserve). An unplaced lock project whose slot has stood open for 90 s is dropped and
-     * planned afresh. Its placer is chosen by rearm_placer's safe rule (and left out of evacuatePeons while no threat
-     * is within 6 cells) with rearm_placer off too: in the s6415 smoke 4 of 8 lock projects were dropped after 7 placer
-     * failures in 7-15 s. Its builders may come out of the locked armory above want_workers + 5. Once it stands (and
-     * becomes primary), the locked armory keeps its workers inside until the new one holds 2 wood and has no threat
-     * within 16 cells, 120 s at most. Why: the lock was 42 % of the gap minutes of the long wins (150-200 peons waiting
-     * inside, iron at the 200 cap, 1.4-1.6 warriors/min against 9.5-13), usable trees stood 43-122 cells away in every
-     * lock, moving was blocked in 96-100 % of locked minutes by the threat gate and the cap (55-88 %), and wood
-     * reaching an armory again ended 7 of 12 long locks, the first out ~12 min later.
+     * reloc_lock (reloc_lock_ticks held, 0 = off; arm 6000 = 120 s; expand/critique #8, dryspell/judge.md fix 3): from
+     * reloc_lock_from_ticks, once the wood lock has held this long (Economy.trackLock: the primary armory's tree cycle
+     * >= 90 s, i.e. no usable tree within its 60-cell ring, its wood < 2 and its workers >= want_workers + 20), the
+     * armory moves to trees (Economy.lockRelocate): with no armory site or project, and no global threat gate, the best
+     * armory site by gathering cost (2 x tree + iron: the banked iron stays behind) within reloc_reach m that is quiet
+     * (quietOk: no threat and no enemy within 30 cells, no razing of ours within 25 in 180 s) and has no enemy warrior
+     * within 12 cells of the straight way, both tested down the ranked candidates, and a tree cycle of its own under
+     * 60 s; after a miss it looks again in 10 s (the search reused for a minute). The project is added at the
+     * 20-building cap too: its placer waits for a slot, and while it waits unplaced with the count at the cap less one
+     * no tower is planned or started (reloc_slot's reserve). An unplaced lock project whose slot has stood open for
+     * 90 s is dropped and planned afresh. Its placer is chosen by rearm_placer's safe rule (and left out of
+     * evacuatePeons while no threat is within 6 cells) with rearm_placer off too: in the s6415 smoke 4 of 8 lock
+     * projects were dropped after 7 placer failures in 7-15 s. Its builders may come out of the locked armory above
+     * want_workers + 5. Once it stands (and becomes primary), the locked armory keeps its workers inside until the new
+     * one holds 2 wood and has no threat within 16 cells, 120 s at most. Why: the lock was 42 % of the gap minutes of
+     * the long wins (150-200 peons waiting inside, iron at the 200 cap, 1.4-1.6 warriors/min against 9.5-13), usable
+     * trees stood 43-122 cells away in every lock, moving was blocked in 96-100 % of locked minutes by the threat gate
+     * and the cap (55-88 %), and wood reaching an armory again ended 7 of 12 long locks, the first out ~12 min later.
      */
-    int reloc_lock = 0;
-    float reloc_lock_time = 2400f;
+    int reloc_lock_ticks = 0;
+    float reloc_lock_from_ticks = 120000f; // 2400 s
     /**
      * retire (expand/critique #8, D5 retire; quarters.md, the skeptic's narrow case): when a flagged armory project (a
-     * reloc hop, which waits at the cap only with reloc_slot, or a reloc_lock move) has waited unplaced retire_wait s
-     * at the 20-building cap, one slot is freed by razing a building of ours with the explicit attack order (the attack
-     * button and a click on it), at most one every 120 s, taking the first of: a stalled site (placed, no builders,
-     * 120 s old); a stranded tower (no quarters or armory within 25 cells; its gunner out first, 4-8 peons at 3 HP/s
-     * each); a quiet drained armory (not primary, nobody inside, no stock or gatherers, no threat within 30); a far
-     * quarters (more than retire_quarters_dist cells from the main armory, units >= retire_pop so breeding is off,
-     * another quarters within 25 cells, emptied first, not training the chieftain). Never a besieged building (a threat
-     * within 20 cells, 30 for an armory; a razing is called off when one comes), and it is called off too once the slot
-     * is not wanted (the project placed or dropped, or a slot freed another way) or the building has become our main or
-     * last armory or our last quarters. Quarters and armories go down to up to 12 idle iron or chicken warriors the
-     * military lends (0.75 HP/s each, 10 for 200 HP) when 8 are at hand, a quarters else to up to 20 peons (1 HP a
-     * swing on a 20 % roll, 0.1 HP/s each: ~100 s for 200 HP; an armory never, D5). The building is doomed meanwhile:
-     * no tower manning, no peons sent in, no repairs, never primary, and no armory site within 12 cells of it for 60 s
-     * after. Why: the cap blocks 55-88 % of wood-locked minutes and s6189's new armory waited 112 min for a slot
-     * (dryspell judge); the slot frees on the tick of the razing, and our own AI fought the test razings (18 of 19
-     * gunners died in their tower, quarters refilled, repairers stayed on; raze.md). Far quarters hold a slot at the
-     * cap 8.6-10.3 min in wins, 9.5 of them above 187 units in the N=13 wins (quarters.md skeptic).
+     * reloc hop, which waits at the cap only with reloc_slot, or a reloc_lock move) has waited unplaced
+     * retire_wait_ticks at the 20-building cap, one slot is freed by razing a building of ours with the explicit attack
+     * order (the attack button and a click on it), at most one every 120 s, taking the first of: a stalled site
+     * (placed, no builders, 120 s old); a stranded tower (no quarters or armory within 25 cells; its gunner out first,
+     * 4-8 peons at 3 HP/s each); a quiet drained armory (not primary, nobody inside, no stock or gatherers, no threat
+     * within 30); a far quarters (more than retire_quarters_dist cells from the main armory, units >= retire_pop so
+     * breeding is off, another quarters within 25 cells, emptied first, not training the chieftain). Never a besieged
+     * building (a threat within 20 cells, 30 for an armory; a razing is called off when one comes), and it is called
+     * off too once the slot is not wanted (the project placed or dropped, or a slot freed another way) or the building
+     * has become our main or last armory or our last quarters. Quarters and armories go down to up to 12 idle iron or
+     * chicken warriors the military lends (0.75 HP/s each, 10 for 200 HP) when 8 are at hand, a quarters else to up to
+     * 20 peons (1 HP a swing on a 20 % roll, 0.1 HP/s each: ~100 s for 200 HP; an armory never, D5). The building is
+     * doomed meanwhile: no tower manning, no peons sent in, no repairs, never primary, and no armory site within 12
+     * cells of it for 60 s after. Why: the cap blocks 55-88 % of wood-locked minutes and s6189's new armory waited
+     * 112 min for a slot (dryspell judge); the slot frees on the tick of the razing, and our own AI fought the test
+     * razings (18 of 19 gunners died in their tower, quarters refilled, repairers stayed on; raze.md). Far quarters
+     * hold a slot at the cap 8.6-10.3 min in wins, 9.5 of them above 187 units in the N=13 wins (quarters.md skeptic).
      */
     boolean retire = false;
-    float retire_wait = 60f;
+    float retire_wait_ticks = 3000f; // 60 s
     int retire_quarters_dist = 80;
     int retire_pop = 245;
     /**
@@ -637,10 +811,10 @@ class Strategy {
     float blast_min = 12f;
     /**
      * Against a strong attack on the base with the blast charged, pull the defenders back out of its reach and send
-     * the chieftain to meet the enemy alone, for up to blast_play_time seconds.
+     * the chieftain to meet the enemy alone, for up to blast_play_ticks game ticks.
      */
     boolean blast_defense = false;
-    float blast_play_time = 14f;
+    float blast_play_ticks = 700f; // 14 s
     /** Past half the blast's charge, hold the stun for it (it still answers an enemy chieftain). */
     boolean blast_save = false;
     /**
@@ -674,22 +848,22 @@ class Strategy {
     /** Count towers toward a stun only while the attacking army is near enough to pull them down. */
     boolean tower_stun_follow_up = true;
 
-    /** Chieftain training starts once this many quarters stand and this much time has passed. */
+    /** Chieftain training starts once this many quarters stand and chieftain_ticks game ticks have passed. */
     int chieftain_min_quarters = 3;
-    float chieftain_time = 330f;
+    float chieftain_ticks = 16500f; // 330 s
 
     /**
      * Against several enemies, every other tower covers the building nearest to each enemy in turn, facing him, and
      * one more tower is built per extra enemy: each attacks the building closest to him.
      */
     boolean multi_front_towers = true;
-    /** Towers to build next to the armory, early and later. */
+    /** Towers to build next to the armory, early and later, each from its towers_*_ticks game tick on. */
     int towers_early = 1;
     int towers_mid = 3;
     int towers_late = 6;
-    float towers_early_time = 420f;
-    float towers_mid_time = 420f;
-    float towers_late_time = 720f;
+    float towers_early_ticks = 21000f; // 420 s
+    float towers_mid_ticks = 21000f; // 420 s
+    float towers_late_ticks = 36000f; // 720 s
 
     /** Warriors (as iron warrior values) needed before the first attack. */
     float attack_min_strength = 18f;
@@ -713,19 +887,19 @@ class Strategy {
     float capped_clump_min = 24f;
     int capped_clump_cells = 100;
     /**
-     * Between ring_sweep_from and ring_sweep_until, with no copy out for ring_sweep_quiet seconds, an attack army
-     * within ring_sweep_reach cells of the armory and worth ring_sweep_ratio times the parked ring (idle enemy warriors
-     * within 45 cells of our buildings) comes home, and the home army then takes on the ring's blobs nearest the armory
-     * one at a time while the base is quiet, until the ring is down to 30 % or ring_sweep_until + 60 s (audit13
-     * military 5: 12-15 min is the one window in which the army outnumbers the ring, whose blobs launch 37-41 % of the
-     * base-bound waves at 12-20 min; fights near our buildings trade 4.6-5.9:1, abroad 2.1-2.6:1). An attack whose
-     * target's owner has fewer than two finished buildings left is not called off.
+     * Between ring_sweep_from_ticks and ring_sweep_until_ticks, with no copy out for ring_sweep_quiet_ticks game ticks,
+     * an attack army within ring_sweep_reach cells of the armory and worth ring_sweep_ratio times the parked ring (idle
+     * enemy warriors within 45 cells of our buildings) comes home, and the home army then takes on the ring's blobs
+     * nearest the armory one at a time while the base is quiet, until the ring is down to 30 % or
+     * ring_sweep_until_ticks + 60 s (audit13 military 5: 12-15 min is the one window in which the army outnumbers the
+     * ring, whose blobs launch 37-41 % of the base-bound waves at 12-20 min; fights near our buildings trade 4.6-5.9:1,
+     * abroad 2.1-2.6:1). An attack whose target's owner has fewer than two finished buildings left is not called off.
      */
     boolean ring_sweep = false;
-    float ring_sweep_from = 720f;
-    float ring_sweep_until = 930f;
+    float ring_sweep_from_ticks = 36000f; // 720 s
+    float ring_sweep_until_ticks = 46500f; // 930 s
     float ring_sweep_ratio = 1.5f;
-    float ring_sweep_quiet = 120f;
+    float ring_sweep_quiet_ticks = 6000f; // 120 s
     int ring_sweep_reach = 200;
     /** How much more an enemy manned tower counts than Combat.TOWER when judging an attack or retreat. */
     float tower_weight = 1f;
@@ -741,9 +915,9 @@ class Strategy {
     float capped_min_strength = 0f;
     /** Retreat when the enemy around the army is this much stronger and the chieftain cannot stun. */
     float retreat_ratio = 1.45f;
-    /** Units in the staging army sent to hunt enemy peons when the enemy army is elsewhere. */
+    /** Units in the staging army sent to hunt enemy peons when the enemy army is elsewhere, from raid_ticks on. */
     int raid_size = 5;
-    float raid_time = 360f;
+    float raid_ticks = 18000f; // 360 s
 
     /** Fan warriors out onto the nearest enemies when fighting, instead of sending all at the enemy's middle. */
     boolean engage_spread = true;
@@ -755,10 +929,10 @@ class Strategy {
     boolean strikes = true;
     /**
      * Towers to raise over the enemy's iron gatherers, escorted by the army, once it outnumbers the enemy's field army
-     * by forward_ratio and not before forward_tower_time.
+     * by forward_ratio and not before forward_tower_ticks.
      */
     int forward_towers = 0;
-    float forward_tower_time = 420f;
+    float forward_tower_ticks = 21000f; // 420 s
     float forward_ratio = 1.4f;
     /** Highest base threat level at which the army still escorts forward tower builders. */
     int forward_threat = 0;
@@ -795,35 +969,41 @@ class Strategy {
      * its mined-out surroundings while the new armory waits for hands.
      */
     boolean recall_old_gatherers = true;
-    /** Expand for a smaller gain (this share of the current cost instead of three quarters) once iron is this far. */
+    /**
+     * Expand for a smaller gain (this share of the current cost instead of three quarters) once iron is this far: an
+     * iron cycle of desperate_iron_cycle_ticks game ticks.
+     */
     float desperate_expansion = .9f;
-    float desperate_iron_cycle = 150f;
-    /** Look twice as far for the first armory when the best site nearby costs more than this (seconds per warrior). */
-    float armory_far_cost = 170f;
+    float desperate_iron_cycle_ticks = 7500f; // 150 s
+    /**
+     * Look twice as far for the first armory when the best site nearby costs more than this (peon-ticks of gathering
+     * per warrior).
+     */
+    float armory_far_cost_ticks = 8500f; // 170 s
 
     /**
-     * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_time. Off:
+     * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_ticks. Off:
      * neighbouring copies' gatherers work near our start and passed for raiders, so the militia sent most of the
      * starting peons after single enemy peons, again and again (vs hard*11 militiaoff-vs11-hv elim +.051, z 4.1, lsr10
      * +.26, z 5.8; 1v1 duel-new-hv 100/100). Hard copies never raid with peons.
      */
     boolean peon_militia = false;
-    float militia_time = 600f;
+    float militia_ticks = 30000f; // 600 s
     /** Sparring only: send the starting peons at the enemy's peons for the first minutes, as some humans do. */
     boolean peon_rush = false;
     /**
-     * The freeze opening (Freeze; archaeology A1, re-scoped from the freeze strike of NOTES 2026-09-28 for N >= 11):
-     * at the start freeze_squad starting peons walk to the copy with the least walking time, if it is at most
-     * freeze_eta seconds of peon walk away (walking distance, so the rule is inert where copies start far apart), and
-     * kill its peons before its first quarters stands, which puts it out (no units, no finished quarters). If the
-     * quarters stands first, the squad waits outside its defense circle for the armory site and kills its builders,
-     * which freezes the copy (never touching the site); freeze_raze then stays to raze the frozen quarters.
+     * The freeze opening (Freeze; archaeology A1, re-scoped from the freeze strike of NOTES 2026-09-28 for N >= 11): at
+     * the start freeze_squad starting peons walk to the copy with the least walking time, if it is at most
+     * freeze_eta_ticks game ticks of peon walk away (walking distance, so the rule is inert where copies start far
+     * apart), and kill its peons before its first quarters stands, which puts it out (no units, no finished quarters).
+     * If the quarters stands first, the squad waits outside its defense circle for the armory site and kills its
+     * builders, which freezes the copy (never touching the site); freeze_raze then stays to raze the frozen quarters.
      * freeze_squad 6 (was 10): the four peons more at home pay (N=12 over 400 seeds W 8 -> 15, surv60 +1.3 min, z 2.7;
      * freeze-squad6-c3-vs12-hv and -b), 4 fails the strike too often (W 9 -> 2) and 14 starves the opening (W 7 -> 1).
      */
     boolean freeze_open = false;
     int freeze_squad = 6;
-    float freeze_eta = 40f;
+    float freeze_eta_ticks = 2000f; // 40 s
     boolean freeze_raze = false;
     /**
      * A frozen copy stops counting as frozen (in the attack target's choice) once its frozen armory site is gone or it
@@ -841,10 +1021,25 @@ class Strategy {
      */
     boolean freeze_armory_push = false;
     /**
-     * After a path-(a) out the squad strikes once more: the living copy with the least walking time from it, if at
-     * most freeze_eta seconds away and its quarters is not finished (that strike gives up when its quarters stands).
+     * After a path-(a) out the squad strikes once more: the living copy with the least walking time from it, if at most
+     * freeze_eta_ticks game ticks away and its quarters is not finished (that strike gives up when its quarters
+     * stands).
      */
     boolean freeze_retarget = false;
+    /**
+     * Path (a) works around a crowd of idle peons: while at least as many of the copy's peons stand idle as the squad
+     * has peons (it has not given its orders yet), the squad takes on only its busy peons (builders never fight back)
+     * farther than 12 cells from every idle one, and otherwise keeps Freeze.HOLD_CELLS from the nearest idle peon
+     * (beyond its 8-cell scan), for up to this many game ticks from when it first came within 24 cells of the crowd;
+     * then the plain strike. The stock AI decides on real time, every 20-28 game s at ludicrous speed, so there the
+     * squad arrived before the copy's first orders and met 20 idle peons (ludicrous N=13: freeze kills 8.9 per game
+     * against 17.6 at normal speed, peons lost 2.6 against 0.7; a hold 16 cells from the centre of all its peons,
+     * 1500 ticks, changed nothing: W 65 -> 66 of 500, 199 of 238 held strikes still given up). 0: off. 1500 (30 s; 3000
+     * plays the same games): ludicrous N=13 W 65 -> 107 of 500 (z 4.2, surv60 +4.9 min), fresh 8001..8500 59 -> 105 (z
+     * 4.8), N=15 5 -> 16 (z 2.5, surv60 +4.8), N=16 5 -> 10 (surv60 +4.2); normal-speed N=13 281 of 300 games
+     * identical, 6 -> 7, surv60 +0.46 (z 2.3).
+     */
+    float freeze_patience_ticks = 1500f;
     /**
      * The attack target's choice leaves frozen copies (Freeze) until no other copy is a candidate: a frozen copy never
      * launches a wave, so its quarters is worth nothing to our survival, while it scores as the easiest target (no
@@ -853,12 +1048,12 @@ class Strategy {
     boolean frozen_last = false;
     /**
      * The freeze opening strikes this many copies at once, the nearest ones first: each strike after the first takes
-     * freeze_squad2 peons (0: freeze_squad) at a copy at most freeze_eta2 seconds of peon walk away (0: freeze_eta),
-     * and every strike leaves at least freeze_keep starting peons at home.
+     * freeze_squad2 peons (0: freeze_squad) at a copy at most freeze_eta2_ticks game ticks of peon walk away (0:
+     * freeze_eta_ticks), and every strike leaves at least freeze_keep starting peons at home.
      */
     int freeze_targets = 1;
     int freeze_squad2 = 0;
-    float freeze_eta2 = 0f;
+    float freeze_eta2_ticks = 0f;
     int freeze_keep = 1;
 
     /**
@@ -872,10 +1067,10 @@ class Strategy {
      */
     boolean restore_dodge = false;
     /**
-     * Seconds before a warrior re-ordered out of a stun may be re-ordered again: the Expert AI waited 30 s, sweep
+     * Game ticks before a warrior re-ordered out of a stun may be re-ordered again: the Expert AI waited 30 s, sweep
      * re-ordered every 5 ticks (+9 points at N=2, lab/sweep NOTES base22 vs s24-nounstun).
      */
-    float restore_dodge_gap = 30f;
+    float restore_dodge_gap_ticks = 1500f; // 30 s
 
     /**
      * Take peons along on attacks against towers: a peon's swing always does 6 damage to a tower, eight times what an
@@ -893,8 +1088,8 @@ class Strategy {
      * comes back, stun them from his standoff and tear the stunned towers down with the whole army before they wake.
      */
     boolean siege = false;
-    /** Give a siege up after this many seconds without a stun landing on a tower. */
-    float siege_patience = 100f;
+    /** Give a siege up after this many game ticks without a stun landing on a tower. */
+    float siege_patience_ticks = 5000f; // 100 s
 
     /**
      * Learn from each attack: one that lost more units than it killed makes the next one wait for 25% more strength
@@ -921,11 +1116,70 @@ class Strategy {
     boolean hidden_info = false;
 
     /**
-     * Chickens are few and whoever hunts first gets them: up to chicken_hunters peons hunt from chicken_time on,
-     * two plus one per chicken_pool_div working peons.
+     * Chickens are few and whoever hunts first gets them: up to chicken_hunters peons hunt from chicken_ticks on, two
+     * plus one per chicken_pool_div working peons.
      */
     int chicken_hunters = 7;
-    float chicken_time = 150f;
+    /** Farthest chicken a hunter goes for, in cells from the main armory. */
+    int chicken_range = 150;
+    /**
+     * stall_cap_ticks (game ticks, 0 = off): an attack that gains no 20 m on its target and kills fewer than
+     * stall_cap_kills units in that time stalls (target skipped, as a calm stall), even while some of the army fights.
+     */
+    float stall_cap_ticks = 15000f; // 300 s
+    int stall_cap_kills = 10;
+    /**
+     * retreat_cap_ticks (game ticks, 0 = off; arm 6000 = 120 s): a retreat ends anyway, the army back home to be
+     * weighed for the next attack, once for this long no further attacker has come within 14 cells of the staging
+     * point and those still out have got no 20 m nearer it on average (walking, Military.retreatCap). A retreat ended
+     * only with 70 % of the attackers home, so a way home plugged for good locked the mode, and attacks are weighed
+     * only at home: s6409 (N=14), 89 attackers turned back in a dead end whose only way home was a canyon held by an
+     * idle blob, RETREAT for 279 min while 136 warriors and 58 weapons waited at home. The attackers a capped retreat
+     * leaves out keep walking home, and while one stands more than 30 cells from the staging point it counts neither
+     * in the musters' strength and gathering nor in the launches (retreat_stranded_kept, per launch that left some
+     * out): counted in, the next attack marched the home army off with the stranded group, its centre between the
+     * two, and turned back or was capped again (rep-fix-s6409: three launches within 190 s each, the same group 612 m
+     * away every time). It counts again once home (14 cells) or with the army as a reinforcement.
+     */
+    float retreat_cap_ticks = 0f;
+    /**
+     * stall_cap_keep: the calm stall's retarget (75 s with no gain) no longer restarts the stall_cap clock, nor does
+     * the first measure on the new target's field; only a 20 m gain, stall_cap_kills kills, a new field after a
+     * fallen target, a launch or stall_cap's own first strike do (Military.stalled, Military.attack). Each calm stall
+     * restarted it, so a wedged army retargeted every 75 s for hours and stall_cap never struck (s8150 N=14: 169
+     * retargets in 222 min; s6036 N=6: 261, both with stall_cap 0). Now strike 1 retargets at 300 s and strike 2
+     * walks the army home at 600 s.
+     */
+    boolean stall_cap_keep = false;
+    /** retreat_cap_ticks and stall_cap_keep act only from this game tick (0: from the start). */
+    float unlock_from_ticks = 120000f; // 40 min
+    /**
+     * stall_engaged_ticks (game ticks, 0 = off; arm 15000 = 300 s): a wedge watchdog, first in every attack round, so
+     * that no charge, siege, pillage, hold or engage path returns before it looks (Military.wedgeWatch). Progress: a
+     * 20 m gain of the march pivot on the target field (of the straight line while no attacker stands on it), the
+     * target falling or losing a tenth of its hit points, or stall_cap_kills deaths among the enemy units seen within
+     * 30 cells of the army since the last progress (those that came up later count too: another copy's units joining
+     * through their scans, late defenders), or among the attackers at it; a new target's field is a new baseline,
+     * not progress. After this long without: strike 1 stalls the target (skipped, the next one from where the army
+     * stands), strike 2 in a row walks every attacker home and remembers the wedge (wedge_memory_ticks). stall_cap is
+     * left out meanwhile: this does its job on every path and counts kills near the army, where stall_cap counted the
+     * player's (tower kills at home restarted it). s6215 (N=15): 216 warriors stood 260 min at a 1-cell pass engaging
+     * enemies they could not reach, no stall line and no stall_cap (it comes after the engage return), against five
+     * copies with 0 warriors.
+     */
+    float stall_engaged_ticks = 0f;
+    /**
+     * stall_engaged_ticks: game ticks a wedge the army was walked home from is remembered (0: never). Target choice
+     * passes over buildings whose way from the staging point runs within 12 cells of a remembered wedge (a detour
+     * through it costs at most 24 cells more than the best way, walking with corner cuts, on a field from the staging
+     * point computed again every 60 s as trees fall and buildings rise), and takes the best of them only when no
+     * other building is left (Military.chooseTarget): otherwise the next muster marches into the same pass (s6021 N=6
+     * under stall_cap). The remnant ladder ranks such sites and remnants last too.
+     */
+    float wedge_memory_ticks = 60000f; // 1200 s
+    /** stall_engaged_ticks acts only from this game tick (0: from the start). */
+    float stall_engaged_from_ticks = 120000f; // 40 min
+    float chicken_ticks = 7500f; // 150 s
     int chicken_pool_div = 18;
 
     /**
@@ -940,11 +1194,11 @@ class Strategy {
      */
     boolean unstick = true;
     /**
-     * A builder (or repairer) that has stood on the same cell for this many seconds more than 3 cells from its building
-     * is wedged (a dead-end notch or a pass it deadlocks in with others, jam-logs s9: 6-23 builders for 13 min) and is
-     * sent into the nearest armory, which frees it for the economy. 0: off.
+     * A builder (or repairer) that has stood on the same cell for this many game ticks more than 3 cells from its
+     * building is wedged (a dead-end notch or a pass it deadlocks in with others, jam-logs s9: 6-23 builders for
+     * 13 min) and is sent into the nearest armory, which frees it for the economy. 0: off.
      */
-    float unstick_builders = 0f;
+    float unstick_builders_ticks = 0f;
     /**
      * Builders and repairers taken from the gatherers are the ones with the shortest walk to the site (meters, the
      * farthest considered), not the nearest in a straight line. 0: straight line.
@@ -970,12 +1224,12 @@ class Strategy {
      */
     int chief_safe = 0;
     /**
-     * From chief_wake_retreat seconds after our chieftain's cast until his stun is ready again, he keeps
+     * From chief_wake_retreat_ticks game ticks after our chieftain's cast until his stun is ready again, he keeps
      * chief_wake_keep cells from every enemy warrior within reach, stunned ones included: the ones his stun froze wake
      * inside his reach otherwise (audit13 shepherds 2: 92 % of his deaths come within 40 s after his own stun, a median
      * 11 cells from where he cast; chief_safe skips stunned warriors). 0: off.
      */
-    float chief_wake_retreat = 0f;
+    float chief_wake_retreat_ticks = 0f;
     int chief_wake_keep = 12;
     /** Hit points at which the chieftain walks home to the armory. */
     int chief_flee_hp = 24;
@@ -1003,12 +1257,15 @@ class Strategy {
 
     /**
      * Decoy tower sites 11-14 cells in front of our manned towers, nearer to each Hard copy than any real building,
-     * steer its waves where the towers shoot them (Decoys). From decoy_time on, at most decoy_max at once, leaving
+     * steer its waves where the towers shoot them (Decoys). From decoy_ticks on, at most decoy_max at once, leaving
      * decoy_free_slots of the building cap for real buildings; a spot must be within decoy_margin of the distance of
      * the copy's nearest real target. decoy_cage leaves enemies standing in tower reach to the towers.
      */
     boolean decoys = false;
-    /** A shepherd peon per copy draws its waves onto empty ground (Shepherd), from shepherd_time to shepherd_until. */
+    /**
+     * A shepherd peon per copy draws its waves onto empty ground (Shepherd), from shepherd_ticks to
+     * shepherd_until_ticks.
+     */
     boolean shepherd = true;
     /**
      * The chieftain's shred mission (Chieftain.shred): with the blast charged and more than shred_min_hp, he blasts
@@ -1024,8 +1281,8 @@ class Strategy {
      * Shepherds from 120 s (was 200): vs hard*11 elim +.048 / +.024 on seeds 1..200 / 201..400, W 28 vs 19 over 400,
      * lsr15 +.16 / +.19 (st120b2-vs11-hv, -b); N=8 +.023 (W 118 vs 115). 90 s: same survival, fewer outs; 150 s: less.
      */
-    float shepherd_time = 120f;
-    float shepherd_until = 100000f;
+    float shepherd_ticks = 6000f; // 120 s
+    float shepherd_until_ticks = 5000000f; // 100000 s
     /**
      * Farthest a shepherd stands from the wave's leader, in cells (it must stay within 0.66 of our nearest building).
      */
@@ -1033,15 +1290,15 @@ class Strategy {
     /** Chebyshev cells a shepherd's spot keeps from every enemy unit (idle and walking units scan 8). */
     int shepherd_clear = 12;
     /**
-     * shepherd_lead (seconds, 0 = off; maxn K4): until a copy's first launch, and while it has no idle warrior, its
-     * shepherd is recruited only once it would reach its spot shepherd_lead_margin s before the copy's armory time
-     * plus shepherd_lead (walking shepherd_speed cells/s, plus 5 s), never before shepherd_time. Flocks then watch for
-     * the copies' armories from 90 s, and far copies are tended first (Shepherd.tend).
+     * shepherd_lead_ticks (game ticks, 0 = off; maxn K4): until a copy's first launch, and while it has no idle
+     * warrior, its shepherd is recruited only once it would reach its spot shepherd_lead_margin_ticks before the copy's
+     * armory time plus shepherd_lead_ticks (walking shepherd_cells_per_tick, plus 5 s), never before shepherd_ticks.
+     * Flocks then watch for the copies' armories from 90 s, and far copies are tended first (Shepherd.tend).
      */
-    float shepherd_lead = 0f;
-    float shepherd_lead_margin = 15f;
-    /** Cells per second a shepherd walks, for shepherd_lead (2.1 until the K2 "at spot" logs measure it). */
-    float shepherd_speed = 2.1f;
+    float shepherd_lead_ticks = 0f;
+    float shepherd_lead_margin_ticks = 750f; // 15 s
+    /** Cells per game tick a shepherd walks, for shepherd_lead_ticks (a guess until K2's "at spot" logs measure it). */
+    float shepherd_cells_per_tick = .042f; // 2.1 cells/s
     /**
      * A gunner with no enemy warrior within 45 cells of its tower enters from the side of the living copies' mean
      * start blended with outward from our core, not from the side of the nearest start (Military.frontCell; maxn K3).
@@ -1060,18 +1317,18 @@ class Strategy {
     int front_order = 0;
     /** Finished quarters needed beside a finished armory before towers are planned (Economy; archaeology A3). */
     int tower_min_quarters = 2;
-    /** Seconds a shepherd waits without a spot before it goes home (large: never). */
-    float shepherd_patience = 100000f;
+    /** Game ticks a shepherd waits without a spot before it goes home (large: never). */
+    float shepherd_patience_ticks = 5000000f; // 100000 s
     /** Weight of a spot's distance from the copy's own quarters and armory, beside its distance from our start. */
     float shepherd_home_weight = 0f;
     /**
      * shepherd_sticky (score cells, 0 = off): a shepherd's current spot, and ring cells within 4 cells of it, score
      * this much more, so the spot no longer flips between ring cells of about equal score (Shepherd.findSpot); the
-     * current spot also stays a candidate while enemies have blocked it for less than shepherd_grace seconds.
+     * current spot also stays a candidate while enemies have blocked it for less than shepherd_grace_ticks game ticks.
      * shepherd_travel: each cell from the shepherd to a candidate costs this much score.
      */
     float shepherd_sticky = 0f;
-    float shepherd_grace = 0f;
+    float shepherd_grace_ticks = 0f;
     float shepherd_travel = 0f;
     /**
      * shepherd_safe_walk: a shepherd takes the best of the 12 best spots whose straight walk, over its first
@@ -1079,6 +1336,13 @@ class Strategy {
      * 3 s before it heads back (Shepherd.findSpot, tend).
      */
     boolean shepherd_safe_walk = false;
+    /**
+     * A shepherd that flees before reaching its spot, when the way away from the threat points back towards our start,
+     * flees sideways instead (perpendicular to the line from our start, the side the threat vector leans to first) if
+     * that point is reachable, clear of enemy warriors and away from any walking wave's target: caught waves were
+     * pulled 25 cells towards us per catch and fed 73 % of the base-threat entries (logged N=13 ludicrous games).
+     */
+    boolean shepherd_flee_side = true; // cur11 (see forGame); alone: survival up at N=13-14, wins flat at N=15
     /**
      * shepherd_follow: while a copy's oldest idle warrior stands at home (40 cells from its armory) and its last wave
      * is still out, its shepherd's spot is picked around that wave's target (where its survivors go idle and lead the
@@ -1088,10 +1352,10 @@ class Strategy {
      */
     boolean shepherd_follow = false;
     /**
-     * shepherd_gap (seconds, 0 = off): after a copy's shepherd is lost, the next is recruited only this much later
-     * (nine shepherds of ten die, most on the way: Shepherd.tend).
+     * shepherd_gap_ticks (game ticks, 0 = off): after a copy's shepherd is lost, the next is recruited only this much
+     * later (nine shepherds of ten die, most on the way: Shepherd.tend).
      */
-    float shepherd_gap = 0f;
+    float shepherd_gap_ticks = 0f;
     int shepherd_home_pair = 0;
     int shepherd_safe_look = 40;
     int shepherd_safe_clear = 10;
@@ -1101,14 +1365,14 @@ class Strategy {
      */
     boolean swing_restart = true;
     /**
-     * Seconds a gatherer spends at the supply per load, in the gather cost model (armory site and crew split): 10 hits
-     * of 51 ticks without the swing restart; 10 of 15 ticks (3 s) plus settling in with it.
+     * Game ticks a gatherer spends at the supply per load, in the gather cost model (armory site and crew split): 10
+     * hits of 51 ticks without the swing restart; 10 of 15 ticks (150 ticks, 3 s) plus settling in with it.
      */
-    float harvest_seconds = 10f;
+    float harvest_ticks = 500f; // 10 s
     boolean stun_cancel = true;
     /** With stun_cancel, run only from an enemy sonic blast, not from the stun (which Reflexes cancels anyway). */
     boolean dodge_blast_only = true;
-    float decoy_time = 240f;
+    float decoy_ticks = 12000f; // 240 s
     int decoy_max = 8;
     int decoy_free_slots = 3;
     float decoy_margin = .85f;
@@ -1128,27 +1392,28 @@ class Strategy {
         shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
         shred_range = params.getInt("shred_range", shred_range);
         shred_strict = params.getBoolean("shred_strict", shred_strict);
-        shepherd_time = (float) params.getDouble("shepherd_time", shepherd_time);
-        shepherd_until = (float) params.getDouble("shepherd_until", shepherd_until);
+        shepherd_ticks = (float) params.getDouble("shepherd_ticks", shepherd_ticks);
+        shepherd_until_ticks = (float) params.getDouble("shepherd_until_ticks", shepherd_until_ticks);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
         shepherd_clear = params.getInt("shepherd_clear", shepherd_clear);
-        shepherd_lead = (float) params.getDouble("shepherd_lead", shepherd_lead);
-        shepherd_lead_margin = (float) params.getDouble("shepherd_lead_margin", shepherd_lead_margin);
-        shepherd_speed = (float) params.getDouble("shepherd_speed", shepherd_speed);
+        shepherd_lead_ticks = (float) params.getDouble("shepherd_lead_ticks", shepherd_lead_ticks);
+        shepherd_lead_margin_ticks = (float) params.getDouble("shepherd_lead_margin_ticks", shepherd_lead_margin_ticks);
+        shepherd_cells_per_tick = (float) params.getDouble("shepherd_cells_per_tick", shepherd_cells_per_tick);
         tower_face_live = params.getBoolean("tower_face_live", tower_face_live);
         tower_face_place = params.getBoolean("tower_face_place", tower_face_place);
         tower_home_anchor = params.getBoolean("tower_home_anchor", tower_home_anchor);
         tower_q_anchor = params.getBoolean("tower_q_anchor", tower_q_anchor);
         front_order = params.getInt("front_order", front_order);
         tower_min_quarters = params.getInt("tower_min_quarters", tower_min_quarters);
-        shepherd_patience = (float) params.getDouble("shepherd_patience", shepherd_patience);
+        shepherd_patience_ticks = (float) params.getDouble("shepherd_patience_ticks", shepherd_patience_ticks);
         shepherd_home_weight = (float) params.getDouble("shepherd_home_weight", shepherd_home_weight);
         shepherd_sticky = (float) params.getDouble("shepherd_sticky", shepherd_sticky);
-        shepherd_grace = (float) params.getDouble("shepherd_grace", shepherd_grace);
+        shepherd_grace_ticks = (float) params.getDouble("shepherd_grace_ticks", shepherd_grace_ticks);
         shepherd_travel = (float) params.getDouble("shepherd_travel", shepherd_travel);
         shepherd_safe_walk = params.getBoolean("shepherd_safe_walk", shepherd_safe_walk);
+        shepherd_flee_side = params.getBoolean("shepherd_flee_side", shepherd_flee_side);
         shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
-        shepherd_gap = (float) params.getDouble("shepherd_gap", shepherd_gap);
+        shepherd_gap_ticks = (float) params.getDouble("shepherd_gap_ticks", shepherd_gap_ticks);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
@@ -1160,6 +1425,9 @@ class Strategy {
         rock_share = (float) params.getDouble("rock_share", rock_share);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
+        decapitate = params.getBoolean("decapitate", decapitate);
+        decapitate_chief_cells = params.getInt("decapitate_chief_cells", decapitate_chief_cells);
+        decapitate_from_ticks = (float) params.getDouble("decapitate_from_ticks", decapitate_from_ticks);
         target_defense_weight = (float) params.getDouble("target_defense_weight", target_defense_weight);
         target_home_weight = (float) params.getDouble("target_home_weight", target_home_weight);
         target_threat_weight = (float) params.getDouble("target_threat_weight", target_threat_weight);
@@ -1167,18 +1435,25 @@ class Strategy {
         snipers = params.getBoolean("snipers", snipers);
         tower_unstun = params.getBoolean("tower_unstun", tower_unstun);
         skip_stalled = params.getBoolean("skip_stalled", skip_stalled);
+        corner_fields = params.getBoolean("corner_fields", corner_fields);
+        dead_region_reach = params.getInt("dead_region_reach", dead_region_reach);
+        sealed_progress = params.getBoolean("sealed_progress", sealed_progress);
+        pocket_from_ticks = (float) params.getDouble("pocket_from_ticks", pocket_from_ticks);
         gate_owner = params.getBoolean("gate_owner", gate_owner);
         reinforce_threat_ratio = (float) params.getDouble("reinforce_threat_ratio", reinforce_threat_ratio);
         finish_copies = params.getBoolean("finish_copies", finish_copies);
         finish_skip_out = params.getBoolean("finish_skip_out", finish_skip_out);
         finish_units = params.getInt("finish_units", finish_units);
         finish_ratio = (float) params.getDouble("finish_ratio", finish_ratio);
+        remnant_ladder_ticks = (float) params.getDouble("remnant_ladder_ticks", remnant_ladder_ticks);
+        defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);
+        defense_others_from_ticks = (float) params.getDouble("defense_others_from_ticks", defense_others_from_ticks);
         chief_hunt = params.getBoolean("chief_hunt", chief_hunt);
         hunt_sites = params.getBoolean("hunt_sites", hunt_sites);
         chief_hunt_size = params.getInt("chief_hunt_size", chief_hunt_size);
         chief_hunt_range = params.getInt("chief_hunt_range", chief_hunt_range);
         chief_hunt_escort = params.getInt("chief_hunt_escort", chief_hunt_escort);
-        chief_hunt_time = (float) params.getDouble("chief_hunt_time", chief_hunt_time);
+        chief_hunt_ticks = (float) params.getDouble("chief_hunt_ticks", chief_hunt_ticks);
         weapon_sync = params.getBoolean("weapon_sync", weapon_sync);
         weapon_sync_three = params.getBoolean("weapon_sync_three", weapon_sync_three);
         finish_range = params.getInt("finish_range", finish_range);
@@ -1204,12 +1479,12 @@ class Strategy {
         danger_refuge = params.getBoolean("danger_refuge", danger_refuge);
         expand_under_threat = params.getBoolean("expand_under_threat", expand_under_threat);
         launch_recheck = params.getBoolean("launch_recheck", launch_recheck);
-        recall_cooldown = (float) params.getDouble("recall_cooldown", recall_cooldown);
+        recall_cooldown_ticks = (float) params.getDouble("recall_cooldown_ticks", recall_cooldown_ticks);
         worn_basis = params.getInt("worn_basis", worn_basis);
-        worn_window = (float) params.getDouble("worn_window", worn_window);
+        worn_window_ticks = (float) params.getDouble("worn_window_ticks", worn_window_ticks);
         worn_ratio = (float) params.getDouble("worn_ratio", worn_ratio);
         enemy_stun_mult = (float) params.getDouble("enemy_stun_mult", enemy_stun_mult);
-        enemy_spell_recharge = (float) params.getDouble("enemy_spell_recharge", enemy_spell_recharge);
+        enemy_spell_recharge_ticks = (float) params.getDouble("enemy_spell_recharge_ticks", enemy_spell_recharge_ticks);
         enemy_first_seen = params.getBoolean("enemy_first_seen", enemy_first_seen);
         retreat_split_guard = params.getBoolean("retreat_split_guard", retreat_split_guard);
         parked_scan_econ = params.getInt("parked_scan_econ", parked_scan_econ);
@@ -1218,6 +1493,7 @@ class Strategy {
         hold_multi = params.getBoolean("hold_multi", hold_multi);
         retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
         rush_opening_only = params.getBoolean("rush_opening_only", rush_opening_only);
+        rush_hold_armory = params.getBoolean("rush_hold_armory", rush_hold_armory);
         target_path = params.getBoolean("target_path", target_path);
         defend_stable = params.getBoolean("defend_stable", defend_stable);
         tower_cooldown = params.getBoolean("tower_cooldown", tower_cooldown);
@@ -1233,8 +1509,8 @@ class Strategy {
         shepherd_hold = params.getBoolean("shepherd_hold", shepherd_hold);
         tower_reaim = params.getBoolean("tower_reaim", tower_reaim);
         tower_prequeue_any = params.getBoolean("tower_prequeue_any", tower_prequeue_any);
-        rock_stream_time = (float) params.getDouble("rock_stream_time", rock_stream_time);
-        rock_stream_iron_s = (float) params.getDouble("rock_stream_iron_s", rock_stream_iron_s);
+        rock_stream_ticks = (float) params.getDouble("rock_stream_ticks", rock_stream_ticks);
+        rock_stream_iron_ticks = (float) params.getDouble("rock_stream_iron_ticks", rock_stream_iron_ticks);
         rock_stream_max = params.getInt("rock_stream_max", rock_stream_max);
         site_max = params.getInt("site_max", site_max);
         rock_filler_div = params.getInt("rock_filler_div", rock_filler_div);
@@ -1243,10 +1519,10 @@ class Strategy {
         lure_max = params.getInt("lure_max", lure_max);
         lure_min = params.getInt("lure_min", lure_min);
         lure_range = params.getInt("lure_range", lure_range);
-        lure_time = (float) params.getDouble("lure_time", lure_time);
+        lure_ticks = (float) params.getDouble("lure_ticks", lure_ticks);
         tower_parallel_late = params.getInt("tower_parallel_late", tower_parallel_late);
         sites_parallel_late = params.getInt("sites_parallel_late", sites_parallel_late);
-        tower_parallel_late_time = (float) params.getDouble("tower_parallel_late_time", tower_parallel_late_time);
+        tower_parallel_late_ticks = (float) params.getDouble("tower_parallel_late_ticks", tower_parallel_late_ticks);
         site_towers_first = params.getBoolean("site_towers_first", site_towers_first);
         evac_hp = (float) params.getDouble("evac_hp", evac_hp);
         evac_min = params.getInt("evac_min", evac_min);
@@ -1258,21 +1534,22 @@ class Strategy {
         focus_finish = params.getBoolean("focus_finish", focus_finish);
         sites_parallel = params.getInt("sites_parallel", sites_parallel);
         swing_restart = params.getBoolean("swing_restart", swing_restart);
-        harvest_seconds = (float) params.getDouble("harvest_seconds", harvest_seconds);
+        harvest_ticks = (float) params.getDouble("harvest_ticks", harvest_ticks);
         stun_cancel = params.getBoolean("stun_cancel", stun_cancel);
         dodge_blast_only = params.getBoolean("dodge_blast_only", dodge_blast_only);
-        decoy_time = (float) params.getDouble("decoy_time", decoy_time);
+        decoy_ticks = (float) params.getDouble("decoy_ticks", decoy_ticks);
         decoy_max = params.getInt("decoy_max", decoy_max);
         decoy_free_slots = params.getInt("decoy_free_slots", decoy_free_slots);
         decoy_margin = (float) params.getDouble("decoy_margin", decoy_margin);
         decoy_cage = params.getBoolean("decoy_cage", decoy_cage);
         initial_quarters = params.getInt("initial_quarters", initial_quarters);
         max_quarters = params.getInt("max_quarters", max_quarters);
-        expand_time = (float) params.getDouble("expand_time", expand_time);
+        expand_ticks = (float) params.getDouble("expand_ticks", expand_ticks);
         max_armory_distance = params.getInt("max_armory_distance", max_armory_distance);
-        armory_distance_weight = (float) params.getDouble("armory_distance_weight", armory_distance_weight);
+        armory_distance_weight_ticks = (float) params.getDouble("armory_distance_weight_ticks",
+                armory_distance_weight_ticks);
         armory_delay_weight = (float) params.getDouble("armory_delay_weight", armory_delay_weight);
-        armory_threat_weight = (float) params.getDouble("armory_threat_weight", armory_threat_weight);
+        armory_threat_weight_ticks = (float) params.getDouble("armory_threat_weight_ticks", armory_threat_weight_ticks);
         scouts = params.getInt("scouts", scouts);
         armory_builders = params.getInt("armory_builders", armory_builders);
         quarters_builders = params.getInt("quarters_builders", quarters_builders);
@@ -1282,62 +1559,71 @@ class Strategy {
         tower_wood_reach = params.getInt("tower_wood_reach", tower_wood_reach);
         tower_wood_reserve = params.getInt("tower_wood_reserve", tower_wood_reserve);
         tower_wood_max = params.getInt("tower_wood_max", tower_wood_max);
-        tower_wood_time = (float) params.getDouble("tower_wood_time", tower_wood_time);
+        tower_wood_ticks = (float) params.getDouble("tower_wood_ticks", tower_wood_ticks);
         quarters_before_armory = params.getInt("quarters_before_armory", quarters_before_armory);
         opening_near_start = params.getBoolean("opening_near_start", opening_near_start);
         rush_response = params.getBoolean("rush_response", rush_response);
         rush_quarters = params.getInt("rush_quarters", rush_quarters);
-        rush_seconds = (float) params.getDouble("rush_seconds", rush_seconds);
+        rush_ticks = (float) params.getDouble("rush_ticks", rush_ticks);
         pressure_response = params.getBoolean("pressure_response", pressure_response);
-        pressure_time = (float) params.getDouble("pressure_time", pressure_time);
+        pressure_ticks = (float) params.getDouble("pressure_ticks", pressure_ticks);
         hold_early = params.getInt("hold_early", hold_early);
         hold_mid = params.getInt("hold_mid", hold_mid);
-        seed_quarters = (float) params.getDouble("seed_quarters", seed_quarters);
+        seed_quarters_ticks = (float) params.getDouble("seed_quarters_ticks", seed_quarters_ticks);
         seed_quarters_reach = params.getInt("seed_quarters_reach", seed_quarters_reach);
         hold_backlog = params.getInt("hold_backlog", hold_backlog);
-        hold_backlog_until = (float) params.getDouble("hold_backlog_until", hold_backlog_until);
-        veto_resite = (float) params.getDouble("veto_resite", veto_resite);
-        veto_resite_time = (float) params.getDouble("veto_resite_time", veto_resite_time);
+        hold_backlog_until_ticks = (float) params.getDouble("hold_backlog_until_ticks", hold_backlog_until_ticks);
+        veto_resite_ticks = (float) params.getDouble("veto_resite_ticks", veto_resite_ticks);
+        veto_resite_from_ticks = (float) params.getDouble("veto_resite_from_ticks", veto_resite_from_ticks);
         veto_resite_clear = params.getInt("veto_resite_clear", veto_resite_clear);
         veto_resite_quarters = params.getBoolean("veto_resite_quarters", veto_resite_quarters);
         unjam = params.getInt("unjam", unjam);
-        unjam_after = (float) params.getDouble("unjam_after", unjam_after);
+        unjam_after_ticks = (float) params.getDouble("unjam_after_ticks", unjam_after_ticks);
         unjam_progress = params.getInt("unjam_progress", unjam_progress);
-        unjam_time = (float) params.getDouble("unjam_time", unjam_time);
-        unjam_from = (float) params.getDouble("unjam_from", unjam_from);
+        unjam_ticks = (float) params.getDouble("unjam_ticks", unjam_ticks);
+        unjam_from_ticks = (float) params.getDouble("unjam_from_ticks", unjam_from_ticks);
         bank_guard = params.getBoolean("bank_guard", bank_guard);
-        bank_guard_time = (float) params.getDouble("bank_guard_time", bank_guard_time);
+        bank_guard_ticks = (float) params.getDouble("bank_guard_ticks", bank_guard_ticks);
         bank_min = params.getInt("bank_min", bank_min);
         bank_margin = (float) params.getDouble("bank_margin", bank_margin);
-        bank_noforge_s = (float) params.getDouble("bank_noforge_s", bank_noforge_s);
+        bank_noforge_ticks = (float) params.getDouble("bank_noforge_ticks", bank_noforge_ticks);
         bank_reserve_max = params.getInt("bank_reserve_max", bank_reserve_max);
         wood_reach = params.getInt("wood_reach", wood_reach);
-        wood_reach_time = (float) params.getDouble("wood_reach_time", wood_reach_time);
+        wood_reach_ticks = (float) params.getDouble("wood_reach_ticks", wood_reach_ticks);
+        ore_reach = params.getInt("ore_reach", ore_reach);
+        gather_probe = params.getBoolean("gather_probe", gather_probe);
+        gather_home = params.getBoolean("gather_home", gather_home);
+        relink_guard = params.getBoolean("relink_guard", relink_guard);
+        ore_iron_first = params.getBoolean("ore_iron_first", ore_iron_first);
+        ore_reach_fail = params.getBoolean("ore_reach_fail", ore_reach_fail);
+        weapon_reserve = params.getInt("weapon_reserve", weapon_reserve);
+        weapon_reserve_ticks = (float) params.getDouble("weapon_reserve_ticks", weapon_reserve_ticks);
+        sortie_ratio = (float) params.getDouble("sortie_ratio", sortie_ratio);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
         rearm_reach = params.getInt("rearm_reach", rearm_reach);
         reloc = params.getBoolean("reloc", reloc);
-        reloc_time = (float) params.getDouble("reloc_time", reloc_time);
-        reloc_gap = (float) params.getDouble("reloc_gap", reloc_gap);
+        reloc_ticks = (float) params.getDouble("reloc_ticks", reloc_ticks);
+        reloc_gap_ticks = (float) params.getDouble("reloc_gap_ticks", reloc_gap_ticks);
         reloc_reach = params.getInt("reloc_reach", reloc_reach);
         reloc_nodes = params.getInt("reloc_nodes", reloc_nodes);
         reloc_slot = params.getBoolean("reloc_slot", reloc_slot);
         raid_bank = params.getBoolean("raid_bank", raid_bank);
-        raid_bank_time = (float) params.getDouble("raid_bank_time", raid_bank_time);
+        raid_bank_ticks = (float) params.getDouble("raid_bank_ticks", raid_bank_ticks);
         raid_bank_extra = params.getInt("raid_bank_extra", raid_bank_extra);
         reloc_draw = params.getInt("reloc_draw", reloc_draw);
         raid_evac = params.getBoolean("raid_evac", raid_evac);
         raid_evac_min = params.getInt("raid_evac_min", raid_evac_min);
         raid_evac_ratio = (float) params.getDouble("raid_evac_ratio", raid_evac_ratio);
-        raid_evac_time = (float) params.getDouble("raid_evac_time", raid_evac_time);
-        reloc_lock = params.getInt("reloc_lock", reloc_lock);
-        reloc_lock_time = (float) params.getDouble("reloc_lock_time", reloc_lock_time);
+        raid_evac_ticks = (float) params.getDouble("raid_evac_ticks", raid_evac_ticks);
+        reloc_lock_ticks = params.getInt("reloc_lock_ticks", reloc_lock_ticks);
+        reloc_lock_from_ticks = (float) params.getDouble("reloc_lock_from_ticks", reloc_lock_from_ticks);
         retire = params.getBoolean("retire", retire);
-        retire_wait = (float) params.getDouble("retire_wait", retire_wait);
+        retire_wait_ticks = (float) params.getDouble("retire_wait_ticks", retire_wait_ticks);
         retire_quarters_dist = params.getInt("retire_quarters_dist", retire_quarters_dist);
         retire_pop = params.getInt("retire_pop", retire_pop);
         retire_any_tower = params.getBoolean("retire_any_tower", retire_any_tower);
         hold_late = params.getInt("hold_late", hold_late);
-        hold_mid_time = (float) params.getDouble("hold_mid_time", hold_mid_time);
+        hold_mid_ticks = (float) params.getDouble("hold_mid_ticks", hold_mid_ticks);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);
         stun_patience = params.getBoolean("stun_patience", stun_patience);
         exploit_stun = params.getBoolean("exploit_stun", exploit_stun);
@@ -1347,7 +1633,7 @@ class Strategy {
         blast_ratio = (float) params.getDouble("blast_ratio", blast_ratio);
         blast_min = (float) params.getDouble("blast_min", blast_min);
         blast_defense = params.getBoolean("blast_defense", blast_defense);
-        blast_play_time = (float) params.getDouble("blast_play_time", blast_play_time);
+        blast_play_ticks = (float) params.getDouble("blast_play_ticks", blast_play_ticks);
         blast_save = params.getBoolean("blast_save", blast_save);
         hunt_caster = params.getBoolean("hunt_caster", hunt_caster);
         hunt_caster_cells = params.getInt("hunt_caster_cells", hunt_caster_cells);
@@ -1360,14 +1646,14 @@ class Strategy {
         dodge_core = params.getInt("dodge_core", dodge_core);
         tower_stun_follow_up = params.getBoolean("tower_stun_follow_up", tower_stun_follow_up);
         chieftain_min_quarters = params.getInt("chieftain_min_quarters", chieftain_min_quarters);
-        chieftain_time = (float) params.getDouble("chieftain_time", chieftain_time);
+        chieftain_ticks = (float) params.getDouble("chieftain_ticks", chieftain_ticks);
         multi_front_towers = params.getBoolean("multi_front_towers", multi_front_towers);
         towers_early = params.getInt("towers_early", towers_early);
         towers_mid = params.getInt("towers_mid", towers_mid);
         towers_late = params.getInt("towers_late", towers_late);
-        towers_early_time = (float) params.getDouble("towers_early_time", towers_early_time);
-        towers_mid_time = (float) params.getDouble("towers_mid_time", towers_mid_time);
-        towers_late_time = (float) params.getDouble("towers_late_time", towers_late_time);
+        towers_early_ticks = (float) params.getDouble("towers_early_ticks", towers_early_ticks);
+        towers_mid_ticks = (float) params.getDouble("towers_mid_ticks", towers_mid_ticks);
+        towers_late_ticks = (float) params.getDouble("towers_late_ticks", towers_late_ticks);
         attack_min_strength = (float) params.getDouble("attack_min_strength", attack_min_strength);
         attack_ratio = (float) params.getDouble("attack_ratio", attack_ratio);
         reinforce = params.getBoolean("reinforce", reinforce);
@@ -1375,10 +1661,10 @@ class Strategy {
         reinforce_multi = params.getBoolean("reinforce_multi", reinforce_multi);
         capped_clump = (float) params.getDouble("capped_clump", capped_clump);
         ring_sweep = params.getBoolean("ring_sweep", ring_sweep);
-        ring_sweep_from = (float) params.getDouble("ring_sweep_from", ring_sweep_from);
-        ring_sweep_until = (float) params.getDouble("ring_sweep_until", ring_sweep_until);
+        ring_sweep_from_ticks = (float) params.getDouble("ring_sweep_from_ticks", ring_sweep_from_ticks);
+        ring_sweep_until_ticks = (float) params.getDouble("ring_sweep_until_ticks", ring_sweep_until_ticks);
         ring_sweep_ratio = (float) params.getDouble("ring_sweep_ratio", ring_sweep_ratio);
-        ring_sweep_quiet = (float) params.getDouble("ring_sweep_quiet", ring_sweep_quiet);
+        ring_sweep_quiet_ticks = (float) params.getDouble("ring_sweep_quiet_ticks", ring_sweep_quiet_ticks);
         ring_sweep_reach = params.getInt("ring_sweep_reach", ring_sweep_reach);
         capped_clump_min = (float) params.getDouble("capped_clump_min", capped_clump_min);
         capped_clump_cells = params.getInt("capped_clump_cells", capped_clump_cells);
@@ -1388,13 +1674,13 @@ class Strategy {
         capped_min_strength = (float) params.getDouble("capped_min_strength", capped_min_strength);
         retreat_ratio = (float) params.getDouble("retreat_ratio", retreat_ratio);
         raid_size = params.getInt("raid_size", raid_size);
-        raid_time = (float) params.getDouble("raid_time", raid_time);
+        raid_ticks = (float) params.getDouble("raid_ticks", raid_ticks);
         engage_spread = params.getBoolean("engage_spread", engage_spread);
         project_defense = params.getBoolean("project_defense", project_defense);
         precontact_ratio = (float) params.getDouble("precontact_ratio", precontact_ratio);
         strikes = params.getBoolean("strikes", strikes);
         forward_towers = params.getInt("forward_towers", forward_towers);
-        forward_tower_time = (float) params.getDouble("forward_tower_time", forward_tower_time);
+        forward_tower_ticks = (float) params.getDouble("forward_tower_ticks", forward_tower_ticks);
         forward_ratio = (float) params.getDouble("forward_ratio", forward_ratio);
         defend_hysteresis = (float) params.getDouble("defend_hysteresis", defend_hysteresis);
         response_ratio = (float) params.getDouble("response_ratio", response_ratio);
@@ -1405,46 +1691,56 @@ class Strategy {
         far_expansion = params.getBoolean("far_expansion", far_expansion);
         recall_old_gatherers = params.getBoolean("recall_old_gatherers", recall_old_gatherers);
         desperate_expansion = (float) params.getDouble("desperate_expansion", desperate_expansion);
-        desperate_iron_cycle = (float) params.getDouble("desperate_iron_cycle", desperate_iron_cycle);
-        armory_far_cost = (float) params.getDouble("armory_far_cost", armory_far_cost);
+        desperate_iron_cycle_ticks = (float) params.getDouble("desperate_iron_cycle_ticks", desperate_iron_cycle_ticks);
+        armory_far_cost_ticks = (float) params.getDouble("armory_far_cost_ticks", armory_far_cost_ticks);
         peon_militia = params.getBoolean("peon_militia", peon_militia);
-        militia_time = (float) params.getDouble("militia_time", militia_time);
+        militia_ticks = (float) params.getDouble("militia_ticks", militia_ticks);
         peon_rush = params.getBoolean("peon_rush", peon_rush);
         freeze_open = params.getBoolean("freeze_open", freeze_open);
         freeze_squad = params.getInt("freeze_squad", freeze_squad);
-        freeze_eta = (float) params.getDouble("freeze_eta", freeze_eta);
+        freeze_eta_ticks = (float) params.getDouble("freeze_eta_ticks", freeze_eta_ticks);
         freeze_raze = params.getBoolean("freeze_raze", freeze_raze);
         freeze_unfreeze = params.getBoolean("freeze_unfreeze", freeze_unfreeze);
         freeze_fight = params.getBoolean("freeze_fight", freeze_fight);
         freeze_armory_push = params.getBoolean("freeze_armory_push", freeze_armory_push);
         freeze_retarget = params.getBoolean("freeze_retarget", freeze_retarget);
+        freeze_patience_ticks = (float) params.getDouble("freeze_patience_ticks", freeze_patience_ticks);
         frozen_last = params.getBoolean("frozen_last", frozen_last);
         freeze_targets = params.getInt("freeze_targets", freeze_targets);
         freeze_squad2 = params.getInt("freeze_squad2", freeze_squad2);
-        freeze_eta2 = (float) params.getDouble("freeze_eta2", freeze_eta2);
+        freeze_eta2_ticks = (float) params.getDouble("freeze_eta2_ticks", freeze_eta2_ticks);
         freeze_keep = params.getInt("freeze_keep", freeze_keep);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
-        restore_dodge_gap = (float) params.getDouble("restore_dodge_gap", restore_dodge_gap);
+        restore_dodge_gap_ticks = (float) params.getDouble("restore_dodge_gap_ticks", restore_dodge_gap_ticks);
         sappers = params.getBoolean("sappers", sappers);
         pillage = params.getBoolean("pillage", pillage);
         siege = params.getBoolean("siege", siege);
-        siege_patience = (float) params.getDouble("siege_patience", siege_patience);
+        siege_patience_ticks = (float) params.getDouble("siege_patience_ticks", siege_patience_ticks);
         adaptive_caution = params.getBoolean("adaptive_caution", adaptive_caution);
         caution_decay = (float) params.getDouble("caution_decay", caution_decay);
         creep_towers = params.getBoolean("creep_towers", creep_towers);
         hidden_info = params.getBoolean("hidden_info", hidden_info);
         chicken_hunters = params.getInt("chicken_hunters", chicken_hunters);
-        chicken_time = (float) params.getDouble("chicken_time", chicken_time);
+        chicken_range = params.getInt("chicken_range", chicken_range);
+        stall_cap_ticks = (float) params.getDouble("stall_cap_ticks", stall_cap_ticks);
+        stall_cap_kills = params.getInt("stall_cap_kills", stall_cap_kills);
+        retreat_cap_ticks = (float) params.getDouble("retreat_cap_ticks", retreat_cap_ticks);
+        stall_cap_keep = params.getBoolean("stall_cap_keep", stall_cap_keep);
+        unlock_from_ticks = (float) params.getDouble("unlock_from_ticks", unlock_from_ticks);
+        stall_engaged_ticks = (float) params.getDouble("stall_engaged_ticks", stall_engaged_ticks);
+        wedge_memory_ticks = (float) params.getDouble("wedge_memory_ticks", wedge_memory_ticks);
+        stall_engaged_from_ticks = (float) params.getDouble("stall_engaged_from_ticks", stall_engaged_from_ticks);
+        chicken_ticks = (float) params.getDouble("chicken_ticks", chicken_ticks);
         chicken_pool_div = params.getInt("chicken_pool_div", chicken_pool_div);
         tower_fire = params.getBoolean("tower_fire", tower_fire);
         unstick = params.getBoolean("unstick", unstick);
-        unstick_builders = (float) params.getDouble("unstick_builders", unstick_builders);
+        unstick_builders_ticks = (float) params.getDouble("unstick_builders_ticks", unstick_builders_ticks);
         walk_select = params.getInt("walk_select", walk_select);
         tower_site_fallback = params.getBoolean("tower_site_fallback", tower_site_fallback);
         chief_keep_out = params.getInt("chief_keep_out", chief_keep_out);
         chief_safe = params.getInt("chief_safe", chief_safe);
-        chief_wake_retreat = (float) params.getDouble("chief_wake_retreat", chief_wake_retreat);
+        chief_wake_retreat_ticks = (float) params.getDouble("chief_wake_retreat_ticks", chief_wake_retreat_ticks);
         chief_wake_keep = params.getInt("chief_wake_keep", chief_wake_keep);
         chief_flee_hp = params.getInt("chief_flee_hp", chief_flee_hp);
         threat_look = params.getInt("threat_look", threat_look);
@@ -1461,15 +1757,19 @@ class Strategy {
         // Every enemy sends his waves at our nearest building: towers early, and many of them, hold them all,
         // and the chieftain's stun is wanted sooner.
         strategy.towers_early = 3;
-        strategy.towers_early_time = Math.min(strategy.towers_early_time, 200f);
+        // cur11: towers 3 from 300 s and 6 from 480 s (were 200 s and 330 s), stacked with sortie_ratio 1.0 and
+        // shepherd_flee_side, at ludicrous speed against cur10: N=13 W 127 -> 145 of 500 (6501..7000), N=14 51 -> 70
+        // and fresh 49 -> 59, N=15 16 -> 29 and fresh 30 -> 27, N=16 10 -> 15; surv60 +1.1..+2.2 min in every block
+        // (z 2.5..3.8); N=6 and normal speed neutral. Later towers alone: N=13 W +22 over 800 games.
+        strategy.towers_early_ticks = Math.min(strategy.towers_early_ticks, 15000f); // 300 s
         strategy.towers_mid = 6;
-        strategy.towers_mid_time = Math.min(strategy.towers_mid_time, 330f);
+        strategy.towers_mid_ticks = 24000f; // 480 s
         strategy.towers_late = 14;
-        strategy.towers_late_time = 600f;
+        strategy.towers_late_ticks = 30000f; // 600 s
         // The chieftain from 300 s (was 240): training takes a quarters' breeding, and an earlier chieftain costs the
         // opening more peons than his stuns win back (cur6 N=13-14, 9 blocks: surv60 up in 8, fresh-seed wins 9 -> 12;
         // 360-480 about as good).
-        strategy.chieftain_time = Math.min(strategy.chieftain_time, 300f);
+        strategy.chieftain_ticks = Math.min(strategy.chieftain_ticks, 15000f); // 300 s
         // Against many Hard copies (lab/gauntlet/NOTES.md, 2026-09-28): shepherds leash their waves, so a target's
         // defense is what stands near it (shepatk-vs7-hn 35 vs 23, shepatk-vs8-hn 12 vs 6), and attacks are
         // reinforced (rmulti-vs7-hn 27 vs 19).
@@ -1485,10 +1785,10 @@ class Strategy {
         // A copy defends with its own warriors only: count other copies' armies only near the target (vs hard*8
         // gateown-vs8-hv-b 65 vs 52 of 200, elim +.086 z 3.4; N=9 elim +.035 z 2.3; N=10 +.031 and +.040, z 3.1).
         strategy.gate_owner = true;
-        // The freeze opening puts the nearest copy out in about a minute when it starts within freeze_eta of peon walk
-        // (N=12 W 4 -> 13 over 600 seeds with squad 10). With squad 6 it pays at every N tried, so the old enemies >= 12
-        // gate went: N=11 over 400 seeds W 31 -> 35, elim +.032, surv60 +2.3 min (s201..400: W 12 -> 20, wp z 4.0);
-        // N=8 W 111 -> 115, elim +.016 (z 1.8); N=14 against freeze off elim +.021 (z 2.7).
+        // The freeze opening puts the nearest copy out in about a minute when it starts within freeze_eta_ticks of peon
+        // walk (N=12 W 4 -> 13 over 600 seeds with squad 10). With squad 6 it pays at every N tried, so the old enemies
+        // >= 12 gate went: N=11 over 400 seeds W 31 -> 35, elim +.032, surv60 +2.3 min (s201..400: W 12 -> 20, wp z
+        // 4.0); N=8 W 111 -> 115, elim +.016 (z 1.8); N=14 against freeze off elim +.021 (z 2.7).
         strategy.freeze_open = true;
         return strategy;
     }
@@ -1502,14 +1802,14 @@ class Strategy {
                 strategy.quarters_before_armory = 2;
                 strategy.hold_mid = 7;
                 strategy.max_armory_distance = 230;
-                strategy.armory_distance_weight = .06f;
+                strategy.armory_distance_weight_ticks = 3f; // .06 s a meter
                 strategy.armory_delay_weight = .6f;
-                strategy.armory_threat_weight = 90f;
+                strategy.armory_threat_weight_ticks = 4500f; // 90 s
                 strategy.hold_early = 2;
-                strategy.expand_time = 240f;
-                strategy.towers_early_time = 150f;
+                strategy.expand_ticks = 12000f; // 240 s
+                strategy.towers_early_ticks = 7500f; // 150 s
                 strategy.attack_min_strength = 12f;
-                strategy.chieftain_time = 300f;
+                strategy.chieftain_ticks = 15000f; // 300 s
                 // The fighting reaches the base early and keeps coming back: a second armory only splits the
                 // economy just as it starts, while two more towers hold the base (medium, vs both rival AIs on two
                 // seed sets each: +.4 to +.7).
@@ -1519,7 +1819,7 @@ class Strategy {
             }
             case Game.SIZE_ENORMOUS -> {
                 strategy.max_armory_distance = 700;
-                strategy.expand_time = 360f;
+                strategy.expand_ticks = 18000f; // 360 s
             }
             default -> {
             }

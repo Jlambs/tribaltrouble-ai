@@ -5,13 +5,16 @@
 
 Reads g/<key>-ai-s0.log (batch --logs or --logs lost) and g/<key>.jsonl. Per game and in total: seconds spent in
 HOME / MUSTER / ATTACK / RETREAT (from the STAT lines every 30 s), musters and attacks started, attack ends by kind
-(retreat, worn down, turned back, called home), copies out in the window, and the army size at each attack.
+(retreat, worn down, turned back, called home), copies out in the window, and the army size at each attack. All times
+are game seconds (gtime: log stamps take their game file's factor); a copy is out at its first out or collapse event.
 """
 import json
 import os
 import re
 import sys
 from collections import Counter
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 
@@ -31,13 +34,26 @@ def main(run, lo=0.0, hi=30.0):
         modes = Counter()
         events = Counter()
         sizes = []
+        fac = None
+        first_out = {}  # slot -> its first out or collapse
+        result = None
+        with open(os.path.join(gdir, key + '.jsonl'), encoding='utf-8') as g:
+            for line in g:
+                e = json.loads(line)
+                if fac is None:
+                    fac = gtime.factor(e)  # the first line is the game event; the log's stamps share it
+                if e['ev'] in gtime.OUTS and e['s'] != 0:
+                    first_out.setdefault(e['s'], e['t'] * fac)
+                elif e['ev'] == 'end':
+                    result = 'win' if e.get('winnerTeam') == 0 else 'loss'
+        outs = sum(1 for t in first_out.values() if lo <= t <= hi)
         with open(os.path.join(gdir, name), encoding='utf-8') as f:
             for line in f:
                 parts = line.split()
                 if not parts or parts[0].startswith('#'):
                     continue
                 try:
-                    t = float(parts[0])
+                    t = float(parts[0]) * fac
                 except ValueError:
                     continue
                 if t < lo or t > hi:
@@ -63,15 +79,6 @@ def main(run, lo=0.0, hi=30.0):
                     events['called_home'] += 1
                 elif 'reinforcing the attack' in line:
                     events['reinforce'] += 1
-        outs = 0
-        result = None
-        with open(os.path.join(gdir, key + '.jsonl'), encoding='utf-8') as g:
-            for line in g:
-                e = json.loads(line)
-                if e['ev'] == 'out' and e['s'] != 0 and lo <= e['t'] <= hi:
-                    outs += 1
-                elif e['ev'] == 'end':
-                    result = 'win' if e.get('winnerTeam') == 0 else 'loss'
         events['copies_out'] += outs
         total_modes.update(modes)
         total_events.update(events)

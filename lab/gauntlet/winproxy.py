@@ -28,12 +28,18 @@ maxn/proxy.md): held-out-seed AUC at N=11 0.95 / 0.98 / 0.99 for P15 / P20 / P25
 expected wins over 60 N=11 runs within binomial noise), paired SE of wp over 200 games 0.0073 at N=11 (wins 0.0141).
 The model reads the state at T and assumes the AI converts it as the fitted runs did; refit after big changes to
 the late game (fit mode). Failed games count as losses.
+
+All times are game time at every --speed (gtime converts rows and game files from before the harness counted it).
+Those old non-normal files took the census every 30 x factor game s (2 min at ludicrous): T then reads the last census
+before it (P15 at 14 min, P25 at 24 min there) and vanished20's brackets are that wide.
 """
 import json
 import math
 import os
 import re
 import sys
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 TIMES = (15, 20, 25)
@@ -59,6 +65,7 @@ MODEL = {
 
 def read_game(run, row):
     """Features at each T (None when the game is decided by then) and the per-game facts, from g/<key>.jsonl."""
+    gtime.row(row)
     key = row['key']
     g = {'key': key, 'seed': row.get('seed', 0), 'win': 1 if row.get('result') == 'win' else 0,
          'failed': row.get('result') is None, 't_end': row.get('t') or 0.0}
@@ -67,29 +74,33 @@ def read_game(run, row):
         g.update(failed=True, N=max(1, (row.get('slots') or 2) - 1), elim=0.0, feats={t: None for t in TIMES},
                  surv=0.0, hold20=0, hold20a1=0, base25=0, arm25=0, towers20=0, peons20=0, vanished20=0)
         return g
-    want = {t * 60 for t in TIMES}
-    census = {}
     outs = {}
     header = None
-    early = {}  # (slot, t) -> census row, every row up to 25 min (the window columns)
+    scale = 1.0  # game seconds per t of this file (gtime.factor of its header, the first line)
+    early = {}  # (slot, t) -> census row, every row up to 25 min (the window columns and the census at each T)
     events = []  # (t, 'built' | 'razed', slot, building, x, y, site)
     with open(path, encoding='utf-8') as f:
         for line in f:
             if line.startswith('{"ev":"census"'):
                 e = json.loads(line)
-                t = int(round(e['t']))
-                if t in want:
-                    census[(e['s'], t)] = e
+                t = int(round(e['t'] * scale))
                 if t <= 1500:
                     early[(e['s'], t)] = e
             elif line.startswith('{"ev":"built"') or line.startswith('{"ev":"razed"'):
                 e = json.loads(line)
-                events.append((e['t'], e['ev'], e['s'], e['b'], e['x'], e['y'], e.get('site', 0)))
+                events.append((e['t'] * scale, e['ev'], e['s'], e['b'], e['x'], e['y'], e.get('site', 0)))
             elif line.startswith('{"ev":"out"') or line.startswith('{"ev":"collapse"'):
                 e = json.loads(line)
-                outs.setdefault(e['s'], e['t'])
+                outs.setdefault(e['s'], e['t'] * scale)
             elif line.startswith('{"ev":"game"'):
                 header = json.loads(line)
+                scale = gtime.factor(header)
+    every = 30.0 * scale  # the census interval of the file in game seconds
+
+    def at(t):
+        """The time of the census standing for game second t: the last one at or before it."""
+        return int(round(math.floor(t / every + 1e-9) * every))
+
     players = header['players']
     a_team = players[0]['team']
     a_slots = [p['s'] for p in players if p['team'] == a_team]
@@ -102,14 +113,14 @@ def read_game(run, row):
     limit = a_out if a_out is not None else g['t_end'] + 1
     # survival: seconds until we are out (a win or a game we survive to its end counts as surviving it)
     g['surv'] = float(a_out) if a_out is not None and not g['win'] else max(g['t_end'], 3600.0)
-    us20 = [census.get((s, 1200)) for s in a_slots]
+    us20 = [early.get((s, at(1200))) for s in a_slots]
     g['hold20'] = 1 if g['surv'] > 1200 and all(u is not None for u in us20) and sum(u['armories'] for u in us20) > 0 else 0
-    window(g, a_slots, early, events)
+    window(g, a_slots, early, events, at)
     g['elim'] = 1.0 if g['win'] else sum(1 for s in b_slots if s in outs and outs[s] <= limit) / max(1, n)
     g['feats'] = {}
     for tm in TIMES:
         t = tm * 60
-        us = [census.get((s, t)) for s in a_slots]
+        us = [early.get((s, at(t))) for s in a_slots]
         if g['t_end'] < t - 0.01 or (a_out is not None and a_out <= t) or any(u is None for u in us):
             g['feats'][tm] = None  # decided by T
             continue
@@ -120,7 +131,7 @@ def read_game(run, row):
             if s in outs and outs[s] <= t:
                 e_out += 1
                 continue
-            e = census.get((s, t))
+            e = early.get((s, at(t)))
             if e is None:
                 continue
             e_str += e['strength']
@@ -137,9 +148,10 @@ def read_game(run, row):
     return g
 
 
-def window(g, a_slots, early, events):
+def window(g, a_slots, early, events, at):
     """The 20-25-min window columns (late/spec.md S0): our first armory still standing at 20 min, a base and an
-    armory at 25 min, towers and peons at 20 min, and units that vanished inside our razed buildings by 20 min."""
+    armory at 25 min, towers and peons at 20 min, and units that vanished inside our razed buildings by 20 min.
+    at(t) is the time of the census standing for game second t."""
     def row(t):
         us = [early.get((s, t)) for s in a_slots]
         return None if any(u is None for u in us) else us
@@ -152,10 +164,10 @@ def window(g, a_slots, early, events):
     razed_first = first is not None and any(e[1] == 'razed' and e[3] == 'armory' and not e[6] and e[4] == first[4]
                                             and e[5] == first[5] and first[0] <= e[0] <= 1200 for e in ours)
     g['hold20a1'] = 1 if g['surv'] > 1200 and first is not None and not razed_first else 0
-    r25 = row(1500)
+    r25 = row(at(1500))
     g['base25'] = 1 if g['surv'] > 1500 and r25 and total(r25, 'quarters') + total(r25, 'armories') > 0 else 0
     g['arm25'] = 1 if g['surv'] > 1500 and r25 and total(r25, 'armories') > 0 else 0
-    r20 = row(1200)
+    r20 = row(at(1200))
     alive20 = g['surv'] > 1200 and r20 is not None
     g['towers20'] = total(r20, 'towers') if alive20 else 0
     g['peons20'] = total(r20, 'peons') if alive20 else 0
@@ -334,7 +346,8 @@ def games(run, model, jobs):
 # ---------------------------------------------------------------------------------------------------------- fitting
 
 def eligible_runs():
-    """Every gauntlet (or frozen @g...) vs hard*N run (vikings, N >= 8) on the benchmark maps at full length."""
+    """Every gauntlet (or frozen @g...) vs hard*N run (vikings, N >= 8) on the benchmark maps at full length and at
+    normal speed (the Hards play another game at other speeds)."""
     out = []
     for run in sorted(os.listdir(ROOT)):
         p = os.path.join(ROOT, run, 'run.json')
@@ -349,6 +362,8 @@ def eligible_runs():
         if not m or not (m.group(1).startswith('gauntlet') or m.group(1).startswith('@g')):
             continue
         if int(m.group(2)) < 8 or '360 min' not in cfg or 'large tropical h0..2 t10 s10' not in cfg:
+            continue
+        if ' speed' in cfg:  # '... | ludicrous speed'
             continue
         out.append(run)
     return out

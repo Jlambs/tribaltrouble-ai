@@ -1632,6 +1632,207 @@ retreat through the same pass (only the attack role is watched).
   0.25 % (plus 1 of 500 fresh), N=16 0.3 % on 8001..9000. Open leads: hopdraw adoption; freeze path (c) audit (0 of 633
   wins); the field-speed finding (wins cluster on slow fields: nothing to exploit found yet).
 
+### Play-test feedback round (2026-09-30, user played online at ludicrous)
+
+- **Game speed bug.** The user's online game (replay 12550 on tribaltrouble.org: 2 humans + gauntlet vs 6 Hards, large
+  map, 20 starting units) ran at ludicrous: its spectator stream stamps world ticks (PeerHub, every 5), and the freeze
+  target was out by tick 1200, i.e. 96 s at 80 ms a tick. World.tick runs the game-time pass with
+  getSecondsPerTick() (0.5 / 1 / 1.75 / 4 x the 20 ms tick at slow / normal / fast / ludicrous), while GauntletAI's
+  clock was ticks / 50: at ludicrous every period and timer ran 4x late in game time (shepherds from 8 game min,
+  re-plans every 12 s, the late fixes from 160 min) and the swing restart counted 0.02 s ticks against 0.08 s
+  animations (it fired a swing late, after the next swing had started: no gain, a voided swing). The stock AI counts
+  seconds (AI.shouldDoAction), so it was unaffected. Fix a9b85bae: the clock adds each tick's game time, the swing
+  restart counts the units' step, the 5-tick guards run every 5 normal ticks of game time. Harness: aisim --speed
+  (headless a2b585b5; harness times stay world ticks, so at ludicrous they are a quarter of game time).
+  N=6, normal speed, seeds 6001..6100: 87 of 100 for both builds, 100 of 100 games identical. **N=6 at ludicrous,
+  6001..6200: @cur8 93 W / 105 L, fixed 189 W / 10 L** (median win 49.5 -> 33.5 game min). Chickens by 20 game min:
+  ours 23 at normal, 9 at ludicrous with the old clock (iron 290 vs 215); each Hard ~9-11.
+- The humans' units: the AI only counts its own units and isEnemy players, so allied peons never enter its
+  thresholds. Stock waves target the nearest enemy unit if it is under 0.707 of the nearest enemy building
+  (AdvancedAI.findTarget), so allied peons parked near our base can pull waves there; in 12550 one human's 20 peons
+  stood 33 cells from our buildings all game (never died), the other's stayed at their start and vanished at ~7 game
+  min. Allying with the Hards instead would make the humans enemies of ours (counted in N, freeze and campaign
+  targets, needed for the win). Least influence: spectate, or park far from every start on our team.
+- **Low-N baseline (cur8 + clock fix, normal speed):** N=1 996 W / 4 L (6001..7000), N=2 996 / 3 / 1 draw, N=3 593 / 6
+  (6001..6600), N=4 392 / 5 / 2 draws (6001..6400), N=5 384 / 12 / 4, N=6 358 / 41 / 1 (89.5 %). Every N=1-2 loss and
+  the N=2 draw: every ore of the kind the weapons need is beyond the main armory's 400 m walking field (computeField
+  max 400; scanSupplies skips UNREACHABLE), so rock_weapons wants 140 rock gatherers and gets 0, iron is wanted 0, and
+  100-200 workers sit in the armory for 20+ min while one Hard out-builds us (counter pick_null_rock_unreachable).
+  **ore_reach=400** (iron, else rock, out to 800 m when the field has none): low-N losers 5 of 14 flip to wins (N=1
+  s6087, s6508; N=2 s6529 draw; N=3 s6282, s6598); N=3 6001..6600 591 of 599 identical, W 593 -> 594 (+2 / -1, the
+  loss s6034: 100+ peons on far-iron trips); N=6 372 of 400 identical, 358 -> 358 (+1 / -1); N=13 292 of 299
+  identical, 6 -> 6. Remaining low-N losses: s6449 N=3 is a broken spawn (a stock Hard in our slot never places an
+  armory either); s6045 N=1 has almost no ore within 800 m; s6102 N=2 builds 97 warriors by 15 min and never
+  attacks while two Hards out-grow it; the hopdraw stack on top flips s6215 and s6102 (N=2) but not the rest.
+- **Timeouts at N=4-6** (7 in 1,200): army wedges (s6021 N=5/6: 90+ warriors pressed against a 2-cell diagonal pass
+  from 23 min for 5 hours; the stall clock restarts whenever anyone in the army fights, so no stall ever fires, and
+  unjam's one column march at 40 min stays stuck) and production stalls (s6210 N=4, s6074 N=5: 250 units, 0
+  warriors). **stall_cap=300** (no 20 m gain and < 10 kills in 300 s stalls the target even while some fight; a
+  second stall in a row walks the army home to re-form): with ore_reach, 2 of 6 timeouts become wins (s6386 61 min,
+  s6074 153 min); the pass in s6021 still holds (the army re-musters and marches back into it).
+- **Quirks from the play test.** "Peons out of the armory and straight back in" and "peons standing still": in the
+  gatherer allocation a peon whose pick fails (mostly chickens out of range or near enemies) is taken off the free
+  list but never ordered (gather_pick_failed ~570 economy ticks per N=13 game), and when no peon is free the armory
+  deploys workers for a supply none can reach, which then walk back in (deploy_gather ~54 per game).
+  gather_probe=true fixes both: N=13 6001..6300 W 6 -> 10 (+9 / -5, z 1.1), surv60 +0.12 (z 0.2). Defense
+  overcommit is rare at normal speed: 29 of 1,629 logged threat-2 events at N=6 pit a small threat against a home
+  army 5x its size (the army is on campaign), and the military thinks every 0.5 s (2 s at ludicrous before the fix).
+- **Towers and the cap (N=13 benchmark):** by 12 min 18-19 of 20 building slots are used (11-13 towers), 54-72 % of
+  games at the cap; in losses towers then fall 11.2 -> 6.2 by 25 min while the cap no longer binds (13-29 %): towers
+  are lost to razings, not missing. Chickens: by 20 min we take 11 of ~87 (each Hard ~6; N=6: 23 vs 9); most failed
+  hunts are out of range (150 cells) or near enemies.
+- **N=6 losses** (41 of 400): mostly 19-32 min with 4-6 copies alive. s6064: the army (100) marches 318 m to the far
+  copy right after an out while 110 enemy strength stands on our main armory (built at the expansion, no towers in
+  reach); both armories fall by 18:23, the army is ground down without production. s6074: iron gone at both armories
+  by 8 min, 130 peons on rock that delivers ~1 unit per 800-5000 gatherer-seconds (peons 167 -> 26 by 15 min).
+  Queued at N=6: recall_ratio 0.8 / 0.5, target_threat_weight 2, chickens (14 hunters, 250 cells), hopdraw,
+  rearm_placer.
+- **Screens (paired with base-vs6 6001..6400 / cur8-bench-vs13 6001..6300; W base -> arm, gained / lost):**
+  | arm | N=6 | N=13 |
+  |---|---|---|
+  | gather_probe | 358 -> 364 (+15 / -9), surv60 +0.41 (z 1.5) | 6 -> 10 (+9 / -5), surv60 +0.12 |
+  | ore_reach=400 + gather_probe, fresh (6401..6800 / 8001..8300) | 365 -> 367 (+10 / -8), surv60 +0.22 (z 1.1) | 5 -> 2 (+1 / -4), surv60 -0.11 |
+  | recall_ratio=0.8 | 358 -> 359 (+4 / -3), surv60 +0.23 (z 1.7), 323 identical | |
+  | recall_ratio=0.5 | 358 -> 356 | |
+  | target_threat_weight=2 | inert (379 identical, 0 flips) | |
+  | chicken_hunters=14, chicken_range=250 | 358 -> 358 (+14 / -14), surv60 +0.44 (z 1.8); chickens by 20 min 23.2 -> 25.7 | 6 -> 6 (+4 / -4) |
+  | hopdraw (rearm_placer, reloc, reloc_slot, raid_bank, reloc_draw=2) | 357 -> 360 (+8 / -5), surv60 +0.45 (z 2.2), alive40 +7 | (earlier: surv60 up in every block) |
+  | rearm_placer | 356 -> 359 (+10 / -7), surv60 +0.24 (z 1.3) | |
+  Chickens are bounded by the map's spawns (3 flocks), not by hunters: no lever. At ludicrous the fixed AI is stronger
+  than at normal speed on the same seeds (N=6 6001..6200: 180 -> 189 W, +13 / -4, z 2.2).
+- In 10 of the 42 lost N=6 games a >= 30-strength enemy force stood at home with less than half its strength in
+  defenders and towers while the attack army (>= 0.8x) was away (the s6064 pattern); recall_ratio=0.8 answers it but
+  barely moves results.
+- **More screens:** gather_home alone N=6 358 -> 365 (+13 / -6, surv60 +0.64, z 2.7), N=13 6 -> 6 (surv60 +0.69, z
+  1.6), but on top of ore_reach + gather_probe: fresh N=6 364 -> 366 (as without it), fresh N=13 5 -> 2, N=10 73 -> 73
+  (surv60 -0.96, z -1.2; without it 79): not adopted. ore_reach + gather_probe at N=10 (6001..6300): 73 -> 79 (+40 /
+  -34). Earlier towers (tower_parallel=2, towers_mid_time 270, towers_late_time 480): N=6 358 -> 360, N=13 6 -> 7:
+  near neutral, as before. stall_cap=300: N=13 300 of 300 identical, N=5 397 of 400 identical (+1 win). hopdraw on
+  top of the candidate, fresh N=6: 366 -> 363: not adopted.
+- **Ludicrous, N=13** (6001..6300, the old defaults with the clock fix): **47 of 300 wins vs 6 at normal speed**
+  (surv60 +14.9 min). The stock AI is on the real-time animation manager too (AI constructor) and its
+  shouldDoAction counts the real tick's 0.02 s, so at ludicrous every Hard decides every 20-28 game seconds instead of
+  5-7: the stock Hards are 4x slower in game time there (vanilla behaviour, the same online). Ludicrous results are not
+  comparable with the normal-speed benchmark.
+- **cur9 adopted** (defaults): clock on game time + ore_reach=400 + gather_probe + stall_cap=300; 40 of 40 N=6 games
+  replay the explicit-param candidate.
+- **cur9 benchmark** (same seeds as cur8-bench): N=13 6001..6500 7 -> 12 of 500 (+11 / -6, surv60 -0.24), N=14
+  6001..6500 2 -> 3 of 500 (+1 / 0, surv60 +0.08). Ludicrous (cur9, --minutes 90): N=16 0 of 200 (median game 28
+  game min, 10 alive at 40), N=20 0 of 200 (24 min); N=13 was 47 of 300 (39 min, 140 alive at 40): the ludicrous
+  ceiling sits between 13 and 16.
+
+### Ludicrous tuning (2026-10-01): the benchmark moves to --speed ludicrous
+
+The user plays online at ludicrous, and the stock Hards' slower decisions there (real-time cadence, every 20-28 game s)
+are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous. Only our AI is made speed-correct.
+
+- **Harness on game time** (headless 001fd17c, merged): rows, game files and AI log stamps hold game seconds at every
+  speed (non-normal rows also carry the world `ticks`); the collapse rule (60 s), the time limit (--minutes, default
+  360) and w15/kd30 are game time (at ludicrous the collapse rule used to take 240 game s). Normal speed is an exact
+  identity. Old non-normal runs (lud-*, lud9-*) keep world-tick times; lab/gauntlet/gtime.py converts them at read time,
+  and every lab tool now reads through it (the studies also count collapse-outs, which write no out event).
+- **cur9 at ludicrous, new harness, 6001..6500:** N=13 68 / 500 (13.6 %), N=14 17, N=15 7, N=16 2 (s6215, s6224), N=17
+  0, N=18 0. The ludicrous frontier is N=15-16 (normal speed: N=13 2.4 %, N=14 0.6 %).
+- **Game-time audit** (workflow, 10 agents): the AI still drifted at ludicrous. Rounds re-anchored on the world tick
+  they fired, so every period rounded up to whole 80-ms ticks (intel 0.5 s ran every 0.56 s, economy 1.04 s, plan
+  3.04 s, and every timer checked in them with it); measureYield took a round as 1 s; unjam counted scans as 5 s; the
+  swing restart hung the game in an endless loop when a human paused it (speed 0); weapon_sync horizons were world
+  ticks.
+- **Every time in game ticks** (user's call; 46911b10 / d172de4d): 64 parameters renamed `*_ticks` (50 a game second;
+  shepherd_time 120 -> shepherd_ticks 6000, rates per tick: shepherd_cells_per_tick), constants `*_TICKS`, the clock an
+  exact float game-tick count (multiples of 0.25, exact for 23 game hours), rounds on a game-tick schedule
+  (`next = max(next + P, now + P - slack)`), periodic re-armed checks via `periodDue` (one world tick of lateness
+  allowed), the audit's fixes folded in. Verification (paired, every game diverges because the old seconds clock
+  slipped by float rounding): normal N=13 300 games W 10 -> 6 (+4 / -8, z -1.2), surv60 -0.04 (z -0.1); ludicrous
+  N=13 500 games W 68 -> 65 (+43 / -46, z -0.3), surv60 -0.30. counters.py (new: counters per game minute, games
+  <= 40 min, with z): at normal no counter moves beyond |z| 2; at ludicrous the round cadence shows (shepherd_t_* +12 %,
+  peon_blocked +10 %), nothing else. One game replays VERIFIED. Adopted.
+- **Old-build screen at ludicrous N=13** (cur9 names, 6001..6300 vs ludicrous-base-vs13, W 47): attack_min_strength
+  10 / 30 W 37 / 37; attack_ratio 0.8 / 1.25 43 / 46; attack_max_strength 40 / 120 47 / 47; retreat_ratio 1.2 / 2.0
+  44 / 43; reinforce_ratio 0.8 (300 games) neutral. The campaign's defaults hold at ludicrous.
+- **The freeze opening fails at ludicrous:** first copy out at 8.8 game min (normal 1.6), freeze kills 8.9 per game
+  (17.6), squad peons lost 2.6 (0.7), aborts 0.6 (0.2). The squad (eta 21-33 s) arrives before the copy's first orders
+  and meets all 20 starting peons idle: idle peons answer through their 8-cell scan, builders never do ("squad at
+  s9:hard at 24s: striking 20 peons ... given up: squad down to 2 peons"). New `freeze_patience_ticks` (off): within
+  16 cells of a copy with at least as many idle peons as the squad has, the squad holds out of scan reach until fewer
+  are idle or the patience runs out; screening at 750 / 1500 / 3000, and 1500 with freeze_eta_ticks 3000.
+- **Freeze patience, first try** (hold 16 cells from the centre of all the copy's peons): W 65 -> 66 of 500, 262
+  identical; 199 of 238 held strikes still given up (the busy peons walking to the quarters site pulled the centre,
+  and so the hold point, into the idle crowd's reach). 750 and 3000 ticks played the same games as each other.
+- **Freeze patience, reworked** (fb3d7913: keep 16 cells from the nearest idle peon, pick off busy peons more than 12
+  cells from every idle one, patience from 24 cells): **N=13 ludicrous W 65 -> 107 of 500 (+71 / -29, z 4.2), surv60
+  +4.90 min (z 7.9), alive40 +75**; freeze target out 0.3 -> 0.8 per game, kills 8.4 -> 18.1, squad lost 2.7 -> 0.2,
+  first copy out 8.8 -> 1.7 min (as at normal speed). 3000 ticks: the same 300 games as 1500; with freeze_eta_ticks
+  3000: 284 identical, W 71 -> 71. Confirmations queued (N=15, N=16, fresh 8001..8500, normal speed).
+- **Screen on the tick build without patience** (6001..6300 vs ticks-ludicrous-vs13-all, W 45): shepherd_ticks 12000
+  (240 s) W 19, surv60 -4.56 (z -5.8): the early shepherds are essential; 3000 (60 s) identical games. freeze_targets 2
+  W 31 (z -2.5, surv60 z -2.8); freeze_squad 8 W 32 (z -1.9); freeze_eta_ticks 3000 / 4500 W 44 / 43 (284 / 280
+  identical); target_defense_weight 16 W 28 (z -3.0), 4 W 46 (surv60 +0.72, z 1.7); reinforce_ratio 0.3 W 49 (z 0.7).
+- **Beta tester's feedback** (workflow: 7 investigators over 70 logged ludicrous games, N=13 and N=6; plan in the
+  session scratchpad): peon swarm: banks vanish with razed armories (~112 units per N=13 game, peons inside a razed
+  building disappear uncounted) and evacuatePeons/allocatePeons feed the besieged armory, but weapons were 0 in 101 of
+  104 falls and the threat ~7x the bank's value, so only a winnable sortie can help (sortie_engage, deferred).
+  Quarters idle: orders come within 1 game s; only the rush alarm before the first armory holds 20-90 door peons
+  (rush_hold_armory). Stockpiles: the forge is saturated and iron node-limited at 6-12 min; weapon_reserve (keep R
+  weapons undeployed) is the honest test. Far gathering: real at N=6 (3 of 4 losses); stuck_trip_factor (never
+  tested), ore_iron_first, ore_reach_fail. Rally points: a recall loop fights the engine's re-link to the nearest
+  armory (relink_guard). Idle after a siege: the army leaves in ~20 s; long idle stretches are jams (unjam_from_ticks 0,
+  mostly N=6). Shepherds: fleeing outbound shepherds pull caught waves 25 cells towards us, caught waves feed 73 % of
+  base-threat entries (shepherd_flee_side).
+- **cur10 adopted** (f40b07e1): freeze_patience_ticks 1500 by default. Confirmations: N=15 5 -> 16 of 500 (z 2.5,
+  surv60 +4.75, z 9.8), N=16 5 -> 10 (surv60 +4.22, z 10.4), fresh N=13 8001..8500 59 -> 105 (z 4.8), normal speed
+  N=13 281 of 300 identical (6 -> 7, surv60 +0.46). cur10 at ludicrous: N=6 288 of 300 (6001..6300), N=13 107 / 500,
+  N=14 51 / 500 (fresh 49), N=15 16 / 500 (fresh 30), N=16 10 / 500.
+- **Beta fixes, wave 1** (2dcb583f, off), vs cur10, 6001..6300: shepherd_flee_side N=13 W 71 -> 88 (z 2.0, surv60
+  +1.39), N=6 287 / 288; relink_guard N=13 68, N=6 287 (neutral); rush_hold_armory N=13 71 (119 identical), N=6 287.
+  shepherd_flee_side confirmations: N=13 6001..6500 107 -> 128 (z 2.0, surv60 +1.61, z 2.9), fresh 105 -> 102 (surv60
+  +2.38, z 4.2, alive40 +44), N=14 51 -> 44 (surv60 +0.96, z 1.8), fresh N=14 49 -> 53 (surv60 +1.40, z 2.4), N=15 16
+  -> 15 (surv60 +0.73), fresh N=15 30 -> 25 (surv60 -0.10). Survival up at N=13-14 in every block and wins faster
+  (shared wins 7-15 min sooner), but W +9 over ~2950 games and N=15 -6: not adopted; a lead for N=13-14.
+- **Beta fixes, wave 2** (28d0b2b3, off), vs cur10, 6001..6300: ore_iron_first + ore_reach_fail + relink_guard N=13 69,
+  N=6 288; the same + stuck_trip_factor 1.0 N=13 72 (surv60 +0.48), N=6 288 (surv60 +0.14, z 1.8); weapon_reserve 12
+  / 24 N=13 63 / 67 (surv60 -0.56 / -0.89): the hold-back family again; sortie_ratio 0.8 N=13 72 (85 identical), N=6
+  289; sortie_ratio 1.0 N=13 80 (+16 / -7, z 1.9): confirming.
+- **Screen on cur10** (no-code arms, N=13 6001..6300, W 71): stuck_trip_factor 1.0 78 (z 1.3), 0.6 74; unjam_from_ticks
+  0 inert (285 identical; N=6 queued); woodr20 76, surv60 +0.84 (z 1.6), alive40 +11; gather_avoid_parked 75;
+  rush_opening_only 71; target_defense_weight 4 66 (surv60 z -1.7); reinforce_ratio 0.3 81 (z 1.4); chieftain_ticks
+  10000 (200 s) 60, surv60 -1.81 (z -2.6), 22500 (450 s) 87 (z 1.9); towers_early/mid_ticks 15000 / 24000 82 (z 1.3).
+  Confirming chieftain 450 s, reinforce 0.3, later towers and sortie 1.0 on 6301..6500 and 8001..8300.
+- **Confirmations on 6301..6500 + 8001..8300** (vs cur10): chieftain 450 s W -5 / +4 (surv60 +0.31 / +1.91);
+  reinforce_ratio 0.3 0 / -13 (z -2.1): dropped; later towers +7 / +4 (surv60 +0.56 / +1.65, z 2.3); sortie_ratio 1.0
+  0 / +2 (surv60 +0.34 / +0.68, z 2.4). Over 800 games each: towers +22, sortie +11, chieftain +15 (mixed).
+- **Stacks** (vs cur10; N=13 on the new block 6501..7000, cur10 127): towers + sortie N=13 138, N=14 59, N=15 24;
+  + chieftain 450 s 138 / 52 / 22; **+ shepherd_flee_side 145 (z 1.7, surv60 +1.79, z 3.3) / 70 (z 2.1, surv60 +1.85,
+  z 3.6) / 29 (z 2.3, surv60 +1.68, z 3.4)**. Confirmations: fresh N=14 49 -> 59 (surv60 +2.24, z 3.8), fresh N=15 30 ->
+  27 (surv60 +1.51, z 3.1, alive40 +26), N=16 10 -> 15 (surv60 +1.11, z 2.5), N=6 288 -> 287, normal speed N=13 7 -> 9.
+  The flee alone did nothing at N=15; with the later towers and the sortie it does.
+- **cur11 adopted**: towers 3 from 300 s and 6 from 480 s, sortie_ratio 1.0, shepherd_flee_side. The defaults replay the
+  explicit-param games (s6510 N=13, s6003 N=15). Over the N=13-16 blocks: W +62, survival up in every block.
+- **Timeout audit** (workflow, 4 diagnosticians + synthesis; 87 ludicrous timeouts on the tick builds, 53 seeds; plan in
+  the session scratchpad): 0.24 % of N>=13 games. Mechanisms: (M1) our fields forbid corner cuts the engine allows, so
+  pockets look sealed (stall, dead region, repeat; s6657 x4, s8462, s6206), and inDeadRegion's radius 2 falls inside a
+  7x7 building so the army cycles the sealed region's buildings for hours; (M2) wedged armies whose stall clocks are
+  reset (the calm retarget and setTarget call markCapProgress; tower kills at home count; stall_cap sits after the
+  engage returns): s6036, s8150, s6215; (M3) RETREAT never ends when 70 % cannot get home (s6409: 279 min); (M4) the
+  attack gate tests one building and counts other copies' parked masses within 60 cells; (M5) our own homeless remnant
+  (a shepherd locked for 5 h); (M6) wood/iron locks (pick_null_tree_unreachable >= 20k in 18 of the 87 vs 5 of 5364
+  wins); (M7) 47 real stalemates (fortresses at the cap, we are weaker). 16 rows are winnable positions spoiled by a
+  logic failure. Remnants across the 87: 17 lone chieftains, 54 homeless copies with a chieftain, 63 homeless with > 8
+  units and no chieftain (never launch again), 35 site-anchored.
+- **The user's pacify-then-strike idea**: the Hard launches only with NUM idle warriors (10, +5, max 40) and, from NUM 20,
+  only with an active chieftain, trained only in its quarters; a homeless copy past its second wave never attacks again.
+  Being built (off): decapitate (quarters of live copies first, move on once homeless and chieftain-less), the remnant
+  ladder (finish passive remnants late, isolated groups first), corner_fields + dead_region_reach + sealed_progress,
+  retreat_cap_ticks, stall_cap_keep, stall_engaged_ticks.
+- **Highest N at ludicrous: 18** (cur11, snapshot of the cand-tsf builds; 6001..6500): N=17 3 of 500 (s6081 101 min,
+  s6257 111, s6366 155; 30 games alive at 40 min; 1 draw, margin -0.95), N=18 1 of 500 (s6220 114 min; 18 alive at 40
+  min). Replays VERIFIED: N=18 s6220 won at 114:24 (checksum 1334996688), N=17 s6081 at 101:27 (495448014). cur9 had 0
+  of 500 at both. N=19, N=20 and a fresh N=18 block queued.
+- **Timeout fixes and decapitation built** (d389da8c, all off; flags-off identity checked): the four timeout smokes
+  s6206 (N=6), s6657 (N=13), s8462 (N=13), s6409 (N=14) went draw -> win (48.8, 74, 96.5 min, and s6409 after the
+  retreat cap released the army and the ladder finished the lone chieftain and homeless bands). Screens queued: the
+  games alive at 40 min of the cur11 bases (1092 games, N=13-16) and 500-game decapitation blocks at N=13-15.
+
 ### Watch view: what the AI shows when its game is watched (AiView, 2026-09-30)
 
 `./aisim.sh watch` plays a recorded harness game in the client; an AI that implements `aikit.AiView` paints its

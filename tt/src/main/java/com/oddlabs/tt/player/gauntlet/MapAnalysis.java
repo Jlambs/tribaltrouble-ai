@@ -246,6 +246,24 @@ final class MapAnalysis {
      */
     @NonNull
     DistanceField computeField(int @NonNull [] xs, int @NonNull [] ys, int max_cost) {
+        return computeField(xs, ys, max_cost, false);
+    }
+
+    /** {@link #computeField(int, int, int)}, with corner cuts if {@code corner} (see the four-argument one). */
+    @NonNull
+    DistanceField computeField(int sx, int sy, int max_cost, boolean corner) {
+        return computeField(new int[]{sx}, new int[]{sy}, max_cost, corner);
+    }
+
+    /**
+     * {@link #computeField(int[], int[], int)}; with {@code corner}, a diagonal step needs only the diagonal cell
+     * open, as in the engine's pathfinder (GridNode.addNeighbours) and region graph (RegionBuilder.addNeighbours),
+     * which walk units through such corner cuts. Without it, both straight cells beside the step must be open too, so
+     * a pocket joined to the map only by a corner cut looks sealed (corner_fields; s6206 N=6: a 449-cell valley whose
+     * two exits are corner cuts, entered by enemy units and our own shepherd).
+     */
+    @NonNull
+    DistanceField computeField(int @NonNull [] xs, int @NonNull [] ys, int max_cost, boolean corner) {
         DistanceField field = new DistanceField(size, xs[0], ys[0]);
         int[] cost = field.raw();
         // Dial's algorithm: costs grow in steps of 2 or 3, so four rotating buckets suffice.
@@ -286,10 +304,11 @@ final class MapAnalysis {
                 field_work = new int[Math.max(n, 2 * field_work.length)];
             int[] work = field_work;
             System.arraycopy(bucket, 0, work, 0, n);
-            // The four straight neighbours first: a diagonal step needs both straight cells beside it open, so each
-            // cell is looked up at most eight times per expansion instead of sixteen. The order in which neighbours
-            // are relaxed changes nothing: every cell up to max_cost ends at its least cost either way, and every
-            // cell beyond at the least over its expanded neighbours.
+            // The four straight neighbours first: a diagonal step needs both straight cells beside it open (with
+            // corner, only the diagonal cell itself), so each cell is looked up at most eight times per expansion
+            // instead of sixteen. The order in which neighbours are relaxed changes nothing: every cell up to
+            // max_cost ends at its least cost either way, and every cell beyond at the least over its expanded
+            // neighbours.
             int straight = current + 2;
             int diagonal = current + 3;
             for (int i = 0; i < n; i++) {
@@ -310,13 +329,13 @@ final class MapAnalysis {
                     relax(cost, buckets, counts, index - size, straight);
                 if (south)
                     relax(cost, buckets, counts, index + size, straight);
-                if (north && west && passableIn(x - 1, y - 1, source_occupant, call))
+                if ((corner || (north && west)) && passableIn(x - 1, y - 1, source_occupant, call))
                     relax(cost, buckets, counts, index - size - 1, diagonal);
-                if (north && east && passableIn(x + 1, y - 1, source_occupant, call))
+                if ((corner || (north && east)) && passableIn(x + 1, y - 1, source_occupant, call))
                     relax(cost, buckets, counts, index - size + 1, diagonal);
-                if (south && west && passableIn(x - 1, y + 1, source_occupant, call))
+                if ((corner || (south && west)) && passableIn(x - 1, y + 1, source_occupant, call))
                     relax(cost, buckets, counts, index + size - 1, diagonal);
-                if (south && east && passableIn(x + 1, y + 1, source_occupant, call))
+                if ((corner || (south && east)) && passableIn(x + 1, y + 1, source_occupant, call))
                     relax(cost, buckets, counts, index + size + 1, diagonal);
             }
             current++;

@@ -5,12 +5,14 @@
 
 Per game: the first armory site of slot 0 (distance in cells from its start, and from the nearest enemy start, as
 a share of the start-to-nearest-enemy distance), when it was placed and built, and the result. Then win rates by
-distance band.
+distance band. Times are game seconds (event t through gtime).
 """
 import json
 import math
 import os
 import sys
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 
@@ -18,13 +20,18 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'ais
 def game(run, key, result):
     starts = {}
     placed = built = None
+    gf = 1.
     with open(os.path.join(ROOT, run, 'g', key + '.jsonl'), encoding='utf-8') as f:
         for line in f:
             e = json.loads(line)
             if e['ev'] == 'game':
+                gf = gtime.factor(e)
                 for p in e['players']:
                     starts[p['s']] = (p['x'], p['y'], p['team'])
-            elif e['ev'] == 'placed' and e.get('s') == 0 and e.get('b') == 'armory' and placed is None:
+                continue
+            if 't' in e:
+                e['t'] *= gf
+            if e['ev'] == 'placed' and e.get('s') == 0 and e.get('b') == 'armory' and placed is None:
                 placed = (e['t'], e['x'], e['y'])
             elif e['ev'] == 'built' and e.get('s') == 0 and e.get('b') == 'armory' and built is None:
                 built = e['t']

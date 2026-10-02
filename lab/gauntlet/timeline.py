@@ -3,13 +3,16 @@
 
     python lab/gauntlet/timeline.py RUN [RUN...]
 
-Medians in minutes: our first building razed, first finished quarters and armory razed, the first and second
-copies out, the game's end; for lost games also how many copies were out before our first armory fell.
+Medians in game minutes (gtime): our first building razed, first finished quarters and armory razed, the first and
+second copies out, the game's end; for lost games also how many copies were out before our first armory fell. A copy
+is out at its first out or collapse event.
 """
 import json
 import os
 import statistics
 import sys
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 
@@ -28,22 +31,26 @@ def main(runs):
             path = os.path.join(ROOT, run, 'g', key + '.jsonl')
             if result is None or not os.path.exists(path):
                 continue
-            first_razed = first_q = first_a = end = None
-            outs = []
+            first_razed = first_q = first_a = end = fac = None
+            outs = {}  # slot -> its first out or collapse
             with open(path, encoding='utf-8') as g:
                 for line in g:
                     e = json.loads(line)
+                    if fac is None:
+                        fac = gtime.factor(e)  # the first line is the game event
+                    if 't' in e:
+                        e['t'] *= fac
                     if e['ev'] == 'razed' and e.get('s') == 0:
                         first_razed = first_razed or e['t']
                         if e['b'] == 'quarters' and not e.get('site'):
                             first_q = first_q or e['t']
                         if e['b'] == 'armory' and not e.get('site'):
                             first_a = first_a or e['t']
-                    elif e['ev'] == 'out' and e['s'] != 0:
-                        outs.append(e['t'])
+                    elif e['ev'] in gtime.OUTS and e['s'] != 0:
+                        outs.setdefault(e['s'], e['t'])
                     elif e['ev'] == 'end':
                         end = e['t']
-            rows.append((result, first_razed, first_q, first_a, sorted(outs), end))
+            rows.append((result, first_razed, first_q, first_a, sorted(outs.values()), end))
     for tag in ('win', 'loss'):
         sel = [r for r in rows if r[0] == tag]
         if not sel:

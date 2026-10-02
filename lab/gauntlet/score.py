@@ -17,11 +17,15 @@ Scores of team A (our AI, slot 0 in the benchmark), per game:
   tmin     game length in minutes
 Runs are read from aisim/runs/<run>/ (results.jsonl and g/<key>.jsonl). Failed games are listed and count as losses
 with every score at its worst.
+All times are game time at every --speed (gtime converts rows and game files from before the harness counted it).
+Those old non-normal files took the census every 30 x factor game s (2 min at ludicrous): lsrM reads the last before M.
 """
 import json
 import math
 import os
 import sys
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 MINUTES = (5, 10, 15, 20, 30)
@@ -33,17 +37,19 @@ def load_game(run, row):
     census = {}  # slot -> list of (t, strength, kills, lost)
     outs = {}
     header = None
+    scale = 1.0  # game seconds per t of this file (gtime.factor of its header, the first line)
     with open(path, encoding='utf-8') as f:
         for line in f:
             e = json.loads(line)
             ev = e.get('ev')
             if ev == 'game':
                 header = e
+                scale = gtime.factor(e)
             elif ev == 'census':
-                census.setdefault(e['s'], []).append((e['t'], e['strength'], e['kills'], e['lost']))
-            elif ev in ('out', 'collapse'):
+                census.setdefault(e['s'], []).append((e['t'] * scale, e['strength'], e['kills'], e['lost']))
+            elif ev in gtime.OUTS:
                 if e['s'] not in outs:
-                    outs[e['s']] = e['t']
+                    outs[e['s']] = e['t'] * scale
     return header, census, outs
 
 
@@ -61,7 +67,7 @@ def at(series, t):
 def score_game(run, row):
     res = row.get('result')
     g = {'key': row['key'], 'seed': row['seed'], 'failed': res is None, 'problem': row.get('problem')}
-    t_end = row.get('t') or 0.0
+    t_end = gtime.row(row).get('t') or 0.0
     g['tmin'] = t_end / 60.0
     if res is None:
         g.update(win=0, elim=0.0, prog=0.0, kd=-3.0)

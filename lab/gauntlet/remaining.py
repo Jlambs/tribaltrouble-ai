@@ -1,5 +1,10 @@
-"""Win rate conditioned on reaching k remaining copies (alive) vs the fresh-N=k win rate, with our state and the remaining copies' at that moment (python lab/gauntlet/remaining.py; edit RUNS/FRESH for other runs)."""
+"""Win rate conditioned on reaching k remaining copies (alive) vs the fresh-N=k win rate, with our state and the remaining copies' at that moment (python lab/gauntlet/remaining.py; edit RUNS/FRESH for other runs).
+
+Times are game seconds (gtime); a copy is out at its first out or collapse event. The state is the last census at or
+before that moment, so up to one census interval old (30 game s; 120 in old ludicrous files)."""
 import glob, json, os, statistics as st
+
+import gtime
 
 RUNS = {
     13: ['cur7-bench-vs13-a', 'cur7-bench-vs13-b', 'cur6-vs13-f1', 'cur6-vs13-f2', 'chief300-c6-vs13-f1', 'chief300-c6-vs13-f2'],
@@ -18,21 +23,23 @@ def games(run):
     for x in map(json.loads, open(f'{d}/results.jsonl')):
         f = f'{d}/g/{x["key"]}.jsonl'
         if os.path.exists(f):
-            yield x, f
+            yield gtime.row(x), f
 
 
 def parse(f):
-    outs, cen, n_en = [], {}, 0
+    outs, cen, n_en, fac = {}, {}, 0, None
     for line in open(f):
         x = json.loads(line)
+        if fac is None:
+            fac = gtime.factor(x)  # the first line is the game event
         e = x['ev']
         if e == 'game':
             n_en = len(x['players']) - 1
-        elif e == 'out' and x['s'] != 0:
-            outs.append(x['t'])
+        elif e in gtime.OUTS and x['s'] != 0:
+            outs.setdefault(x['s'], x['t'] * fac)
         elif e == 'census':
-            cen.setdefault(x['t'], {})[x['s']] = x
-    return n_en, sorted(outs), cen
+            cen.setdefault(x['t'] * fac, {})[x['s']] = x
+    return n_en, sorted(outs.values()), cen
 
 
 def at(cen, t):

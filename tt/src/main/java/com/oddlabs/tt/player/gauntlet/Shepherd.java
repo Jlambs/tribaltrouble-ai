@@ -47,17 +47,22 @@ final class Shepherd {
     private static final int SAFE_TRIES = 12;
     /** shepherd_home_pair and shepherd_follow: a copy's warrior this near its armory stands at home. */
     private static final int HOME_CELLS = 40;
-    /** shepherd_safe_walk: seconds a flee runs before the shepherd heads back for its spot. */
-    private static final float FLEE_HOLD = 3f;
+    /** shepherd_safe_walk: game ticks a flee runs before the shepherd heads back for its spot. */
+    private static final float FLEE_HOLD_TICKS = 150f; // 3 s
 
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Flock> flocks = new ArrayList<>();
-    private float last_tick = -10f;
+    private float last_tick = -500f;
     /** Log only: the threats the last threatAway counted. */
     private int threat_coming;
     private int threat_peons;
     private int threat_hunters;
     private int threat_warriors;
+    /**
+     * shepherd_flee_side, for flee's counters and tend's log: 1 when the last threatAway turned an inward flee
+     * sideways, 2 when it found no side clear (the flee stays inward), else 0.
+     */
+    private int flee_side;
     /** findSpot's legal candidates, reused. */
     private int[] cand_x = new int[128];
     private int[] cand_y = new int[128];
@@ -71,17 +76,23 @@ final class Shepherd {
         int spot_y = -1;
         @Nullable
         Unit leader;
-        float last_order = -100f;
+        float last_order = -5000f;
         float nospot_since = -1f;
         /** shepherd_sticky: since when enemies have blocked the current spot, -1 while it is clear. */
         float blocked_since = -1f;
         /** shepherd_safe_walk: after a flee the shepherd heads back for its spot only from this time on. */
         float flee_until = -1f;
+        /**
+         * shepherd_flee_side: the side (1 or -1 along the left perpendicular of the line from our start) of the last
+         * sideways flee, kept until side_until (sideAway tries it first).
+         */
+        int side_sign;
+        float side_until = -1f;
         /** Log and counters only: what the shepherd did at the last tend (walk, at, flee, nospot). */
         @NonNull
         String last_state = "walk";
-        /** When the copy's last shepherd was lost (shepherd_gap). */
-        float lost_at = -1000f;
+        /** When the copy's last shepherd was lost (shepherd_gap_ticks). */
+        float lost_at = -50000f;
         float recruited;
         int last_x;
         int last_y;
@@ -93,7 +104,8 @@ final class Shepherd {
         float armory_at = -1f;
         /** Launches at our base (front_order 2). */
         int base_waves;
-        // Log only (maxn K2), never read by a decision (prev_wave aside): arrival, spot jumps and launches.
+        // Log only (maxn K2), never read by a decision (prev_wave aside, and arrived by shepherd_flee_side): arrival,
+        // spot jumps and launches.
         boolean arrived;
         int rec_x;
         int rec_y;
@@ -129,12 +141,13 @@ final class Shepherd {
 
     void tick() {
         Strategy strategy = ai.strategy();
-        if (!strategy.shepherd || ai.time() - last_tick < .5f)
+        if (!strategy.shepherd || !ai.periodDue(last_tick, 25f))
             return;
-        last_tick = ai.time();
-        // shepherd_lead: flocks watch for the copies' armories from 90 s; tend recruits nothing before shepherd_time.
-        float from = strategy.shepherd_lead > 0f ? Math.min(90f, strategy.shepherd_time) : strategy.shepherd_time;
-        if (ai.time() < from || ai.time() > strategy.shepherd_until) {
+        last_tick = ai.now();
+        // shepherd_lead: flocks watch for the copies' armories from 90 s; tend recruits nothing before shepherd_ticks.
+        float from = strategy.shepherd_lead_ticks > 0f ? Math.min(4500f,
+                strategy.shepherd_ticks) : strategy.shepherd_ticks;
+        if (ai.now() < from || ai.now() > strategy.shepherd_until_ticks) {
             releaseAll();
             return;
         }
@@ -143,7 +156,7 @@ final class Shepherd {
         for (Player p : ai.owner().getWorld().getPlayers())
             if (ai.owner().isEnemy(p) && p.isAlive() && flockOf(p) == null)
                 fresh.add(p);
-        if (strategy.shepherd_lead > 0f && fresh.size() > 1) {
+        if (strategy.shepherd_lead_ticks > 0f && fresh.size() > 1) {
             // Far copies first, so their shepherds get the scarce peons (a stable sort: ties stay in slot order).
             int sx = ai.planner().getStartX();
             int sy = ai.planner().getStartY();
@@ -170,14 +183,16 @@ final class Shepherd {
             if (f.shepherd != null && f.shepherd.isDead()) {
                 ai.aiLog().count("shepherd_lost");
                 ai.aiLog().count("shepherd_lost_" + f.last_state);
-                f.lost_at = ai.time();
+                f.lost_at = ai.now();
                 if (ai.logging())
                     ai.log("shepherd of " + name(
                             f) + " lost at " + f.last_x + "," + f.last_y + " (spot " + f.spot_x + "," + f.spot_y + ", nearest enemy warrior " + nearestEnemy(
                                     ai.intel().enemy_warriors, f.last_x, f.last_y) + " cells, peon " + nearestEnemy(
                                             ai.intel().enemy_peons, f.last_x, f.last_y) + ", tower " + nearestTower(
                                                     f.last_x,
-                                                    f.last_y) + ", recruited " + (int) (ai.time() - f.recruited) + " s ago, " + f.last_state + ", last flee " + (f.flee_until < 0f ? "never" : (int) (ai.time() - f.flee_until + FLEE_HOLD) + " s ago") + ")");
+                                                    f.last_y) + ", recruited " + (int) GauntletAI.seconds(
+                                                            ai.now() - f.recruited) + " s ago, " + f.last_state + ", last flee " + (f.flee_until < 0f ? "never" : (int) GauntletAI.seconds(
+                                                                    ai.now() - f.flee_until + FLEE_HOLD_TICKS) + " s ago") + ")");
                 release(f);
             }
             if (!f.copy.isAlive()) {
@@ -198,8 +213,10 @@ final class Shepherd {
             if (s == null || s.isDead() || s.isMounted())
                 continue;
             int clear = ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS;
-            int[] away = threatAway(s, intel, clear);
-            if (away != null && ai.time() - f.last_order >= .3f)
+            int[] away = threatAway(f, s, intel, clear);
+            // 0.3 s at least between orders: a minimum spacing, not a period (the guard runs 4 or 8 game ticks
+            // apart at ludicrous, where periodDue would re-order after 12 or 16)
+            if (away != null && ai.now() - f.last_order >= 15f)
                 flee(f, s, away);
         }
     }
@@ -211,8 +228,11 @@ final class Shepherd {
 
     private void flee(@NonNull Flock f, @NonNull Unit s, int @NonNull [] away) {
         ai.landscapeOrder(Selectable.newArray(s), away[0], away[1], Action.MOVE, false);
-        f.last_order = ai.time();
-        f.flee_until = ai.time() + FLEE_HOLD;
+        f.last_order = ai.now();
+        f.flee_until = ai.now() + FLEE_HOLD_TICKS;
+        // shepherd_flee_side: per flee order, whether the threatAway just before turned it sideways.
+        if (flee_side != 0)
+            ai.aiLog().count(flee_side == 1 ? "shepherd_flee_side" : "shepherd_flee_side_none");
     }
 
     private @Nullable Flock flockOf(@NonNull Player p) {
@@ -249,7 +269,7 @@ final class Shepherd {
                 f.shepherd = null;
                 f.spot_x = -1;
                 f.leader = null;
-                f.lost_at = ai.time();
+                f.lost_at = ai.now();
                 ai.aiLog().count("shepherd_given_up");
                 return true;
             }
@@ -266,8 +286,8 @@ final class Shepherd {
 
     private void tend(@NonNull Flock f, @NonNull Intel intel) {
         Strategy strategy = ai.strategy();
-        if (strategy.shepherd_lead > 0f && f.armory_at < 0f && armory(f.copy) != null)
-            f.armory_at = ai.time();
+        if (strategy.shepherd_lead_ticks > 0f && f.armory_at < 0f && armory(f.copy) != null)
+            f.armory_at = ai.now();
         Unit leader = oldestIdleWarrior(f.copy);
         int ox;
         int oy;
@@ -365,11 +385,11 @@ final class Shepherd {
             if (f.imminent && !was)
                 ai.aiLog().count("shepherd_imminent");
         }
-        if (ai.time() < strategy.shepherd_time)
-            return; // shepherd_lead: before shepherd_time flocks only watch
+        if (ai.now() < strategy.shepherd_ticks)
+            return; // shepherd_lead: before shepherd_ticks flocks only watch
         if (f.shepherd == null) {
             // shepherd_gap: after a shepherd is lost, its copy waits that long for the next one.
-            if (ai.time() - f.lost_at < strategy.shepherd_gap) {
+            if (ai.now() - f.lost_at < strategy.shepherd_gap_ticks) {
                 ai.aiLog().count("shepherd_gap_wait");
                 return;
             }
@@ -382,7 +402,7 @@ final class Shepherd {
             int[] probe = findSpot(f, ox, oy, null, intel);
             if (probe == null) {
                 ai.aiLog().count("shepherd_t_none");
-                if (ai.strategy().site_shepherd && ai.time() >= ai.strategy().shepherd_time)
+                if (ai.strategy().site_shepherd && ai.now() >= ai.strategy().shepherd_ticks)
                     ai.decoys().placeHome(f.copy, ox, oy);
                 return;
             }
@@ -393,13 +413,14 @@ final class Shepherd {
                 return;
             }
             // shepherd_lead: before the copy's first launch, while it has no idle warrior to launch, the shepherd
-            // leaves only in time to stand on the spot shepherd_lead_margin s before armory_at + shepherd_lead.
-            boolean lead = strategy.shepherd_lead > 0f && f.launches == 0 && leader == null;
+            // leaves only in time to stand on the spot shepherd_lead_margin_ticks before armory_at +
+            // shepherd_lead_ticks.
+            boolean lead = strategy.shepherd_lead_ticks > 0f && f.launches == 0 && leader == null;
             int walk2 = MapAnalysis.dist2(candidate.getGridX(), candidate.getGridY(), probe[0], probe[1]);
             if (lead) {
-                float eta = (float) Math.sqrt(walk2) / strategy.shepherd_speed + 5f;
+                float eta = (float) Math.sqrt(walk2) / strategy.shepherd_cells_per_tick + 250f;
                 if (f.armory_at < 0f
-                        || ai.time() < f.armory_at + strategy.shepherd_lead - eta - strategy.shepherd_lead_margin) {
+                        || ai.now() < f.armory_at + strategy.shepherd_lead_ticks - eta - strategy.shepherd_lead_margin_ticks) {
                     ai.aiLog().count("shepherd_wait");
                     return;
                 }
@@ -407,7 +428,7 @@ final class Shepherd {
             PeonState state = intel.peon_states.get(candidate);
             f.shepherd = candidate;
             intel.shepherds.add(candidate);
-            f.recruited = ai.time();
+            f.recruited = ai.now();
             f.nospot_since = -1f;
             ai.aiLog().count("shepherd_recruit");
             if (loaded(candidate))
@@ -419,6 +440,7 @@ final class Shepherd {
             f.arrived = false;
             f.last_state = "walk";
             f.flee_until = -1f;
+            f.side_until = -1f;
             f.rec_x = candidate.getGridX();
             f.rec_y = candidate.getGridY();
             f.rec_spot_x = probe[0];
@@ -428,21 +450,22 @@ final class Shepherd {
                 ai.log("shepherd of " + name(f) + " recruited: " + (state == null ? "?" : state.name().toLowerCase(
                         Locale.ROOT)) + (loaded(
                                 candidate) ? " loaded" : "") + " peon at " + f.rec_x + "," + f.rec_y + ", spot " + probe[0] + "," + probe[1] + ", walk " + (int) Math.sqrt(
-                                        walk2) + " cells, origin " + origin + (lead ? ", lead (armory at " + (int) f.armory_at + " s)" : ""));
+                                        walk2) + " cells, origin " + origin + (lead ? ", lead (armory at " + (int) GauntletAI.seconds(
+                                                f.armory_at) + " s)" : ""));
         }
         Unit s = f.shepherd;
         int moved = Math.abs(s.getGridX() - f.last_x) + Math.abs(s.getGridY() - f.last_y);
         f.last_x = s.getGridX();
         f.last_y = s.getGridY();
         // Flee first: any enemy near the shepherd, or a wave walking toward where it stands.
-        int[] away = threatAway(s, intel, ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS);
+        int[] away = threatAway(f, s, intel, ai.strategy().shepherd_hold && f.imminent ? 9 : CLEAR_CELLS);
         if (away != null) {
             ai.aiLog().count("shepherd_t_flee");
             f.last_state = "flee";
             if (ai.logging())
                 ai.log("flee of " + name(
-                        f) + " at " + s.getGridX() + "," + s.getGridY() + " (moved " + moved + ") from " + threat_warriors + " warriors, " + threat_hunters + " hunters, " + threat_peons + " peons, " + threat_coming + " coming, to " + away[0] + "," + away[1]);
-            if (ai.time() - f.last_order >= .3f)
+                        f) + " at " + s.getGridX() + "," + s.getGridY() + " (moved " + moved + ") from " + threat_warriors + " warriors, " + threat_hunters + " hunters, " + threat_peons + " peons, " + threat_coming + " coming, to " + away[0] + "," + away[1] + (flee_side == 1 ? " (sideways)" : flee_side == 2 ? " (no side clear)" : ""));
+            if (ai.now() - f.last_order >= 15f) // the guard's minimum spacing
                 flee(f, s, away);
             return;
         }
@@ -454,8 +477,8 @@ final class Shepherd {
             ai.aiLog().count("shepherd_t_nospot");
             f.last_state = "nospot";
             if (f.nospot_since < 0f)
-                f.nospot_since = ai.time();
-            else if (ai.time() - f.nospot_since > ai.strategy().shepherd_patience) {
+                f.nospot_since = ai.now();
+            else if (ai.now() - f.nospot_since > ai.strategy().shepherd_patience_ticks) {
                 ai.aiLog().count("shepherd_home");
                 release(f);
             }
@@ -481,22 +504,25 @@ final class Shepherd {
             ai.aiLog().count("shepherd_at_spot");
             if (ai.logging())
                 ai.log("shepherd of " + name(
-                        f) + " at spot after " + (int) (ai.time() - f.recruited) + " s (from " + f.rec_x + "," + f.rec_y + ", " + (int) Math.sqrt(
-                                MapAnalysis.dist2(
-                                        f.rec_x, f.rec_y, s.getGridX(),
-                                        s.getGridY())) + " cells; spot moved " + (int) Math.sqrt(MapAnalysis.dist2(
-                                                f.rec_spot_x,
-                                                f.rec_spot_y, spot[0], spot[1])) + " cells since recruited)");
+                        f) + " at spot after " + (int) GauntletAI.seconds(
+                                ai.now() - f.recruited) + " s (from " + f.rec_x + "," + f.rec_y + ", " + (int) Math.sqrt(
+                                        MapAnalysis.dist2(
+                                                f.rec_x, f.rec_y, s.getGridX(),
+                                                s.getGridY())) + " cells; spot moved " + (int) Math.sqrt(
+                                                        MapAnalysis.dist2(
+                                                                f.rec_spot_x,
+                                                                f.rec_spot_y, spot[0],
+                                                                spot[1])) + " cells since recruited)");
         }
         boolean on_spot = MapAnalysis.dist2(s.getGridX(), s.getGridY(), spot[0], spot[1]) <= 3 * 3;
         ai.aiLog().count(on_spot ? "shepherd_t_atspot" : "shepherd_t_walk");
         f.last_state = on_spot ? "at" : "walk";
         // shepherd_safe_walk: a shepherd that just fled runs its full course before it heads back.
-        boolean held = strategy.shepherd_safe_walk && ai.time() < f.flee_until;
+        boolean held = strategy.shepherd_safe_walk && ai.now() < f.flee_until;
         if (MapAnalysis.dist2(s.getGridX(), s.getGridY(), spot[0], spot[1]) > 2 * 2
-                && ai.time() - f.last_order >= 2f && !held) {
+                && ai.periodDue(f.last_order, 100f) && !held) {
             ai.landscapeOrder(Selectable.newArray(s), spot[0], spot[1], Action.MOVE, false);
-            f.last_order = ai.time();
+            f.last_order = ai.now();
         }
     }
 
@@ -552,8 +578,12 @@ final class Shepherd {
         return peon.getSupplyContainer() != null && peon.getSupplyContainer().getNumSupplies() > 0;
     }
 
-    /** A point to run to when enemies are near the shepherd or a wave is walking at it, else null. */
-    private int @Nullable [] threatAway(@NonNull Unit s, @NonNull Intel intel, int clear) {
+    /**
+     * A point to run to when enemies are near the shepherd or a wave is walking at it, else null. With
+     * shepherd_flee_side, a shepherd of f that has not reached its spot yet and would run back towards our start runs
+     * sideways instead where that is clear (sideAway).
+     */
+    private int @Nullable [] threatAway(@NonNull Flock f, @NonNull Unit s, @NonNull Intel intel, int clear) {
         int sx = s.getGridX();
         int sy = s.getGridY();
         long ex = 0;
@@ -561,11 +591,12 @@ final class Shepherd {
         int n = 0;
         // The enemies near enough to count: warriors within the square or walking at us from 40 cells, peons within
         // the square (the sums do not depend on the order).
-        EnemyIndex index = intel.enemyIndex(ai.ticks());
+        EnemyIndex index = intel.enemyIndex(ai.worldTicks());
         threat_coming = 0;
         threat_peons = 0;
         threat_hunters = 0;
         threat_warriors = 0;
+        flee_side = 0;
         int[] candidates = index.queryUnordered(sx, sy, Math.max(40 * 40, 2 * clear * clear));
         for (int k = 0, m = index.count(); k < m; k++) {
             byte group = index.group(candidates[k]);
@@ -609,7 +640,70 @@ final class Shepherd {
             dy = ai.planner().getStartY() - sy;
             len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
         }
+        if (ai.strategy().shepherd_flee_side && !f.arrived) {
+            // shepherd_flee_side: a wave that catches a shepherd on its way out parks about 25 cells nearer to us
+            // (logged N=13 ludicrous games), so a flee that would lose ground towards our start (away vector a, u the
+            // unit vector from our start to the shepherd: a.u < -0.3 |a|, the fallback towards our start included)
+            // goes sideways where that is clear.
+            float ux = sx - ai.planner().getStartX();
+            float uy = sy - ai.planner().getStartY();
+            float ulen = (float) Math.sqrt(ux * ux + uy * uy);
+            if (ulen >= 1f && dx * ux + dy * uy < -.3f * len * ulen) {
+                int[] side = sideAway(f, sx, sy, dx, dy, ux / ulen, uy / ulen, cx, cy, intel);
+                flee_side = side != null ? 1 : 2;
+                if (side != null)
+                    return side;
+            }
+        }
         return new int[]{sx + Math.round(22 * dx / len), sy + Math.round(22 * dy / len)};
+    }
+
+    /**
+     * shepherd_flee_side: the cell 22 cells from (sx, sy) along a perpendicular to the unit vector (ux, uy) that lies
+     * farther from the threat centroid (cx, cy) than the shepherd and that sideClear accepts, else null. The side of
+     * f's last sideways flee goes first while it is kept (FLEE_HOLD_TICKS after it), with sideClear's looser test for
+     * a kept side; else the side the away vector (dx, dy) leans to. Picked afresh at every guard and tend, the flee
+     * flipped between the two sides and inward within a second and the shepherd hardly moved (logged N=6 ludicrous
+     * game); the centroid test keeps the other side from running past the threat.
+     */
+    private int @Nullable [] sideAway(@NonNull Flock f, int sx, int sy, float dx, float dy, float ux, float uy,
+            float cx, float cy, @NonNull Intel intel) {
+        boolean held = f.side_sign != 0 && ai.now() < f.side_until;
+        int sign = held ? f.side_sign : dx * -uy + dy * ux < 0f ? -1 : 1;
+        float d2 = (sx - cx) * (sx - cx) + (sy - cy) * (sy - cy);
+        for (int k = 0; k < 2; k++) {
+            int x = sx + Math.round(22 * sign * -uy);
+            int y = sy + Math.round(22 * sign * ux);
+            if ((x - cx) * (x - cx) + (y - cy) * (y - cy) > d2 && sideClear(x, y, held && k == 0, intel)) {
+                f.side_sign = sign;
+                f.side_until = ai.now() + FLEE_HOLD_TICKS;
+                return new int[]{x, y};
+            }
+            sign = -sign;
+        }
+        return null;
+    }
+
+    /**
+     * shepherd_flee_side: whether (x, y) is reachable from our start, has no enemy warrior or chieftain (dead ones
+     * still in Intel's lists included) within shepherd_clear cells along both axes, and lies more than 14 cells from
+     * the target of every enemy warrior on an attack-move (the threatAway coming test, over all of them). A kept side
+     * needs only the first two, within half shepherd_clear.
+     */
+    private boolean sideClear(int x, int y, boolean kept, @NonNull Intel intel) {
+        if (!ai.planner().getStartField().reachable(x, y))
+            return false;
+        int clear = kept ? ai.strategy().shepherd_clear / 2 : ai.strategy().shepherd_clear;
+        int groups = intel.enemyIndex(ai.worldTicks()).groupsInBox(x, y, clear);
+        if ((groups & (1 << EnemyIndex.WARRIOR | 1 << EnemyIndex.CHIEFTAIN)) != 0)
+            return false;
+        if (kept)
+            return true;
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && e.getPrimaryController() instanceof WalkController w && w.isAgressive()
+                    && MapAnalysis.dist2(w.getTarget().getGridX(), w.getTarget().getGridY(), x, y) <= 14 * 14)
+                return false;
+        return true;
     }
 
     /**
@@ -656,7 +750,7 @@ final class Shepherd {
         int n = 0;
         if (sticky) {
             // The current spot itself while it still leashes the wave: enemies passing by block it only after
-            // shepherd_grace seconds (the flee in tend keeps the shepherd safe meanwhile).
+            // shepherd_grace_ticks game ticks (the flee in tend keeps the shepherd safe meanwhile).
             int x = f.spot_x;
             int y = f.spot_y;
             int r2 = MapAnalysis.dist2(x, y, ox, oy);
@@ -665,8 +759,8 @@ final class Shepherd {
                 if (!blocked)
                     f.blocked_since = -1f;
                 else if (f.blocked_since < 0f)
-                    f.blocked_since = ai.time();
-                if (!blocked || ai.time() - f.blocked_since < strategy.shepherd_grace) {
+                    f.blocked_since = ai.now();
+                if (!blocked || ai.now() - f.blocked_since < strategy.shepherd_grace_ticks) {
                     float score = spotScore(x, y, (float) Math.sqrt(r2), bx, by, guarded) + strategy.shepherd_sticky;
                     if (travel > 0f)
                         score -= travel * (float) Math.sqrt(MapAnalysis.dist2(x, y, s.getGridX(), s.getGridY()));
@@ -792,7 +886,7 @@ final class Shepherd {
             return true;
         float look = Math.min(len, strategy.shepherd_safe_look);
         int clear2 = strategy.shepherd_safe_clear * strategy.shepherd_safe_clear;
-        EnemyIndex index = intel.enemyIndex(ai.ticks());
+        EnemyIndex index = intel.enemyIndex(ai.worldTicks());
         for (float d = 0f;; d += 6f) {
             float t = Math.min(d, look);
             int px = sx + Math.round(dx * t / len);
@@ -812,7 +906,7 @@ final class Shepherd {
      */
     private @Nullable String enemyNear(@NonNull Intel intel, int x, int y) {
         int clear = ai.strategy().shepherd_clear;
-        EnemyIndex index = intel.enemyIndex(ai.ticks());
+        EnemyIndex index = intel.enemyIndex(ai.worldTicks());
         int groups = index.groupsInBox(x, y, clear);
         if ((groups & 1 << EnemyIndex.WARRIOR) != 0)
             return "shepherd_rej_warrior";
@@ -825,6 +919,15 @@ final class Shepherd {
     int baseWaves(@NonNull Player p) {
         Flock f = flockOf(p);
         return f == null ? 0 : f.base_waves;
+    }
+
+    /**
+     * Launches seen from a copy so far (its wave size is 10 + 5 per launch, so from two on it needs a chieftain), or -1
+     * while no flock watches it (shepherd off, or before the flocks start). Read by decapitate.
+     */
+    int launches(@NonNull Player p) {
+        Flock f = flockOf(p);
+        return f == null ? -1 : f.launches;
     }
 
     /** Whether a live shepherd of ours stands within r cells of (x, y). */
@@ -1096,7 +1199,7 @@ final class Shepherd {
                 case "nospot" -> "no spot draws the wave";
                 default -> f.spot_x >= 0 ? "walking to the spot " + WatchView.at(f.spot_x, f.spot_y) : "walking";
             };
-            int ago = (int) (ai.time() - f.recruited);
+            int ago = WatchView.seconds(ai.now() - f.recruited);
             return "shepherd of " + name(f) + " for " + ago + " s: " + doing + "; " + copyLaunches(f) + " waves seen";
         }
         return null;

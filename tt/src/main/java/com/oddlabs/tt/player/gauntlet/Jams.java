@@ -20,24 +20,25 @@ import java.util.Map;
  * a big warrior jam gets a picture of the cells around it in the log (Military.describeJam).
  */
 final class Jams {
-    static final float PERIOD = 5f;
+    /** Game ticks between scans (5 s). */
+    static final float PERIOD_TICKS = 250f;
     private static final int CLUSTER = 4;
     private static final int RADIUS = 4;
 
     private final @NonNull GauntletAI ai;
     private final Map<@NonNull Unit, int @NonNull []> last_cells = new LinkedHashMap<>();
-    private float last_scan = -10f;
-    private float last_log = -100f;
-    private float last_pic = -1000f;
+    private float last_scan = -500f;
+    private float last_log = -5000f;
+    private float last_pic = -50000f;
 
     Jams(@NonNull GauntletAI ai) {
         this.ai = ai;
     }
 
     void tick() {
-        if (ai.time() - last_scan < PERIOD)
+        if (!ai.periodDue(last_scan, PERIOD_TICKS))
             return;
-        last_scan = ai.time();
+        last_scan = ai.now();
         Intel intel = ai.intel();
         List<Unit> blocked_peons = new ArrayList<>();
         List<Unit> blocked_warriors = new ArrayList<>();
@@ -100,8 +101,8 @@ final class Jams {
                 continue;
             left.removeAll(jam);
             ai.aiLog().count(jam_key);
-            if (ai.time() - last_log >= 20f) {
-                last_log = ai.time();
+            if (ai.periodDue(last_log, 1000f)) { // every 20 s
+                last_log = ai.now();
                 int size = jam.size();
                 int x = seed.getGridX();
                 int y = seed.getGridY();
@@ -110,8 +111,8 @@ final class Jams {
                     ai.log("jam peons: " + describePeons(jam));
             }
             // log only: what the cells around a big jam hold (12 warriors or 6 peons), at most every 150 s
-            if (ai.logging() && jam.size() >= (what.equals("warriors") ? 12 : 6) && ai.time() - last_pic >= 150f) {
-                last_pic = ai.time();
+            if (ai.logging() && jam.size() >= (what.equals("warriors") ? 12 : 6) && ai.periodDue(last_pic, 7500f)) {
+                last_pic = ai.now();
                 try {
                     ai.military().describeJam(seed.getGridX(), seed.getGridY());
                 } catch (RuntimeException e) {

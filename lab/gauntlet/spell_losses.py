@@ -4,12 +4,16 @@
     python lab/gauntlet/spell_losses.py RUN [window_s=25] [radius_cells=25]
 
 Also our total deaths, so the spells' share shows. Deaths events carry counts by kind (r i c p C).
+Times are game seconds (event t through gtime); old non-normal files polled events every 50 world ticks (4 game s at
+ludicrous), so their window edges are coarser.
 """
 import json
 import math
 import os
 import sys
 from collections import defaultdict
+
+import gtime
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 
@@ -29,14 +33,19 @@ def main(run, window=25.0, radius=25.0):
         team = {}
         casts = []
         deaths = []
+        gf = 1.
         with open(path, encoding='utf-8') as g:
             for line in g:
                 e = json.loads(line)
                 ev = e['ev']
                 if ev == 'game':
+                    gf = gtime.factor(e)
                     for p in e['players']:
                         team[p['s']] = p['team']
-                elif ev == 'cast' and team.get(e['s']) != team[0]:
+                    continue
+                if 't' in e:
+                    e['t'] *= gf
+                if ev == 'cast' and team.get(e['s']) != team[0]:
                     casts.append((e['t'], e['magic'], e['x'], e['y']))
                 elif ev == 'deaths' and e['s'] == 0:
                     kinds = {'r': e.get('rock', 0), 'i': e.get('iron', 0), 'c': e.get('rubber', 0), 'p': e.get('peon', 0), 'C': e.get('chief', 0)}

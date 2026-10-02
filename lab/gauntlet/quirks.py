@@ -9,6 +9,8 @@ Our AI is the first player of the game header (team A, slot 0 in the benchmark r
 player on another team is an enemy copy, N is their number. Signatures are read from the census (every 30 s, so they
 work on unlogged runs) and the result row's counters; when the game has a decision log (g/<key>-ai-s<slot>.log) the
 log adds detail. A census sample stands for the 30 s after it, so a stretch of k samples lasts k/2 minutes.
+All times are game seconds (gtime converts old non-normal runs at read time). Approximate in those old runs: LOCK_GAP,
+TRAP_GAP and TRAP_VANISH (census every 30*factor s) and the jam rates of pre-fix @ jars (AI clock on world ticks).
 
 Signatures and thresholds (per game; the constants below the docstring hold them):
   wood_lock      from 30 min on: units >= 240, inside >= 100 and warriors (census rock+iron+rubber, garrisons not
@@ -84,10 +86,13 @@ import os
 import re
 import sys
 
+import gtime
+
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 
 # ---------------------------------------------------------------------------------------------------- thresholds
-SAMPLE = 30.0            # census interval (s)
+SAMPLE = 30.0            # census interval (s; g['sample'] is the game's own: 30 * factor in old non-normal files)
+STAT_EVERY = 30.0        # STAT interval of the decision log (s, AI clock)
 LONG_GAME = 2400.0       # "long" games last more than this (s)
 
 LOCK_UNITS = 240         # wood_lock: at the unit cap ...
@@ -169,45 +174,54 @@ def read_rows(run):
             if not line:
                 continue
             try:
-                rows.append(json.loads(line))
+                rows.append(gtime.row(json.loads(line)))  # t and teams[].out in game seconds
             except ValueError:
                 pass  # a row being written by a running batch
     return rows
 
 
 def read_game(run, row):
-    """Our census rows, our building events and every slot's first out, from g/<key>.jsonl."""
+    """Our census rows, our building events and every slot's first out, from g/<key>.jsonl. Times are game seconds:
+    every t is multiplied by g['f'] = gtime.factor(header), which the game's AI log stamps take too."""
     key = row['key']
     path = os.path.join(ROOT, run, 'g', key + '.jsonl')
     teams = row.get('teams') or []
+    gtime.row(row)
     g = {'run': run, 'key': key, 'seed': row.get('seed', 0), 'result': row.get('result'), 'end': row.get('end'),
          't_end': float(row.get('t') or 0.0), 'N': max(1, (row.get('slots') or 2) - 1), 'slot': 0, 'enemies': [],
          'census': [], 'bld': [], 'outs': {}, 'counters': (teams[0].get('counters') or {}) if teams else {},
-         'failed': row.get('result') is None or not os.path.exists(path)}
+         'f': 1.0, 'sample': SAMPLE, 'failed': row.get('result') is None or not os.path.exists(path)}
     if g['failed']:
         return g
     census = g['census']
     bld = g['bld']
     outs = g['outs']
     tag = ',"s":0,'
-    with open(path, encoding='utf-8') as f:
-        for line in f:
+    f = 1.0
+    with open(path, encoding='utf-8') as fh:
+        for line in fh:
             k = line[7:11]
             if k == 'deat':
                 continue
             if k == 'cens':
                 if tag in line[:48]:
                     e = json.loads(line)
-                    census.append(tuple(e.get(c, 0) for c in CENSUS_FIELDS))
+                    c = [e.get(name, 0) for name in CENSUS_FIELDS]
+                    if f != 1.:
+                        c[T] *= f
+                    census.append(tuple(c))
             elif k in ('buil', 'raze', 'plac'):
                 e = json.loads(line)
                 if e['s'] == g['slot']:
-                    bld.append((e['t'], e['ev'], e['b'], e['x'], e['y'], e.get('site', 0)))
-            elif k == 'out"' or k == 'coll':
+                    bld.append((e['t'] * f if f != 1. else e['t'], e['ev'], e['b'], e['x'], e['y'], e.get('site', 0)))
+            elif k == 'out"' or k == 'coll':  # gtime.OUTS: the collapse rule writes no out event; a slot's first counts
                 e = json.loads(line)
-                outs.setdefault(e['s'], e['t'])
+                outs.setdefault(e['s'], e['t'] * f if f != 1. else e['t'])
             elif k == 'game':
                 e = json.loads(line)
+                f = gtime.factor(e)
+                g['f'] = f
+                g['sample'] = SAMPLE * f  # old non-normal files: census every 30 world-tick s
                 players = e['players']
                 g['slot'] = players[0]['s']
                 team = players[0]['team']
@@ -247,19 +261,22 @@ ATTACK_WITH = re.compile(r'attack with ([\d.]+)')
 UNSTUCK = re.compile(r'(\d+) stuck gatherers re-sent so far')
 
 
-def read_log(path):
-    """STAT samples, attack events, battle lines, jam lines and the unstick count of one decision log."""
+def read_log(path, f=1.0):
+    """STAT samples, attack events, battle lines, jam lines and the unstick count of one decision log; stamps are
+    multiplied by f, the factor of the game file beside it (g['f']), to game seconds."""
     stats = []
     events = []
     battles = []
     jams = []  # (t, kind 'warriors' | 'peons', units, x, y)
     unstuck = []  # (t, gatherers re-sent so far)
-    with open(path, encoding='utf-8', errors='replace') as f:
-        for line in f:
+    with open(path, encoding='utf-8', errors='replace') as fh:
+        for line in fh:
             m = LOG_LINE.match(line)
             if not m:
                 continue
             t = float(m.group(1))
+            if f != 1.:
+                t *= f
             topic = m.group(2)
             text = m.group(3)
             if topic == 'STAT':
@@ -313,8 +330,8 @@ def stretches(census, pred, gap):
     return out
 
 
-def span(census, i0, i1):
-    return census[i1][T] - census[i0][T] + SAMPLE
+def span(census, i0, i1, sample):
+    return census[i1][T] - census[i0][T] + sample
 
 
 def standing_buildings(bld):
@@ -353,9 +370,10 @@ def wood_locked(c):
 
 def sig_wood_lock(g, log):
     C = g['census']
-    total = sum(1 for c in C if wood_locked(c)) * SAMPLE
-    runs = [(C[a][T], C[b][T] + SAMPLE) for a, b, n in stretches(C, wood_locked, LOCK_GAP)
-            if span(C, a, b) >= LOCK_MIN]
+    sample = g['sample']
+    total = sum(1 for c in C if wood_locked(c)) * sample
+    runs = [(C[a][T], C[b][T] + sample) for a, b, n in stretches(C, wood_locked, LOCK_GAP)
+            if span(C, a, b, sample) >= LOCK_MIN]
     if not runs:
         return None
     r = {'minutes': total / 60.0, 'spans': runs, 'longest': max(b - a for a, b in runs) / 60.0}
@@ -375,7 +393,7 @@ def sig_wood_lock(g, log):
                 tree, want = int(s['peons'][4]), int(s['peons'][5])
                 if tree <= 1 and want >= 40 and int(s['W'][0]) >= 80 and int(s['res'][0]) < 2:
                     lk.append(s['t'])
-        r['log_minutes'] = len(lk) * SAMPLE / 60.0
+        r['log_minutes'] = len(lk) * STAT_EVERY / 60.0
         r['log_spans'] = merge_times(lk, 60.0)
         r['first_saturated'] = first_sat
         r['saturated_share'] = sat / inside if inside else None
@@ -384,7 +402,7 @@ def sig_wood_lock(g, log):
                      and any(a <= e[0] < b for a, b in runs) for m in [ATTACK_WITH.match(e[2])] if m)
         r['locked_attacks'] = att
         desc += ' [log %.0fm %s%s%s%s]' % (
-            r['log_minutes'], ' '.join(fmt_span(a, b + SAMPLE) for a, b in r['log_spans']),
+            r['log_minutes'], ' '.join(fmt_span(a, b + STAT_EVERY) for a, b in r['log_spans']),
             '' if first_sat is None else ', cyc>=90 from %.0f' % mins(first_sat),
             '' if not inside else ', cyc>=90 in %.0f%% of locked STAT' % (100.0 * sat / inside),
             '' if not att else ', %d attacks launched while locked (median strength %.1f)' % (
@@ -406,6 +424,7 @@ def merge_times(ts, gap):
 
 def sig_stuck_army(g, log):
     C = g['census']
+    sample = g['sample']
     ev = standing_buildings(g['bld'])
     e_outs = g['e_outs']
     runs = []
@@ -430,7 +449,7 @@ def sig_stuck_army(g, log):
         j = i
         while j + 1 < n:
             c = C[j + 1]
-            if c[T] - C[j][T] > SAMPLE + 1 or not ok(c):
+            if c[T] - C[j][T] > sample + 1 or not ok(c):
                 break
             if (c[ARMYX] - c0[ARMYX]) ** 2 + (c[ARMYY] - c0[ARMYY]) ** 2 > STUCK_RADIUS ** 2:
                 break
@@ -440,19 +459,19 @@ def sig_stuck_army(g, log):
             if not away(c):
                 break
             j += 1
-        if span(C, i, j) >= STUCK_MIN:
+        if span(C, i, j, sample) >= STUCK_MIN:
             runs.append((i, j))
             i = j + 1
         else:
             i += 1
     if not runs:
         return None
-    spans = [(C[a][T], C[b][T] + SAMPLE) for a, b in runs]
+    spans = [(C[a][T], C[b][T] + sample) for a, b in runs]
     total = sum(b - a for a, b in spans)
     size = max(warriors(C[a]) for a, _ in runs)
     parts = []
     for a, b in runs:
-        parts.append('%s at %d,%d (%d warriors)' % (fmt_span(C[a][T], C[b][T] + SAMPLE), C[a][ARMYX], C[a][ARMYY],
+        parts.append('%s at %d,%d (%d warriors)' % (fmt_span(C[a][T], C[b][T] + sample), C[a][ARMYX], C[a][ARMYY],
                                                    warriors(C[a])))
     r = {'minutes': total / 60.0, 'spans': spans, 'size': size, 'where': [(C[a][ARMYX], C[a][ARMYY]) for a, _ in runs]}
     desc = 'stuck_army %.0fm (%s)' % (r['minutes'], '; '.join(parts))
@@ -484,8 +503,9 @@ def sig_peon_trap(g, log):
     def bank(c):
         return (c[INSIDE] >= TRAP_INSIDE and warriors(c) <= TRAP_WARRIORS and not wood_locked(c)
                 and c[STOCKROCK] + c[STOCKIRON] + c[STOCKRUBBER] == 0)
-    banks = [(C[a][T], C[b][T] + SAMPLE, max(C[k][INSIDE] for k in range(a, b + 1)))
-             for a, b, n in stretches(C, bank, TRAP_GAP) if span(C, a, b) >= TRAP_MIN]
+    sample = g['sample']
+    banks = [(C[a][T], C[b][T] + sample, max(C[k][INSIDE] for k in range(a, b + 1)))
+             for a, b, n in stretches(C, bank, TRAP_GAP) if span(C, a, b, sample) >= TRAP_MIN]
     ts = [c[T] for c in C]
     seen = set()
     razings = []
@@ -517,7 +537,7 @@ def sig_peon_trap(g, log):
                 w, want = int(s['W'][0]), int(s['W'][1])
                 if w >= want + TRAP_LOG_EXCESS and int(s['res'][2]) < 2 and int(s['res'][1]) < 2:
                     trap.append((s['t'], w, want))
-        r['log_minutes'] = len(trap) * SAMPLE / 60.0
+        r['log_minutes'] = len(trap) * STAT_EVERY / 60.0
         if trap:
             mx = max(trap, key=lambda z: z[1] - z[2])
             desc += ' [log %.1fm idle bank with no ore, worst W=%d/%d at %.0f]' % (r['log_minutes'], mx[1], mx[2],
@@ -619,7 +639,7 @@ def peon_jam_context(g, log, e):
         bs = sorted((round(((x - e['x']) ** 2 + (y - e['y']) ** 2) ** 0.5), x, y) for b, x, y in standing if b == kind)
         if bs:
             parts.append('%d cells from our %s at %d,%d' % (bs[0][0], kind, bs[0][1], bs[0][2]))
-    st = [s for s in log['stats'] if s['t'] <= e['t0'] + SAMPLE and 'peons' in s]
+    st = [s for s in log['stats'] if s['t'] <= e['t0'] + STAT_EVERY and 'peons' in s]
     if st:
         p = st[-1]['peons']
         parts.append('gatherers tree %s/%s iron %s/%s rock %s/%s' % p[4:10])
@@ -697,7 +717,7 @@ def sig_homeless_alive(g, log):
         elif had and start is None:
             start = c[T]
     if start is not None:
-        runs.append((start, g['a_out'] if g['a_out'] is not None else C[-1][T] + SAMPLE, False))
+        runs.append((start, g['a_out'] if g['a_out'] is not None else C[-1][T] + g['sample'], False))
     runs = [r for r in runs if r[1] - r[0] >= HOMELESS_MIN]
     if not runs:
         return None
@@ -747,7 +767,7 @@ def scan_game(run, row, with_log=True):
     if g['failed']:
         g['flags'] = {}
         return g
-    log = read_log(g['log_path']) if with_log and g['log_path'] else None
+    log = read_log(g['log_path'], g['f']) if with_log and g['log_path'] else None
     g['has_log'] = log is not None
     g['flags'] = {}
     for s in SIGS:
@@ -870,7 +890,7 @@ def detail(run, key):
     if g['failed']:
         print('%s %s: failed game (%s)' % (run, key, row.get('problem')))
         return
-    log = read_log(g['log_path']) if g['log_path'] else None
+    log = read_log(g['log_path'], g['f']) if g['log_path'] else None
     C = g['census']
     if not C:
         print('%s %s: no census of ours' % (run, key))
@@ -891,6 +911,7 @@ def detail(run, key):
         print('  no signature')
         return
     ts = [c[T] for c in C]
+    sample = g['sample']
 
     def census_at(t):
         i = max(0, min(len(C) - 1, bisect.bisect_right(ts, t) - 1))
@@ -903,7 +924,7 @@ def detail(run, key):
         print('  == ' + f['desc'])
         for a, b in windows_of(s, f):
             print('    %s min' % fmt_span(a, b))
-            step = max(SAMPLE, round((b - a) / 8.0 / SAMPLE) * SAMPLE)
+            step = max(sample, round((b - a) / 8.0 / sample) * sample)
             t = a
             while t < b:
                 print('      %6.1f  %s' % (mins(t), census_line(census_at(t))))
@@ -931,7 +952,7 @@ def detail(run, key):
                 print('    log: ' + n)
         if s == 'wood_lock' and 'log_minutes' in f:
             print('    log: locked %.1f min in %s; first cyc>=90 after 30 min: %s' % (
-                f['log_minutes'], ' '.join(fmt_span(a, b + SAMPLE) for a, b in f['log_spans']) or '-',
+                f['log_minutes'], ' '.join(fmt_span(a, b + STAT_EVERY) for a, b in f['log_spans']) or '-',
                 '%.1f min' % mins(f['first_saturated']) if f['first_saturated'] is not None else '-'))
         if s in JAM_SIGS and not log:
             print('    no decision log: the jam spots need a logged replay of this game (%s)' % row.get('replay', ''))

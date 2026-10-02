@@ -8,7 +8,6 @@ import com.oddlabs.tt.model.Unit;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-
 /**
  * Trains the chieftain once the economy can spare a quarters for it, keeps him near the fighting but out of reach,
  * and blows the stun (the viking toot) when it catches enough enemies, towers included, to decide the fight.
@@ -20,15 +19,15 @@ final class Chieftain {
      * An enemy chieftain inside the radius (less the few meters he walks during the wind-up) is caught before he casts.
      */
     private static final int STUN_REACH = 17;
-    private static final float MOVE_PERIOD = 1.5f;
+    private static final float MOVE_PERIOD_TICKS = 75f; // 1.5 s
     /** Cells from an active enemy tower the chieftain keeps: out of its throws (16 cells), inside the stun's reach. */
     private static final int TOWER_KEEP = 17;
     /** Squared cells within which a tower is caught by the stun from the standoff. */
     private static final int TOWER_CAUGHT2 = 300;
 
     private final @NonNull GauntletAI ai;
-    private float last_move = -100f;
-    private float last_cast = -100f;
+    private float last_move = -5000f;
+    private float last_cast = -5000f;
     private boolean had_chief;
     /** Enemy warriors in reach when the last stun was cast, checked once it has gone off. */
     private final java.util.List<@NonNull Unit> cast_candidates = new java.util.ArrayList<>();
@@ -50,9 +49,9 @@ final class Chieftain {
         return ai.strategy().native_lightning ? RacesResources.INDEX_MAGIC_LIGHTNING : RacesResources.INDEX_MAGIC_POISON;
     }
 
-    /** Seconds since the chieftain last cast, or a large number. */
+    /** Game ticks since the chieftain last cast, or a large number. */
     float sinceCast() {
-        return ai.time() - last_cast;
+        return ai.now() - last_cast;
     }
 
     private boolean isViking() {
@@ -117,8 +116,8 @@ final class Chieftain {
                 // counters only: how many of his deaths come in the wake window after his own cast
                 had_chief = false;
                 ai.aiLog().count("chief_lost");
-                float since = ai.time() - last_cast;
-                if (since >= 5f && since <= 40f)
+                float since = ai.now() - last_cast;
+                if (since >= 250f && since <= 2000f)
                     ai.aiLog().count("chief_lost_wake");
             }
             considerTraining();
@@ -130,7 +129,7 @@ final class Chieftain {
         if (ai.strategy().blast && isViking() && chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST)
                 && shouldBlast(chief)) {
             ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
-            last_cast = ai.time();
+            last_cast = ai.now();
             return;
         }
         if (shred(chief))
@@ -148,13 +147,13 @@ final class Chieftain {
             ai.log("chieftain stuns at " + x + "," + y + ": " + Combat.countNear(ai.intel().enemy_warriors, x, y,
                     17) + " enemy warriors in reach" + rivals);
             ai.owner().doMagic(chief, magicIndex());
-            last_cast = ai.time();
+            last_cast = ai.now();
             if (isViking()) {
                 cast_candidates.clear();
                 for (Unit e : ai.intel().enemy_warriors)
                     if (!Intel.isStunned(e) && MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 17 * 17)
                         cast_candidates.add(e);
-                cast_check = ai.time() + 8f;
+                cast_check = ai.now() + 400f;
                 cast_best = 0;
             }
             return;
@@ -173,7 +172,7 @@ final class Chieftain {
      * dead by 15 min).
      */
     private void den(@NonNull Unit chief) {
-        if (ai.time() - last_move < MOVE_PERIOD || ai.military().isDodging(chief))
+        if (!ai.periodDue(last_move, MOVE_PERIOD_TICKS) || ai.military().isDodging(chief))
             return;
         Military military = ai.military();
         int tx = military.stagingX();
@@ -202,14 +201,14 @@ final class Chieftain {
         }
         if (MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), tx, ty) <= 4 * 4)
             return;
-        last_move = ai.time();
+        last_move = ai.now();
         ai.landscapeOrder(Selectable.newArray(chief), tx, ty, Action.MOVE, false);
     }
 
     /** The idle blob the chieftain is walking to, to blast it, or null. */
     private int @Nullable [] shred_target;
-    private float shred_trace = -100f;
-    private float shred_trace2 = -100f;
+    private float shred_trace = -5000f;
+    private float shred_trace2 = -5000f;
 
     /**
      * The shred mission: idle enemy blobs (waves parked by shepherds, or left idle after razing something) see 8 cells
@@ -223,8 +222,8 @@ final class Chieftain {
         if (!strategy.shred || !isViking())
             return false;
         boolean charged = chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST);
-        if (ai.logging() && ai.time() - shred_trace >= 20f) {
-            shred_trace = ai.time();
+        if (ai.logging() && ai.periodDue(shred_trace, 1000f)) {
+            shred_trace = ai.now();
             int[] b = findBlob(chief.getGridX(), chief.getGridY());
             ai.log(String.format("shred: charged %b hp %d blast %.2f blob %s", charged, chief.getHitPoints(),
                     chief.getMagicProgress(RacesResources.INDEX_MAGIC_BLAST),
@@ -261,8 +260,8 @@ final class Chieftain {
             enemies.addAll(ai.intel().enemy_chieftains);
             enemies.addAll(ai.intel().enemy_peons);
             int[] at = castPoint(blob, cx, cy);
-            if (at == null && ai.logging() && ai.time() - shred_trace2 >= 20f) {
-                shred_trace2 = ai.time();
+            if (at == null && ai.logging() && ai.periodDue(shred_trace2, 1000f)) {
+                shred_trace2 = ai.now();
                 // What sees the ring around the blob: per kind, how many ring cells each blocks.
                 int[] seen_by = new int[4];
                 int cells = 0;
@@ -294,15 +293,15 @@ final class Chieftain {
                 ai.log(String.format("chieftain blasts a parked blob at %d,%d from %d,%d (%d in reach)", blob[0],
                         blob[1], cx, cy, at[2]));
                 ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
-                last_cast = ai.time();
-                last_move = ai.time();
+                last_cast = ai.now();
+                last_move = ai.now();
                 ai.aiLog().count("shred_blast");
                 shred_target = null;
                 return true;
             }
-            if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
+            if (ai.periodDue(last_move, 50f) && !ai.military().isDodging(chief)) {
                 ai.landscapeOrder(Selectable.newArray(chief), at[0], at[1], Action.MOVE, false);
-                last_move = ai.time();
+                last_move = ai.now();
             }
             return true;
         }
@@ -312,17 +311,17 @@ final class Chieftain {
             ai.log(String.format("chieftain blasts a parked blob of %d at %d,%d (nearest %d cells)", blob[3], blob[0],
                     blob[1], nearest));
             ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
-            last_cast = ai.time();
-            last_move = ai.time();
+            last_cast = ai.now();
+            last_move = ai.now();
             ai.aiLog().count("shred_blast");
             shred_target = null;
             return true;
         }
-        if (ai.time() - last_move >= 1f && !ai.military().isDodging(chief)) {
+        if (ai.periodDue(last_move, 50f) && !ai.military().isDodging(chief)) {
             int[] stop = nearest > 11 ? MapAnalysis.towards(cx, cy, blob[0], blob[1], Math.max(2,
                     nearest - 10)) : MapAnalysis.towards(blob[0], blob[1], cx, cy, 12);
             ai.landscapeOrder(Selectable.newArray(chief), stop[0], stop[1], Action.MOVE, false);
-            last_move = ai.time();
+            last_move = ai.now();
         }
         return true;
     }
@@ -355,8 +354,8 @@ final class Chieftain {
             return false;
         ai.log(String.format("chieftain blasts from %d,%d (%d enemy warriors in reach)", cx, cy, here));
         ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
-        last_cast = ai.time();
-        last_move = ai.time();
+        last_cast = ai.now();
+        last_move = ai.now();
         ai.aiLog().count("shred_blast");
         for (int i = 0; i < here; i++)
             ai.aiLog().count("shred_caught");
@@ -571,7 +570,7 @@ final class Chieftain {
                 caught++;
         }
         cast_best = Math.max(cast_best, caught);
-        if (ai.time() < cast_check)
+        if (ai.now() < cast_check)
             return;
         cast_check = -1f;
         caught = Math.min(alive, cast_best);
@@ -623,7 +622,7 @@ final class Chieftain {
             ai.aiLog().count("chief_train");
             return best;
         }
-        if (ai.time() - train_possible <= 60f)
+        if (ai.now() - train_possible <= 3000f)
             return null;
         int best_d = -1;
         for (Building q : intel.quarters) {
@@ -649,7 +648,7 @@ final class Chieftain {
         Intel intel = ai.intel();
         if (ai.owner().isTrainingChieftain() || !ai.owner().canBuildChieftains())
             return;
-        if (intel.quarters.size() < strategy.chieftain_min_quarters || ai.time() < strategy.chieftain_time)
+        if (intel.quarters.size() < strategy.chieftain_min_quarters || ai.now() < strategy.chieftain_ticks)
             return;
         if (intel.armory() == null)
             return;
@@ -657,9 +656,9 @@ final class Chieftain {
         float best_score = -Float.MAX_VALUE;
         if (strategy.chief_trainer_near) {
             if (train_possible < 0f)
-                train_possible = ai.time();
+                train_possible = ai.now();
             best = nearTrainer(intel);
-            if (best == null && ai.time() - train_possible <= 60f)
+            if (best == null && ai.now() - train_possible <= 3000f)
                 return;
         } else
             for (Building q : intel.quarters) {
@@ -751,11 +750,11 @@ final class Chieftain {
         boolean threatened = safe > 0 && !stunReady()
                 && nearestWarriorDistance(chief.getGridX(), chief.getGridY()) <= safe;
         // chief_wake_retreat: after his cast the warriors he froze count too, since they wake within his reach
-        float wake = ai.strategy().chief_wake_retreat;
+        float wake = ai.strategy().chief_wake_retreat_ticks;
         int wake_keep = ai.strategy().chief_wake_keep;
-        boolean waking = wake > 0f && !stunReady() && ai.time() - last_cast >= wake;
+        boolean waking = wake > 0f && !stunReady() && ai.now() - last_cast >= wake;
         threatened |= waking && nearestWarriorDistance(chief.getGridX(), chief.getGridY(), true) <= wake_keep;
-        if ((ai.time() - last_move < MOVE_PERIOD && !threatened) || ai.military().isDodging(chief))
+        if ((!ai.periodDue(last_move, MOVE_PERIOD_TICKS) && !threatened) || ai.military().isDodging(chief))
             return;
         Military military = ai.military();
         int[] army = military.attackCenter();
@@ -831,7 +830,7 @@ final class Chieftain {
         }
         if (MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), tx, ty) <= 3 * 3)
             return;
-        last_move = ai.time();
+        last_move = ai.now();
         ai.landscapeOrder(Selectable.newArray(chief), tx, ty, Action.MOVE, false);
     }
 
@@ -983,7 +982,7 @@ final class Chieftain {
             canvas.line(layer, x, y, walk.getTarget().getGridX(), walk.getTarget().getGridY(), WatchView.CHIEF_WALK);
         if (ready && isViking())
             canvas.circle(layer, x, y, STUN_REACH, WatchView.STUN_REACH);
-        if (cast_check >= ai.time())
+        if (cast_check >= ai.now())
             for (Unit e : cast_candidates)
                 if (!e.isDead())
                     canvas.mark(layer, e.getGridX(), e.getGridY(), WatchView.STUN_REACH, "");
@@ -1001,7 +1000,7 @@ final class Chieftain {
      * which enemyDodges reads) once checkCatch has judged a stun: before that it is only the prior.
      */
     private @NonNull String spellText(boolean ready) {
-        String cast = last_cast < 0f ? "never cast" : "cast " + (int) (ai.time() - last_cast) + " s ago";
+        String cast = last_cast < 0f ? "never cast" : "cast " + WatchView.seconds(ai.now() - last_cast) + " s ago";
         String spell = spellName() + (ready ? " ready" : " charging") + ", " + cast;
         if (!isViking())
             return spell;

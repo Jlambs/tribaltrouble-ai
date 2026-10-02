@@ -3,6 +3,7 @@ package com.oddlabs.tt.player.gauntlet;
 import com.oddlabs.tt.model.Abilities;
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
+import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
@@ -46,7 +47,7 @@ final class Military {
     }
 
     private static final int ENGAGE_RADIUS = 22;
-    private static final float REORDER_PERIOD = 2.5f;
+    private static final float REORDER_PERIOD_TICKS = 125f; // 2.5 s
 
     private final @NonNull GauntletAI ai;
     private final Map<@NonNull Unit, @NonNull Role> roles = new LinkedHashMap<>();
@@ -62,7 +63,7 @@ final class Military {
     private @NonNull Mode mode = Mode.HOME;
     private int staging_x;
     private int staging_y;
-    private float staging_time = -100f;
+    private float staging_time = -5000f;
 
     // Threat to the base, recomputed every tick.
     private final List<@NonNull Unit> threats = new ArrayList<>();
@@ -82,11 +83,11 @@ final class Military {
     private @Nullable Selectable<?> target;
     /**
      * Targets whose attack stalled (the army could not get there: a site on ground it cannot reach), and when. Target
-     * choice skips them for STALL_MEMORY seconds, so the army moves on instead of marching at them for hours (the
-     * N=10 draw gfinal-vs10-hv s93: 5 hours of attacks on an unreachable site while two remnant copies lived on).
+     * choice skips them for STALL_MEMORY_TICKS game ticks, so the army moves on instead of marching at them for hours
+     * (the N=10 draw gfinal-vs10-hv s93: 5 hours of attacks on an unreachable site while two remnant copies lived on).
      */
     private final Map<@NonNull Selectable<?>, Float> stalled_targets = new LinkedHashMap<>();
-    private static final float STALL_MEMORY = 600f;
+    private static final float STALL_MEMORY_TICKS = 30000f; // 600 s
     /**
      * Regions the army could not enter (the stalled target's distance field did not reach our staging point), and when
      * found: every target inside one is skipped too (N=10 s93: a copy's 20 peons stuck with a site in a 252-cell pocket
@@ -95,12 +96,33 @@ final class Military {
     private final List<@NonNull DistanceField> dead_regions = new ArrayList<>();
     private final List<@NonNull Float> dead_region_times = new ArrayList<>();
 
-    /** Whether (x, y) lies in a region the army found it cannot enter. */
-    private boolean inDeadRegion(int x, int y) {
+    /**
+     * Whether the target lies in a region the army found it cannot enter: a unit by the cells within 2 of it, a
+     * building (whose footprint no field but its own reaches) by those within deadReach of its centre.
+     */
+    private boolean inDeadRegion(@NonNull Selectable<?> t) {
+        return inDeadRegion(t.getGridX(), t.getGridY(), deadReach(t));
+    }
+
+    private boolean inDeadRegion(int x, int y, int reach) {
         for (DistanceField f : dead_regions)
-            if (f.getAround(x, y, 2) != DistanceField.UNREACHABLE)
+            if (f.getAround(x, y, reach) != DistanceField.UNREACHABLE)
                 return true;
         return false;
+    }
+
+    /**
+     * The cells around t's centre that the dead-region test looks at: 2 for a unit; for a building dead_region_reach
+     * (from pocket_from_ticks on, else 2), but no farther than the ring around its footprint (placing size - 1: 4 for
+     * a quarters' or armory's 7 x 7, 2 for a tower's 3 x 3, LandBuilding.occupy; never below 2), so that a tower
+     * across a thin wall from a dead pocket stays a target.
+     */
+    private int deadReach(@NonNull Selectable<?> t) {
+        if (!(t instanceof Building b))
+            return 2;
+        Strategy s = ai.strategy();
+        int reach = ai.now() >= s.pocket_from_ticks ? s.dead_region_reach : 2;
+        return Math.min(reach, Math.max(2, b.getTemplate().getPlacingSize() - 1));
     }
 
     /** The copy whose buildings the attacks go after first while it is alive (focus_bonus). */
@@ -116,6 +138,63 @@ final class Military {
     private @Nullable List<@NonNull String> explain;
     /** frozen_last: the frozen copies a choice has passed over at least once (counted once each). */
     private final List<com.oddlabs.tt.player.@NonNull Player> frozen_deferred = new ArrayList<>();
+
+    /**
+     * remnant_ladder_ticks: a target the muster may try when its best one fails the gate, its rung (the ladder goes
+     * rung by rung, RUNG_*), its score within the rung (lower first), its defense (defenseFor), and whether it is a
+     * homeless copy's site or remnant (walkLadder's own; the attack then finishes that copy, remnantNext).
+     */
+    private record Rung(@NonNull Selectable<?> t, int rung, float score, float defense, boolean remnant) {
+        /** A building target choice scored. */
+        Rung(@NonNull Selectable<?> t, int rung, float score, float defense) {
+            this(t, rung, score, defense, false);
+        }
+    }
+
+    /** decapitate: the campaign's targets (quarters, a copy's armory that may still send waves, chieftains), first. */
+    private static final int RUNG_DECAP = -1;
+    /** The other buildings target choice scored, by its score. */
+    private static final int RUNG_BUILDING = 0;
+    /** Homeless copies' quarters and armory sites (never a frozen site). */
+    private static final int RUNG_SITE = 1;
+    /** Remnants of homeless copies with no other copy's fighter within REMNANT_ALONE_CELLS, then the others. */
+    private static final int RUNG_ALONE = 2;
+    private static final int RUNG_CROWDED = 3;
+    /**
+     * frozen_last's and the wedge memory's buildings, which target choice takes only when nothing else is left, and
+     * the sites and remnants whose way from the staging point runs through a remembered wedge (wedgeOn).
+     */
+    private static final int RUNG_FROZEN = 4;
+    private static final int RUNG_WEDGED = 5;
+    /** remnant_ladder_ticks: cells within which another copy's warrior or chieftain makes a remnant crowded. */
+    private static final int REMNANT_ALONE_CELLS = 20;
+    /** remnant_ladder_ticks: chooseTarget records each building it scores while this is non-null. */
+    private @Nullable List<@NonNull Rung> scored;
+    /** remnant_ladder_ticks: chooseTarget scored no building and fell back on the nearest enemy unit. */
+    private boolean ladder_fallback;
+    /** remnant_ladder_ticks: the site or remnant the muster took from the ladder, and the copy the attack finishes. */
+    private @Nullable Selectable<?> ladder_target;
+    private @Nullable Player ladder_owner;
+    private float last_ladder_log = -5000f;
+    /**
+     * decapitate: the campaign target chooseTarget (or the muster's ladder) returned last, null when it returned
+     * another; whether that passed over a better-scoring other target; why it was taken (log only).
+     */
+    private @Nullable Selectable<?> decap_pick;
+    private boolean decap_changed;
+    private @Nullable String decap_why;
+    /**
+     * decapitate: when chooseTarget returned a campaign target, the best other building it scored (after the
+     * frozen_last and wedge fallbacks), which the muster tries when the campaign's best fails the gate and no remnant
+     * ladder runs (decapitate_alt); null otherwise.
+     */
+    private @Nullable Selectable<?> decap_alt;
+    /** decapitate: the copies seen live since they last were not, and those counted pacified (once each). */
+    private final List<@NonNull Player> decap_live = new ArrayList<>();
+    private final List<@NonNull Player> decap_pacified = new ArrayList<>();
+    /** decapitate: when the attack last computed its chieftain target's field again, and at most how often. */
+    private float last_decap_follow = -5000f;
+    private static final float DECAP_FOLLOW_TICKS = 250f; // 5 s
     private int target_x;
     private int target_y;
     private @Nullable DistanceField target_field;
@@ -124,7 +203,7 @@ final class Military {
     private float worn_peak;
     /**
      * worn_basis 2: (time, strength) of the attacking army, each strength lower than every one before it, so the first
-     * is the peak of the last worn_window seconds.
+     * is the peak of the last worn_window_ticks game ticks.
      */
     private final java.util.ArrayDeque<float @NonNull []> worn_history = new java.util.ArrayDeque<>();
     /** worn_skipped and split_guard_kept are counted once per attack. */
@@ -135,28 +214,111 @@ final class Military {
     private float last_trace;
     private float hold_until = -1f;
     private float last_progress_time;
+    /**
+     * stall_cap: when the attack last gained 20 m on its target or killed stall_cap_kills units, and our kills then.
+     */
+    private float cap_progress_time;
+    private int cap_progress_kills;
+    /** stall_cap: stalls in a row with no gain or kills between them; the second walks the army home to re-form. */
+    private int cap_strikes;
+    /**
+     * stall_engaged_ticks, the wedge watchdog (wedgeWatch): the target at its last round (null: none since the launch),
+     * when it last saw progress and its strikes since, the field and the pivot distance on it (or the straight-line
+     * meters to the target) that gains are measured from, the target's hit points (-1: not a building), the enemy
+     * units seen within 30 cells of the army since the last progress (in the order first seen; only counted), and the
+     * attackers at the last progress.
+     */
+    private @Nullable Selectable<?> engaged_target;
+    private float engaged_time;
+    private int engaged_strikes;
+    private @Nullable DistanceField engaged_field;
+    private int engaged_dist = DistanceField.UNREACHABLE;
+    private int engaged_line;
+    private int engaged_hp = -1;
+    private final java.util.LinkedHashSet<@NonNull Unit> engaged_foes = new java.util.LinkedHashSet<>();
+    private final List<@NonNull Unit> engaged_ours = new ArrayList<>();
+
+    /**
+     * stall_engaged_ticks: a wedge the watchdog walked the army home from, at the cell of the attacker nearest the
+     * army's centre, when, the field (with corner cuts) from it, and whether target choice passed over a building for
+     * it or fell back on one (each logged once).
+     */
+    private static final class Wedge {
+        final int x;
+        final int y;
+        final float time;
+        final @NonNull DistanceField field;
+        boolean avoided;
+        boolean fallback;
+
+        Wedge(int x, int y, float time, @NonNull DistanceField field) {
+            this.x = x;
+            this.y = y;
+            this.time = time;
+            this.field = field;
+        }
+    }
+
+    /** stall_engaged_ticks: the remembered wedges, oldest first, at most three. */
+    private final List<@NonNull Wedge> wedges = new ArrayList<>();
+    /**
+     * A target's way from the staging point runs through a wedge when going through the wedge's cell costs at most
+     * this much more (field meters: two legs of 12 cells at 2 a cell).
+     */
+    private static final int WEDGE_DETOUR = 48;
+    /**
+     * The field (with corner cuts) from the staging point, for the wedge test and retreat_cap_ticks, kept until the
+     * staging point moves or STAGING_FIELD_TICKS pass (trees fall and buildings rise), and when it was computed.
+     */
+    private @Nullable DistanceField staging_field;
+    private float staging_field_time;
+    private static final float STAGING_FIELD_TICKS = 3000f; // 60 s, as Economy's armory_field
+    /**
+     * retreat_cap_ticks: whether this retreat has been measured yet, the most attackers home in it, the mean walking
+     * meters to the staging point of those still out at the last progress, and when that was.
+     */
+    private boolean retreat_measured;
+    private int retreat_best_home;
+    private int retreat_dist = DistanceField.UNREACHABLE;
+    private float retreat_time;
+    /**
+     * retreat_cap_ticks: the attackers a capped retreat left out (more than 14 cells from the staging point), in the
+     * order of the roles. While one is more than STRANDED_CELLS from the staging point it stays out of the musters'
+     * strength and gathering and out of the launches (walking home all the while); updateRoles drops it once it is
+     * dead, home (within 14 cells) or attacking again (a reinforcement that reached the army).
+     */
+    private final List<@NonNull Unit> stranded = new ArrayList<>();
+    private static final int STRANDED_CELLS = 30;
     private int best_target_dist = Integer.MAX_VALUE;
+    /** corner_fields: target_field was computed with corner cuts. */
+    private boolean target_corner;
+    /**
+     * sealed_progress: the least straight-line distance (m) from the army's centre to the target while no unit stood
+     * on the target field, since the last new target, and whether that march has been logged.
+     */
+    private int best_line_dist = Integer.MAX_VALUE;
+    private boolean sealed_logged;
     private int @NonNull [] hold_spot = new int[2];
     private int last_enemy_d2 = Integer.MAX_VALUE;
     /** hold_closing 1: (time, x, y) of the enemy group the attack last weighed a hold for, over the last 4 s. */
     private final java.util.ArrayDeque<float @NonNull []> hold_groups = new java.util.ArrayDeque<>();
-    private float last_hold_skip = -100f;
-    private float last_charge_log = -100f;
+    private float last_hold_skip = -5000f;
+    private float last_charge_log = -5000f;
     /** The enemy each warrior was last sent after with a direct attack order. */
     private final Map<@NonNull Unit, @NonNull Unit> hunt_targets = new LinkedHashMap<>();
     private final Map<@NonNull Unit, Float> dodge_orders = new LinkedHashMap<>();
     private final Map<@NonNull Building, @NonNull Unit> tower_targets = new LinkedHashMap<>();
     private final Map<@NonNull Unit, Float> sapper_orders = new LinkedHashMap<>();
-    private float last_pillage_log = -100f;
+    private float last_pillage_log = -5000f;
     /** When each enemy chieftain was last seen casting, judged by our units getting stunned around him. */
     private final Map<@NonNull Unit, Float> enemy_casts = new LinkedHashMap<>();
     /** enemy_first_seen: when each enemy chieftain was first seen on the field. */
     private final Map<@NonNull Unit, Float> enemy_chief_seen = new LinkedHashMap<>();
     private int own_stunned_before;
-    /** Seconds an enemy chieftain's spell takes to recharge, as far as the AI assumes. */
-    private static final float SPELL_RECHARGE = 40f;
-    /** Seconds from the first frame an enemy viking chieftain is seen raising his horn to his stun going off. */
-    private static final float STUN_WINDUP = 3.7f;
+    /** Game ticks an enemy chieftain's spell takes to recharge, as far as the AI assumes. */
+    private static final float SPELL_RECHARGE_TICKS = 2000f; // 40 s
+    /** Game ticks from the first frame an enemy viking chieftain is seen raising his horn to his stun going off. */
+    private static final float STUN_WINDUP_TICKS = 185f; // 3.7 s
     /** Reach of the stun in meters, measured from a point this far in front of the chieftain. */
     private static final float STUN_RADIUS = 36f;
     private static final float STUN_OFFSET = 2.57f;
@@ -172,9 +334,9 @@ final class Military {
     private float siege_start = -1f;
     private float siege_cooldown = -1f;
     private float blast_play_until = -1f;
-    private float last_blast_play = -100f;
+    private float last_blast_play = -5000f;
     private float siege_progress = -1f;
-    private float last_pull_log = -100f;
+    private float last_pull_log = -5000f;
     /** Which stunned tower each warrior was sent to pull down, so orders are not repeated mid-throw. */
     private final Map<@NonNull Unit, @NonNull Building> siege_assign = new LinkedHashMap<>();
     /** Cells from an enemy tower the sieging army waits at: out of its throws (16 cells). */
@@ -207,15 +369,15 @@ final class Military {
      * A native chieftain's poison fog comes down 3.6 s into the wind-up, 26 m around a point just in front of him, and
      * every 2 s for 20 s kills an enemy inside with even odds (his own side's units with a quarter of that).
      */
-    private static final float FOG_RELEASE = 3.64f;
-    private static final float FOG_TIME = 20f;
+    private static final float FOG_RELEASE_TICKS = 182f; // 3.64 s
+    private static final float FOG_TIME_TICKS = 1000f; // 20 s
     private static final float FOG_RADIUS = 26f;
     private static final float FOG_OFFSET = .9f;
     /** A tower our sappers are raising by a besieged building, until it stands. */
     private @Nullable Building creep_site;
     /** Towers raised by sappers next to enemy buildings. */
     private final List<@NonNull Building> creep_towers = new ArrayList<>();
-    private float last_creep_try = -100f;
+    private float last_creep_try = -5000f;
     /** Multiplies what the next attack must beat, raised by attacks that traded badly. */
     private float attack_caution = 1f;
     private float last_caution_ease;
@@ -223,25 +385,25 @@ final class Military {
     private int attack_losses_start;
     private boolean attack_running;
     private final Map<@NonNull Unit, Float> militia_orders = new LinkedHashMap<>();
-    private float last_militia_log = -100f;
-    private float last_peon_rush = -100f;
+    private float last_militia_log = -5000f;
+    private float last_peon_rush = -5000f;
     /** The attack is a short strike on an enemy building in or next to our base, and ends when it falls. */
     private boolean strike;
 
     // Escort of forward tower builders.
     private int escort_x;
     private int escort_y;
-    private float escort_time = -100f;
+    private float escort_time = -5000f;
 
     // Raid.
     private int raid_x;
     private int raid_y;
-    private float raid_start = -1000f;
-    private float last_raid_end = -1000f;
+    private float raid_start = -50000f;
+    private float last_raid_end = -50000f;
 
     /** Intel's shared index of enemies by position (towers and shepherds), brought up to date once per tick. */
     private @NonNull EnemyIndex enemyIndex() {
-        return ai.intel().enemyIndex(ai.ticks());
+        return ai.intel().enemyIndex(ai.worldTicks());
     }
 
     Military(@NonNull GauntletAI ai) {
@@ -260,11 +422,11 @@ final class Military {
     /**
      * retire: up to n idle iron or chicken warriors of the home army within r cells of (x, y), nearest first (ties in
      * role order), taken out of every role, and so out of defence, musters and tower manning, until released or for
-     * seconds at most. None when fewer than min are at hand, while an attack is on or musters, or while the base is
-     * under threat (level 2).
+     * {@code ticks} game ticks at most. None when fewer than min are at hand, while an attack is on or musters, or
+     * while the base is under threat (level 2).
      */
     @NonNull
-    List<@NonNull Unit> lend(int x, int y, int n, int min, int r, float seconds) {
+    List<@NonNull Unit> lend(int x, int y, int n, int min, int r, float ticks) {
         List<Unit> out = new ArrayList<>();
         if (mode != Mode.HOME || wantsEverything())
             return out;
@@ -291,7 +453,7 @@ final class Military {
             tower_assignments.remove(u);
             front_entry.remove(u);
             last_order.remove(u);
-            lent.put(u, ai.time() + seconds);
+            lent.put(u, ai.now() + ticks);
             out.add(u);
         }
         return out;
@@ -397,7 +559,7 @@ final class Military {
     /** Strength of warriors wanted outside the armory while the base is quiet. */
     float armyStrengthWanted() {
         float enemy = enemyFieldStrength();
-        float wanted = Math.max(5f + ai.time() / 90f, .75f * enemy);
+        float wanted = Math.max(5f + ai.now() / 4500f, .75f * enemy);
         return Math.min(wanted, 45f);
     }
 
@@ -424,7 +586,7 @@ final class Military {
     // ------------------------------------------------------------------------------------------------------------
     // Tick
 
-    private float last_provoke_probe = -10f;
+    private float last_provoke_probe = -500f;
 
     /**
      * Diagnostic counters only (no orders): every 5 s in the first 15 minutes, our units standing within 15 cells of an
@@ -433,9 +595,9 @@ final class Military {
      * nodeDefendBase), which brings its next wave forward.
      */
     private void provokeProbe() {
-        if (ai.time() - last_provoke_probe < 5f || ai.time() > 900f)
+        if (!ai.periodDue(last_provoke_probe, 250f) || ai.now() > 45000f)
             return;
-        last_provoke_probe = ai.time();
+        last_provoke_probe = ai.now();
         Intel intel = ai.intel();
         List<Building> homes = new ArrayList<>(intel.enemy_quarters);
         homes.addAll(intel.enemy_armories);
@@ -459,7 +621,7 @@ final class Military {
             Role role = roles.get(u);
             String what = state != null ? state.name() : role != null ? role.name() : "OTHER";
             ai.aiLog().count("prov_" + what);
-            ai.aiLog().count(ai.time() < 480f ? "prov_early" : "prov_mid");
+            ai.aiLog().count(ai.now() < 24000f ? "prov_early" : "prov_mid");
         }
     }
 
@@ -470,6 +632,9 @@ final class Military {
         updateStaging();
         updateThreat();
         manTowers();
+        // sortie_ratio: before defend, so that its evacuatePeons already leaves the peons coming out alone
+        if (ai.strategy().sortie_ratio > 0f)
+            sorties();
         if (threat_level > 0)
             defend();
         if (!raiders.isEmpty())
@@ -503,11 +668,14 @@ final class Military {
         int alive = ai.enemiesAlive();
         if (alive != last_alive) {
             if (last_alive >= 0 && alive < last_alive)
-                last_out_time = ai.time();
+                last_out_time = ai.now();
             last_alive = alive;
         }
         if (ai.strategy().ring_sweep)
             considerSweep();
+        // decapitate: which copies went passive (counters and logs only; from the start, so none is missed)
+        if (ai.strategy().decapitate)
+            trackPacified();
         easeCaution();
         if (mode == Mode.HOME && threat_level < 2 && ai.strategy().strikes)
             considerStrike();
@@ -525,7 +693,7 @@ final class Military {
             considerReinforcing();
         if (mode == Mode.HOME && threat_level <= ai.strategy().raid_threat)
             considerRaid();
-        if (ai.strategy().chief_hunt && countRole(Role.CHASE) == 0 && ai.time() - last_chase_end >= 10f)
+        if (ai.strategy().chief_hunt && countRole(Role.CHASE) == 0 && ai.now() - last_chase_end >= 500f)
             considerChase();
     }
 
@@ -560,7 +728,11 @@ final class Military {
             }
         }
         if (!lent.isEmpty())
-            lent.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() > e.getValue());
+            lent.entrySet().removeIf(e -> e.getKey().isDead() || ai.now() > e.getValue());
+        // retreat_cap_ticks: a stranded attacker is no longer stranded once dead, home or with the army again
+        if (!stranded.isEmpty())
+            stranded.removeIf(u -> u.isDead() || u.isMounted() || roles.get(u) == Role.ATTACK
+                    || MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) <= 14 * 14);
         for (Unit w : intel.warriors) {
             if (!roles.containsKey(w) && !lent.containsKey(w))
                 roles.put(w, Role.ARMY);
@@ -577,9 +749,9 @@ final class Military {
             }
             return;
         }
-        if (ai.time() - staging_time < 30f)
+        if (!ai.periodDue(staging_time, 1500f))
             return;
-        staging_time = ai.time();
+        staging_time = ai.now();
         int[] p = ai.planner().getEnemyField().stepTowardsSource(armory.getGridX(), armory.getGridY(), 26);
         staging_x = p[0];
         staging_y = p[1];
@@ -671,7 +843,7 @@ final class Military {
             if (hostile) {
                 threats.add(e);
                 at_base.add(e);
-            } else if (ai.strategy().peon_militia && ai.time() < ai.strategy().militia_time
+            } else if (ai.strategy().peon_militia && ai.now() < ai.strategy().militia_ticks
                     && raiding(e, own, r2)) {
                         raiders.add(e);
                     }
@@ -801,8 +973,8 @@ final class Military {
         boolean engage = effective >= engage_ratio * enemy || at_armory;
         if (stable) {
             if (engage && engage_state != 1)
-                engage_since = ai.time();
-            else if (!engage && engage_state == 1 && ai.time() - engage_since < 3f) {
+                engage_since = ai.now();
+            else if (!engage && engage_state == 1 && ai.now() - engage_since < 150f) {
                 engage = true;
                 ai.aiLog().count("engage_held");
             }
@@ -915,20 +1087,20 @@ final class Military {
     }
 
     /**
-     * Whether an enemy chieftain counts as ready to stun in the army's fear of his spell: enemy_spell_recharge s after
-     * he was seen casting, and with enemy_first_seen, never seen casting, that long after he was first seen (a newborn
-     * chieftain has no charge). Our own stun timing keeps enemySpellReady.
+     * Whether an enemy chieftain counts as ready to stun in the army's fear of his spell: enemy_spell_recharge_ticks
+     * after he was seen casting, and with enemy_first_seen, never seen casting, that long after he was first seen (a
+     * newborn chieftain has no charge). Our own stun timing keeps enemySpellReady.
      */
     private boolean enemyThreatReady(@NonNull Unit chief) {
         if (ai.strategy().hidden_info)
             return enemySpellReady(chief);
         Float cast = enemy_casts.get(chief);
         if (cast != null)
-            return ai.time() - cast >= ai.strategy().enemy_spell_recharge;
+            return ai.now() - cast >= ai.strategy().enemy_spell_recharge_ticks;
         if (!ai.strategy().enemy_first_seen)
             return true;
         Float seen = enemy_chief_seen.get(chief);
-        return seen == null || ai.time() - seen >= ai.strategy().enemy_spell_recharge;
+        return seen == null || ai.now() - seen >= ai.strategy().enemy_spell_recharge_ticks;
     }
 
     /**
@@ -939,7 +1111,7 @@ final class Military {
         if (ai.strategy().hidden_info)
             return chief.getMagicProgress(0) >= 1f || chief.getMagicProgress(1) >= 1f;
         Float cast = enemy_casts.get(chief);
-        return cast == null || ai.time() - cast >= SPELL_RECHARGE;
+        return cast == null || ai.now() - cast >= SPELL_RECHARGE_TICKS;
     }
 
     /**
@@ -953,12 +1125,12 @@ final class Military {
             enemy_chief_seen.keySet().removeIf(Unit::isDead);
             for (Unit e : intel.enemy_chieftains)
                 if (!e.isDead())
-                    enemy_chief_seen.putIfAbsent(e, ai.time());
+                    enemy_chief_seen.putIfAbsent(e, ai.now());
         }
         // Casting is plain to see: the chieftain stops and blows his horn.
         for (Unit e : intel.enemy_chieftains)
             if (!e.isDead() && e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)
-                enemy_casts.put(e, ai.time());
+                enemy_casts.put(e, ai.now());
         List<Unit> stunned = new ArrayList<>();
         for (Unit u : intel.warriors)
             if (Intel.isStunned(u))
@@ -978,7 +1150,7 @@ final class Military {
                 }
             }
             if (caster != null) {
-                enemy_casts.put(caster, ai.time());
+                enemy_casts.put(caster, ai.now());
                 ai.log("enemy stun caught " + (stunned.size() - own_stunned_before) + " of our units");
             }
         }
@@ -995,7 +1167,7 @@ final class Military {
      * first tenths of a second decide who makes it.
      */
     void dodgeSpells() {
-        float now = ai.time();
+        float now = ai.now();
         if (!dodges.isEmpty())
             dodges.values().removeIf(d -> d.until() < now);
         // The horn stays up for a while after the spell: a wind-up is over once he stops casting.
@@ -1031,7 +1203,7 @@ final class Military {
         if (e.isDead() || windups.containsKey(e)
                 || !(e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController))
             return;
-        windups.put(e, now + STUN_WINDUP);
+        windups.put(e, now + STUN_WINDUP_TICKS);
         com.oddlabs.tt.model.Race vikings = ai.owner().getWorld().getRacesResources().getRace(
                 com.oddlabs.tt.model.RacesResources.RACE_VIKINGS);
         if (e.getOwner().getRace() != vikings) {
@@ -1054,9 +1226,9 @@ final class Military {
     private void updateFogs(float now) {
         for (Iterator<Fog> it = fogs.iterator(); it.hasNext();) {
             Fog f = it.next();
-            if (now > f.cast + FOG_RELEASE + FOG_TIME + .5f) {
+            if (now > f.cast + FOG_RELEASE_TICKS + FOG_TIME_TICKS + 25f) {
                 it.remove();
-            } else if (!f.confirmed && now >= f.cast + FOG_RELEASE + .1f) {
+            } else if (!f.confirmed && now >= f.cast + FOG_RELEASE_TICKS + 5f) {
                 // By now it is plain to see which spell came down.
                 if (!f.caster.isDead()
                         && f.caster.getLastMagicIndex() == com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_POISON) {
@@ -1082,7 +1254,7 @@ final class Military {
             units.add(intel.chieftain);
         int grid = ai.map().getSize();
         float reach = FOG_RADIUS + 3f;
-        float until = Math.min(now + 4f, f.cast + FOG_RELEASE + FOG_TIME);
+        float until = Math.min(now + 200f, f.cast + FOG_RELEASE_TICKS + FOG_TIME_TICKS);
         for (Unit u : units) {
             if (u.isDead() || u.isMounted() || Intel.isStunned(u) || dodges.containsKey(u)
                     || u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)
@@ -1112,7 +1284,7 @@ final class Military {
      */
     private void dodgeStun(@NonNull Unit e, float now) {
         Intel intel = ai.intel();
-        float release = now + STUN_WINDUP;
+        float release = now + STUN_WINDUP_TICKS;
         float sx = e.getPositionX() + STUN_OFFSET * e.getDirectionX();
         float sy = e.getPositionY() + STUN_OFFSET * e.getDirectionY();
         List<Unit> units = new ArrayList<>(intel.warriors);
@@ -1131,9 +1303,9 @@ final class Military {
             float d = (float) Math.sqrt(dx * dx + dy * dy);
             if (d > STUN_RADIUS + 10f)
                 continue;
-            // Out by the time it goes off, with a little to spare for the path around others.
+            // Out by the time it goes off, with a little to spare for the path around others (speed per game tick).
             float out = STUN_RADIUS + 3f - d;
-            if (out > .85f * u.getTemplate().getMetersPerSecond() * STUN_WINDUP) {
+            if (out > .85f * u.getTemplate().getMetersPerSecond() / GauntletAI.TICKS_PER_SECOND * STUN_WINDUP_TICKS) {
                 // Caught either way: throw at him instead, his spell dies with him.
                 if (ai.strategy().hunt_caster && intel.warriors.contains(u)
                         && MapAnalysis.dist2(u.getGridX(), u.getGridY(), e.getGridX(),
@@ -1147,7 +1319,7 @@ final class Military {
             float to = Math.max(d, STUN_RADIUS + 6f) / Math.max(d, .1f);
             int tx = Math.clamp(com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(sx + dx * to), 0, grid - 1);
             int ty = Math.clamp(com.oddlabs.tt.pathfinder.UnitGrid.toGridCoordinate(sy + dy * to), 0, grid - 1);
-            dodges.put(u, new Dodge(tx, ty, release + .3f));
+            dodges.put(u, new Dodge(tx, ty, release + 15f));
             ai.landscapeOrder(Selectable.newArray(u), tx, ty, Action.MOVE, false);
             n++;
         }
@@ -1159,7 +1331,7 @@ final class Military {
 
     private void huntCaster(@NonNull Unit u, @NonNull Unit chief) {
         hunt_targets.put(u, chief);
-        last_order.put(u, ai.time());
+        last_order.put(u, ai.now());
         ai.intel().warrior_states.put(u, WarriorState.FIGHT);
         ai.owner().setTarget(Selectable.newArray(u), chief, Action.ATTACK, true);
     }
@@ -1226,10 +1398,10 @@ final class Military {
             }
             for (Unit u : hunters) {
                 Float last = chief_orders.get(u);
-                if (last != null && ai.time() - last < 4f)
+                if (last != null && !ai.periodDue(last, 200f))
                     continue;
-                chief_orders.put(u, ai.time());
-                last_order.put(u, ai.time());
+                chief_orders.put(u, ai.now());
+                last_order.put(u, ai.now());
                 ai.owner().setTarget(Selectable.newArray(u), chief, Action.ATTACK, true);
             }
         }
@@ -1297,14 +1469,14 @@ final class Military {
             }
             return;
         }
-        if (ai.time() - last_militia_log > 15f) {
-            last_militia_log = ai.time();
+        if (ai.now() - last_militia_log > 750f) {
+            last_militia_log = ai.now();
             ai.log(militia.size() + " peons fight off " + raiders.size() + " raiding peons at " + c[0] + "," + c[1]);
         }
         for (Unit p : militia) {
             intel.peon_states.put(p, PeonState.FIGHT);
             Float last = militia_orders.get(p);
-            if (last != null && ai.time() - last < 3f)
+            if (last != null && !ai.periodDue(last, 150f))
                 continue;
             Unit target = null;
             int best = Integer.MAX_VALUE;
@@ -1317,7 +1489,7 @@ final class Military {
             }
             if (target == null)
                 continue;
-            militia_orders.put(p, ai.time());
+            militia_orders.put(p, ai.now());
             ai.owner().setTarget(Selectable.newArray(p), target, Action.ATTACK, true);
         }
     }
@@ -1350,9 +1522,9 @@ final class Military {
 
     /** Sparring only: the starting peons go for the enemy's peons. */
     private void peonRush() {
-        if (!ai.strategy().peon_rush || ai.time() > 300f || ai.time() - last_peon_rush < 4f)
+        if (!ai.strategy().peon_rush || ai.now() > 15000f || !ai.periodDue(last_peon_rush, 200f))
             return;
-        last_peon_rush = ai.time();
+        last_peon_rush = ai.now();
         Intel intel = ai.intel();
         for (Unit p : intel.peons) {
             Unit target = null;
@@ -1381,7 +1553,10 @@ final class Military {
                 continue;
             // Peons sent to fight off raiding peons stay in the fight.
             Float militia = militia_orders.get(p);
-            if (militia != null && ai.time() - militia < 5f)
+            if (militia != null && ai.now() - militia < 250f)
+                continue;
+            // sortie_ratio: and so do peons out of a sortie armory.
+            if (sortie_peons.containsKey(p))
                 continue;
             if (!threatNear(p.getGridX(), p.getGridY(), 11))
                 continue;
@@ -1394,6 +1569,9 @@ final class Military {
         boolean bank_full = !evacuate.isEmpty() && ai.economy().bankFull(armory);
         // raid_evac: nor one being emptied ahead of a wave.
         if (!evacuate.isEmpty() && ai.economy().raidEvacuating(armory))
+            armory = null;
+        // sortie_ratio: nor one whose peons are out fighting by it.
+        if (armory != null && sorties.containsKey(armory))
             armory = null;
         for (Unit p : evacuate) {
             Building shelter = null;
@@ -1419,6 +1597,267 @@ final class Military {
             if (shelter != null && shelter.getUnitContainer() != null)
                 ai.owner().setTarget(Selectable.newArray(p), shelter, Action.DEFAULT, false);
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // sortie_ratio
+
+    /** sortie_ratio: an armory's peons out fighting the threat by it: since when, and how many joined. */
+    private static final class Sortie {
+        final float start;
+        int joined;
+
+        Sortie(float start) {
+            this.start = start;
+        }
+    }
+
+    /** sortie_ratio: the armories whose peons are out, in the order their sorties began. */
+    private final Map<@NonNull Building, @NonNull Sortie> sorties = new LinkedHashMap<>();
+    /**
+     * sortie_ratio: the peons out of each sortie armory, which evacuatePeons and the economy's allocatePeons leave
+     * alone while the sortie lasts, and when each was last ordered onto the attackers.
+     */
+    private final Map<@NonNull Unit, @NonNull Building> sortie_peons = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, Float> sortie_orders = new LinkedHashMap<>();
+    /** sortie_ratio: the threat to an armory is what stands within this many cells of it. */
+    private static final int SORTIE_CELLS = 15;
+    /**
+     * sortie_ratio: a sortie starts, and the defence holds without one, by the threat within this many cells
+     * (threat_look's default): the head of a wave walks in ahead of the rest (beta2-sortie smoke: a sortie on a threat
+     * of 13.0 within 15 cells, 48.6 at the armory half a second later, outmatched within 28 s).
+     */
+    private static final int SORTIE_LOOK_CELLS = 30;
+    /**
+     * sortie_ratio: units an armory holds at least to sortie (the investigators' sortie_bank): a few workers by a
+     * raider
+     * would empty the armory and stop its forge for nothing.
+     */
+    private static final int SORTIE_MIN_BANK = 30;
+    /** sortie_ratio: an idle or fighting peon this close to a sortie armory came out of it (or joins it there). */
+    private static final int SORTIE_DOOR_CELLS = 8;
+
+    /** sortie_ratio: whether the armory's peons are out fighting by it (allocatePeons sends nobody in). */
+    boolean isSortie(@Nullable Building a) {
+        return a != null && sorties.containsKey(a);
+    }
+
+    /** sortie_ratio: whether the peon is out fighting by its armory (allocatePeons leaves it alone). */
+    boolean inSortie(@NonNull Unit p) {
+        return sortie_peons.containsKey(p);
+    }
+
+    /**
+     * sortie_ratio, every military tick: units inside a razed armory vanish with it, uncounted, and the peons by a
+     * threat are sent in (evacuatePeons, allocatePeons), so the bank grows during a siege it could have broken. At
+     * threat level 2 (the weapon_reserve release), a complete armory holding SORTIE_MIN_BANK or more with a threat
+     * within SORTIE_CELLS (lasting values: a stun wears off before such a fight ends) sends everyone inside out onto it
+     * when they tip the balance against all within SORTIE_LOOK_CELLS: its peons at Combat.PEON each, with our warriors
+     * within 20 cells and the manned towers within 16 (raid_evac's defence), reach sortie_ratio of that threat, which
+     * the defence alone does not (else the defenders hold it and the peons stay at work). Its weapons leave as
+     * warriors, the rest as peons (no rally point: they come out idle by the door); every idle or fighting peon by the
+     * door joins, and an idle one is attack-moved onto the threat nearest it. The sortie ends, and the economy takes
+     * its peons back, when the armory falls or is emptied (evacuate, retire), no threat is left within SORTIE_CELLS,
+     * the peons out within 20 cells, those still inside and the defence fall below half of sortie_ratio of it, or the
+     * defence alone holds the threat within SORTIE_LOOK_CELLS; in the last three the peons still queued stay in.
+     */
+    private void sorties() {
+        Intel intel = ai.intel();
+        Economy economy = ai.economy();
+        float ratio = ai.strategy().sortie_ratio;
+        float now = ai.now();
+        // Peons that came out since the last tick (and idle ones standing by) join their armory's sortie.
+        if (!sorties.isEmpty())
+            for (Unit p : intel.peons) {
+                PeonState s = intel.peon_states.get(p);
+                if ((s != PeonState.IDLE && s != PeonState.FIGHT) || sortie_peons.containsKey(p)
+                        || economy.reservedPlacer(p))
+                    continue;
+                Map.Entry<Building, Sortie> door = null;
+                int best = SORTIE_DOOR_CELLS * SORTIE_DOOR_CELLS + 1;
+                for (Map.Entry<Building, Sortie> e : sorties.entrySet()) {
+                    Building a = e.getKey();
+                    if (a.isDead())
+                        continue;
+                    int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), a.getGridX(), a.getGridY());
+                    if (d < best) {
+                        best = d;
+                        door = e;
+                    }
+                }
+                if (door == null)
+                    continue;
+                sortie_peons.put(p, door.getKey());
+                door.getValue().joined++;
+                ai.aiLog().count("sortie_peons"); // peons that joined a sortie
+            }
+        for (Iterator<Map.Entry<Building, Sortie>> it = sorties.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, Sortie> e = it.next();
+            Building a = e.getKey();
+            float threat = 0f;
+            float strength = 0f;
+            String why = null;
+            boolean standing = false;
+            if (a.isDead()) {
+                why = "the armory fell";
+            } else if (economy.isEvacuating(a) || economy.isDoomed(a)) {
+                why = "the armory is emptied";
+            } else {
+                standing = true;
+                threat = sortieThreat(a, SORTIE_CELLS);
+                strength = sortieStrength(a);
+                if (threat <= 0f)
+                    why = "no threat left";
+                else if (strength < .5f * ratio * threat)
+                    why = "outmatched";
+                // the start test's own exclusion, against the same look (else the next tick starts it again)
+                else if (sortieDefence(a) >= ratio * sortieThreat(a, SORTIE_LOOK_CELLS))
+                    why = "the defence holds";
+            }
+            if (why == null)
+                continue;
+            it.remove();
+            // The peons still queued to come out stay in (the UI's decrease button): at 0.5 s each, a big bank is still
+            // walking out one by one into a fight judged lost or over (beta2-sortie smoke: about 14 of 70 after an
+            // outmatched end at 28 s). Not when the armory is emptied: evacuate and retire want them out.
+            int kept = 0;
+            if (standing) {
+                kept = a.getDeployContainer(DeployType.PEON).getNumSupplies();
+                if (kept > 0) {
+                    ai.owner().deployUnits(a, DeployType.PEON, -kept);
+                    ai.aiLog().count("sortie_recalled"); // sortie ends that kept queued peons in
+                }
+            }
+            int out = 0;
+            for (Iterator<Map.Entry<Unit, Building>> pit = sortie_peons.entrySet().iterator(); pit.hasNext();) {
+                Map.Entry<Unit, Building> pe = pit.next();
+                if (pe.getValue() != a)
+                    continue;
+                if (!pe.getKey().isDead())
+                    out++;
+                sortie_orders.remove(pe.getKey());
+                pit.remove();
+            }
+            ai.aiLog().count("sortie_end");
+            if (ai.logging())
+                ai.log(String.format(
+                        "sortie at %d,%d ends after %.0f s (%s): %d peons joined, %d still out, %d queued kept in;" + " strength %.1f against %.1f",
+                        a.getGridX(), a.getGridY(), GauntletAI.seconds(now - e.getValue().start), why,
+                        e.getValue().joined, out, kept, strength, threat));
+        }
+        // updateThreat has run this tick: level 2 is a real attack on the base (or the threat at the main armory).
+        if (threat_level >= 2)
+            for (Building a : intel.armories) {
+                if (a.isDead() || sorties.containsKey(a) || economy.isEvacuating(a) || economy.isDoomed(a))
+                    continue;
+                int inside = a.getUnitContainer().getNumSupplies();
+                if (inside < SORTIE_MIN_BANK)
+                    continue;
+                // At the door, judged by all that comes behind it.
+                float door = sortieThreat(a, SORTIE_CELLS);
+                if (door <= 0f)
+                    continue;
+                float threat = sortieThreat(a, SORTIE_LOOK_CELLS);
+                float defence = sortieDefence(a);
+                float bank = Combat.PEON * inside;
+                if (defence >= ratio * threat || bank + defence < ratio * threat)
+                    continue;
+                sorties.put(a, new Sortie(now));
+                if (a.hasRallyPoint()) {
+                    ai.owner().setRallyPoint(a, a); // none: the peons come out idle by the door
+                    ai.aiLog().count("sortie_rally_cleared");
+                }
+                ai.aiLog().count("sortie_start");
+                if (ai.logging())
+                    ai.log(String.format(
+                            "sortie: the armory at %d,%d sends its %d inside out onto a threat of %.1f within %d cells" + " (%.1f within %d; bank %.1f, defence %.1f)",
+                            a.getGridX(), a.getGridY(), inside, threat, SORTIE_LOOK_CELLS, door, SORTIE_CELLS, bank,
+                            defence));
+            }
+        if (sorties.isEmpty())
+            return;
+        // Everyone inside comes out, those who walked in since included.
+        for (Building a : sorties.keySet())
+            economy.sortieDeploy(a);
+        // Idle sortie peons attack-move onto the threat nearest each, one order per cell (the game spreads a group
+        // over the cells around it).
+        Map<Long, List<Unit>> orders = new LinkedHashMap<>();
+        for (Iterator<Map.Entry<Unit, Building>> it = sortie_peons.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Unit, Building> e = it.next();
+            Unit p = e.getKey();
+            PeonState s = p.isDead() ? null : intel.peon_states.get(p);
+            // Dead, back inside a building, or given other work since (building, gathering, shepherding, sapping):
+            // it leaves the sortie.
+            if (s != PeonState.IDLE && s != PeonState.FIGHT && s != PeonState.MOVE && s != PeonState.STUNNED) {
+                sortie_orders.remove(p);
+                it.remove();
+                continue;
+            }
+            Float last = sortie_orders.get(p);
+            if (s != PeonState.IDLE || (last != null && !ai.periodDue(last, 50f))) // 1 s
+                continue;
+            Building a = e.getValue();
+            Unit target = null;
+            int best = Integer.MAX_VALUE;
+            for (Unit t : threats) {
+                if (t.isDead() || MapAnalysis.dist2(t.getGridX(), t.getGridY(), a.getGridX(),
+                        a.getGridY()) > SORTIE_CELLS * SORTIE_CELLS)
+                    continue;
+                int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), t.getGridX(), t.getGridY());
+                if (d < best) {
+                    best = d;
+                    target = t;
+                }
+            }
+            if (target == null)
+                continue;
+            sortie_orders.put(p, now);
+            ai.aiLog().count("sortie_orders"); // peons attack-moved onto the threat
+            long key = ((long) target.getGridX() << 32) | (long) target.getGridY();
+            orders.computeIfAbsent(key, k -> new ArrayList<>()).add(p);
+        }
+        for (Map.Entry<Long, List<Unit>> e : orders.entrySet()) {
+            long key = e.getKey();
+            ai.landscapeOrder(e.getValue().toArray(new Selectable<?>[0]), (int) (key >> 32),
+                    (int) (key & 0xffffffffL), Action.ATTACK, true);
+        }
+    }
+
+    /** sortie_ratio: the lasting value of the threats within radius cells of the armory. */
+    private float sortieThreat(@NonNull Building a, int radius) {
+        int r2 = radius * radius;
+        float s = 0f;
+        for (Unit e : threats)
+            if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), a.getGridX(), a.getGridY()) <= r2)
+                s += Combat.lastingValue(e);
+        return s;
+    }
+
+    /**
+     * sortie_ratio: the manned towers within 16 cells of the armory and our warriors within 20 (raid_evac's defence),
+     * with the warriors in its deploy queues (a deploy order takes its workers out of the bank at once).
+     */
+    private float sortieDefence(@NonNull Building a) {
+        Intel intel = ai.intel();
+        return Combat.strengthNear(intel.towers, a.getGridX(), a.getGridY(), 16) + Combat.strengthNear(
+                intel.warriors, a.getGridX(), a.getGridY(), 20) + Combat.CHICKEN * a.getDeployContainer(
+                        DeployType.RUBBER_WARRIOR).getNumSupplies() + Combat.IRON * a.getDeployContainer(
+                                DeployType.IRON_WARRIOR).getNumSupplies() + Combat.ROCK * a.getDeployContainer(
+                                        DeployType.ROCK_WARRIOR).getNumSupplies();
+    }
+
+    /** sortie_ratio: a sortie's strength: the defence, its peons out within 20 cells, and those inside or queued. */
+    private float sortieStrength(@NonNull Building a) {
+        int ax = a.getGridX();
+        int ay = a.getGridY();
+        float s = sortieDefence(a) + Combat.PEON * (a.getUnitContainer().getNumSupplies() + a.getDeployContainer(
+                DeployType.PEON).getNumSupplies());
+        for (Map.Entry<Unit, Building> e : sortie_peons.entrySet()) {
+            Unit p = e.getKey();
+            if (e.getValue() == a && !p.isDead() && MapAnalysis.dist2(p.getGridX(), p.getGridY(), ax, ay) <= 20 * 20)
+                s += Combat.value(p);
+        }
+        return s;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -1522,7 +1961,7 @@ final class Military {
 
     /** tower_reaim: when each tower last re-aimed. */
     private final Map<@NonNull Building, Float> reaimed = new LinkedHashMap<>();
-    private float last_reaim = -10f;
+    private float last_reaim = -500f;
 
     /**
      * tower_reaim, every 2 s: a manned tower with no awake enemy within 14 cells and nothing in its reach, but idle
@@ -1531,9 +1970,9 @@ final class Military {
      * disc moves 2-2.8 cells that way. Once per tower per 30 s.
      */
     private void reaimTowers() {
-        if (!ai.strategy().tower_reaim || ai.time() - last_reaim < 2f)
+        if (!ai.strategy().tower_reaim || !ai.periodDue(last_reaim, 100f))
             return;
-        last_reaim = ai.time();
+        last_reaim = ai.now();
         Intel intel = ai.intel();
         List<Unit> idle = new ArrayList<>();
         List<Unit> awake = new ArrayList<>();
@@ -1551,7 +1990,7 @@ final class Military {
             if (gunner == null)
                 continue;
             Float last = reaimed.get(t);
-            if (last != null && ai.time() - last < 30f)
+            if (last != null && !ai.periodDue(last, 1500f))
                 continue;
             int tx = t.getGridX();
             int ty = t.getGridY();
@@ -1600,13 +2039,13 @@ final class Military {
                 }
             if (!safe)
                 continue;
-            reaimed.put(t, ai.time());
+            reaimed.put(t, ai.now());
             ai.owner().exitTower(t);
             if (gunner.isDead() || gunner.isMounted())
                 continue;
             roles.put(gunner, Role.TOWER);
             tower_assignments.put(gunner, t);
-            front_entry.put(gunner, new float[]{best[0], best[1], ai.time() - 6f}); // 6 s to get there
+            front_entry.put(gunner, new float[]{best[0], best[1], ai.now() - 300f}); // 6 s to get there
             ai.landscapeOrder(Selectable.newArray(gunner), best[0], best[1], Action.MOVE, false);
             ai.aiLog().count("tower_reaim");
             for (int i = 0; i < best_n; i++)
@@ -1628,7 +2067,7 @@ final class Military {
             }
             float[] f = e.getValue();
             if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), (int) f[0], (int) f[1]) <= 2 * 2
-                    || ai.time() - f[2] > 12f) {
+                    || ai.now() - f[2] > 600f) {
                 it.remove();
                 ai.owner().setTarget(Selectable.newArray(u), t, Action.DEFAULT, false);
             }
@@ -1665,7 +2104,7 @@ final class Military {
                 tower_assignments.put(best, tower);
                 int[] front = ai.strategy().tower_front_entry ? frontCell(tower) : null;
                 if (front != null) {
-                    front_entry.put(best, new float[]{front[0], front[1], ai.time()});
+                    front_entry.put(best, new float[]{front[0], front[1], ai.now()});
                     ai.landscapeOrder(Selectable.newArray(best), front[0], front[1], Action.MOVE, false);
                     ai.aiLog().count("tower_front_entry");
                 } else
@@ -1702,7 +2141,7 @@ final class Military {
     // Home
 
     private void holdStaging() {
-        boolean escorting = mode == Mode.HOME && ai.time() - escort_time < 3f;
+        boolean escorting = mode == Mode.HOME && ai.now() - escort_time < 150f;
         int x = escorting ? escort_x : staging_x;
         int y = escorting ? escort_y : staging_y;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
@@ -1732,7 +2171,7 @@ final class Military {
     void escort(int x, int y) {
         escort_x = x;
         escort_y = y;
-        escort_time = ai.time();
+        escort_time = ai.now();
     }
 
     /** Whether most of the home army stands around a spot. */
@@ -1816,10 +2255,16 @@ final class Military {
     /**
      * The defense of a target building or unit. With gate_owner (against several enemies) only its owner's warriors
      * come from afar (a Hard copy defends with its own idle warriors, wherever they stand: AdvancedAI.nodeDefendBase),
-     * at half value beyond defense_radius; other copies count only within defense_radius. Without it, defenseAt, which
-     * counts every enemy warrior beyond defense_radius at 0.3: at N=10 that alone is ~2.7 copy armies.
+     * at half value beyond defense_radius; other copies count only within othersRadius() (defense_radius, or
+     * defense_others_radius late). Without it, defenseAt, which counts every enemy warrior beyond defense_radius at
+     * 0.3: at N=10 that alone is ~2.7 copy armies.
      */
     private float defenseFor(@NonNull Selectable<?> t) {
+        return defenseFor(t, othersRadius());
+    }
+
+    /** defenseFor with other copies' warriors and chieftains counted within {@code others} cells. */
+    private float defenseFor(@NonNull Selectable<?> t, int others) {
         int x = t.getGridX();
         int y = t.getGridY();
         if (!ai.strategy().gate_owner || ai.enemiesAlive() <= 1)
@@ -1828,21 +2273,32 @@ final class Military {
         Player owner = t.getOwner();
         int r = ai.strategy().defense_radius;
         int r2 = r * r;
+        int o2 = others * others;
         float s = 0f;
         for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
             for (Unit u : group) {
                 if (u.isDead())
                     continue;
-                boolean near = MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) <= r2;
+                int d2 = MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY());
                 if (u.getOwner() == owner)
-                    s += Combat.value(u) * (near ? 1f : .5f);
-                else if (near)
+                    s += Combat.value(u) * (d2 <= r2 ? 1f : .5f);
+                else if (d2 <= o2)
                     s += Combat.value(u);
             }
         s *= 1.1f;
         s = withEnemyTowers(s, x, y, 22);
         s += .5f * Combat.strengthNear(intel.enemy_peons, x, y, 40);
         return s;
+    }
+
+    /**
+     * Cells within which other copies' warriors and chieftains count against a target (defenseFor, the muster's
+     * chieftain malus): defense_others_radius from defense_others_from_ticks on, else defense_radius.
+     */
+    private int othersRadius() {
+        Strategy s = ai.strategy();
+        return s.defense_others_radius > 0
+                && ai.now() >= s.defense_others_from_ticks ? s.defense_others_radius : s.defense_radius;
     }
 
     /** A copy with no quarters or armory, finished or placed: raided, and kept in only by its units or a site. */
@@ -1869,8 +2325,7 @@ final class Military {
         Selectable<?> best = null;
         float best_score = Float.MAX_VALUE;
         for (Building b : intel.enemy_buildings) {
-            if (b.isDead() || b.isComplete() || stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(),
-                    b.getGridY()))
+            if (b.isDead() || b.isComplete() || stalled_targets.containsKey(b) || inDeadRegion(b))
                 continue;
             int id = b.getTemplate().getTemplateID();
             if (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY)
@@ -1894,7 +2349,7 @@ final class Military {
         // Units of homeless copies: chieftains count as four times nearer.
         for (List<Unit> group : List.of(intel.enemy_chieftains, intel.enemy_warriors, intel.enemy_peons))
             for (Unit u : group) {
-                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u.getGridX(), u.getGridY()))
+                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u))
                     continue;
                 int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
                 if (d > range2 || !homeless(u.getOwner()))
@@ -1972,17 +2427,14 @@ final class Military {
         Strategy strategy = ai.strategy();
         if (focus_owner != null && !focus_owner.isAlive())
             focus_owner = null;
-        if (focus_owner != null && strategy.focus_finish) {
-            Unit prey = focusRemnant(focus_owner, from_x, from_y);
-            if (prey != null)
-                return prey;
-        }
-        if (strategy.finish_copies && ai.enemiesAlive() > 1) {
-            Selectable<?> finish = finishTarget(from_x, from_y);
-            if (finish != null) {
-                ai.aiLog().count("finish_target");
+        // decapitate: the campaign's targets come before finishing a raided copy (below, when there are none)
+        boolean decap = decapitating();
+        decap_pick = null;
+        decap_alt = null;
+        if (!decap) {
+            Selectable<?> finish = finishFirst(from_x, from_y);
+            if (finish != null)
                 return finish;
-            }
         }
         Selectable<?> best = null;
         float best_score = Float.MAX_VALUE;
@@ -2002,27 +2454,45 @@ final class Military {
             for (Unit u : threats)
                 if (!u.isDead() && !u.getAbilities().hasAbilities(Abilities.BUILD))
                     base_threat.merge(u.getOwner(), Combat.value(u), Float::sum);
-        stalled_targets.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > STALL_MEMORY);
-        while (!dead_region_times.isEmpty() && ai.time() - dead_region_times.getFirst() > STALL_MEMORY) {
+        stalled_targets.entrySet().removeIf(e -> e.getKey().isDead() || ai.now() - e.getValue() > STALL_MEMORY_TICKS);
+        while (!dead_region_times.isEmpty() && ai.now() - dead_region_times.getFirst() > STALL_MEMORY_TICKS) {
             dead_regions.removeFirst();
             dead_region_times.removeFirst();
         }
+        while (!wedges.isEmpty() && ai.now() - wedges.getFirst().time > strategy.wedge_memory_ticks)
+            wedges.removeFirst();
         List<Building> candidates = new ArrayList<>(intel.enemy_armories);
         candidates.addAll(intel.enemy_quarters);
         candidates.addAll(intel.enemy_towers);
-        candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(), b.getGridY()));
+        candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b));
         if (strategy.gate_freeze)
             for (Building b : intel.enemy_buildings)
                 if (!b.isComplete() && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS)
                     candidates.add(b);
+        // decapitate: a quarters site would make its copy live again (Intel lists finished quarters only); not that of
+        // a copy the engine has put out, which has no peon left to build it (s6510 N=13: the first muster went 221 m
+        // for the site of s7, frozen out at 96 s)
+        if (decap && !strategy.gate_freeze)
+            for (Building b : intel.enemy_buildings)
+                if (!b.isComplete() && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                        && b.getOwner().isAlive() && !stalled_targets.containsKey(b) && !inDeadRegion(b))
+                    candidates.add(b);
         if (candidates.isEmpty()) {
             candidates.addAll(intel.enemy_buildings);
-            candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b.getGridX(), b.getGridY()));
+            candidates.removeIf(b -> stalled_targets.containsKey(b) || inDeadRegion(b));
         }
         Building best_line = null;
         float best_line_score = Float.MAX_VALUE;
         Building best_frozen = null;
         float best_frozen_score = Float.MAX_VALUE;
+        // stall_engaged_ticks: the best building whose way runs through a remembered wedge, and that wedge
+        Building best_wedged = null;
+        float best_wedged_score = Float.MAX_VALUE;
+        Wedge best_wedge = null;
+        // decapitate: the best of the campaign's targets, which come first (after the loop)
+        Selectable<?> decap_best = null;
+        float decap_score = Float.MAX_VALUE;
+        float decap_defense = 0f;
         for (Building b : candidates) {
             if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())) || ai.freeze().isFrozenSite(b))
                 continue;
@@ -2041,7 +2511,8 @@ final class Military {
                         || strategy.gate_freeze ? 0f : 60f;
                 default -> 120f;
             };
-            float defense = strategy.target_defense_weight * defenseFor(b);
+            float raw_defense = defenseFor(b);
+            float defense = strategy.target_defense_weight * raw_defense;
             if (ai.freeze().isFrozen(b.getOwner())) {
                 // A frozen copy (Freeze) has nobody outside to defend with, and only its quarters keeps it in.
                 priority = 0f;
@@ -2054,17 +2525,44 @@ final class Military {
             if (focus_owner != null && b.getOwner() == focus_owner)
                 score -= strategy.focus_bonus;
             score -= strategy.target_threat_weight * base_threat.getOrDefault(b.getOwner(), 0f);
+            Wedge wedge = wedgeOn(b);
+            boolean campaign = decap && decapTarget(b);
             if (explain != null)
-                explain.add(String.format("%07.1f %s %s at %d,%d: d %.0f + pri %.0f + def %.0f", score,
+                explain.add(String.format("%07.1f %s %s at %d,%d: d %.0f + pri %.0f + def %.0f%s%s", score,
                         b.getOwner().getPlayerInfo().getName(), Intel.kind(b), b.getGridX(), b.getGridY(), d, priority,
-                        defense));
+                        defense, wedge != null ? " (through the wedge at " + wedge.x + "," + wedge.y + ")" : "",
+                        campaign ? b.isComplete() ? " (decapitate)" : " (decapitate: site)" : ""));
+            if (wedge != null) {
+                if (scored != null)
+                    scored.add(new Rung(b, RUNG_WEDGED, score, raw_defense));
+                if (score < best_wedged_score) {
+                    best_wedged_score = score;
+                    best_wedged = b;
+                    best_wedge = wedge;
+                }
+                continue;
+            }
             if (strategy.frozen_last && ai.freeze().isFrozen(b.getOwner())) {
+                if (scored != null)
+                    scored.add(new Rung(b, RUNG_FROZEN, score, raw_defense));
                 if (score < best_frozen_score) {
                     best_frozen_score = score;
                     best_frozen = b;
                 }
                 continue;
             }
+            if (campaign) {
+                if (scored != null)
+                    scored.add(new Rung(b, RUNG_DECAP, score, raw_defense));
+                if (score < decap_score) {
+                    decap_score = score;
+                    decap_best = b;
+                    decap_defense = raw_defense;
+                }
+                continue;
+            }
+            if (scored != null)
+                scored.add(new Rung(b, RUNG_BUILDING, score, raw_defense));
             if (score < best_score) {
                 best_score = score;
                 best = b;
@@ -2073,6 +2571,60 @@ final class Military {
                 best_line_score = score - d + line;
                 best_line = b;
             }
+        }
+        if (decap) {
+            // decapitate: active enemy chieftains within decapitate_chief_cells of the army, scored like a quarters; a
+            // quarterless copy's chieftain without the quarters' priority, since his death pacifies it for good.
+            int reach2 = strategy.decapitate_chief_cells * strategy.decapitate_chief_cells;
+            float quarters_priority = strategy.quarters_first || strategy.gate_freeze ? 0f : 60f;
+            for (Unit u : intel.enemy_chieftains) {
+                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u)
+                        || MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY()) > reach2)
+                    continue;
+                float d = MapAnalysis.meters(from_x, from_y, u.getGridX(), u.getGridY());
+                if (path != null) {
+                    int walk = path.getAround(u.getGridX(), u.getGridY(), 2);
+                    if (walk == DistanceField.UNREACHABLE)
+                        continue;
+                    d = walk;
+                }
+                if (wedgeOn(u) != null)
+                    continue;
+                float priority = housed(u.getOwner()) ? quarters_priority : 0f;
+                float raw_defense = defenseFor(u);
+                float defense = strategy.target_defense_weight * raw_defense;
+                float score = d + priority + defense;
+                if (strategy.target_home_weight > 0f)
+                    score += strategy.target_home_weight * MapAnalysis.meters(staging_x, staging_y, u.getGridX(),
+                            u.getGridY());
+                if (focus_owner != null && u.getOwner() == focus_owner)
+                    score -= strategy.focus_bonus;
+                score -= strategy.target_threat_weight * base_threat.getOrDefault(u.getOwner(), 0f);
+                if (explain != null)
+                    explain.add(String.format("%07.1f %s chieftain at %d,%d: d %.0f + pri %.0f + def %.0f (decapitate)",
+                            score, u.getOwner().getPlayerInfo().getName(), u.getGridX(), u.getGridY(), d, priority,
+                            defense));
+                if (scored != null)
+                    scored.add(new Rung(u, RUNG_DECAP, score, raw_defense));
+                if (score < decap_score) {
+                    decap_score = score;
+                    decap_best = u;
+                    decap_defense = raw_defense;
+                }
+            }
+            if (decap_best != null) {
+                decap_pick = decap_best;
+                decap_changed = best != null && best_score < decap_score;
+                decap_why = ai.logging() ? decapWhy(decap_best, decap_score, decap_defense, best, best_score) : null;
+                // the muster's second choice when this one fails the gate: the best other building scored, with the
+                // frozen_last and wedge fallbacks as below (uncounted)
+                decap_alt = best != null ? best : best_frozen != null ? best_frozen : best_wedged;
+                return decap_best;
+            }
+            // No campaign target left: target choice as without decapitate, finishing a raided copy first.
+            Selectable<?> finish = finishFirst(from_x, from_y);
+            if (finish != null)
+                return finish;
         }
         if (path != null && best != best_line)
             ai.aiLog().count("retarget_path_changed");
@@ -2085,7 +2637,266 @@ final class Military {
                 ai.aiLog().count("frozen_deferred");
             }
         }
+        if (best_wedge != null && best_wedged != null) {
+            if (best == null) {
+                // Every building left is through a wedge: the best of them after all.
+                best = best_wedged;
+                if (!best_wedge.fallback) {
+                    best_wedge.fallback = true;
+                    ai.aiLog().count("wedge_fallback");
+                    ai.log(String.format("wedge at %d,%d: every building left is through it, %s %s at %d,%d after all",
+                            best_wedge.x, best_wedge.y, best_wedged.getOwner().getPlayerInfo().getName(),
+                            Intel.kind(best_wedged), best_wedged.getGridX(), best_wedged.getGridY()));
+                }
+            } else if (best_wedged_score < best_score && !best_wedge.avoided) {
+                best_wedge.avoided = true;
+                ai.aiLog().count("wedge_avoided");
+                ai.log(String.format("wedge at %d,%d: passing over %s %s at %d,%d, whose way runs through it",
+                        best_wedge.x, best_wedge.y, best_wedged.getOwner().getPlayerInfo().getName(),
+                        Intel.kind(best_wedged), best_wedged.getGridX(), best_wedged.getGridY()));
+            }
+        }
+        if (best == null && scored != null)
+            ladder_fallback = true;
         return best != null ? best : nearestEnemyUnit(from_x, from_y);
+    }
+
+    /** focus_finish's and finish_copies' targets, which target choice takes before any other (null: none). */
+    private @Nullable Selectable<?> finishFirst(int from_x, int from_y) {
+        Strategy strategy = ai.strategy();
+        if (focus_owner != null && strategy.focus_finish) {
+            Unit prey = focusRemnant(focus_owner, from_x, from_y);
+            if (prey != null)
+                return prey;
+        }
+        if (strategy.finish_copies && ai.enemiesAlive() > 1) {
+            Selectable<?> finish = finishTarget(from_x, from_y);
+            if (finish != null) {
+                ai.aiLog().count("finish_target");
+                return finish;
+            }
+        }
+        return null;
+    }
+
+    /** decapitate, from decapitate_from_ticks on. */
+    private boolean decapitating() {
+        Strategy s = ai.strategy();
+        return s.decapitate && ai.now() >= s.decapitate_from_ticks;
+    }
+
+    /**
+     * decapitate: a building of the campaign's tier: a quarters, finished (its copy is live) or a site (it would be
+     * again), or the finished armory of a copy that is not live but may still send a wave of 10 or 15, which needs no
+     * chieftain (mayLaunch): its warriors come from there. Never a building of a copy the engine has put out.
+     */
+    private boolean decapTarget(@NonNull Building b) {
+        if (!b.getOwner().isAlive())
+            return false; // put out: it never sends a wave again
+        int id = b.getTemplate().getTemplateID();
+        if (id == com.oddlabs.tt.model.Race.BUILDING_QUARTERS)
+            return true;
+        return id == com.oddlabs.tt.model.Race.BUILDING_ARMORY && b.isComplete() && !liveCopy(b.getOwner())
+                && mayLaunch(b.getOwner());
+    }
+
+    /**
+     * decapitate: whether copy p can send a wave that needs a chieftain: it has a finished quarters (where it trains
+     * one, AdvancedAI.nodeTrainChieftain) or an active or training chieftain. Not live: pacified.
+     */
+    private boolean liveCopy(@NonNull Player p) {
+        return p.hasActiveChieftain() || p.isTrainingChieftain() || housed(p);
+    }
+
+    /** decapitate: whether copy p has a finished quarters. */
+    private boolean housed(@NonNull Player p) {
+        for (Building q : ai.intel().enemy_quarters)
+            if (!q.isDead() && q.getOwner() == p)
+                return true;
+        return false;
+    }
+
+    /**
+     * decapitate: whether copy p may still be below wave size 20 (10 + 5 per wave launched), from which on a wave
+     * leaves only with an active chieftain: fewer than two launches seen by its shepherd flock, or no flock watching.
+     */
+    private boolean mayLaunch(@NonNull Player p) {
+        return ai.shepherd().launches(p) < 2;
+    }
+
+    /** decapitate, for log lines: what copy p is in the campaign's terms. */
+    private @NonNull String copyStatus(@NonNull Player p) {
+        if (p.hasActiveChieftain())
+            return "live, chieftain";
+        if (p.isTrainingChieftain())
+            return "live, training a chieftain";
+        if (housed(p))
+            return "live, quarters";
+        int waves = ai.shepherd().launches(p);
+        String seen = waves < 0 ? "waves not watched" : waves + " waves seen";
+        return mayLaunch(p) ? "pacified, may still send a small wave (" + seen + ")" : "pacified (" + seen + ")";
+    }
+
+    /** decapitate, log only: why chooseTarget took {@code pick} (score, defense) over {@code other}, the best else. */
+    private @NonNull String decapWhy(@NonNull Selectable<?> pick, float score, float defense,
+            @Nullable Selectable<?> other, float other_score) {
+        String what;
+        if (!(pick instanceof Building b))
+            what = "its chieftain, within " + ai.strategy().decapitate_chief_cells + " cells";
+        else if (!b.isComplete())
+            what = "a quarters site would make it live again";
+        else if (b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS)
+            what = "its quarters";
+        else
+            what = "its armory, while it may still send a wave without a chieftain";
+        int live = 0;
+        int pacified = 0;
+        for (Player p : ai.owner().getWorld().getPlayers())
+            if (ai.owner().isEnemy(p) && p.isAlive()) {
+                if (liveCopy(p))
+                    live++;
+                else
+                    pacified++;
+            }
+        String instead = other == null ? "" : String.format(", over %s (score %.0f, %s)", describe(other),
+                other_score, copyStatus(other.getOwner()));
+        return String.format("%s, %s (%s; score %.0f, defense %.1f)%s; %d copies live, %d pacified", describe(pick),
+                what, copyStatus(pick.getOwner()), score, defense, instead, live, pacified);
+    }
+
+    /**
+     * decapitate: counts (decapitate_target, by kind, and decapitate_changed when it passed over a better-scoring
+     * target) and logs an attack target that target choice took from the campaign's tier ({@code when}: the decision).
+     */
+    private void noteDecapitate(@Nullable Selectable<?> t, @NonNull String when) {
+        if (t == null || t != decap_pick)
+            return;
+        ai.aiLog().count("decapitate_target");
+        String kind = "chief";
+        if (t instanceof Building b) {
+            boolean quarters = b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_QUARTERS;
+            kind = !b.isComplete() ? "site" : quarters ? "quarters" : "armory";
+        }
+        ai.aiLog().count("decapitate_" + kind);
+        if (decap_changed)
+            ai.aiLog().count("decapitate_changed");
+        if (ai.logging())
+            ai.log("decapitate (" + when + "): " + (decap_why != null ? decap_why : describe(t)));
+    }
+
+    /**
+     * decapitate: watches each copy go from live to pacified (decapitate_pacified, once a copy, and
+     * decapitate_pacified_early while it may still send a small wave) and back (decapitate_relive: it rebuilt its
+     * quarters or trained a chieftain), and logs each change. Counters and logs only.
+     */
+    private void trackPacified() {
+        Intel intel = ai.intel();
+        for (Player p : ai.owner().getWorld().getPlayers()) {
+            if (!ai.owner().isEnemy(p) || !p.isAlive())
+                continue;
+            boolean live = liveCopy(p);
+            boolean was = decap_live.contains(p);
+            if (live == was)
+                continue;
+            String name = p.getPlayerInfo().getName();
+            if (live) {
+                decap_live.add(p);
+                if (decap_pacified.contains(p)) {
+                    ai.aiLog().count("decapitate_relive");
+                    ai.log(String.format("decapitate: %s is %s again", name, copyStatus(p)));
+                }
+                continue;
+            }
+            decap_live.remove(p);
+            boolean early = mayLaunch(p);
+            if (!decap_pacified.contains(p)) {
+                decap_pacified.add(p);
+                ai.aiLog().count("decapitate_pacified");
+                if (early)
+                    ai.aiLog().count("decapitate_pacified_early");
+            }
+            if (ai.logging()) {
+                int warriors = 0;
+                for (Unit u : intel.enemy_warriors)
+                    if (!u.isDead() && u.getOwner() == p)
+                        warriors++;
+                boolean armory = false;
+                for (Building a : intel.enemy_armories)
+                    armory |= !a.isDead() && a.getOwner() == p;
+                ai.log(String.format("decapitate: %s %s, no quarters and no chieftain: %d units, %d warriors%s", name,
+                        copyStatus(p), p.getUnitCountContainer().getNumSupplies(), warriors,
+                        armory ? ", an armory" : ""));
+            }
+        }
+    }
+
+    /**
+     * decapitate: a chieftain the attack goes for has walked more than 8 cells from where its field was computed:
+     * the field again from where it stands now (at most every DECAP_FOLLOW_TICKS, and while it is within twice
+     * decapitate_chief_cells of the army's centre), so the army follows it instead of stalling on an empty spot. The
+     * stall clocks keep running: the gains on the new field are measured from where the army stands on it now, so only
+     * a real 20 m gain restarts the calm stall's clock and stall_cap's, and a chieftain the army cannot catch (one
+     * walking with a leashed flock) stalls as any target does. (A new field reset both, and the first measure on it
+     * counted as a gain, every 5 s while he walked.)
+     */
+    private void followChief(int @NonNull [] c) {
+        if (!(target instanceof Unit u) || u.isDead() || u.isMounted() || !u.getAbilities().hasAbilities(
+                Abilities.MAGIC) || MapAnalysis.dist2(target_x, target_y, u.getGridX(), u.getGridY()) <= 8 * 8
+                || !ai.periodDue(last_decap_follow, DECAP_FOLLOW_TICKS))
+            return;
+        int reach = 2 * ai.strategy().decapitate_chief_cells;
+        if (MapAnalysis.dist2(c[0], c[1], u.getGridX(), u.getGridY()) > reach * reach)
+            return;
+        last_decap_follow = ai.now();
+        int fx = target_x;
+        int fy = target_y;
+        float progress = last_progress_time;
+        setTarget(u, false);
+        last_progress_time = progress;
+        DistanceField f = target_field;
+        int p = f != null ? attackPivotDist(f) : DistanceField.UNREACHABLE;
+        best_target_dist = p == DistanceField.UNREACHABLE ? Integer.MAX_VALUE : p;
+        // sealed_progress: likewise for the straight line while no attacker stands on the field
+        best_line_dist = (int) MapAnalysis.meters(c[0], c[1], target_x, target_y);
+        ai.aiLog().count("decapitate_follow");
+        ai.log(String.format("decapitate: following %s from %d,%d", describe(u), fx, fy));
+    }
+
+    /**
+     * stall_engaged_ticks: the remembered wedge that b's way from the staging point runs through (within 12 cells:
+     * going through the wedge's cell costs at most WEDGE_DETOUR more), or null. b: a building, or (decapitate) a
+     * chieftain.
+     */
+    private @Nullable Wedge wedgeOn(@NonNull Selectable<?> b) {
+        if (wedges.isEmpty())
+            return null;
+        DistanceField s = stagingField();
+        int sb = s.getAround(b.getGridX(), b.getGridY(), 4);
+        if (sb == DistanceField.UNREACHABLE)
+            return null;
+        for (Wedge w : wedges) {
+            int sw = s.getAround(w.x, w.y, 2);
+            int wb = w.field.getAround(b.getGridX(), b.getGridY(), 4);
+            if (sw != DistanceField.UNREACHABLE && wb != DistanceField.UNREACHABLE && sw + wb <= sb + WEDGE_DETOUR)
+                return w;
+        }
+        return null;
+    }
+
+    /**
+     * The field with corner cuts (as the engine walks) from the staging point, computed again when that moves or
+     * STAGING_FIELD_TICKS after the last time (trees are cut and buildings rise: kept for the game, it called newly
+     * opened ground unreachable and kept ways that a building now blocks).
+     */
+    private @NonNull DistanceField stagingField() {
+        DistanceField f = staging_field;
+        if (f == null || f.getSourceX() != staging_x || f.getSourceY() != staging_y
+                || ai.now() - staging_field_time > STAGING_FIELD_TICKS) {
+            f = ai.map().computeField(staging_x, staging_y, Integer.MAX_VALUE, true);
+            staging_field = f;
+            staging_field_time = ai.now();
+        }
+        return f;
     }
 
     /**
@@ -2119,7 +2930,7 @@ final class Military {
         int best_d = Integer.MAX_VALUE;
         for (List<Unit> group : List.of(intel.enemy_peons, intel.enemy_warriors, intel.enemy_chieftains))
             for (Unit u : group) {
-                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u.getGridX(), u.getGridY()))
+                if (u.isDead() || stalled_targets.containsKey(u) || inDeadRegion(u))
                     continue;
                 int d = MapAnalysis.dist2(from_x, from_y, u.getGridX(), u.getGridY());
                 if (d < best_d) {
@@ -2131,10 +2942,212 @@ final class Military {
     }
 
     /**
-     * How fast the enemy's field army has grown over the last minute or so, in strength per second: warriors
+     * remnant_ladder_ticks: the first target on the ladder that passes the muster's gate (musterGo), or null. The
+     * ladder holds the buildings chooseTarget scored ({@code rungs}) less {@code best}, the quarters and armory sites
+     * of homeless copies (never a frozen copy's armory site, a stalled target or one in a dead region), and one
+     * remnant of each homeless copy still in (remnantTarget). It goes rung by rung (RUNG_*), each by score: the
+     * buildings by chooseTarget's, sites and remnants by meters from the staging point plus target_defense_weight per
+     * unit of their defense. A remnant with another copy's warrior or chieftain within REMNANT_ALONE_CELLS waits for
+     * those that stand alone, so that one parked blob fights at a time, and sites and remnants whose way runs through
+     * a remembered wedge (wedgeOn) come last, with the wedge memory's buildings (RUNG_WEDGED). {@code log_none}: log
+     * (once a minute) when nothing passes. With decapitate, the campaign's other targets chooseTarget scored
+     * (RUNG_DECAP, chieftains among them) come first.
+     */
+    private @Nullable Rung walkLadder(@Nullable Selectable<?> best, @NonNull List<@NonNull Rung> rungs, float potential,
+            float growth, boolean log_none) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        List<Rung> ladder = new ArrayList<>();
+        for (Rung r : rungs)
+            if (r.t() != best)
+                ladder.add(r);
+        for (Building b : intel.enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (b.isDead() || b.isComplete() || b == best || (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                    && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY) || ai.freeze().isFrozenSite(b)
+                    || stalled_targets.containsKey(b) || inDeadRegion(b) || scoredAlready(rungs, b)
+                    || !b.getOwner().isAlive() || !homeless(b.getOwner()))
+                continue;
+            float d = defenseFor(b);
+            float score = MapAnalysis.meters(staging_x, staging_y, b.getGridX(),
+                    b.getGridY()) + strategy.target_defense_weight * d;
+            // last when its way runs through a remembered wedge, as target choice does with buildings
+            ladder.add(new Rung(b, wedgeOn(b) != null ? RUNG_WEDGED : RUNG_SITE, score, d, true));
+        }
+        for (Map.Entry<Player, List<Unit>> e : remnantGroups(null).entrySet()) {
+            Unit u = remnantTarget(e.getKey(), e.getValue(), null);
+            if (u == null)
+                continue;
+            float d = defenseFor(u);
+            float score = MapAnalysis.meters(staging_x, staging_y, u.getGridX(),
+                    u.getGridY()) + strategy.target_defense_weight * d;
+            int rung = wedgeOn(u) != null ? RUNG_WEDGED : othersNear(u,
+                    REMNANT_ALONE_CELLS) == 0 ? RUNG_ALONE : RUNG_CROWDED;
+            ladder.add(new Rung(u, rung, score, d, true));
+        }
+        // stable: equal scores keep the order above (world order of the copies and their units)
+        ladder.sort((a, b) -> a.rung() != b.rung() ? Integer.compare(a.rung(), b.rung()) : Float.compare(a.score(),
+                b.score()));
+        int others = othersRadius();
+        for (Rung r : ladder) {
+            float defense = r.defense();
+            if (strategy.project_defense)
+                defense += growth;
+            if (musterGo(r.t(), potential, defense, others, false))
+                return r;
+        }
+        if (log_none && ai.logging() && ai.periodDue(last_ladder_log, 3000f)) {
+            last_ladder_log = ai.now();
+            Rung first = ladder.isEmpty() ? null : ladder.getFirst();
+            ai.log(String.format("remnant ladder: none of %d targets passes the gate with %.1f%s", ladder.size(),
+                    potential, first == null ? "" : String.format(" (first: %s, defense %.1f)", describe(first.t()),
+                            first.defense())));
+        }
+        return null;
+    }
+
+    private static boolean scoredAlready(@NonNull List<@NonNull Rung> rungs, @NonNull Building b) {
+        for (Rung r : rungs)
+            if (r.t() == b)
+                return true;
+        return false;
+    }
+
+    /**
+     * remnant_ladder_ticks: the units of each homeless copy still in (remnantStanding), or only of {@code only}, that
+     * an attack may go for (alive, not a stalled target, outside dead regions), by copy in the order Intel sees them,
+     * chieftains first.
+     */
+    private @NonNull Map<@NonNull Player, @NonNull List<@NonNull Unit>> remnantGroups(@Nullable Player only) {
+        Intel intel = ai.intel();
+        Map<Player, Boolean> standing = new LinkedHashMap<>();
+        Map<Player, List<Unit>> groups = new LinkedHashMap<>();
+        for (List<Unit> group : List.of(intel.enemy_chieftains, intel.enemy_warriors, intel.enemy_peons))
+            for (Unit u : group) {
+                Player p = u.getOwner();
+                if (u.isDead() || (only != null && p != only)
+                        || !standing.computeIfAbsent(p, k -> homeless(k) && remnantStanding(k))
+                        || stalled_targets.containsKey(u) || inDeadRegion(u))
+                    continue;
+                groups.computeIfAbsent(p, k -> new ArrayList<>()).add(u);
+            }
+        return groups;
+    }
+
+    /**
+     * remnant_ladder_ticks: a homeless copy that units must still die for to go out: more than 8 units or an active
+     * chieftain (the collapse rule), or any unit at all while a frozen armory site (never attacked) keeps it in.
+     */
+    private boolean remnantStanding(@NonNull Player p) {
+        int units = p.getUnitCountContainer().getNumSupplies();
+        if (units > 8 || p.hasActiveChieftain())
+            return true;
+        if (units == 0)
+            return false;
+        for (Building b : ai.intel().enemy_buildings)
+            if (b.getOwner() == p && ai.freeze().isFrozenSite(b))
+                return true;
+        return false;
+    }
+
+    /**
+     * remnant_ladder_ticks: the remnant of copy p to attack, from its {@code units} (remnantGroups): its chieftain,
+     * which alone keeps it in, else its unit nearest {@code from} (null: the centre of those units); null while its
+     * chieftain is out of reach (a stalled target, a dead region, mounted), since no other kill puts the copy out.
+     */
+    private @Nullable Unit remnantTarget(@NonNull Player p, @NonNull List<@NonNull Unit> units, int @Nullable [] from) {
+        if (units.isEmpty())
+            return null;
+        if (p.hasActiveChieftain()) {
+            Unit chief = p.getChieftain();
+            return chief != null && units.contains(chief) ? chief : null;
+        }
+        int[] c = from != null ? from : MapAnalysis.centroid(units);
+        Unit best = null;
+        int best_d = Integer.MAX_VALUE;
+        for (Unit u : units) {
+            int d = MapAnalysis.dist2(c[0], c[1], u.getGridX(), u.getGridY());
+            if (d < best_d) {
+                best_d = d;
+                best = u;
+            }
+        }
+        return best;
+    }
+
+    /** remnant_ladder_ticks: other copies' living warriors and chieftains within {@code cells} of u. */
+    private int othersNear(@NonNull Unit u, int cells) {
+        Intel intel = ai.intel();
+        int r2 = cells * cells;
+        int n = 0;
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
+            for (Unit e : group)
+                if (!e.isDead() && e.getOwner() != u.getOwner()
+                        && MapAnalysis.dist2(e.getGridX(), e.getGridY(), u.getGridX(), u.getGridY()) <= r2)
+                    n++;
+        return n;
+    }
+
+    /**
+     * remnant_ladder_ticks: after a site or remnant of the copy the attack finishes has fallen, that copy's next
+     * remnant while it is still in: its chieftain, else its unit nearest the army's centre {@code c}; null when there
+     * is none, or when it stands more than finish_range cells from c (remnant_chain_far: the chain is never gated
+     * again, so a scattered copy would march the army back and forth across the map; the attack then retargets as
+     * usual, and the next muster weighs the copy anew).
+     */
+    private @Nullable Unit remnantNext(@Nullable Selectable<?> fallen, int @NonNull [] c) {
+        Player p = ladder_owner;
+        ladder_owner = null;
+        if (p == null || fallen == null || fallen.getOwner() != p)
+            return null;
+        List<Unit> units = remnantGroups(p).get(p);
+        Unit next = units == null ? null : remnantTarget(p, units, c);
+        String name = p.getPlayerInfo().getName();
+        int left = p.getUnitCountContainer().getNumSupplies();
+        if (next == null) {
+            ai.aiLog().count("remnant_chain_done");
+            if (ai.logging()) {
+                String why = !homeless(p) ? "has a base again" : remnantStanding(
+                        p) ? "stays in, the rest out of reach" : "is finished";
+                ai.log(String.format("remnant ladder: %s %s (%d units%s)", name, why, left,
+                        p.hasActiveChieftain() ? ", chieftain" : ""));
+            }
+            return null;
+        }
+        int range = ai.strategy().finish_range;
+        if (MapAnalysis.dist2(c[0], c[1], next.getGridX(), next.getGridY()) > range * range) {
+            ai.aiLog().count("remnant_chain_far");
+            ai.log(String.format("remnant ladder: next of %s, %s, is %.0f m from the army at %d,%d: the chain ends",
+                    name, describe(next), MapAnalysis.meters(c[0], c[1], next.getGridX(), next.getGridY()), c[0],
+                    c[1]));
+            return null;
+        }
+        ladder_owner = p;
+        ai.aiLog().count("remnant_chain");
+        ai.log(String.format("remnant ladder: next of %s, %s (%d units left%s)", name, describe(next), left,
+                p.hasActiveChieftain() ? ", chieftain" : ""));
+        return next;
+    }
+
+    /** For log lines: the owner, kind and cell of a target. */
+    private static @NonNull String describe(@NonNull Selectable<?> t) {
+        String kind;
+        if (t instanceof Building b)
+            kind = Intel.kind(b) + (b.isComplete() ? "" : " site");
+        else if (t.getAbilities().hasAbilities(Abilities.MAGIC))
+            kind = "chieftain";
+        else if (t.getAbilities().hasAbilities(Abilities.THROW))
+            kind = "warrior";
+        else
+            kind = "peon";
+        return t.getOwner().getPlayerInfo().getName() + " " + kind + " at " + t.getGridX() + "," + t.getGridY();
+    }
+
+    /**
+     * How fast the enemy's field army has grown over the last minute or so, in strength per game tick: warriors
      * outside plus weapons it could deploy are not visible, so this watches what comes out.
      */
-    private float enemyGrowthPerSecond() {
+    private float enemyGrowthPerTick() {
         if (enemy_history.size() < 2)
             return 0f;
         float[] first = enemy_history.getFirst();
@@ -2144,35 +3157,161 @@ final class Military {
     }
 
     private void recordEnemyStrength() {
-        enemy_history.addLast(new float[]{ai.time(), enemyFieldStrength()});
-        while (enemy_history.size() > 2 && ai.time() - enemy_history.getFirst()[0] > 90f)
+        enemy_history.addLast(new float[]{ai.now(), enemyFieldStrength()});
+        while (enemy_history.size() > 2 && ai.now() - enemy_history.getFirst()[0] > 4500f)
             enemy_history.removeFirst();
     }
 
     private void considerAttack() {
-        Intel intel = ai.intel();
         Strategy strategy = ai.strategy();
         if (ai.logging())
             explain = new ArrayList<>();
+        // remnant_ladder_ticks: chooseTarget records the buildings it scores, for the ladder
+        boolean ladder = strategy.remnant_ladder_ticks > 0f && ai.now() >= strategy.remnant_ladder_ticks;
+        if (ladder) {
+            scored = new ArrayList<>();
+            ladder_fallback = false;
+        }
         Selectable<?> t = chooseTarget(staging_x, staging_y);
         List<String> why = explain;
         explain = null;
-        if (t == null)
+        List<Rung> rungs = scored;
+        scored = null;
+        boolean fallback = ladder_fallback;
+        ladder_fallback = false;
+        if (t == null && rungs == null)
             return;
         float army = armyStrength();
+        // retreat_cap_ticks: the attackers a capped retreat left out do not march with the next attack (launchAttack)
+        if (!stranded.isEmpty())
+            army -= strandedStrength();
         float potential = army + stockStrength();
-        float defense = defenseFor(t);
+        float growth = 0f;
         if (strategy.project_defense) {
-            // The enemy keeps arming while we march; judge the fight at the moment of arrival.
+            // The enemy keeps arming while we march (3 m a game second); judge the fight at the moment of arrival.
             int d = ai.planner().getEnemyField().get(staging_x, staging_y);
-            float march = d == DistanceField.UNREACHABLE ? 120f : d / 3f;
-            defense += Math.max(0f, enemyGrowthPerSecond()) * march;
+            float march = d == DistanceField.UNREACHABLE ? 6000f : GauntletAI.ticks(d / 3f);
+            growth = Math.max(0f, enemyGrowthPerTick()) * march;
         }
-        // Chieftains decide battles: count ours as a big plus and theirs as a big minus, unless ours can answer his.
+        float defense = 0f;
+        boolean go = false;
+        if (t != null) {
+            defense = defenseFor(t);
+            if (strategy.project_defense)
+                defense += growth;
+            go = musterGo(t, potential, defense, othersRadius(), true);
+        }
+        // decapitate: the campaign's best fails the gate and no ladder weighs the rest, so the best other building is
+        // tried; else a guarded quarters or a capped army's failed capped_ratio test held the army home for good while
+        // the pacified copies' cheap armories and towers were never weighed.
+        Selectable<?> alt = decap_alt;
+        decap_alt = null;
+        if (!go && t != null && t == decap_pick && rungs == null && alt != null && !alt.isDead()
+                && ai.now() >= next_wave_time) {
+            float alt_defense = defenseFor(alt);
+            if (strategy.project_defense)
+                alt_defense += growth;
+            if (musterGo(alt, potential, alt_defense, othersRadius(), false)) {
+                ai.aiLog().count("decapitate_alt");
+                ai.log(String.format("decapitate: %s fails the gate at %.1f, so %s (%s, defense %.1f)", describe(t),
+                        defense, describe(alt), copyStatus(alt.getOwner()), alt_defense));
+                t = alt;
+                defense = alt_defense;
+                go = true;
+            }
+        }
+        // remnant_ladder_ticks: the best building fails the gate, or there is none (the nearest unit, or nothing).
+        Rung pick = null;
+        if (rungs != null && (!go || fallback) && ai.now() >= next_wave_time) {
+            pick = walkLadder(t, rungs, potential, growth, !go);
+            if (pick != null) {
+                String rung = switch (pick.rung()) {
+                    case RUNG_DECAP -> "decapitate";
+                    case RUNG_BUILDING -> "building";
+                    case RUNG_SITE -> "site";
+                    case RUNG_FROZEN -> "frozen";
+                    case RUNG_WEDGED -> "wedged";
+                    default -> pick.t().getAbilities().hasAbilities(Abilities.MAGIC) ? "chief" : "unit";
+                };
+                ai.aiLog().count("ladder_" + rung);
+                if (pick.rung() == RUNG_CROWDED)
+                    ai.aiLog().count("ladder_crowded");
+                if (fallback)
+                    ai.aiLog().count("ladder_fallback");
+                if (ai.logging()) {
+                    String instead;
+                    if (t == null)
+                        instead = "nothing else to attack";
+                    else if (fallback)
+                        instead = "no building left (nearest unit: " + describe(t) + ")";
+                    else
+                        instead = String.format("%s fails the gate at %.1f", describe(t), defense);
+                    String crowd = pick.rung() == RUNG_CROWDED ? String.format(", %d other fighters within %d cells",
+                            othersNear((Unit) pick.t(), REMNANT_ALONE_CELLS), REMNANT_ALONE_CELLS) : "";
+                    ai.log(String.format("remnant ladder: %s, so %s (%s, defense %.1f, score %.0f%s)", instead,
+                            describe(pick.t()), rung, pick.defense(), pick.score(), crowd));
+                }
+                t = pick.t();
+                defense = pick.defense();
+                if (strategy.project_defense)
+                    defense += growth;
+                go = true;
+                if (pick.rung() == RUNG_DECAP) {
+                    // decapitate: another of the campaign's targets, cheaper than its best
+                    decap_pick = t;
+                    decap_changed = false;
+                    decap_why = ai.logging() ? String.format("%s from the ladder (%s; score %.0f, defense %.1f)",
+                            describe(t), copyStatus(t.getOwner()), pick.score(), pick.defense()) : null;
+                }
+            }
+        }
+        if (t == null || !go || ai.now() < next_wave_time)
+            return;
+        // decapitate: count and log a muster on one of the campaign's targets
+        noteDecapitate(t, "muster");
+        target = t;
+        mode = Mode.MUSTER;
+        muster_start = ai.now();
+        // remnant_ladder_ticks: a site or remnant from the ladder (wedged ones too) starts finishing its copy (attack,
+        // remnantNext)
+        boolean finish = pick != null && pick.remnant();
+        ladder_target = finish ? t : null;
+        ladder_owner = finish ? t.getOwner() : null;
+        if (why != null && !why.isEmpty()) {
+            // log only: the best few candidates by score (lower is better), from the staging point
+            why.sort(null);
+            ai.log("muster candidates from " + staging_x + "," + staging_y + ": " + String.join("; ", why.subList(0,
+                    Math.min(4, why.size()))));
+        }
+        ai.log(String.format("muster: army %.1f + stock %.1f vs defense %.1f at %d,%d", army, potential - army,
+                defense, t.getGridX(), t.getGridY()));
+        // defense_others_radius: count (and log) the musters that counting other copies as far as before would stop
+        int others = othersRadius();
+        if (others != strategy.defense_radius && strategy.gate_owner && ai.enemiesAlive() > 1) {
+            float wide = defenseFor(t, strategy.defense_radius);
+            if (strategy.project_defense)
+                wide += growth;
+            if (!musterGo(t, potential, wide, strategy.defense_radius, false)) {
+                ai.aiLog().count("defense_others_go");
+                ai.log(String.format(
+                        "muster on other copies within %d cells: defense %.1f, %.1f within %d would" + " hold it back",
+                        others, defense, wide, strategy.defense_radius));
+            }
+        }
+    }
+
+    /**
+     * The muster's gate: our army and stock ({@code potential}) against a target's defense. Chieftains decide battles:
+     * ours counts as a big plus and theirs (the target owner's, or another copy's within {@code others} cells) as a
+     * big minus, unless ours can answer his. {@code count}: count capped_min_blocked (the best target's test only).
+     */
+    private boolean musterGo(@NonNull Selectable<?> t, float potential, float defense, int others, boolean count) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
         boolean chief = intel.chieftain != null && intel.chieftain.getHitPoints() > 30
                 && !(strategy.shred && strategy.shred_strict); // strict shred keeps him home
         boolean enemy_chief = false;
-        int cr2 = strategy.defense_radius * strategy.defense_radius;
+        int cr2 = others * others;
         for (Unit c : intel.enemy_chieftains)
             enemy_chief |= !c.isDead() && c.getHitPoints() > 15 && (!strategy.gate_owner || ai.enemiesAlive() <= 1
                     || c.getOwner() == t.getOwner()
@@ -2186,23 +3325,10 @@ final class Military {
         boolean capped_go = capped && potential * bonus >= strategy.capped_ratio * caution * defense;
         if (capped_go && potential < strategy.capped_min_strength) {
             capped_go = false;
-            if (!go)
+            if (!go && count)
                 ai.aiLog().count("capped_min_blocked");
         }
-        go |= capped_go;
-        if (!go || ai.time() < next_wave_time)
-            return;
-        target = t;
-        mode = Mode.MUSTER;
-        muster_start = ai.time();
-        if (why != null && !why.isEmpty()) {
-            // log only: the best few candidates by score (lower is better), from the staging point
-            why.sort(null);
-            ai.log("muster candidates from " + staging_x + "," + staging_y + ": " + String.join("; ", why.subList(0,
-                    Math.min(4, why.size()))));
-        }
-        ai.log(String.format("muster: army %.1f + stock %.1f vs defense %.1f at %d,%d", army, potential - army,
-                defense, t.getGridX(), t.getGridY()));
+        return go || capped_go;
     }
 
     /**
@@ -2262,17 +3388,35 @@ final class Military {
         return false;
     }
 
+    /**
+     * Warriors our main armory could deploy right away. weapon_reserve: not the weapons it holds back below threat 2,
+     * nor the workers kept in for them, which neither join an attack nor let a muster launch.
+     */
     private float stockStrength() {
         Building armory = ai.intel().armory();
-        return armory == null ? 0f : stockStrength(armory);
+        if (armory == null)
+            return 0f;
+        int[] held = ai.economy().weaponReserve(armory);
+        return held == null ? stockStrength(armory) : stockStrength(armory, held[0], held[1], held[2]);
     }
 
     /** Warriors an armory could deploy right away: weapons in stock, as far as peons inside can carry them. */
     private static float stockStrength(@NonNull Building armory) {
+        return stockStrength(armory, 0, 0, 0);
+    }
+
+    /** The same less the chicken, iron and rock axes held back, and as many workers. */
+    private static float stockStrength(@NonNull Building armory, int held_chicken, int held_iron, int held_rock) {
         int workers = armory.getUnitContainer().getNumSupplies();
         int iron = armory.getSupplyContainer(com.oddlabs.tt.model.weapon.IronAxeWeapon.class).getNumSupplies();
         int chicken = armory.getSupplyContainer(com.oddlabs.tt.model.weapon.RubberAxeWeapon.class).getNumSupplies();
         int rock = armory.getSupplyContainer(com.oddlabs.tt.model.weapon.RockAxeWeapon.class).getNumSupplies();
+        if (held_chicken + held_iron + held_rock > 0) {
+            workers = Math.max(0, workers - held_chicken - held_iron - held_rock);
+            chicken = Math.max(0, chicken - held_chicken);
+            iron = Math.max(0, iron - held_iron);
+            rock = Math.max(0, rock - held_rock);
+        }
         float s = 0f;
         int left = workers;
         int c = Math.min(chicken, left);
@@ -2302,17 +3446,20 @@ final class Military {
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             if (e.getValue() != Role.ARMY)
                 continue;
-            total++;
             Unit u = e.getKey();
+            // retreat_cap_ticks: the stranded do not go, so the muster does not wait for them either
+            if (strandedOut(u))
+                continue;
+            total++;
             if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) <= 12 * 12)
                 near++;
         }
         boolean gathered = total > 0 && near >= total * 8 / 10;
-        boolean timeout = ai.time() - muster_start > 45f;
+        boolean timeout = ai.now() - muster_start > 2250f;
         if (ai.strategy().launch_recheck && timeout && !gathered && threat_level >= 2
                 && base_threat_strength > ai.strategy().attack_threat_ratio * (stagingStrength(30) + stockStrength())) {
             mode = Mode.HOME;
-            next_wave_time = ai.time() + 60f;
+            next_wave_time = ai.now() + 3000f;
             ai.log(String.format("muster dropped: %.1f in the base", base_threat_strength));
             ai.aiLog().count("muster_dropped");
             return;
@@ -2322,16 +3469,36 @@ final class Military {
     }
 
     private void launchAttack() {
-        Selectable<?> t = target != null && !target.isDead() ? target : chooseTarget(staging_x, staging_y);
+        boolean chosen = target == null || target.isDead();
+        Selectable<?> t = chosen ? chooseTarget(staging_x, staging_y) : target;
+        if (chosen)
+            noteDecapitate(t, "launch");
+        // remnant_ladder_ticks: the attack finishes the ladder's copy only when it goes for the ladder's pick
+        if (t != ladder_target)
+            ladder_owner = null;
+        ladder_target = null;
         if (t == null) {
             mode = Mode.HOME;
             return;
         }
         setTarget(t);
         float s = 0f;
+        int kept = 0;
+        float kept_value = 0f;
         for (Unit u : beyondGuard(withRole(Role.ARMY))) {
+            // retreat_cap_ticks: the stranded stay out (walking home), else the army's centre lands between the groups
+            if (strandedOut(u)) {
+                kept++;
+                kept_value += Combat.value(u);
+                continue;
+            }
             roles.put(u, Role.ATTACK);
             s += Combat.value(u);
+        }
+        if (kept > 0) {
+            ai.aiLog().count("retreat_stranded_kept");
+            ai.log(String.format("launch leaves %d stranded attackers (%.1f) out, still walking home", kept,
+                    kept_value));
         }
         attack_initial_strength = s;
         worn_peak = s;
@@ -2341,8 +3508,14 @@ final class Military {
         attack_kills_start = ai.owner().getUnitsKilled();
         attack_losses_start = ai.owner().getUnitsLost();
         attack_running = true;
-        last_progress_time = ai.time();
+        last_progress_time = ai.now();
+        markCapProgress();
+        cap_strikes = 0;
+        // stall_engaged_ticks: the watchdog marks the new attack at its first round
+        engaged_target = null;
         best_target_dist = Integer.MAX_VALUE;
+        best_line_dist = Integer.MAX_VALUE;
+        sealed_logged = false;
         mode = s > 0 ? Mode.ATTACK : Mode.HOME;
         // Name the target without the engine's toString (a Unit's shows an identity hash, which differs between JVMs).
         String what = (t instanceof Building ? "building " : "unit ") + t.getTemplate().getClass().getSimpleName() + " of " + t.getOwner().getPlayerInfo().getName();
@@ -2426,12 +3599,12 @@ final class Military {
                 }
             }
             Float last = sapper_orders.get(p);
-            if (last != null && ai.time() - last < 3f)
+            if (last != null && !ai.periodDue(last, 150f))
                 continue;
             // Already swinging at a tower: leave it be, a new order would start the swing over.
             if (tower != null && p.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.AttackController)
                 continue;
-            sapper_orders.put(p, ai.time());
+            sapper_orders.put(p, ai.now());
             if (tower != null)
                 ai.owner().setTarget(Selectable.newArray(p), tower, Action.ATTACK, true);
             else if (site != null
@@ -2488,7 +3661,7 @@ final class Military {
         }
         Selectable<?> goal = target;
         if (!ai.strategy().creep_towers || creep_site != null || goal == null || goal.isDead()
-                || ai.time() - last_creep_try < 20f || ai.intel().sappers.size() < 4)
+                || !ai.periodDue(last_creep_try, 1000f) || ai.intel().sappers.size() < 4)
             return;
         int gx = goal.getGridX();
         int gy = goal.getGridY();
@@ -2500,7 +3673,7 @@ final class Military {
                 near++;
         if (near >= 2)
             return;
-        last_creep_try = ai.time();
+        last_creep_try = ai.now();
         int[] spot = creepSpot(gx, gy, c);
         if (spot == null)
             return;
@@ -2554,15 +3727,59 @@ final class Military {
     }
 
     private void setTarget(@NonNull Selectable<?> t) {
+        setTarget(t, true);
+    }
+
+    /**
+     * Attacks t; a target more than 8 cells from the last one gets a field of its own, which restarts the stall
+     * clocks, stall_cap's only with {@code cap_progress} (stall_cap_keep: not for a calm stall's retarget).
+     */
+    private void setTarget(@NonNull Selectable<?> t, boolean cap_progress) {
         if (ai.strategy().focus_bonus > 0f && t.getOwner() != ai.owner())
             focus_owner = t.getOwner();
         target = t;
         if (target_field == null || MapAnalysis.dist2(target_x, target_y, t.getGridX(), t.getGridY()) > 8 * 8) {
             target_x = t.getGridX();
             target_y = t.getGridY();
-            target_field = ai.map().computeField(target_x, target_y, Integer.MAX_VALUE);
+            DistanceField strict = ai.map().computeField(target_x, target_y, Integer.MAX_VALUE);
+            target_field = strict;
+            target_corner = false;
+            Strategy s = ai.strategy();
+            if (s.corner_fields && ai.now() >= s.pocket_from_ticks
+                    && strict.getAround(staging_x, staging_y, 2) == DistanceField.UNREACHABLE)
+                cornerField(strict);
             best_target_dist = Integer.MAX_VALUE;
-            last_progress_time = ai.time();
+            best_line_dist = Integer.MAX_VALUE;
+            sealed_logged = false;
+            last_progress_time = ai.now();
+            if (cap_progress)
+                markCapProgress();
+        }
+    }
+
+    /**
+     * corner_fields: the target field does not reach the staging point. The field with corner cuts, which the engine
+     * walks units through, reaches every cell the strict one does and maybe more, so it takes the strict one's place:
+     * the march, its progress and the dead-region test then follow the engine's rule. Counted by whether it reaches
+     * the staging point (corner_field) or not (corner_field_sealed: still a dead region if the attack stalls).
+     */
+    private void cornerField(@NonNull DistanceField strict) {
+        DistanceField corner = ai.map().computeField(target_x, target_y, Integer.MAX_VALUE, true);
+        target_field = corner;
+        target_corner = true;
+        boolean reaches = corner.getAround(staging_x, staging_y, 2) != DistanceField.UNREACHABLE;
+        ai.aiLog().count(reaches ? "corner_field" : "corner_field_sealed");
+        if (ai.logging()) {
+            int strict_cells = 0;
+            int corner_cells = 0;
+            for (int i = 0; i < corner.raw().length; i++) {
+                if (strict.raw()[i] != DistanceField.UNREACHABLE)
+                    strict_cells++;
+                if (corner.raw()[i] != DistanceField.UNREACHABLE)
+                    corner_cells++;
+            }
+            ai.log(String.format("corner field from %d,%d: %d cells (strict %d), staging %s", target_x, target_y,
+                    corner_cells, strict_cells, reaches ? "reaches it through a corner cut" : "still cut off"));
         }
     }
 
@@ -2576,12 +3793,12 @@ final class Military {
     private void easeCaution() {
         boolean capped = nearUnitCap();
         if (mode != Mode.HOME || !capped || attack_caution <= 1f || ai.strategy().caution_decay <= 1f) {
-            last_caution_ease = ai.time();
+            last_caution_ease = ai.now();
             return;
         }
-        if (ai.time() - last_caution_ease < 60f)
+        if (!ai.periodDue(last_caution_ease, 3000f))
             return;
-        last_caution_ease = ai.time();
+        last_caution_ease = ai.now();
         float before = attack_caution;
         attack_caution = Math.max(1f, attack_caution / ai.strategy().caution_decay);
         ai.log(String.format("capped at home: caution %.2f -> %.2f", before, attack_caution));
@@ -2617,15 +3834,16 @@ final class Military {
                 e.setValue(Role.ARMY);
         mode = Mode.HOME;
         target = null;
-        next_wave_time = ai.time() + (recalled ? ai.strategy().recall_cooldown : 20f);
+        ladder_owner = null;
+        next_wave_time = ai.now() + (recalled ? ai.strategy().recall_cooldown_ticks : 1000f);
         recalled = false;
         strike = false;
     }
 
     /** defend_stable: when the current engage began. */
-    private float engage_since = -10f;
+    private float engage_since = -500f;
 
-    /** The attack being ended was called home (recall_cooldown). */
+    /** The attack being ended was called home (recall_cooldown_ticks). */
     private boolean recalled;
 
     /** launch_recheck: the fighting value of home army units within {@code radius} cells of the staging point. */
@@ -2681,7 +3899,7 @@ final class Military {
         // (6 of 6 reachable stalls outside one corner deadlock came after ~80 s of fighting).
         boolean stall_peons = ai.strategy().stall_peons;
         if (ai.strategy().stall_calm && (stall_peons ? armed > 0f : local_enemy > 0f || anyFighting(army)))
-            last_progress_time = ai.time();
+            last_progress_time = ai.now();
         else if (stall_peons && ai.strategy().stall_calm && local_enemy > 0f && anyFighting(army))
             ai.aiLog().count("stall_peon_pin");
         float total = 0f;
@@ -2694,8 +3912,11 @@ final class Military {
         // A stunned army cannot walk away; decide once it can move again.
         boolean pinned = stunned_count * 10 > army.size() * 3;
         float worn_base = wornBasis(total);
-        if (ai.logging() && ai.time() - last_trace >= 4f)
+        if (ai.logging() && ai.periodDue(last_trace, 200f))
             traceBattle(army, c, total, local_enemy);
+        // stall_engaged_ticks: the wedge watchdog looks before any of the paths below can return.
+        if (engagedWatch() && wedgeWatch(army, c, pinned))
+            return;
         // Enemies lying stunned nearby cannot fight back for a while. As long as we can take on the ones still awake,
         // run the stunned down instead of weighing the odds, which would count them as awake again soon.
         if (!pinned && ai.strategy().exploit_stun && chargeStunned(army, c, total))
@@ -2752,13 +3973,21 @@ final class Military {
                 endAttack();
                 return;
             }
-            Selectable<?> next = retarget(c);
+            // remnant_ladder_ticks: the copy whose site or remnant fell is finished before anything else
+            Selectable<?> next = ladder_owner != null ? remnantNext(target, c) : null;
+            if (next == null) {
+                next = retarget(c);
+                noteDecapitate(next, "next");
+            }
             if (next == null) {
                 endAttack();
                 return;
             }
             setTarget(next);
         }
+        // decapitate: a chieftain target is followed as it walks
+        if (decapitating())
+            followChief(c);
         // An enemy army walking at us: wait for it on the best ground nearby instead of running uphill into it.
         if (holdForApproachingEnemy(army, c))
             return;
@@ -2802,13 +4031,13 @@ final class Military {
         if (pivot != null && dist >= 30)
             waypoint = field.stepTowardsSource(pivot.getGridX(), pivot.getGridY(), lead);
         march_wp = waypoint;
-        march_calm_time = ai.time();
+        march_calm_time = ai.now();
         // reinforce_intercept: a reinforcement group worth 40 % of the army within 80 cells is waited for (20 s at
         // most per target) instead of being left to chase the army across the field at the same speed.
         if (ai.strategy().reinforce_intercept && waitForReinforcements(c, total))
             return;
         // unjam: a jammed army marches as a column (see noteBlocked); the idle plug at a pass exit walks on too.
-        boolean column = field != null && ai.time() < column_until;
+        boolean column = field != null && ai.now() < column_until;
         if (column_until >= 0f && !column)
             endColumnMarch(dist, c);
         for (Unit u : army) {
@@ -2831,11 +4060,253 @@ final class Military {
         }
         // Give up only when the army stops getting anywhere, not because the march is long.
         if (dist != DistanceField.UNREACHABLE && dist < best_target_dist - 20) {
+            // a real gain, not the first measure after a new target
+            boolean gain = best_target_dist != Integer.MAX_VALUE;
+            if (gain)
+                cap_strikes = 0;
             best_target_dist = dist;
-            last_progress_time = ai.time();
+            last_progress_time = ai.now();
+            // stall_cap_keep: the first measure on a new field leaves stall_cap's clock alone
+            if (gain || !capKeep())
+                markCapProgress();
         }
-        if (ai.time() - last_progress_time > 75f && (ai.strategy().stall_peons ? armed == 0f : local_enemy == 0f))
-            stalled(c);
+        if (pivot == null && strategy.sealed_progress && ai.now() >= strategy.pocket_from_ticks)
+            sealedProgress(c);
+        if (ai.now() - last_progress_time > 3750f && (ai.strategy().stall_peons ? armed == 0f : local_enemy == 0f)) {
+            stalled(c, false);
+            return;
+        }
+        // stall_cap: the calm-march clock above restarts whenever anyone fights, so an army wedged at a pass with a
+        // few enemies about (or peons to cut down) never stalls: s6021 at N=6 stood 5 hours at 240 warriors. The wedge
+        // watchdog (stall_engaged_ticks) takes its place while on.
+        float cap = ai.strategy().stall_cap_ticks;
+        if (cap > 0f && !engagedWatch()) {
+            if (ai.owner().getUnitsKilled() - cap_progress_kills >= ai.strategy().stall_cap_kills) {
+                markCapProgress();
+                cap_strikes = 0;
+            } else if (ai.now() - cap_progress_time > cap) {
+                if (cap_strikes++ == 0) {
+                    ai.aiLog().count("stall_cap");
+                    stalled(c, true);
+                } else {
+                    // A new target did not get the army moving either: it is wedged (s6021: every unit waits on a
+                    // pivot stuck in a pocket). Walk it home and muster again from there.
+                    ai.aiLog().count("stall_cap_retreat");
+                    ai.log("attack wedged: the army walks home to re-form");
+                    cap_strikes = 0;
+                    // Everyone breaks off, fighters too: a few units locked on enemies they cannot reach can plug the
+                    // pass for the rest (the rearguard rule would leave them there).
+                    for (Unit u : army)
+                        move(u, staging_x, staging_y);
+                    beginRetreat();
+                }
+            }
+        }
+    }
+
+    private void markCapProgress() {
+        cap_progress_time = ai.now();
+        cap_progress_kills = ai.owner().getUnitsKilled();
+    }
+
+    /**
+     * sealed_progress: no attacking unit stands where the target field reaches, so the field cannot measure the march
+     * (s8462: every attack on a chieftain in a 15-cell pocket stalled 75 s after launch, ~85 cells short). A 20 m gain
+     * in straight-line distance from the army's centre to the target counts as progress instead, as a field gain does.
+     */
+    private void sealedProgress(int @NonNull [] c) {
+        int line = (int) MapAnalysis.meters(c[0], c[1], target_x, target_y);
+        if (!sealed_logged) {
+            sealed_logged = true;
+            ai.log(String.format("sealed march: no unit on the target field, by the straight line (%d m to %d,%d)",
+                    line, target_x, target_y));
+        }
+        if (line >= best_line_dist - 20)
+            return;
+        // a real gain, not the first measure after a new target
+        boolean gain = best_line_dist != Integer.MAX_VALUE;
+        if (gain) {
+            cap_strikes = 0;
+            ai.aiLog().count("sealed_progress");
+        }
+        best_line_dist = line;
+        last_progress_time = ai.now();
+        // stall_cap_keep: the first measure on a new target leaves stall_cap's clock alone
+        if (gain || !capKeep())
+            markCapProgress();
+    }
+
+    /** stall_cap_keep, from unlock_from_ticks. */
+    private boolean capKeep() {
+        Strategy s = ai.strategy();
+        return s.stall_cap_keep && ai.now() >= s.unlock_from_ticks;
+    }
+
+    /** stall_engaged_ticks: the wedge watchdog is on (from stall_engaged_from_ticks). */
+    private boolean engagedWatch() {
+        Strategy s = ai.strategy();
+        return s.stall_engaged_ticks > 0f && ai.now() >= s.stall_engaged_from_ticks;
+    }
+
+    /**
+     * stall_engaged_ticks: the wedge watchdog, first in every attack round, so that no charge, siege, pillage, hold or
+     * engage path keeps it from looking (s6215 N=15: 216 warriors engaged enemies across a 1-cell pass for 260 min
+     * and no stall rule was ever reached). Progress clears its strikes and restarts its clock: a 20 m gain of the
+     * march pivot on the target field, or of the straight line from the army's centre while no attacker stands on
+     * the field; the target falling, or losing a tenth of its hit points; stall_cap_kills deaths among the enemy units
+     * seen within 30 cells of the army since the last progress, or among the attackers then. A new field (a new
+     * target) is a new baseline, not progress, so the calm stall's retargets do not restart it. After
+     * stall_engaged_ticks without progress, strike 1 stalls the target (skipped, the next one from where the army
+     * stands), and strike 2 in a row walks every attacker home and remembers the wedge. Returns whether it acted.
+     */
+    private boolean wedgeWatch(@NonNull List<@NonNull Unit> army, int @NonNull [] c, boolean pinned) {
+        Strategy s = ai.strategy();
+        Selectable<?> t = target;
+        // A fallen target is replaced further on in this round; the next round counts it.
+        if (t == null || t.isDead())
+            return false;
+        Selectable<?> was = engaged_target;
+        if (was == null) {
+            // the first round of this attack
+            engaged_strikes = 0;
+            markEngaged(army, c);
+            return false;
+        }
+        String why = null;
+        if (t != was) {
+            if (was.isDead())
+                why = "the target fell";
+            engaged_target = t;
+            engaged_hp = hitPoints(t);
+        }
+        DistanceField f = target_field;
+        int pivot = f != null ? attackPivotDist(f) : DistanceField.UNREACHABLE;
+        int line = (int) MapAnalysis.meters(c[0], c[1], target_x, target_y);
+        if (f != engaged_field) {
+            // a new field: a new baseline
+            engaged_field = f;
+            engaged_dist = pivot;
+            engaged_line = line;
+        } else if (pivot != DistanceField.UNREACHABLE) {
+            if (engaged_dist == DistanceField.UNREACHABLE)
+                engaged_dist = pivot;
+            else if (pivot <= engaged_dist - 20)
+                why = "the pivot gained 20 m";
+        } else if (line <= engaged_line - 20)
+            why = "the army got 20 m nearer in a line";
+        if (why == null && t instanceof Building b && engaged_hp >= 0
+                && engaged_hp - b.getHitPoints() >= Math.max(1, b.getTemplate().getMaxHitPoints() / 10))
+            why = "the target lost a tenth of its hit points";
+        // enemies that came up since the last progress count too (another copy's units joining through their scans,
+        // defenders arriving late): only the ones seen then, and a fight being won read as no progress
+        noteEngagedFoes(c);
+        if (why == null && deadCount(engaged_foes) >= s.stall_cap_kills)
+            why = "kills";
+        if (why == null && deadCount(engaged_ours) >= s.stall_cap_kills)
+            why = "losses";
+        if (why != null) {
+            if (engaged_strikes > 0)
+                ai.log("wedge watch: " + why + ", strikes cleared");
+            engaged_strikes = 0;
+            markEngaged(army, c);
+            return false;
+        }
+        if (pinned || ai.now() - engaged_time < s.stall_engaged_ticks)
+            return false;
+        if (ai.logging()) {
+            String piv = pivot == DistanceField.UNREACHABLE ? "-" : String.valueOf(pivot);
+            ai.log(String.format(
+                    "wedge watch: no progress in %.0f s at %d,%d (pivot %s m from %d,%d, %d m in a line; " + "dead since: %d of %d enemies near, %d of %d attackers), strike %d",
+                    GauntletAI.seconds(ai.now() - engaged_time), c[0], c[1], piv, target_x, target_y, line,
+                    deadCount(engaged_foes), engaged_foes.size(), deadCount(engaged_ours), engaged_ours.size(),
+                    engaged_strikes + 1));
+        }
+        if (engaged_strikes++ == 0) {
+            ai.aiLog().count("stall_engaged");
+            stalled(c, true);
+            // strike 2 comes another stall_engaged_ticks on, measured from here and on the new target
+            markEngaged(army, c);
+            return true;
+        }
+        // A new target did not get the army anywhere either: walk it home, fighters too, and keep the next musters off
+        // the way through here.
+        ai.aiLog().count("stall_engaged_retreat");
+        ai.log("attack wedged in contact: the army walks home to re-form");
+        engaged_strikes = 0;
+        rememberWedge(army, c);
+        for (Unit u : army)
+            move(u, staging_x, staging_y);
+        beginRetreat();
+        return true;
+    }
+
+    /** stall_engaged_ticks: progress, from here and now. */
+    private void markEngaged(@NonNull List<@NonNull Unit> army, int @NonNull [] c) {
+        Selectable<?> t = target;
+        engaged_time = ai.now();
+        engaged_target = t;
+        engaged_hp = t != null && !t.isDead() ? hitPoints(t) : -1;
+        DistanceField f = target_field;
+        engaged_field = f;
+        engaged_dist = f != null ? attackPivotDist(f) : DistanceField.UNREACHABLE;
+        engaged_line = (int) MapAnalysis.meters(c[0], c[1], target_x, target_y);
+        engaged_foes.clear();
+        noteEngagedFoes(c);
+        engaged_ours.clear();
+        engaged_ours.addAll(army);
+    }
+
+    /**
+     * stall_engaged_ticks: adds the living enemy warriors, chieftains and peons within ENGAGE_RADIUS + 8 (30) cells of
+     * the army's centre to those whose deaths count as progress (engaged_foes, in the order first seen).
+     */
+    private void noteEngagedFoes(int @NonNull [] c) {
+        Intel intel = ai.intel();
+        int r2 = (ENGAGE_RADIUS + 8) * (ENGAGE_RADIUS + 8);
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains, intel.enemy_peons))
+            for (Unit e : group)
+                if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0], c[1]) <= r2)
+                    engaged_foes.add(e);
+    }
+
+    /** A building's hit points, -1 for anything else (the watchdog weighs only buildings' damage). */
+    private static int hitPoints(@NonNull Selectable<?> t) {
+        return t instanceof Building b ? b.getHitPoints() : -1;
+    }
+
+    private static int deadCount(java.util.@NonNull Collection<@NonNull Unit> units) {
+        int n = 0;
+        for (Unit u : units)
+            if (u.isDead())
+                n++;
+        return n;
+    }
+
+    /**
+     * stall_engaged_ticks: remembers the wedge for wedge_memory_ticks, at the cell of the attacker nearest the army's
+     * centre (the centre itself may be cliff when the army wraps around one), with a field from there.
+     */
+    private void rememberWedge(@NonNull List<@NonNull Unit> army, int @NonNull [] c) {
+        float memory = ai.strategy().wedge_memory_ticks;
+        if (memory <= 0f)
+            return;
+        int x = c[0];
+        int y = c[1];
+        int best = Integer.MAX_VALUE;
+        for (Unit u : army) {
+            int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), c[0], c[1]);
+            if (d < best) {
+                best = d;
+                x = u.getGridX();
+                y = u.getGridY();
+            }
+        }
+        wedges.add(new Wedge(x, y, ai.now(), ai.map().computeField(x, y, Integer.MAX_VALUE, true)));
+        if (wedges.size() > 3)
+            wedges.removeFirst();
+        ai.aiLog().count("wedge_remembered");
+        ai.log(String.format("wedge at %d,%d remembered for %.0f s: buildings whose way runs through it come last", x,
+                y, GauntletAI.seconds(memory)));
     }
 
     /**
@@ -2844,7 +4315,7 @@ final class Military {
      */
     private void traceBattle(@NonNull List<@NonNull Unit> army, int @NonNull [] c, float total, float local_enemy) {
         Intel intel = ai.intel();
-        last_trace = ai.time();
+        last_trace = ai.now();
         int far = 0;
         int fighting = 0;
         for (Unit u : army) {
@@ -2894,8 +4365,8 @@ final class Military {
         if (!(asleep >= 3f && total >= .8f * awake && !(ai.strategy().enemy_stun_mult > 1f && enemyStunReadyNear(
                 c[0], c[1], 45))))
             return false;
-        if (ai.time() - last_charge_log > 10f) {
-            last_charge_log = ai.time();
+        if (ai.now() - last_charge_log > 500f) {
+            last_charge_log = ai.now();
             ai.log(String.format("charging %d stunned enemies (%.1f asleep, %.1f awake, army %.1f)", stunned.size(),
                     asleep, awake, total));
         }
@@ -2934,9 +4405,10 @@ final class Military {
     /**
      * The attack got no nearer its target for 75 s with nothing to fight: with skip_stalled the target (and, when the
      * staging point cannot reach its region, the region) is dropped for a while, and with stall_calm a reachable one
-     * gives way to the next target from where the army stands; otherwise the army comes home.
+     * gives way to the next target from where the army stands; otherwise the army comes home. {@code from_cap}: a
+     * strike of stall_cap or the wedge watchdog, whose retarget restarts stall_cap's clock even with stall_cap_keep.
      */
-    private void stalled(int @NonNull [] c) {
+    private void stalled(int @NonNull [] c, boolean from_cap) {
         if (ai.logging()) {
             // Why: how big is the region the target stands in, and can our staging point reach it?
             DistanceField f = target_field;
@@ -2952,29 +4424,42 @@ final class Military {
         } else
             ai.log("attack stalled");
         if (target != null && ai.strategy().skip_stalled) {
-            stalled_targets.put(target, ai.time());
+            stalled_targets.put(target, ai.now());
             ai.aiLog().count("target_stalled");
             DistanceField f = target_field;
             if (f != null && f.getAround(staging_x, staging_y, 2) == DistanceField.UNREACHABLE) {
                 dead_regions.add(f);
-                dead_region_times.add(ai.time());
+                dead_region_times.add(ai.now());
                 if (dead_regions.size() > 3) {
                     dead_regions.removeFirst();
                     dead_region_times.removeFirst();
                 }
                 ai.aiLog().count("target_region_dead");
+                deadRegionWide(f);
             }
             // stall_calm: a target the army can reach but not get to (a deadlock at a corner) is dropped for the
             // next one from where the army stands, instead of walking everyone home.
             if (ai.strategy().stall_calm && (f == null || f.getAround(staging_x, staging_y,
                     2) != DistanceField.UNREACHABLE)) {
                 Selectable<?> next = retarget(c);
+                noteDecapitate(next, "stall");
                 if (next != null) {
-                    setTarget(next);
+                    // stall_cap_keep: the calm stall's retarget is no progress for stall_cap
+                    boolean cap_progress = from_cap || !capKeep();
+                    setTarget(next, cap_progress);
                     // A new target near the old one keeps the old field: restart the clock either way, or the
                     // next tick would ban it too.
-                    last_progress_time = ai.time();
+                    last_progress_time = ai.now();
+                    if (cap_progress) {
+                        markCapProgress();
+                    } else {
+                        ai.aiLog().count("stall_cap_kept");
+                        ai.log(String.format("stall_cap clock kept: %.0f s since the last gain",
+                                GauntletAI.seconds(ai.now() - cap_progress_time)));
+                    }
                     best_target_dist = Integer.MAX_VALUE;
+                    best_line_dist = Integer.MAX_VALUE;
+                    sealed_logged = false;
                     ai.aiLog().count("stall_retarget");
                     return;
                 }
@@ -2984,9 +4469,32 @@ final class Military {
     }
 
     /**
+     * dead_region_reach: counts (dead_region_wide) and logs a new dead region that skips enemy buildings the radius 2
+     * test would have kept, the other quarters and armories of a sealed base (s6657).
+     */
+    private void deadRegionWide(@NonNull DistanceField f) {
+        if (ai.now() < ai.strategy().pocket_from_ticks || ai.strategy().dead_region_reach == 2)
+            return;
+        int wide = 0;
+        for (Building b : ai.intel().enemy_buildings) {
+            if (b.isDead() || b == target)
+                continue;
+            int reach = deadReach(b);
+            if (reach != 2 && f.getAround(b.getGridX(), b.getGridY(), 2) == DistanceField.UNREACHABLE
+                    && f.getAround(b.getGridX(), b.getGridY(), reach) != DistanceField.UNREACHABLE)
+                wide++;
+        }
+        if (wide == 0)
+            return;
+        ai.aiLog().count("dead_region_wide");
+        ai.log(String.format("dead region from %d,%d also skips %d more buildings (reach %d, towers 2)", target_x,
+                target_y, wide, ai.strategy().dead_region_reach));
+    }
+
+    /**
      * The strength the worn retreat measures the attacking army (now worth total) against, by worn_basis: the launch
-     * strength plus every reinforcement that joined, the peak since the launch, or the peak of the last worn_window
-     * seconds.
+     * strength plus every reinforcement that joined, the peak since the launch, or the peak of the last
+     * worn_window_ticks game ticks.
      */
     private float wornBasis(float total) {
         Strategy strategy = ai.strategy();
@@ -2995,11 +4503,11 @@ final class Military {
             return worn_peak;
         }
         if (strategy.worn_basis == 2) {
-            float now = ai.time();
+            float now = ai.now();
             while (!worn_history.isEmpty() && worn_history.getLast()[1] <= total)
                 worn_history.removeLast();
             worn_history.addLast(new float[]{now, total});
-            while (worn_history.size() > 1 && worn_history.getFirst()[0] < now - strategy.worn_window)
+            while (worn_history.size() > 1 && worn_history.getFirst()[0] < now - strategy.worn_window_ticks)
                 worn_history.removeFirst();
             return worn_history.getFirst()[1];
         }
@@ -3067,8 +4575,8 @@ final class Military {
         boolean motion = ai.strategy().hold_closing == 1;
         if (motion) {
             boolean coming = groupComing(intel.enemy_warriors, enemy, c);
-            if (hold_until < 0f && closing && !coming && ai.time() - last_hold_skip >= 12f) {
-                last_hold_skip = ai.time();
+            if (hold_until < 0f && closing && !coming && ai.periodDue(last_hold_skip, 600f)) {
+                last_hold_skip = ai.now();
                 ai.aiLog().count("hold_skipped_static");
             }
             closing = coming;
@@ -3078,12 +4586,12 @@ final class Military {
                 return false;
             if (motion)
                 ai.aiLog().count("hold_coming");
-            hold_until = ai.time() + 12f;
+            hold_until = ai.now() + 600f;
             hold_spot = ai.map().highGround(c[0], c[1], 6);
             ai.log(String.format("holding at %d,%d (%.0fm up) for enemy army at %d,%d", hold_spot[0], hold_spot[1],
                     ai.map().height(hold_spot[0], hold_spot[1]) - ai.map().height(c[0], c[1]), enemy[0], enemy[1]));
         }
-        if (ai.time() > hold_until)
+        if (ai.now() > hold_until)
             return false;
         for (Unit u : army)
             attackGround(u, hold_spot[0], hold_spot[1], false);
@@ -3095,11 +4603,11 @@ final class Military {
      * centre {@code c} by its own motion since its centre of 2-4 s ago, with fewer than half of its units parked.
      */
     private boolean groupComing(@NonNull List<@NonNull Unit> units, int @NonNull [] enemy, int @NonNull [] c) {
-        float now = ai.time();
-        hold_groups.removeIf(g -> g[0] < now - 4f);
+        float now = ai.now();
+        hold_groups.removeIf(g -> g[0] < now - 200f);
         float[] then = null;
         for (float[] g : hold_groups)
-            if (g[0] <= now - 2f)
+            if (g[0] <= now - 100f)
                 then = g;
         hold_groups.addLast(new float[]{now, enemy[0], enemy[1]});
         if (then == null)
@@ -3164,8 +4672,8 @@ final class Military {
         }
         if (prey.size() < 3)
             return false;
-        if (ai.time() - last_pillage_log > 15f) {
-            last_pillage_log = ai.time();
+        if (ai.now() - last_pillage_log > 750f) {
+            last_pillage_log = ai.now();
             ai.log(String.format("pillaging %d peons outside the towers with %.1f", prey.size(), total));
         }
         int[] pc = MapAnalysis.centroid(prey);
@@ -3198,7 +4706,7 @@ final class Military {
 
     /** Where the chieftain is meeting an enemy army alone to blast it, or null. */
     int @Nullable [] blastPlay() {
-        return ai.time() < blast_play_until ? new int[]{threat_x, threat_y} : null;
+        return ai.now() < blast_play_until ? new int[]{threat_x, threat_y} : null;
     }
 
     /**
@@ -3207,18 +4715,18 @@ final class Military {
      */
     private boolean blastDefense(@NonNull List<@NonNull Unit> defenders, float enemy) {
         Strategy strategy = ai.strategy();
-        float now = ai.time();
+        float now = ai.now();
         if (!strategy.blast || !strategy.blast_defense)
             return false;
         if (now >= blast_play_until) {
-            if (threat_level < 2 || enemy < strategy.blast_min || now - last_blast_play < 60f
+            if (threat_level < 2 || enemy < strategy.blast_min || !ai.periodDue(last_blast_play, 3000f)
                     || !ai.chieftain().blastReady())
                 return false;
-            blast_play_until = now + strategy.blast_play_time;
+            blast_play_until = now + strategy.blast_play_ticks;
             last_blast_play = now;
             ai.log(String.format("blast play against %.1f at %d,%d", enemy, threat_x, threat_y));
         }
-        if (!ai.chieftain().blastReady() && ai.chieftain().sinceCast() > 5f) {
+        if (!ai.chieftain().blastReady() && ai.chieftain().sinceCast() > 250f) {
             blast_play_until = now;
             return false;
         }
@@ -3249,7 +4757,7 @@ final class Military {
 
     private void endSiege() {
         if (siege_start >= 0f)
-            ai.log(String.format("siege over after %.0fs", ai.time() - siege_start));
+            ai.log(String.format("siege over after %.0fs", GauntletAI.seconds(ai.now() - siege_start)));
         siege_start = -1f;
         siege_assign.clear();
     }
@@ -3261,7 +4769,7 @@ final class Military {
      */
     private boolean siege(@NonNull List<@NonNull Unit> army, int @NonNull [] c, float total) {
         Intel intel = ai.intel();
-        float now = ai.time();
+        float now = ai.now();
         List<Building> awake = new ArrayList<>();
         List<Building> helpless = new ArrayList<>();
         for (Building t : intel.enemy_towers) {
@@ -3289,7 +4797,7 @@ final class Military {
         List<Building> goals = new ArrayList<>(helpless);
         for (Building t : awake) {
             boolean weak = t.getHitPoints() <= 50 && siege_assign.containsValue(t);
-            boolean about_to = stunner && since >= 1.8f && since < 4.5f && MapAnalysis.dist2(chief.getGridX(),
+            boolean about_to = stunner && since >= 90f && since < 225f && MapAnalysis.dist2(chief.getGridX(),
                     chief.getGridY(), t.getGridX(), t.getGridY()) <= 300;
             if (weak || about_to)
                 goals.add(t);
@@ -3299,7 +4807,7 @@ final class Military {
             if (siege_start < 0f)
                 siege_start = now;
             siege_progress = now;
-            if (now - last_pull_log >= 5f) {
+            if (ai.periodDue(last_pull_log, 250f)) {
                 last_pull_log = now;
                 int hp = 0;
                 for (Building t : goals)
@@ -3311,7 +4819,7 @@ final class Military {
             return true;
         }
         // Worth waiting for a stun that is at most half a recharge away, or one on its way down.
-        boolean pending = since < 5f;
+        boolean pending = since < 250f;
         if (!stunner || (!pending
                 && chief.getMagicProgress(com.oddlabs.tt.model.RacesResources.INDEX_MAGIC_STUN) < .5f)
                 || now < siege_cooldown) {
@@ -3323,9 +4831,9 @@ final class Military {
             siege_progress = now;
             ai.log(String.format("siege of %d towers with %.1f", awake.size(), total));
         }
-        if (now - siege_progress > ai.strategy().siege_patience) {
+        if (now - siege_progress > ai.strategy().siege_patience_ticks) {
             ai.log("siege gives up");
-            siege_cooldown = now + 60f;
+            siege_cooldown = now + 3000f;
             endSiege();
             return false;
         }
@@ -3489,6 +4997,8 @@ final class Military {
 
     private void beginRetreat() {
         mode = Mode.RETREAT;
+        // retreat_cap_ticks: measured from its first round
+        retreat_measured = false;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             if (e.getValue() == Role.REINFORCE) {
                 e.setValue(Role.ARMY);
@@ -3622,20 +5132,21 @@ final class Military {
             }
             // While the army marches calmly, head for where it is going (its march waypoint), which it has just
             // cleared, instead of chasing its centre.
-            int[] goal = intercept && march_wp != null && ai.time() - march_calm_time < 2f ? march_wp : front;
+            int[] goal = intercept && march_wp != null && ai.now() - march_calm_time < 100f ? march_wp : front;
             attackGround(u, goal[0], goal[1], false);
         }
     }
 
     /** The army's current march waypoint, and when it was set (only while marching calmly). */
     private int @Nullable [] march_wp;
-    private float march_calm_time = -100f;
+    private float march_calm_time = -5000f;
     /**
      * unjam: the column march lasts until then (-1: none). A jam window is the run of scans in a row that found the
-     * army jammed, on one target field, and where its pivot stood at the first of them.
+     * army jammed, on one target field, and when and where its pivot stood at the first of them.
      */
     private float column_until = -1f;
     private int jam_scans;
+    private float jam_since;
     private int jam_first_dist = DistanceField.UNREACHABLE;
     private @Nullable DistanceField jam_field;
     private int column_start_dist = DistanceField.UNREACHABLE;
@@ -3643,18 +5154,18 @@ final class Military {
 
     /**
      * unjam: called by Jams after every scan with the warriors it found blocked. With at least unjam attack units
-     * blocked on every scan for unjam_after s (from unjam_from s of game time), no enemy fighter near them, and the
-     * pivot less than unjam_progress m closer to the target, the attack marches as a column until unjam_time s after
-     * the last jammed scan (Military.attack). The progress test keeps it out of a crowded march that still moves: in
-     * s13, s16 and s31 at N=11 a column march started so, strung the army out, and it met the enemy piecemeal (s31: 39
-     * of 147 units left at 1000 s, against 102 in the base game).
+     * blocked on every scan for unjam_after_ticks since the first of them (from unjam_from_ticks of game time), no
+     * enemy fighter near them, and the pivot less than unjam_progress m closer to the target, the attack marches as a
+     * column until unjam_ticks after the last jammed scan (Military.attack). The progress test keeps it out of a
+     * crowded march that still moves: in s13, s16 and s31 at N=11 a column march started so, strung the army out, and
+     * it met the enemy piecemeal (s31: 39 of 147 units left at 1000 s, against 102 in the base game).
      */
     void noteBlocked(@NonNull List<@NonNull Unit> blocked) {
         Strategy strategy = ai.strategy();
         if (strategy.unjam <= 0)
             return;
         List<Unit> stuck = new ArrayList<>();
-        if (mode == Mode.ATTACK && ai.time() >= strategy.unjam_from)
+        if (mode == Mode.ATTACK && ai.now() >= strategy.unjam_from_ticks)
             for (Unit u : blocked)
                 if (roles.get(u) == Role.ATTACK)
                     stuck.add(u);
@@ -3678,10 +5189,12 @@ final class Military {
         if (jam_scans == 0 || jam_field != target_field) {
             jam_scans = 0;
             jam_field = target_field;
+            jam_since = ai.now();
             jam_first_dist = pivot;
         }
         jam_scans++;
-        if ((jam_scans - 1) * Jams.PERIOD < strategy.unjam_after)
+        // Game ticks since the window's first scan; the scans run in rounds, each up to a world tick late (slack).
+        if (ai.now() - jam_since < strategy.unjam_after_ticks - ai.slack())
             return;
         if (column_until < 0f) {
             if (pivot == DistanceField.UNREACHABLE || jam_first_dist == DistanceField.UNREACHABLE
@@ -3689,6 +5202,7 @@ final class Military {
                 // crowded but moving: start a new window from here
                 ai.aiLog().count("unjam_moving");
                 jam_scans = 1;
+                jam_since = ai.now();
                 jam_first_dist = pivot;
                 return;
             }
@@ -3699,9 +5213,9 @@ final class Military {
                 ai.log(String.format(
                         "unjam: %d of %d attack units blocked around %d,%d, pivot %d m from the target at " + "%d,%d (%d m %.0f s ago): column march",
                         stuck.size(), countRole(Role.ATTACK), jc[0], jc[1],
-                        pivot, target_x, target_y, jam_first_dist, (jam_scans - 1) * Jams.PERIOD));
+                        pivot, target_x, target_y, jam_first_dist, GauntletAI.seconds(ai.now() - jam_since)));
         }
-        column_until = ai.time() + strategy.unjam_time;
+        column_until = ai.now() + strategy.unjam_ticks;
     }
 
     /** unjam: the field distance of the attack unit a third of the way back from the front, as the march ranks them. */
@@ -3746,9 +5260,9 @@ final class Military {
             return false;
         if (hold_target != target) {
             hold_target = target;
-            hold_since = ai.time();
+            hold_since = ai.now();
         }
-        if (ai.time() - hold_since > 20f)
+        if (ai.now() - hold_since > 1000f)
             return false;
         ai.aiLog().count("reinforce_hold");
         return true;
@@ -3771,6 +5285,88 @@ final class Military {
         }
         if (n == 0 || home >= n * 7 / 10)
             endAttack();
+        else if (ai.strategy().retreat_cap_ticks > 0f && ai.now() >= ai.strategy().unlock_from_ticks)
+            retreatCap(home, n);
+    }
+
+    /**
+     * retreat_cap_ticks: progress is a new attacker home (within 14 cells of the staging point), or those still out
+     * 20 m nearer it on average, walking; the first round sets the baseline. After retreat_cap_ticks without, the
+     * retreat ends with the rest still out (s6409 N=14: 89 attackers blocked behind a canyon held by an idle blob, in
+     * RETREAT for 279 min with the home army idle, since only HOME weighs attacks).
+     */
+    private void retreatCap(int home, int n) {
+        DistanceField f = stagingField();
+        long sum = 0;
+        int out = 0;
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            if (e.getValue() != Role.ATTACK)
+                continue;
+            Unit u = e.getKey();
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) <= 14 * 14)
+                continue;
+            int d = f.getAround(u.getGridX(), u.getGridY(), 1);
+            if (d != DistanceField.UNREACHABLE) {
+                sum += d;
+                out++;
+            }
+        }
+        int dist = out > 0 ? (int) (sum / out) : DistanceField.UNREACHABLE;
+        float now = ai.now();
+        if (!retreat_measured) {
+            retreat_measured = true;
+            retreat_best_home = home;
+            retreat_dist = dist;
+            retreat_time = now;
+            return;
+        }
+        boolean nearer = dist != DistanceField.UNREACHABLE && retreat_dist != DistanceField.UNREACHABLE
+                && dist <= retreat_dist - 20;
+        if (home > retreat_best_home || nearer) {
+            retreat_best_home = Math.max(retreat_best_home, home);
+            retreat_dist = dist;
+            retreat_time = now;
+            return;
+        }
+        if (retreat_dist == DistanceField.UNREACHABLE)
+            retreat_dist = dist;
+        if (now - retreat_time < ai.strategy().retreat_cap_ticks)
+            return;
+        ai.aiLog().count("retreat_capped");
+        ai.log(String.format(
+                "retreat capped: %d of %d attackers home, the rest %s m away on average, none nearer for " + "%.0f s",
+                home, n, dist == DistanceField.UNREACHABLE ? "-" : String.valueOf(dist),
+                GauntletAI.seconds(now - retreat_time)));
+        // Those still out stay out of the next musters and launches until they come home: counted in, they made the
+        // next attack march the home army off with them, its centre between the two groups (rep-fix-s6409: three
+        // launches turned back or capped again within 190 s each, the same group 612 m away every time).
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            if (e.getValue() == Role.ATTACK && !stranded.contains(u)
+                    && MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) > 14 * 14)
+                stranded.add(u);
+        }
+        endAttack();
+    }
+
+    /**
+     * retreat_cap_ticks: a unit a capped retreat left out that is still more than STRANDED_CELLS from the staging
+     * point (stranded).
+     */
+    private boolean strandedOut(@NonNull Unit u) {
+        return !stranded.isEmpty() && stranded.contains(u) && MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x,
+                staging_y) > STRANDED_CELLS * STRANDED_CELLS;
+    }
+
+    /** retreat_cap_ticks: the fighting value of the home army (armyStrength's roles) that is strandedOut. */
+    private float strandedStrength() {
+        float s = 0f;
+        for (Unit u : stranded) {
+            Role r = roles.get(u);
+            if ((r == Role.ARMY || r == Role.RAID) && strandedOut(u))
+                s += Combat.value(u);
+        }
+        return s;
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -3778,7 +5374,7 @@ final class Military {
 
     private void considerRaid() {
         Strategy strategy = ai.strategy();
-        if (ai.time() < strategy.raid_time || ai.time() - last_raid_end < 40f)
+        if (ai.now() < strategy.raid_ticks || ai.now() - last_raid_end < 2000f)
             return;
         if (countRole(Role.RAID) > 0)
             return;
@@ -3805,7 +5401,7 @@ final class Military {
         }
         raid_x = spot[0];
         raid_y = spot[1];
-        raid_start = ai.time();
+        raid_start = ai.now();
         ai.log("raid with " + squad.size() + " on peons at " + raid_x + "," + raid_y);
     }
 
@@ -3837,8 +5433,8 @@ final class Military {
 
     private @Nullable Selectable<?> chase_target;
     private @Nullable Player chase_owner;
-    private float chase_start = -1000f;
-    private float last_chase_end = -1000f;
+    private float chase_start = -50000f;
+    private float last_chase_end = -50000f;
     private final Map<@NonNull Selectable<?>, Float> chase_banned = new LinkedHashMap<>();
     /** Per enemy player: {finished quarters + armories, quarters + armory sites}. Rebuilt by countBases(). */
     private final Map<@NonNull Player, int @NonNull []> qa_counts = new LinkedHashMap<>();
@@ -3874,7 +5470,7 @@ final class Military {
             ai.aiLog().count("hunt_skip_far");
             return false;
         }
-        if (inDeadRegion(x, y) || stalled_targets.containsKey(t))
+        if (inDeadRegion(t) || stalled_targets.containsKey(t))
             return false;
         if (Combat.countNear(intel.enemy_warriors, x, y, 15) > s.chief_hunt_escort) {
             ai.aiLog().count("hunt_skip_escort");
@@ -3918,7 +5514,7 @@ final class Military {
         int[] army_c = source == Role.ATTACK ? MapAnalysis.centroid(pool) : null;
         int[] from = army_c != null ? army_c : new int[]{staging_x, staging_y};
         countBases();
-        chase_banned.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 120f);
+        chase_banned.entrySet().removeIf(e -> e.getKey().isDead() || ai.now() - e.getValue() > 6000f);
         Selectable<?> best = null;
         int best_d = Integer.MAX_VALUE;
         for (Unit ch : intel.enemy_chieftains) {
@@ -3952,12 +5548,12 @@ final class Military {
                 MapAnalysis.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY())));
         for (Unit u : pool.subList(0, s.chief_hunt_size)) {
             roles.put(u, Role.CHASE);
-            last_order.put(u, ai.time());
+            last_order.put(u, ai.now());
             ai.owner().setTarget(Selectable.newArray(u), t, Action.ATTACK, true);
         }
         chase_target = t;
         chase_owner = t.getOwner();
-        chase_start = ai.time();
+        chase_start = ai.now();
         ai.aiLog().count(t instanceof Unit ? "hunt_start_chief" : "hunt_start_site");
         int dist = (int) Math.sqrt(best_d);
         ai.log(String.format("chase: %d on %s of %s at %d,%d, %d cells out", s.chief_hunt_size,
@@ -4011,7 +5607,7 @@ final class Military {
             Selectable<?> next = chase_owner == null ? null : nextBlocker(chase_owner, c, 60);
             if (next != null) {
                 chase_target = next;
-                chase_start = ai.time();
+                chase_start = ai.now();
                 ai.aiLog().count("hunt_chain");
                 return;
             }
@@ -4026,7 +5622,7 @@ final class Military {
         for (Building tw : intel.enemy_towers)
             if (!tw.isDead() && MapAnalysis.dist2(tw.getGridX(), tw.getGridY(), c[0], c[1]) <= 10 * 10)
                 danger += enemyTowerValue(tw);
-        String abort = danger > .8f * ours ? "hunt_abort_danger" : ai.time() - chase_start > s.chief_hunt_time ? "hunt_abort_time" : squad.size() < 3 ? "hunt_abort_small" : Combat.countNear(
+        String abort = danger > .8f * ours ? "hunt_abort_danger" : ai.now() - chase_start > s.chief_hunt_ticks ? "hunt_abort_time" : squad.size() < 3 ? "hunt_abort_small" : Combat.countNear(
                 intel.enemy_warriors, t.getGridX(), t.getGridY(),
                 15) > s.chief_hunt_escort + 2 ? "hunt_abort_escort" : null;
         if (abort == null) {
@@ -4036,7 +5632,7 @@ final class Military {
         }
         if (abort != null) {
             ai.aiLog().count(abort);
-            chase_banned.put(t, ai.time());
+            chase_banned.put(t, ai.now());
             endChase(squad);
             return;
         }
@@ -4045,9 +5641,9 @@ final class Military {
             if (st == WarriorState.FIGHT || st == WarriorState.STUNNED || st == WarriorState.ENTER)
                 continue;
             Float last = last_order.get(u);
-            if (last != null && ai.time() - last < 2f)
+            if (last != null && !ai.periodDue(last, 100f))
                 continue;
-            last_order.put(u, ai.time());
+            last_order.put(u, ai.now());
             ai.owner().setTarget(Selectable.newArray(u), t, Action.ATTACK, true);
         }
     }
@@ -4061,7 +5657,7 @@ final class Military {
         }
         chase_target = null;
         chase_owner = null;
-        last_chase_end = ai.time();
+        last_chase_end = ai.now();
     }
 
     private void raid() {
@@ -4071,13 +5667,13 @@ final class Military {
         int[] c = MapAnalysis.centroid(squad);
         float ours = Combat.total(squad);
         float danger = withEnemyTowers(enemyStrengthNear(c[0], c[1], 24), c[0], c[1], 10);
-        boolean done = ai.time() - raid_start > 150f;
+        boolean done = ai.now() - raid_start > 7500f;
         if (danger > .8f * ours || done || squad.size() < 2) {
             for (Unit u : squad) {
                 roles.put(u, Role.ARMY);
                 move(u, staging_x, staging_y);
             }
-            last_raid_end = ai.time();
+            last_raid_end = ai.now();
             return;
         }
         int[] peons = nearestGroup(ai.intel().enemy_peons, c[0], c[1], 18);
@@ -4098,7 +5694,7 @@ final class Military {
                 roles.put(u, Role.ARMY);
                 move(u, staging_x, staging_y);
             }
-            last_raid_end = ai.time();
+            last_raid_end = ai.now();
         }
     }
 
@@ -4133,8 +5729,8 @@ final class Military {
         Float last = last_order.get(u);
         int[] last_spot = last_spots.get(u);
         boolean same_spot = last_spot != null && MapAnalysis.dist2(last_spot[0], last_spot[1], x, y) <= 3 * 3;
-        float period = urgent ? 1f : same_spot ? 2 * REORDER_PERIOD : REORDER_PERIOD;
-        if (last != null && ai.time() - last < period && s != WarriorState.IDLE)
+        float period = urgent ? 50f : same_spot ? 2 * REORDER_PERIOD_TICKS : REORDER_PERIOD_TICKS;
+        if (last != null && !ai.periodDue(last, period) && s != WarriorState.IDLE)
             return;
         if (s == WarriorState.IDLE && same_spot && MapAnalysis.dist2(u.getGridX(), u.getGridY(), x, y) <= 4 * 4)
             return; // already there
@@ -4229,7 +5825,7 @@ final class Military {
             if (!isMultiHit(best))
                 survive.merge(best, 1f - best_p, (a, b) -> a * b);
             hunt_targets.put(w, best);
-            last_order.put(w, ai.time());
+            last_order.put(w, ai.now());
             ai.intel().warrior_states.put(w, WarriorState.FIGHT);
             ai.owner().setTarget(Selectable.newArray(w), best, Action.ATTACK, true);
             targeted.add(w);
@@ -4282,7 +5878,7 @@ final class Military {
             if (best == null)
                 continue;
             hunt_targets.put(w, best);
-            last_order.put(w, ai.time());
+            last_order.put(w, ai.now());
             ai.owner().setTarget(Selectable.newArray(w), best, Action.ATTACK, true);
             ai.aiLog().count("army_reflex");
         }
@@ -4377,7 +5973,7 @@ final class Military {
         Intel intel = ai.intel();
         int r2 = towerReach2();
         if (!inflight.isEmpty())
-            inflight.entrySet().removeIf(e -> e.getKey().isDead() || ai.time() - e.getValue() > 2.5f);
+            inflight.entrySet().removeIf(e -> e.getKey().isDead() || ai.now() - e.getValue() > 125f);
         for (Building t : intel.towers) {
             Unit gunner = readyGunner(t);
             if (gunner == null)
@@ -4435,7 +6031,7 @@ final class Military {
         // A sure hit dooms the target for everyone; a likely miss leaves it to the queue underneath (the order waits
         // below the running throw, and X's own controller resumes if its axe misses).
         if (px >= .99f)
-            inflight.put(x, ai.time());
+            inflight.put(x, ai.now());
         int queued = tower_queued.getOrDefault(t, 0);
         if (queued >= 20)
             return false; // each queued order stays on the garrison's controller stack until the fight ends
@@ -4613,9 +6209,9 @@ final class Military {
             if (!Intel.isDefenseless(w))
                 continue;
             Float last = dodge_orders.get(w);
-            if (last != null && ai.time() - last < ai.strategy().restore_dodge_gap)
+            if (last != null && !ai.periodDue(last, ai.strategy().restore_dodge_gap_ticks))
                 continue;
-            dodge_orders.put(w, ai.time());
+            dodge_orders.put(w, ai.now());
             queueOrder(w, w.getGridX(), w.getGridY(), true);
         }
     }
@@ -4629,7 +6225,7 @@ final class Military {
      * separate cells around the spot when they are ordered together, otherwise they all queue for the same cell.
      */
     private void queueOrder(@NonNull Unit u, int x, int y, boolean aggressive) {
-        last_order.put(u, ai.time());
+        last_order.put(u, ai.now());
         last_spots.put(u, new int[]{x, y});
         long key = ((long) x << 32) | ((long) y << 1) | (aggressive ? 1 : 0);
         pending_orders.computeIfAbsent(key, k -> new ArrayList<>()).add(u);
@@ -4721,7 +6317,7 @@ final class Military {
                 "jampic head x0=" + (cx - rx) + " y0=" + (cy - ry) + " mode=" + mode + " target=" + target_x + "," + target_y + " wp=" + (march_wp != null ? march_wp[0] + "," + march_wp[1] : "-"));
         DistanceField f = target_field;
         if (f != null) {
-            DistanceField fresh = map.computeField(target_x, target_y, Integer.MAX_VALUE);
+            DistanceField fresh = map.computeField(target_x, target_y, Integer.MAX_VALUE, target_corner);
             head.append(" field@c=").append(f.getAround(cx, cy, 1)).append(" fresh@c=").append(fresh.getAround(cx, cy,
                     1));
             if (march_wp != null)
@@ -4812,9 +6408,9 @@ final class Military {
     /** ring_sweep: calls a stalled attack home in the window while the army outnumbers the parked ring. */
     private void considerSweep() {
         Strategy strategy = ai.strategy();
-        float now = ai.time();
-        if (mode != Mode.ATTACK || sweep_until >= 0f || now < strategy.ring_sweep_from
-                || now > strategy.ring_sweep_until || now - last_out_time < strategy.ring_sweep_quiet)
+        float now = ai.now();
+        if (mode != Mode.ATTACK || sweep_until >= 0f || now < strategy.ring_sweep_from_ticks
+                || now > strategy.ring_sweep_until_ticks || now - last_out_time < strategy.ring_sweep_quiet_ticks)
             return;
         float ring = ringStrength();
         float away = attackStrength();
@@ -4836,7 +6432,7 @@ final class Military {
         ai.aiLog().count("ring_sweep");
         ai.log(String.format("ring sweep: attack %.1f comes home against a parked ring of %.1f", away, ring));
         endAttack();
-        sweep_until = strategy.ring_sweep_until + 60f;
+        sweep_until = strategy.ring_sweep_until_ticks + 3000f;
         sweep_ring_start = ring;
     }
 
@@ -4845,7 +6441,7 @@ final class Military {
      * armory; ends when the ring is down to 30 % of what it was, the army is small or outmatched, or the time is up.
      */
     private void sweep() {
-        float now = ai.time();
+        float now = ai.now();
         float ring = ringStrength();
         float army = armyStrength();
         if (now > sweep_until || army < Math.max(12f, .8f * ring) || ring < Math.max(3f, .3f * sweep_ring_start)) {
@@ -4937,6 +6533,10 @@ final class Military {
 
     /** Cells around threat_x, threat_y within which updateThreat sums the strongest group of threats. */
     private static final int THREAT_GROUP_CELLS = 15;
+    /** Game ticks after escort() that holdStaging keeps the home army at the escort spot (its 150, 3 game seconds). */
+    private static final float ESCORT_TICKS = 150f;
+    /** Game ticks after a calm march step that reinforce() still heads for march_wp (its 100, 2 game seconds). */
+    private static final float MARCH_WP_TICKS = 100f;
 
     /** The STAT line's military essentials: the mode, the armies with their strength, the threat. */
     @NonNull
@@ -4983,8 +6583,8 @@ final class Military {
         long[][] sums = new long[all.length][3];
         tally(n, s, sums);
         int atk = Role.ATTACK.ordinal();
-        float now = ai.time();
-        boolean escorting = mode == Mode.HOME && now - escort_time < 3f;
+        float now = ai.now();
+        boolean escorting = mode == Mode.HOME && now - escort_time < ESCORT_TICKS;
         canvas.status("army", armyText(n, s, now, escorting));
         Selectable<?> t = target;
         Player focus = focus_owner;
@@ -5016,7 +6616,7 @@ final class Military {
             if (mode == Mode.RETREAT)
                 canvas.line(layer, centre[0], centre[1], staging_x, staging_y, WatchView.RETREAT);
             int[] wp = march_wp;
-            if (wp != null && now - march_calm_time < 2f)
+            if (wp != null && now - march_calm_time < MARCH_WP_TICKS)
                 canvas.mark(layer, wp[0], wp[1], WatchView.MARCH, "waypoint");
         }
         int[] reinforcing = WatchView.centre(sums[Role.REINFORCE.ordinal()]);
@@ -5068,9 +6668,9 @@ final class Military {
             if (n[others[i].ordinal()] > 0)
                 sb.append(", ").append(n[others[i].ordinal()]).append(doing[i]);
         if (mode == Mode.MUSTER)
-            sb.append(", mustering for ").append((int) (now - muster_start)).append(" s");
+            sb.append(", mustering for ").append(WatchView.seconds(now - muster_start)).append(" s");
         if (mode == Mode.HOME && next_wave_time > now)
-            sb.append(", next attack in ").append((int) (next_wave_time - now)).append(" s at the earliest");
+            sb.append(", next attack in ").append(WatchView.seconds(next_wave_time - now)).append(" s at the earliest");
         if (escorting)
             sb.append(", guarding builders");
         if (sweep_until >= 0f)
@@ -5155,7 +6755,7 @@ final class Military {
             case ARMY -> {
                 if (threat_level > 0)
                     yield "home army, the base is under threat";
-                if (mode == Mode.HOME && ai.time() - escort_time < 3f)
+                if (mode == Mode.HOME && ai.now() - escort_time < ESCORT_TICKS)
                     yield "home army, guarding builders at " + WatchView.at(escort_x, escort_y);
                 yield "home army, staging at " + WatchView.at(staging_x, staging_y);
             }

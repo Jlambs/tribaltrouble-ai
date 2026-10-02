@@ -3,9 +3,10 @@
 python lab/gauntlet/mergebase.py NEW OLD_PREFIX LATE_RUN [LATE_RUN...]
 
 NEW gets every row of the runs named OLD_PREFIX-<letters> (e.g. cur7-bench-vs14 -> -a..-d), with the rows (and game
-files) of the LATE_RUNs in place of the same keys. Use it when the new default acts only after some time T and the
-LATE_RUNs re-played exactly the old games that lasted past T with it (late.py checks their checksums agree up to T).
-The game files are hard-linked where the file system allows, else copied. NEW then pairs like any finished run.
+files) of the LATE_RUNs in place of the same keys. Use it when the new default acts only after some game time T and
+the LATE_RUNs re-played exactly the old games that lasted past T with it (late.py checks their checksums agree up to T).
+The game files are hard-linked where the file system allows, else copied. NEW then pairs like any finished run. Rows
+and game files are copied as they are: each keeps its own clock (gtime converts those from before game time per row).
 """
 import glob
 import json

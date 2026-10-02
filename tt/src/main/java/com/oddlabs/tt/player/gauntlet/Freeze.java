@@ -9,6 +9,7 @@ import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.AttackController;
 import com.oddlabs.tt.model.behaviour.Controller;
 import com.oddlabs.tt.model.behaviour.HuntController;
+import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
@@ -23,7 +24,7 @@ import java.util.Locale;
 /**
  * The freeze opening (freeze_open; archaeology item A1, re-scoped from the freeze strike of lab/gauntlet/NOTES.md
  * 2026-09-28, commit 080918f1): at the start a squad of freeze_squad starting peons walks to the copy with the least
- * walking time from our start, if that is at most freeze_eta seconds of peon walk.
+ * walking time from our start, if that is at most freeze_eta_ticks game ticks of peon walk.
  *
  * <p>Path (a): the squad kills every peon the copy has outside before its first quarters stands. A player is in the
  * game only while it has units, an active chieftain or a finished quarters (StandardModeRules.isPlayerAlive), so the
@@ -45,7 +46,7 @@ import java.util.Locale;
  * is gone or it has a finished armory; freeze_fight lets the staged squad fight the copy's units that come near it,
  * outside its defense circle, instead of walking back to the stage point every 6 s; after a path-(a) out,
  * freeze_armory_push moves our first armory up the build order and sends the squad to build it, and freeze_retarget
- * strikes one more copy within freeze_eta of the squad whose quarters is not finished.
+ * strikes one more copy within freeze_eta_ticks of the squad whose quarters is not finished.
  */
 final class Freeze {
     enum Phase {
@@ -64,20 +65,26 @@ final class Freeze {
         DONE
     }
 
-    /** A peon's speed, in meters per second (RacesResources, both races' peon templates). */
-    private static final float PEON_SPEED = 5f;
+    /** Game ticks a peon takes per meter of walk: 5 m a game second (RacesResources, both races' peon templates). */
+    private static final float PEON_TICKS_PER_METER = 10f;
     /** Cells from the copy's quarters where the squad waits in path (c): outside its 30 m defense circle. */
     private static final int STAGE_CELLS = 19;
     /** Cells from the copy's peons at which the walking squad starts to strike in path (a). */
     private static final int ARRIVE_CELLS = 12;
+    /** freeze_patience_ticks: cells from the copy's idle peons the squad keeps (beyond their 8-cell scan). */
+    static final int HOLD_CELLS = 16;
+    /** freeze_patience_ticks: cells from the nearest idle peon at which the patience starts. */
+    private static final int NEAR_CELLS = 24;
+    /** freeze_patience_ticks: a busy peon is taken on only this many cells from every idle one. */
+    private static final int CROWD_CELLS = 12;
     /** Below this many peons the squad gives up and walks home. */
     private static final int MIN_SQUAD = 3;
-    /** Seconds the squad waits at the stage point for the armory site (freeze_wait of the old strike). */
-    private static final float WAIT_LIMIT = 150f;
-    /** Seconds a strike may last before the squad gives up (freeze_strike_time of the old strike). */
-    private static final float STRIKE_LIMIT = 100f;
-    /** Seconds the squad waits in path (c) for a new armory site when the old one is gone. */
-    private static final float SITE_GONE_LIMIT = 60f;
+    /** Game ticks the squad waits at the stage point for the armory site (freeze_wait of the old strike). */
+    private static final float WAIT_LIMIT_TICKS = 7500f; // 150 s
+    /** Game ticks a strike may last before the squad gives up (freeze_strike_time of the old strike). */
+    private static final float STRIKE_LIMIT_TICKS = 5000f; // 100 s
+    /** Game ticks the squad waits in path (c) for a new armory site when the old one is gone. */
+    private static final float SITE_GONE_LIMIT_TICKS = 3000f; // 60 s
     /** freeze_fight: cells from a squad peon within which the staged squad takes on the copy's units. */
     private static final int FIGHT_CELLS = 6;
     /** freeze_fight: cells from the copy's finished quarters or armory the squad keeps out of (30 m and a cell). */
@@ -126,23 +133,25 @@ final class Freeze {
             if (walk == DistanceField.UNREACHABLE)
                 continue;
             // Nearest first; world order breaks ties (inserted after every copy at most as far).
-            float eta = walk / PEON_SPEED;
+            float eta = walk * PEON_TICKS_PER_METER;
             int at = 0;
             while (at < etas.size() && etas.get(at) <= eta)
                 at++;
             copies.add(at, p);
             etas.add(at, eta);
         }
-        if (copies.isEmpty() || etas.getFirst() > strategy.freeze_eta) {
+        if (copies.isEmpty() || etas.getFirst() > strategy.freeze_eta_ticks) {
             String nearest = copies.isEmpty() ? "none reachable" : name(
-                    copies.getFirst()) + " at " + (int) (float) etas.getFirst() + "s";
-            log(() -> "no strike: nearest copy " + nearest + ", freeze_eta " + (int) strategy.freeze_eta + "s");
+                    copies.getFirst()) + " at " + (int) GauntletAI.seconds(etas.getFirst()) + "s";
+            log(() -> "no strike: nearest copy " + nearest + ", freeze_eta " + (int) GauntletAI.seconds(
+                    strategy.freeze_eta_ticks) + "s");
             return false;
         }
         Intel intel = ai.intel();
         for (int i = 0; i < copies.size() && strikes.size() < Math.max(1, strategy.freeze_targets); i++) {
             boolean first = strikes.isEmpty();
-            float limit = first || strategy.freeze_eta2 <= 0f ? strategy.freeze_eta : strategy.freeze_eta2;
+            float limit = first
+                    || strategy.freeze_eta2_ticks <= 0f ? strategy.freeze_eta_ticks : strategy.freeze_eta2_ticks;
             if (etas.get(i) > limit)
                 break;
             List<Unit> pool = new ArrayList<>(intel.peons);
@@ -164,10 +173,10 @@ final class Freeze {
             intel.strikers.addAll(strike.squad);
             strike.setPhase(Phase.WALK);
             ai.aiLog().count(first ? "freeze_start" : "freeze_start_more");
-            float eta = etas.get(i);
+            int eta = (int) GauntletAI.seconds(etas.get(i));
             log(() -> (first ? "" : "further ") + "strike on " + name(
-                    best) + " at " + sx + "," + sy + " with " + strike.squad.size() + " peons, eta " + (int) eta + "s");
-            strike.walk(best, ai.time());
+                    best) + " at " + sx + "," + sy + " with " + strike.squad.size() + " peons, eta " + eta + "s");
+            strike.walk(best, ai.now());
         }
         return !strikes.isEmpty();
     }
@@ -201,10 +210,13 @@ final class Freeze {
         private int start_y;
         private @NonNull Phase phase = Phase.DONE;
         private float phase_time;
-        private float last_order = -100f;
+        private float last_order = -5000f;
         private int stage_x;
         private int stage_y;
         private boolean out_counted;
+        /** freeze_patience_ticks: when the squad first came within HOLD_CELLS of idle peons, and whether it holds. */
+        private float hold_since = -1f;
+        private boolean holding;
 
         Strike(@NonNull Player target, @NonNull List<@NonNull Unit> squad) {
             this.target = target;
@@ -222,7 +234,7 @@ final class Freeze {
                 return;
             Player t = target;
             assert t != null;
-            float now = ai.time();
+            float now = ai.now();
             countLosses();
             countKills(t);
             if (!t.isAlive()) {
@@ -230,7 +242,8 @@ final class Freeze {
                     out_counted = true;
                     ai.aiLog().count("freeze_target_out");
                 }
-                log(() -> name(t) + " is out at " + (int) now + "s (" + phase + ", " + squad.size() + " peons left)");
+                log(() -> name(t) + " is out at " + (int) GauntletAI.seconds(
+                        now) + "s (" + phase + ", " + squad.size() + " peons left)");
                 if (phase == Phase.WALK || phase == Phase.STRIKE) {
                     a_out = true;
                     if (ai.strategy().freeze_retarget && !retargeted && squad.size() >= MIN_SQUAD && retarget(now))
@@ -261,31 +274,131 @@ final class Freeze {
         private void walk(@NonNull Player t, float now) {
             if (quartersStood(t, "its quarters stood before the squad arrived"))
                 return;
-            if (now - phase_time > ai.strategy().freeze_eta + STRIKE_LIMIT) {
+            if (now - phase_time > ai.strategy().freeze_eta_ticks + STRIKE_LIMIT_TICKS) {
                 abort("the squad never reached its peons");
                 return;
             }
             List<Unit> prey = outsideUnits(t);
             int[] goal = prey.isEmpty() ? new int[]{start_x, start_y} : MapAnalysis.centroid(prey);
             int[] c = MapAnalysis.centroid(squad);
+            if (patient(t, prey, c, now))
+                return;
             if (!prey.isEmpty() && MapAnalysis.dist2(c[0], c[1], goal[0], goal[1]) <= ARRIVE_CELLS * ARRIVE_CELLS) {
                 setPhase(Phase.STRIKE);
                 ai.aiLog().count("freeze_path_a");
-                log(() -> "squad at " + name(t) + " at " + (int) now + "s: striking " + prey.size() + " peons");
+                log(() -> "squad at " + name(t) + " at " + (int) GauntletAI.seconds(
+                        now) + "s: striking " + prey.size() + " peons");
                 strike(t, now);
                 return;
             }
             moveSquad(now, goal[0], goal[1]);
         }
 
+        /**
+         * freeze_patience_ticks: while the copy has a crowd of idle peons (at least as many as the squad has peons: it
+         * has not given its orders yet, and idle peons answer through their 8-cell scan while builders never do), the
+         * squad takes on only its busy peons farther than CROWD_CELLS from every idle one, and otherwise keeps
+         * HOLD_CELLS from the nearest idle peon, for up to freeze_patience_ticks game ticks from when it first came
+         * within NEAR_CELLS of the crowd. Returns whether it acted this tick (the plain strike runs otherwise).
+         */
+        private boolean patient(@NonNull Player t, @NonNull List<@NonNull Unit> prey, int @NonNull [] c, float now) {
+            float patience = ai.strategy().freeze_patience_ticks;
+            if (patience <= 0f || prey.isEmpty())
+                return false;
+            List<Unit> idle = new ArrayList<>();
+            List<Unit> busy = new ArrayList<>();
+            for (Unit u : prey)
+                (u.getPrimaryController() instanceof IdleController ? idle : busy).add(u);
+            Unit near = null;
+            int near_d2 = Integer.MAX_VALUE;
+            for (Unit u : idle) {
+                int d2 = MapAnalysis.dist2(c[0], c[1], u.getGridX(), u.getGridY());
+                if (d2 < near_d2) {
+                    near_d2 = d2;
+                    near = u;
+                }
+            }
+            if (near == null || idle.size() < squad.size()) {
+                endHold(t, idle.size(), prey.size(), now);
+                return false;
+            }
+            if (hold_since < 0f) {
+                if (near_d2 > NEAR_CELLS * NEAR_CELLS)
+                    return false;
+                hold_since = now;
+            }
+            if (now - hold_since >= patience) {
+                endHold(t, idle.size(), prey.size(), now);
+                return false;
+            }
+            List<Unit> take = new ArrayList<>();
+            for (Unit u : busy)
+                if (farFrom(u, idle, CROWD_CELLS))
+                    take.add(u);
+            if (!take.isEmpty()) {
+                if (phase == Phase.WALK) {
+                    setPhase(Phase.STRIKE);
+                    ai.aiLog().count("freeze_path_a");
+                    int n = take.size();
+                    int m = idle.size();
+                    log(() -> "squad at " + name(t) + " at " + (int) GauntletAI.seconds(
+                            now) + "s: picking off " + n + " busy peons, " + m + " idle");
+                }
+                assign(take);
+                return true;
+            }
+            if (!holding) {
+                holding = true;
+                ai.aiLog().count("freeze_hold");
+                int n = idle.size();
+                log(() -> "squad holds at " + name(t) + " at " + (int) GauntletAI.seconds(
+                        now) + "s: " + n + " of " + prey.size() + " peons idle");
+            }
+            // Within HOLD_CELLS of an idle peon: step back to HOLD_CELLS + 2 from the nearest, on the squad's side.
+            boolean close = false;
+            for (Unit u : squad)
+                if (!farFrom(u, idle, HOLD_CELLS))
+                    close = true;
+            if (close && ai.periodDue(last_order, 50f)) {
+                double dx = c[0] - near.getGridX();
+                double dy = c[1] - near.getGridY();
+                double len = Math.max(1, Math.hypot(dx, dy));
+                int hx = near.getGridX() + (int) Math.round(dx * (HOLD_CELLS + 2) / len);
+                int hy = near.getGridY() + (int) Math.round(dy * (HOLD_CELLS + 2) / len);
+                last_order = now;
+                ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), hx, hy, Action.MOVE, false);
+            }
+            return true;
+        }
+
+        /** freeze_patience_ticks: the crowd is gone or the patience ran out; the plain strike goes on at once. */
+        private void endHold(@NonNull Player t, int idle, int prey, float now) {
+            if (!holding)
+                return;
+            holding = false;
+            last_order = -5000f; // walk on at once
+            log(() -> "squad stops holding at " + name(t) + " at " + (int) GauntletAI.seconds(
+                    now) + "s: " + idle + " of " + prey + " peons idle");
+        }
+
+        /** Whether u is more than cells from every unit of others. */
+        private static boolean farFrom(@NonNull Unit u, @NonNull List<@NonNull Unit> others, int cells) {
+            for (Unit o : others)
+                if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), o.getGridX(), o.getGridY()) <= cells * cells)
+                    return false;
+            return true;
+        }
+
         private void strike(@NonNull Player t, float now) {
             if (quartersStood(t, "its quarters stood during the strike"))
                 return;
-            if (now - phase_time > STRIKE_LIMIT) {
-                abort("strike took over " + (int) STRIKE_LIMIT + "s");
+            if (now - phase_time > STRIKE_LIMIT_TICKS) {
+                abort("strike took over " + (int) GauntletAI.seconds(STRIKE_LIMIT_TICKS) + "s");
                 return;
             }
             List<Unit> prey = outsideUnits(t);
+            if (patient(t, prey, MapAnalysis.centroid(squad), now))
+                return;
             // None left and no finished quarters: the engine takes it out, and the next tick sees it.
             if (!prey.isEmpty())
                 assign(prey);
@@ -293,17 +406,17 @@ final class Freeze {
 
         /**
          * freeze_retarget: after a path-(a) out the squad strikes once more, at the living copy with the least walking
-         * time from it, if that is at most freeze_eta seconds of peon walk and its quarters is not finished. Returns
-         * whether it did; either way there is no third look.
+         * time from it, if that is at most freeze_eta_ticks game ticks of peon walk and its quarters is not finished.
+         * Returns whether it did; either way there is no third look.
          */
         private boolean retarget(float now) {
             Player done = target;
             assert done != null;
             retargeted = true;
             Player me = ai.owner();
-            float limit = ai.strategy().freeze_eta;
+            float limit = ai.strategy().freeze_eta_ticks;
             int[] c = MapAnalysis.centroid(squad);
-            DistanceField field = ai.map().computeField(c[0], c[1], (int) Math.ceil(limit * PEON_SPEED) + 10);
+            DistanceField field = ai.map().computeField(c[0], c[1], (int) Math.ceil(limit / PEON_TICKS_PER_METER) + 10);
             Player best = null;
             float best_eta = Float.MAX_VALUE;
             // The nearest living copy whatever its quarters, to tell why there is no second strike.
@@ -317,7 +430,7 @@ final class Freeze {
                         UnitGrid.toGridCoordinate(p.getStartY()), 3);
                 if (walk == DistanceField.UNREACHABLE)
                     continue;
-                float eta = walk / PEON_SPEED;
+                float eta = walk * PEON_TICKS_PER_METER;
                 if (eta < nearest_eta) {
                     nearest_eta = eta;
                     nearest = p;
@@ -331,23 +444,26 @@ final class Freeze {
                 if (nearest != null && nearest_eta <= limit)
                     ai.aiLog().count("freeze_retarget_quartered");
                 Player n = nearest;
-                float n_eta = nearest_eta;
+                int n_eta = (int) GauntletAI.seconds(nearest_eta);
+                int eta_limit = (int) GauntletAI.seconds(limit);
                 log(() -> "no second strike: nearest living copy " + (n == null ? "none within reach" : name(
-                        n) + " at " + (int) n_eta + "s" + (quartersStands(
-                                n) ? ", its quarters stands" : "")) + ", freeze_eta " + (int) limit + "s");
+                        n) + " at " + n_eta + "s" + (quartersStands(
+                                n) ? ", its quarters stands" : "")) + ", freeze_eta " + eta_limit + "s");
                 return false;
             }
             target = best;
             start_x = UnitGrid.toGridCoordinate(best.getStartX());
             start_y = UnitGrid.toGridCoordinate(best.getStartY());
             out_counted = false;
+            hold_since = -1f;
+            holding = false;
             seen.clear();
             setPhase(Phase.WALK);
             ai.aiLog().count("freeze_retarget");
-            float eta = best_eta;
+            int eta = (int) GauntletAI.seconds(best_eta);
             Player t = best;
             log(() -> "second strike on " + name(
-                    t) + " at " + start_x + "," + start_y + " with " + squad.size() + " peons, eta " + (int) eta + "s");
+                    t) + " at " + start_x + "," + start_y + " with " + squad.size() + " peons, eta " + eta + "s");
             walk(best, now);
             return true;
         }
@@ -373,14 +489,14 @@ final class Freeze {
             setPhase(Phase.STAGE);
             ai.aiLog().count("freeze_fallback_c");
             log(() -> "falling back to the armory cut on " + name(t) + ": " + why);
-            stage(t, ai.time());
+            stage(t, ai.now());
         }
 
         private void stage(@NonNull Player t, float now) {
             stagePoint(t);
             if (armoryCheck(t))
                 return;
-            if (now - phase_time > WAIT_LIMIT) {
+            if (now - phase_time > WAIT_LIMIT_TICKS) {
                 abort("the squad never reached its stage point");
                 return;
             }
@@ -397,8 +513,8 @@ final class Freeze {
         private void await(@NonNull Player t, float now) {
             if (armoryCheck(t))
                 return;
-            if (now - phase_time > WAIT_LIMIT) {
-                abort("no armory site within " + (int) WAIT_LIMIT + "s");
+            if (now - phase_time > WAIT_LIMIT_TICKS) {
+                abort("no armory site within " + (int) GauntletAI.seconds(WAIT_LIMIT_TICKS) + "s");
                 return;
             }
             stagePoint(t);
@@ -481,7 +597,7 @@ final class Freeze {
             log(() -> "cut on " + name(
                     t) + ": armory site at " + armory.getGridX() + "," + armory.getGridY() + ", " + outsideUnits(
                             t).size() + " peons outside");
-            cut(t, ai.time());
+            cut(t, ai.now());
             return true;
         }
 
@@ -495,7 +611,7 @@ final class Freeze {
             if (prey.isEmpty()) {
                 if (armory == null) {
                     // The site is gone: the copy places another one with a crew from its quarters.
-                    if (now - phase_time > SITE_GONE_LIMIT)
+                    if (now - phase_time > SITE_GONE_LIMIT_TICKS)
                         abort("no armory site to cut");
                     return;
                 }
@@ -504,7 +620,8 @@ final class Freeze {
                     frozen_sites.add(armory);
                     ai.aiLog().count("freeze_frozen");
                     log(() -> "froze " + name(
-                            t) + " at " + (int) now + "s, armory site at " + armory.getGridX() + "," + armory.getGridY());
+                            t) + " at " + (int) GauntletAI.seconds(
+                                    now) + "s, armory site at " + armory.getGridX() + "," + armory.getGridY());
                 }
                 if (ai.strategy().freeze_raze && building(t, Race.BUILDING_QUARTERS) != null)
                     setPhase(Phase.RAZE);
@@ -512,8 +629,8 @@ final class Freeze {
                     goHome();
                 return;
             }
-            if (now - phase_time > STRIKE_LIMIT) {
-                abort("cut took over " + (int) STRIKE_LIMIT + "s");
+            if (now - phase_time > STRIKE_LIMIT_TICKS) {
+                abort("cut took over " + (int) GauntletAI.seconds(STRIKE_LIMIT_TICKS) + "s");
                 return;
             }
             assign(prey);
@@ -536,7 +653,7 @@ final class Freeze {
                 assign(prey);
                 return;
             }
-            if (now - last_order >= 5f) {
+            if (ai.periodDue(last_order, 250f)) {
                 last_order = now;
                 ai.owner().setTarget(squad.toArray(new Selectable<?>[0]), quarters, Action.ATTACK, false);
             }
@@ -564,7 +681,7 @@ final class Freeze {
 
         /** Every 6 s the squad walks (a MOVE, without fighting) towards (x, y). */
         private void moveSquad(float now, int x, int y) {
-            if (now - last_order < 6f)
+            if (!ai.periodDue(last_order, 300f))
                 return;
             last_order = now;
             ai.landscapeOrder(squad.toArray(new Selectable<?>[0]), x, y, Action.MOVE, false);
@@ -642,8 +759,8 @@ final class Freeze {
 
         private void setPhase(@NonNull Phase next) {
             phase = next;
-            phase_time = ai.time();
-            last_order = -100f;
+            phase_time = ai.now();
+            last_order = -5000f;
         }
     }
 
@@ -717,9 +834,9 @@ final class Freeze {
             if (!p.isAlive())
                 continue; // out: nothing of it is left to treat as frozen
             ai.aiLog().count("freeze_unfrozen");
-            float now = ai.time();
+            float now = ai.now();
             String why = armed ? "its armory stands" : "its frozen armory site is gone";
-            log(() -> name(p) + " unfrozen at " + (int) now + "s: " + why);
+            log(() -> name(p) + " unfrozen at " + (int) GauntletAI.seconds(now) + "s: " + why);
         }
     }
 
