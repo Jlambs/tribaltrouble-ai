@@ -212,6 +212,50 @@ class Strategy {
      */
     float remnant_ladder_ticks = 0f;
     /**
+     * mopup: from endgame_from_ticks, while no copy still in has a quarters or armory, finished or placed (a frozen
+     * copy's armory site, Freeze.isFrozenSite, does not count), the remnant ladder runs as with remnant_ladder_ticks
+     * (Military.mopUp). The copies left then cannot train a chieftain, so they never send a wave of 20 or more again,
+     * and cannot replace a unit, so finishing them costs nothing; with bases still standing the ladder traded wins
+     * (+13 / -12 over 654 games alive at 40 min). 12 of the 93 distinct ludicrous timeouts ended with only such bands
+     * left, most of them won positions (margin +0.8 to +0.96).
+     */
+    boolean mopup = false;
+    /**
+     * allin_ticks (game ticks, 0 = off; arm 540000 = 180 min): from this game tick, on a frozen board (no copy out and
+     * no threat at our base, threat level 2, for allin_quiet_ticks) the muster goes for the copy base (a quarters or
+     * armory, finished or placed) with the least defense, by target_defense_weight per unit of defense plus meters from
+     * the staging point, past the gate, and that attack neither turns back before contact nor retreats outmatched
+     * (Military.allIn). A draw counts as a loss, so on a board that has not moved for an hour there is nothing to keep:
+     * 20 of the 93 distinct ludicrous timeouts were such standoffs (no kill in their last hour; nothing changed from
+     * 180 to 360 min in 18), most with the army at home and the gate failing for hours (s6074 N=13: by 3 % for 4.4 h).
+     */
+    float allin_ticks = 0f;
+    /** allin_ticks: game ticks without a copy going out and without a threat at our base that make the board frozen. */
+    float allin_quiet_ticks = 180000f; // 60 min
+    /**
+     * push_ticks (game ticks, 0 = off): from this game tick, once no copy has gone out for push_quiet_ticks, the all-in
+     * muster of allin_ticks (the weakest copy base, past the gate, no turning back) goes whatever stands at our base,
+     * at most once per push_period_ticks (Military.pushDue). The collapse-window campaign is the only push: in 56 of
+     * the 93 distinct ludicrous timeouts the copies still fought at the cap to the end (about 1,000 deaths an hour on
+     * each side) while our army, held home by the threat at the base (plan: considerAttack only below threat level 2
+     * or against a small threat), never went out again.
+     */
+    float push_ticks = 0f;
+    float push_quiet_ticks = 90000f; // 30 min
+    float push_period_ticks = 90000f; // 30 min
+    /**
+     * last_stand: from endgame_from_ticks, with no quarters or armory of ours, finished or placed, and no peon left to
+     * build one, every warrior and the chieftain attack the nearest enemy, again every 30 s (Military.lastStand). Such
+     * a
+     * game is lost, and the collapse rule (8 units or fewer, no chieftain) cannot end it while more survive: s6274
+     * (cur11 N=17) kept 86 homeless warriors to the 360 min limit, a tenth of its block's compute.
+     */
+    boolean last_stand = false;
+    /**
+     * mopup and last_stand act only from this game tick (0: from the start; 120000 keeps games identical to 40 min).
+     */
+    float endgame_from_ticks = 120000f; // 40 min
+    /**
      * With gate_owner, other copies' warriors and chieftains count in a target's defense, and their chieftains in the
      * gate's chieftain malus, only within this many cells (0: defense_radius, as before; arm 20), from
      * defense_others_from_ticks on (Military.defenseFor). A copy defends with its own warriors only
@@ -1451,6 +1495,14 @@ class Strategy {
         finish_units = params.getInt("finish_units", finish_units);
         finish_ratio = (float) params.getDouble("finish_ratio", finish_ratio);
         remnant_ladder_ticks = (float) params.getDouble("remnant_ladder_ticks", remnant_ladder_ticks);
+        mopup = params.getBoolean("mopup", mopup);
+        allin_ticks = (float) params.getDouble("allin_ticks", allin_ticks);
+        allin_quiet_ticks = (float) params.getDouble("allin_quiet_ticks", allin_quiet_ticks);
+        push_ticks = (float) params.getDouble("push_ticks", push_ticks);
+        push_quiet_ticks = (float) params.getDouble("push_quiet_ticks", push_quiet_ticks);
+        push_period_ticks = (float) params.getDouble("push_period_ticks", push_period_ticks);
+        last_stand = params.getBoolean("last_stand", last_stand);
+        endgame_from_ticks = (float) params.getDouble("endgame_from_ticks", endgame_from_ticks);
         defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);
         defense_others_from_ticks = (float) params.getDouble("defense_others_from_ticks", defense_others_from_ticks);
         chief_hunt = params.getBoolean("chief_hunt", chief_hunt);

@@ -133,6 +133,18 @@ final class Military {
     /** When the number of living copies last fell, and that number (ring_sweep's quiet test). */
     private float last_out_time;
     private int last_alive = -1;
+    /**
+     * allin_ticks: when a threat last stood at our base (threat level 2), and whether the attack under way is all-in.
+     */
+    private float last_base_threat;
+    private boolean all_in;
+    /** push_ticks: when the last push mustered. */
+    private float last_push = -1e9f;
+    /** mopup: counted and logged once, when it first acts. */
+    private boolean mopup_seen;
+    /** last_stand: when the last orders went out, and whether it was counted and logged. */
+    private float last_stand_order = -5000f;
+    private boolean last_stand_seen;
     /** Log only: chooseTarget records its best candidates while this is non-null (the muster's explanation). */
     private @Nullable List<@NonNull String> explain;
     /** frozen_last: the frozen copies a choice has passed over at least once (counted once each). */
@@ -627,6 +639,12 @@ final class Military {
     void tick() {
         watchEnemyCasts();
         updateRoles();
+        // last_stand: no base and no peon to build one: nothing else is left to do
+        if (lastStand()) {
+            lastStandTick();
+            flushOrders();
+            return;
+        }
         provokeProbe();
         updateStaging();
         updateThreat();
@@ -670,6 +688,8 @@ final class Military {
                 last_out_time = ai.now();
             last_alive = alive;
         }
+        if (lastStand())
+            return;
         if (ai.strategy().ring_sweep)
             considerSweep();
         // decapitate: which copies went passive (counters and logs only; from the start, so none is missed)
@@ -684,6 +704,12 @@ final class Military {
                         40) : armyStrength());
         if (mode == Mode.HOME && (threat_level < 2 || small_threat) && sweep_until < 0f)
             considerAttack();
+        else if (mode == Mode.HOME && sweep_until < 0f && ai.now() >= next_wave_time && pushDue()) {
+            // push_ticks: whatever stands at the base
+            Building weakest = weakestBase();
+            if (weakest != null)
+                allInMuster(weakest, true);
+        }
         // reinforce_threat_ratio: reinforce the attack with the base under threat too, while what stands in the base is
         // worth less than that share of our whole army.
         boolean reinforce_ok = threat_level < 2
@@ -909,6 +935,8 @@ final class Military {
         boolean at_armory = armory != null && MapAnalysis.dist2(threat_x, threat_y, armory.getGridX(),
                 armory.getGridY()) <= 25 * 25;
         threat_level = base_threat_strength >= 3f || at_armory ? 2 : 1;
+        if (threat_level == 2)
+            last_base_threat = ai.now();
     }
 
     private void defend() {
@@ -3163,10 +3191,21 @@ final class Military {
 
     private void considerAttack() {
         Strategy strategy = ai.strategy();
+        all_in = false;
+        // allin_ticks: on a frozen board the weakest copy base, past the gate
+        boolean push = pushDue();
+        if (ai.now() >= next_wave_time && (push || allIn())) {
+            Building weakest = weakestBase();
+            if (weakest != null) {
+                allInMuster(weakest, push);
+                return;
+            }
+        }
         if (ai.logging())
             explain = new ArrayList<>();
-        // remnant_ladder_ticks: chooseTarget records the buildings it scores, for the ladder
-        boolean ladder = strategy.remnant_ladder_ticks > 0f && ai.now() >= strategy.remnant_ladder_ticks;
+        // remnant_ladder_ticks: chooseTarget records the buildings it scores, for the ladder; mopup: likewise once no
+        // copy has a base
+        boolean ladder = strategy.remnant_ladder_ticks > 0f && ai.now() >= strategy.remnant_ladder_ticks || mopUp();
         if (ladder) {
             scored = new ArrayList<>();
             ladder_fallback = false;
@@ -3297,6 +3336,146 @@ final class Military {
                         others, defense, wide, strategy.defense_radius));
             }
         }
+    }
+
+    /**
+     * mopup: from endgame_from_ticks, no copy still in has a quarters or armory, finished or placed (a frozen copy's
+     * armory site does not count), so the remnant ladder finishes the bands left (Strategy.mopup).
+     */
+    private boolean mopUp() {
+        Strategy s = ai.strategy();
+        if (!s.mopup || ai.now() < s.endgame_from_ticks || ai.enemiesAlive() == 0)
+            return false;
+        for (Building b : ai.intel().enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (!b.isDead() && b.getOwner().isAlive() && (id == com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                    || id == com.oddlabs.tt.model.Race.BUILDING_ARMORY) && !ai.freeze().isFrozenSite(b))
+                return false;
+        }
+        if (!mopup_seen) {
+            mopup_seen = true;
+            ai.aiLog().count("mopup");
+            ai.log(String.format("mopup: no copy has a base, %d still in", ai.enemiesAlive()));
+        }
+        return true;
+    }
+
+    /**
+     * allin_ticks: from allin_ticks on, no copy has gone out and no threat has stood at our base for
+     * allin_quiet_ticks (Strategy.allin_ticks).
+     */
+    private boolean allIn() {
+        Strategy s = ai.strategy();
+        return s.allin_ticks > 0f && ai.now() >= s.allin_ticks
+                && ai.now() - Math.max(last_out_time, last_base_threat) >= s.allin_quiet_ticks;
+    }
+
+    /**
+     * push_ticks: from push_ticks on, no copy has gone out for push_quiet_ticks, and the last push mustered
+     * push_period_ticks ago or more (Strategy.push_ticks).
+     */
+    private boolean pushDue() {
+        Strategy s = ai.strategy();
+        return s.push_ticks > 0f && ai.now() >= s.push_ticks && ai.now() - last_out_time >= s.push_quiet_ticks
+                && ai.periodDue(last_push, s.push_period_ticks);
+    }
+
+    /**
+     * allin_ticks: the copy base (a quarters or armory, finished or placed, not a frozen site, a stalled target or in a
+     * dead region) with the least target_defense_weight per unit of defense plus meters from the staging point, or
+     * null.
+     */
+    private @Nullable Building weakestBase() {
+        float w = ai.strategy().target_defense_weight;
+        Building best = null;
+        float best_score = Float.MAX_VALUE;
+        for (Building b : ai.intel().enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (b.isDead() || !b.getOwner().isAlive() || (id != com.oddlabs.tt.model.Race.BUILDING_QUARTERS
+                    && id != com.oddlabs.tt.model.Race.BUILDING_ARMORY) || ai.freeze().isFrozenSite(b)
+                    || stalled_targets.containsKey(b) || inDeadRegion(b))
+                continue;
+            float score = w * defenseFor(b) + MapAnalysis.meters(staging_x, staging_y, b.getGridX(), b.getGridY());
+            if (score < best_score) {
+                best_score = score;
+                best = b;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * allin_ticks and push_ticks ({@code push}): musters everything on {@code t}, past the gate (considerAttack, plan).
+     */
+    private void allInMuster(@NonNull Building t, boolean push) {
+        if (push) {
+            last_push = ai.now();
+            ai.aiLog().count("push_muster");
+            if (threat_level >= 2)
+                ai.aiLog().count("push_under_threat");
+        } else
+            ai.aiLog().count("allin_muster");
+        ai.log(String.format(
+                "%s: no copy out for %.0f s, no threat at the base for %.0f s (threat now %.1f), so %s" + " (defense %.1f) against army %.1f + stock %.1f",
+                push ? "push" : "all-in",
+                GauntletAI.seconds(ai.now() - last_out_time), GauntletAI.seconds(ai.now() - last_base_threat),
+                base_threat_strength, describe(t), defenseFor(t), armyStrength(), stockStrength()));
+        target = t;
+        all_in = true;
+        ladder_target = null;
+        ladder_owner = null;
+        mode = Mode.MUSTER;
+        muster_start = ai.now();
+    }
+
+    /**
+     * last_stand: from endgame_from_ticks, no quarters or armory of ours, finished or placed, no peon, and a warrior or
+     * the chieftain left (Strategy.last_stand).
+     */
+    private boolean lastStand() {
+        Strategy s = ai.strategy();
+        Intel intel = ai.intel();
+        return s.last_stand && ai.now() >= s.endgame_from_ticks && intel.peons.isEmpty() && intel.quarters.isEmpty()
+                && intel.armories.isEmpty() && intel.quarters_sites.isEmpty() && intel.armory_sites.isEmpty()
+                && (!intel.warriors.isEmpty() || intel.chieftain != null);
+    }
+
+    /** last_stand: every 30 s, every warrior and the chieftain attack the enemy unit or building nearest them. */
+    private void lastStandTick() {
+        if (!ai.periodDue(last_stand_order, 1500f))
+            return;
+        last_stand_order = ai.now();
+        Intel intel = ai.intel();
+        List<Unit> units = new ArrayList<>();
+        for (Unit w : intel.warriors)
+            if (!w.isDead() && !w.isMounted())
+                units.add(w);
+        Unit chief = intel.chieftain;
+        if (chief != null && !chief.isDead() && !chief.isMounted())
+            units.add(chief);
+        if (units.isEmpty())
+            return;
+        int[] c = MapAnalysis.centroid(units);
+        Selectable<?> t = nearestEnemyUnit(c[0], c[1]);
+        int best = t == null ? Integer.MAX_VALUE : MapAnalysis.dist2(c[0], c[1], t.getGridX(), t.getGridY());
+        for (Building b : intel.enemy_buildings) {
+            if (b.isDead() || !b.getOwner().isAlive())
+                continue;
+            int d = MapAnalysis.dist2(c[0], c[1], b.getGridX(), b.getGridY());
+            if (d < best) {
+                best = d;
+                t = b;
+            }
+        }
+        if (t == null)
+            return;
+        if (!last_stand_seen) {
+            last_stand_seen = true;
+            ai.aiLog().count("last_stand");
+            ai.log(String.format("last stand: no base, no peon; %d units on %s", units.size(), describe(t)));
+        }
+        ai.aiLog().count("last_stand_order");
+        ai.owner().setTarget(units.toArray(new Selectable<?>[0]), t, Action.ATTACK, true);
     }
 
     /**
@@ -3838,6 +4017,7 @@ final class Military {
         mode = Mode.HOME;
         target = null;
         ladder_owner = null;
+        all_in = false;
         next_wave_time = ai.now() + (recalled ? ai.strategy().recall_cooldown_ticks : 1000f);
         recalled = false;
         strike = false;
@@ -3926,7 +4106,7 @@ final class Military {
             return;
         if (ai.strategy().siege && !pinned && siege(army, c, total))
             return;
-        if (!toot && !pinned && ai.strategy().precontact_ratio > 0f && !anyFighting(army)) {
+        if (!all_in && !toot && !pinned && ai.strategy().precontact_ratio > 0f && !anyFighting(army)) {
             // Before contact, look at everything that can defend the area, not just what is next to us: turning
             // back now costs nothing, walking into a stronger defense costs the army.
             float wide = withEnemyTowers(enemyFightersNear(c[0], c[1], 36), c[0], c[1], 36);
@@ -3949,7 +4129,7 @@ final class Military {
             split_guard_counted = true;
             ai.aiLog().count("split_guard_kept");
         }
-        if (!toot && !pinned && outmatched) {
+        if (!all_in && !toot && !pinned && outmatched) {
             if (local_raw <= strategy.retreat_ratio * Math.max(weighed, 1f))
                 ai.aiLog().count("stun_fear_retreat");
             ai.log(String.format("retreat: local %.1f vs enemy %.1f (army %.1f of %.1f)", ours, local_enemy, total,
