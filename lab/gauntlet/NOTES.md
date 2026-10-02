@@ -1860,3 +1860,31 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
 - **Decapitation late only** (decapitate_from_ticks 120000, same 654 games): N=13 +15 / -9 (draws 1 -> 4), N=14
   +6 / -8, N=15 +1 / -2: neutral with more draws; not adopted. The pacify-then-strike idea is done for now: the copies
   do go passive, but going for their quarters and chieftains first does no better than the army's own target choice.
+- **Why timeouts remain** (93 distinct ludicrous draws, all versions; scratchpad draws.py): A fighting at the unit cap
+  56 (60 %: several copies keep a base at 250 units and keep sending waves, ~1,000 deaths an hour each side, copies
+  left 7.9 -> 6.1 from 1 h to 6 h); B quiet standoff 20 (no kill in the last hour; our army at home failing the gate
+  or wedged far out); C only homeless bands left 12 (won positions, margin +0.8 to +0.96); D our base gone 5 (lost
+  games kept in by > 8 units or an unbuilt site). One draw costs 3-11 % of its block's compute.
+- **Endgame options** (2a1a5230 ff., all off): mopup (the remnant ladder once no copy has a base), allin_ticks (all-in
+  muster on the weakest base on a frozen board), last_stand (5 min without a finished base: everything attacks, the
+  economy stands down), push_ticks (+ push_calm, push_soft: the user's late offensive). On 1,092 games alive at 40 min
+  (6 bases) + 30 at N=17: mopup, allin and last_stand lost no win (mopup fired in 6, sped 2 wins by 4-11 min; allin
+  never fired; last_stand in 57 losses, -9 % of their compute). push (all-in from 120 min, 30 min without an out):
+  +5 / -8, fired in 83; 7 of the 8 lost had a push under threat: push_calm and push_soft (the usual muster decision
+  under threat) queued. Draw seeds (27): push +2 (s6028 loss -> win, s8389 draw -> win).
+- **cur13 = cur12 + unjam from the start** (3408cb1e): 1,424 games at N=13-15, 1,362 identical, wins +4 / -2; 81 of
+  103 column marches got through; s6274 (N=17 canyon jam, draw) -> loss at 34 min. The two lost wins (s6929, s6719
+  N=13: one early column march each, then divergence) are being traced.
+- **Big finding, the repair right-click**: Action.DEFAULT on our own damaged quarters or tower makes a peon REPAIR
+  instead of entering (Unit.setTarget: canRepair before canEnter; armories are entered); a repairer without wood first
+  walks to a tree. Every shelter / home / breed order used DEFAULT, so under attack peons sent into a damaged quarters
+  stood outside as repairers, and the worst peon jams (s6689: 60-69 peons for 10+ min, up to 45 % of peon time in
+  the worst games, median 1 %) were such wood runs. enter_move (1833238d, off) uses MOVE; enter-move-vs13 running.
+  Repairs cost 1 wood per 5 HP (~1 HP/s a peon). The tuned parameters assumed the accidental repairs: a deliberate
+  repair swarm (wood-fed, under threat too) and a salvage (empty a building about to fall toward a safe one) are
+  being designed, then a retune.
+- **Units lost inside razed buildings** (1,500 games N=13-15): 95 % of games lose a finished armory, 2.3 armory razings
+  a game (median 25 min), median 15 / mean 26 units vanish per armory, 13 per quarters; 47 (wins) / 175 (losses) a game.
+- **Hills**: N=13 W h0 39.5 % / h1 29.7 / h2 20.0, N=14 15.8 / 13.4 / 9.5 (weaker at N=15-16). h0 -> h2: shepherd finds
+  no ground spot +26 %, time at the spot -25 %, waves at the base +28 %, peon jams 4x. Next: the shepherd's spot search
+  on rough terrain.
