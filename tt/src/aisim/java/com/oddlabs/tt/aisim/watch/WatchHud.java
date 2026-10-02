@@ -1,6 +1,5 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.oddlabs.matchmaking.Game;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.delegate.SelectionDelegate;
@@ -60,10 +59,10 @@ final class WatchHud implements WatchControls {
     private static final int MIDDLE_CLEAR = 60;
     /** The AI log's lines on the overview map, which it should cover little of. */
     private static final int MAP_LOG_LINES = 7;
-    /** Step sizes in ticks: plain, Shift, Ctrl. */
+    /** Step sizes in ticks: plain, Shift, Ctrl (a real second and ten of play at 1x). */
     private static final int STEP_TICK = 1;
-    private static final int STEP_SECOND = 50;
-    private static final int STEP_TEN_SECONDS = 500;
+    private static final int STEP_SHIFT = 50;
+    private static final int STEP_CTRL = 500;
 
     private final @NonNull WatchGame game;
     /** Full-screen, never focused: its panels draw over the 3D view and take the mouse only where they are. */
@@ -252,10 +251,11 @@ final class WatchHud implements WatchControls {
         Clock clock = game.clock();
         List<TextPanel.Line> lines = new ArrayList<>();
         StringBuilder time = new StringBuilder();
-        time.append(Times.clockTicks(clock.tick())).append("  (t").append(clock.tick()).append(')');
+        time.append(game.times().precise(clock.tick())).append("  (t").append(clock.tick()).append(')');
         if (clock.endTick() >= 0) {
-            time.append("  of ").append(Times.clock(clock.endTick()));
+            time.append("  of ").append(game.times().clock(clock.endTick()));
         }
+        time.append("  at ").append(game.times().speedName());
         time.append("    ").append(clock.stateText());
         boolean running = clock.state() == Clock.State.PLAYING || clock.state() == Clock.State.SEEKING;
         double speed = clock.state() == Clock.State.SEEKING ? Double.POSITIVE_INFINITY : clock.speed();
@@ -264,21 +264,25 @@ final class WatchHud implements WatchControls {
         }
         lines.add(new TextPanel.Line(time.toString()));
         Job job = game.job();
-        if (job.gameSpeed() != Game.GAMESPEED_NORMAL) {
-            // 1x plays 50 world ticks a second at any game speed, and every time shown is ticks / 50
-            lines.add(new TextPanel.Line("game speed " + job.speed() + ": times are world ticks / 50", TextPanel.DIM));
+        Times times = game.times();
+        String played = Times.SPEEDS.get(Times.speedIndex(job.speed()));
+        if (!played.equals(times.speedName())) {
+            // the clock quotes the ticks at its own speed, not at the speed that made them
+            lines.add(new TextPanel.Line(
+                    "times at " + times.speedName() + " speed; the game was played at " + played + " (T: clock speed)",
+                    TextPanel.WARN));
         }
         Verification verification = game.verification();
         lines.add(new TextPanel.Line(verification.status(), verification.diverged()
                 || verification.rewindMismatch() ? TextPanel.BAD : verification.compared() > 0 ? TextPanel.GOOD : TextPanel.DIM));
-        lines.add(new TextPanel.Line("rewind: " + game.rewinder().describe(), TextPanel.DIM));
+        lines.add(new TextPanel.Line("rewind: " + game.rewinder().describe(game.times()), TextPanel.DIM));
         String message = clock.message();
         if (message != null) {
             lines.add(new TextPanel.Line(message, TextPanel.WARN));
         }
         lines.add(game.aiOverlay().statusLine());
         lines.add(new TextPanel.Line(
-                "F1 help   P play/pause   +/- speed   , . step   J jump   N B events   [ ] players",
+                "F1 help   P play/pause   +/- speed   , . step   J jump   N B events   [ ] players   T clock",
                 TextPanel.DIM));
         return lines;
     }
@@ -338,7 +342,7 @@ final class WatchHud implements WatchControls {
         Key key = event.getKeyCode();
         Clock clock = game.clock();
         if (key == Key.PERIOD || key == Key.COMMA) {
-            int ticks = event.isControlDown() ? STEP_TEN_SECONDS : event.isShiftDown() ? STEP_SECOND : STEP_TICK;
+            int ticks = event.isControlDown() ? STEP_CTRL : event.isShiftDown() ? STEP_SHIFT : STEP_TICK;
             clock.step(key == Key.PERIOD ? ticks : -ticks);
             event.consume();
             refresh_now = true;
@@ -373,6 +377,11 @@ final class WatchHud implements WatchControls {
         Clock clock = game.clock();
         switch (key) {
             case P -> clock.togglePause();
+            case T -> {
+                Times times = game.times();
+                times.cycle(shift ? -1 : 1);
+                clock.say("times at " + times.speedName() + " speed: 50 ticks are " + times.span(50));
+            }
             case J -> jump_box.setFocus();
             case N -> jumpToEvent(true);
             case B -> jumpToEvent(false);
@@ -401,12 +410,12 @@ final class WatchHud implements WatchControls {
         Timeline.Mark mark = next ? timeline.next(from) : timeline.previous(from);
         if (mark == null) {
             clock.say(
-                    game.recording() == null ? "no events: the watch file names no recording" : "no event " + (next ? "after " : "before ") + Times.clock(
+                    game.recording() == null ? "no events: the watch file names no recording" : "no event " + (next ? "after " : "before ") + game.times().clock(
                             from));
             return;
         }
         if (clock.seek(mark.tick()) == null) {
-            clock.say(Times.clock(mark.tick()) + "  " + mark.text());
+            clock.say(game.times().clock(mark.tick()) + "  " + mark.describe(game.times()));
         }
     }
 
@@ -414,14 +423,14 @@ final class WatchHud implements WatchControls {
     private void presimulate() {
         Clock clock = game.clock();
         if (clock.presimulating()) {
-            String back_to = Times.clock(clock.position());
+            String back_to = game.times().clock(clock.position());
             clock.say(clock.stopPresimulation() ? "stopped simulating ahead" : "on the way back to " + back_to);
         } else if (clock.endTick() >= 0 && clock.frontier() >= clock.endTick()) {
             clock.say("the whole game is simulated already: every jump is quick");
         } else {
             int here = clock.position();
             if (clock.presimulate(here, clock.willPlay()) == null) {
-                clock.say("simulating to the end, then back to " + Times.clock(here) + " (E stops)");
+                clock.say("simulating to the end, then back to " + game.times().clock(here) + " (E stops)");
             }
         }
     }

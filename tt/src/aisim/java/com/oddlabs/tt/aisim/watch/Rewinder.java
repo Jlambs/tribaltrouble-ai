@@ -27,7 +27,7 @@ interface Rewinder {
     /** The ticks that have a checkpoint, ascending. */
     int @NonNull [] ticks();
 
-    /** A short status for the view, such as "42 checkpoints every 60 s, 1.1 GB". */
+    /** A short status for the view, such as "42 checkpoints every 4:00, 1.1 GB", its times quoted by {@code times}. */
     @NonNull
-    String describe();
+    String describe(@NonNull Times times);
 }

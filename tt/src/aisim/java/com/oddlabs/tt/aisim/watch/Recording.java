@@ -1,6 +1,5 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aisim.analysis.Game;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -16,8 +15,10 @@ import java.util.Set;
 import java.util.TreeMap;
 
 /**
- * The recorded game file of a watched game (read with the lab API, analysis.Game): the world checksum of each census
- * second, the end, and the events worth a mark on a timeline.
+ * The recorded game file of a watched game (read with the lab API, analysis.Game): the world checksum of each census,
+ * the end, and the events worth a mark on a timeline, each at its world tick. Game reads every t as game seconds at the
+ * speed the game was played (converting files from before the harness counted game time), so a line's tick is its t
+ * over the game time of a tick at that speed.
  */
 final class Recording {
     /** The events a timeline marks, besides stuns of many units and windows of many deaths. */
@@ -25,15 +26,15 @@ final class Recording {
             "chief_died", "cast", "end");
     /** Stuns of at least this many units are key events. */
     private static final int STUNS_SHOWN = 5;
-    /** Deaths are summed per slot over windows of this many game seconds... */
-    static final int DEATH_WINDOW = 10;
+    /** Deaths are summed per slot over windows of this many world ticks (20 game seconds at ludicrous)... */
+    static final int DEATH_WINDOW_TICKS = 250;
     /** ...and a window with at least this many is a key event. */
     private static final int DEATHS_SHOWN = 10;
 
     /**
      * One event of the game file.
      *
-     * @param tick  when (the event's t times 50)
+     * @param tick  when: the world tick of the event's t
      * @param ev    its kind ({@code out}, {@code razed}, {@code deaths}...)
      * @param slot  the player it is about ({@code s}: for razed and deaths the loser), or -1 for none (team_out, end)
      * @param text  a one-line description, such as {@code s3 razed quarters at 120,88}
@@ -43,7 +44,9 @@ final class Recording {
     }
 
     private final @NonNull Game game;
-    /** The world checksum of each census second: the first census line at that t (the end's census can follow). */
+    /** The game time of a world tick at the speed the game was played, in ms. */
+    private final int millis_per_tick;
+    /** The world checksum of each periodic census tick (every 30 game seconds): its first census line's. */
     private final @NonNull TreeMap<Integer, Integer> census_checksums = new TreeMap<>();
     private final int end_tick;
     private final @Nullable Integer end_checksum;
@@ -51,19 +54,21 @@ final class Recording {
 
     private Recording(@NonNull Game game) {
         this.game = game;
+        this.millis_per_tick = Times.gameMillisPerTick(game.header());
         Integer end_sum = null;
         int end = -1;
         List<Event> keys = new ArrayList<>();
-        TreeMap<Integer, Map<Integer, Integer>> deaths = new TreeMap<>(); // window start second -> slot -> units
+        TreeMap<Integer, Map<Integer, Integer>> deaths = new TreeMap<>(); // window start tick -> slot -> units
         for (Map<String, Object> line : game.events()) {
             String ev = String.valueOf(line.get("ev"));
             double t = Game.num(line, "t");
-            int tick = (int) Math.round(t * GameTime.TICKS_PER_SECOND);
+            int tick = Times.tickOf(t, millis_per_tick);
             int slot = line.get("s") instanceof Number n ? n.intValue() : -1;
             switch (ev) {
                 case "census" -> {
-                    if (line.get("checksum") instanceof Number sum) {
-                        census_checksums.putIfAbsent((int) Math.round(t), sum.intValue());
+                    // the periodic ones: the end's census follows the last tick, so its checksum is not the in-tick one
+                    if (line.get("checksum") instanceof Number sum && Times.isCensusTick(tick, millis_per_tick)) {
+                        census_checksums.putIfAbsent(tick, sum.intValue());
                     }
                 }
                 case "end" -> {
@@ -71,7 +76,7 @@ final class Recording {
                     end_sum = line.get("checksum") instanceof Number sum ? sum.intValue() : null;
                 }
                 case "deaths" -> {
-                    int window = (int) Math.floor(t / DEATH_WINDOW) * DEATH_WINDOW;
+                    int window = tick / DEATH_WINDOW_TICKS * DEATH_WINDOW_TICKS;
                     deaths.computeIfAbsent(window, _ -> new TreeMap<>()).merge(slot, (int) Game.num(line, "n"),
                             Integer::sum);
                 }
@@ -84,13 +89,13 @@ final class Recording {
         }
         deaths.forEach((window, by_slot) -> by_slot.forEach((slot, units) -> {
             if (units >= DEATHS_SHOWN) {
-                String text = "s" + slot + " lost " + units + " units in " + DEATH_WINDOW + " s";
+                String text = "s" + slot + " lost " + units + " units in " + DEATH_WINDOW_TICKS + " ticks";
                 Map<String, Object> line = new LinkedHashMap<>();
                 line.put("ev", "deaths");
-                line.put("t", (double) window);
+                line.put("t", window * (double) millis_per_tick / 1000);
                 line.put("s", slot);
                 line.put("n", units);
-                keys.add(new Event(window * GameTime.TICKS_PER_SECOND, "deaths", slot, text, line));
+                keys.add(new Event(window, "deaths", slot, text, line));
             }
         }));
         keys.sort((a, b) -> Integer.compare(a.tick(), b.tick())); // stable: file order within a tick
@@ -102,6 +107,11 @@ final class Recording {
     /** Reads the game file {@code file}. */
     static @NonNull Recording read(@NonNull Path file) {
         return new Recording(Game.file(file));
+    }
+
+    /** The game time of a world tick in this game, in ms. */
+    int millisPerTick() {
+        return millis_per_tick;
     }
 
     private static @NonNull String describe(@NonNull String ev, int slot, @NonNull Map<String, Object> line) {
@@ -135,19 +145,19 @@ final class Recording {
         return game;
     }
 
-    /** The recorded checksum of census second {@code second}, or null if the file has no census then. */
+    /** The recorded checksum of the census at {@code tick}, or null if the file has no census then. */
     @Nullable
-    Integer censusChecksum(int second) {
-        return census_checksums.get(second);
+    Integer censusChecksum(int tick) {
+        return census_checksums.get(tick);
     }
 
-    /** The census seconds with a recorded checksum, ascending. */
+    /** The ticks of the censuses with a recorded checksum, ascending. */
     @NonNull
-    Set<Integer> censusSeconds() {
+    Set<Integer> censusTicks() {
         return Collections.unmodifiableSet(census_checksums.keySet());
     }
 
-    /** The tick the game ended at (the end line's t times 50), or -1 if the file has no end line. */
+    /** The tick the game ended at (the end line's t as a tick), or -1 if the file has no end line. */
     int endTick() {
         return end_tick;
     }

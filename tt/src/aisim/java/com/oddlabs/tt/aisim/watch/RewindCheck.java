@@ -1,7 +1,6 @@
 package com.oddlabs.tt.aisim.watch;
 
 import com.oddlabs.tt.aikit.AiLog;
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aisim.UsageException;
 import com.oddlabs.tt.aisim.analysis.Game;
 import com.oddlabs.tt.aisim.play.ClientWorld;
@@ -29,17 +28,19 @@ import java.util.TreeMap;
  * The rewind's fidelity test ({@code ./aisim.sh rewindcheck}): plays a recorded harness game exactly as the harness
  * played it, with rewind checkpoints ({@link Checkpoints}), and checks
  * <ol>
- * <li>the first pass: every census checksum of the game file (every 30 s) and the end line's checksum;</li>
- * <li>restores: for each {@code --at} second in ascending order, restores the checkpoint at or before it and replays
- * {@code --span} seconds, then restores the second point again (an earlier checkpoint after later ones, and one
- * checkpoint twice). Each replay must give the first pass's checksum at every second (the {@link Track}), the same AI
- * log lines at every tick, and the first pass's checksum right after the restore and at its end;</li>
+ * <li>the first pass: every census checksum of the game file (every 30 game seconds) and the end line's checksum;</li>
+ * <li>restores: for each {@code --at} time in ascending order, restores the checkpoint at or before it and replays
+ * {@code --span}, then restores the second point again (an earlier checkpoint after later ones, and one checkpoint
+ * twice). Each replay must give the first pass's checksum at every tick (the {@link Track}), the same AI log lines at
+ * every tick, and the first pass's checksum right after the restore and at its end;</li>
  * <li>the checkpoints' size estimate against the heap, once at the middle of the game (with System.gc()).</li>
  * </ol>
  * It prints what each step cost and exits 0 when everything matched, 1 otherwise, 2 on usage errors.
  *
- * <p>Usage: {@code RewindCheck RUN KEY | FILE.jsonl [--ai-from-run] [--at SEC,SEC..] [--span SEC] [--gl]
- * [--checkpoint SEC] [--memory MB] [--limit SEC] [--no-logs] [--classes]}. The game is found as watch finds it
+ * <p>Usage: {@code RewindCheck RUN KEY | FILE.jsonl [--ai-from-run] [--at TIME,TIME..] [--span TIME] [--gl]
+ * [--checkpoint TICKS] [--memory MB] [--limit TIME] [--no-logs] [--classes]}, each TIME as watch's jump box reads it
+ * ({@link Times#parse}: {@code 12:30}, {@code 90}, {@code t4500}) at ludicrous speed, the viewer's clock; it prints
+ * times the same way. The game is found as watch finds it
  * ({@link WatchCommand#resolve}: a run name or any checkout's run folder, merged runs, frozen {@code @TAG} AIs and
  * {@code --ai-from-run}), so it checks the very game watch plays; the world is built like {@link Match} builds it, the
  * AIs as watch makes them ({@link SeatAis}). Headless unless {@code --gl}, which needs
@@ -49,12 +50,15 @@ import java.util.TreeMap;
  */
 public final class RewindCheck {
     private static final String HEADLESS_PROPERTY = "com.oddlabs.tt.headless";
-    private static final int TPS = GameTime.TICKS_PER_SECOND;
-    /** Recorded census seconds are every 30 s. */
-    private static final int CENSUS_TICKS = 30 * TPS;
+    /** How times are read and printed: at the viewer's clock speed. */
+    private static final Times TIMES = new Times();
+    /** Ticks a replay plays after each restore by default (2 game minutes at normal speed, 8 at ludicrous). */
+    private static final int DEFAULT_SPAN_TICKS = 6000;
+    /** The first pass reports its progress this often, in ticks. */
+    private static final int PROGRESS_TICKS = 30_000;
 
-    private static final String USAGE_OPTIONS = String.join(" ", "[--ai-from-run] [--at SEC,SEC..] [--span SEC]",
-            "[--gl] [--checkpoint SEC] [--memory MB] [--limit SEC] [--no-logs] [--classes]");
+    private static final String USAGE_OPTIONS = String.join(" ", "[--ai-from-run] [--at TIME,TIME..] [--span TIME]",
+            "[--gl] [--checkpoint TICKS] [--memory MB] [--limit TIME] [--no-logs] [--classes]");
 
     private RewindCheck() {
     }
@@ -75,17 +79,18 @@ public final class RewindCheck {
     }
 
     /** What the command line asks for. */
+    /** What the command line asks for; times in ticks (limit -1 for none). */
     private record Options(@NonNull List<String> game, boolean ai_from_run, @Nullable List<Integer> at, int span,
-                           boolean gl, int checkpoint_seconds, int megabytes, int limit, boolean logs,
+                           boolean gl, int checkpoint_ticks, int megabytes, int limit, boolean logs,
                            boolean classes) {
     }
 
     private static @NonNull Options parse(@NonNull String @NonNull [] args) {
         List<String> positional = new ArrayList<>();
         List<Integer> at = null;
-        int span = 120;
+        int span = DEFAULT_SPAN_TICKS;
         boolean gl = false;
-        int checkpoint = 60;
+        int checkpoint = WatchCommand.DEFAULT_CHECKPOINT_TICKS;
         int megabytes = (int) (Runtime.getRuntime().maxMemory() * 0.45 / (1024 * 1024));
         int limit = -1;
         boolean logs = true;
@@ -97,14 +102,14 @@ public final class RewindCheck {
                 case "--at" -> {
                     at = new ArrayList<>();
                     for (String s : value(args, ++i, arg).split(",")) {
-                        at.add(number(s, arg));
+                        at.add(time(s, arg));
                     }
                 }
-                case "--span" -> span = number(value(args, ++i, arg), arg);
+                case "--span" -> span = time(value(args, ++i, arg), arg);
                 case "--gl" -> gl = true;
                 case "--checkpoint" -> checkpoint = number(value(args, ++i, arg), arg);
                 case "--memory" -> megabytes = number(value(args, ++i, arg), arg);
-                case "--limit" -> limit = number(value(args, ++i, arg), arg);
+                case "--limit" -> limit = time(value(args, ++i, arg), arg);
                 case "--no-logs" -> logs = false;
                 case "--classes" -> classes = true;
                 case "--ai-from-run" -> ai_from_run = true;
@@ -130,6 +135,19 @@ public final class RewindCheck {
             throw new UsageException(option + " needs a value");
         }
         return args[i];
+    }
+
+    /** A time of the command line as a tick, from the start: {@code 12:30}, {@code 90}, {@code t4500}. */
+    private static int time(@NonNull String text, @NonNull String option) {
+        try {
+            int tick = TIMES.parse(text, 0, -1);
+            if (tick < 0) {
+                throw new UsageException(option + " takes times of 0 or more: " + text);
+            }
+            return tick;
+        } catch (IllegalArgumentException e) {
+            throw new UsageException(option + ": " + e.getMessage());
+        }
     }
 
     private static int number(@NonNull String text, @NonNull String option) {
@@ -167,9 +185,9 @@ public final class RewindCheck {
         if (end_tick < 0) {
             throw new UsageException("the game file has no end line");
         }
-        boolean limited = options.limit() >= 0 && options.limit() * TPS < end_tick;
+        boolean limited = options.limit() >= 0 && options.limit() < end_tick;
         if (limited) {
-            end_tick = options.limit() * TPS;
+            end_tick = options.limit();
         }
         System.out.printf(Locale.ROOT, "rewindcheck %s %s: %s, %s, %s, recorded end %s (tick %d)%s%n",
                 job.run(), job.key(), job.players(), job.map(), options.gl() ? "GL" : "headless",
@@ -223,8 +241,8 @@ public final class RewindCheck {
             @NonNull AiLines lines, @NonNull Recording recording, int end_tick, boolean limited,
             @NonNull Problems problems) {
         long heap_before = usedHeap();
-        Checkpoints checkpoints = new Checkpoints(world, options.checkpoint_seconds() * TPS, options.megabytes(),
-                List.of(track, lines));
+        Checkpoints checkpoints = new Checkpoints(world, options.checkpoint_ticks(), options.megabytes(), List.of(track,
+                lines));
         long heap_after = usedHeap();
         long[] first = checkpoints.sizeAt(world.getTick());
         System.out.printf(Locale.ROOT, "checkpoint at tick 0: %,d objects, estimate %s, heap +%s, %.0f ms%n",
@@ -232,20 +250,18 @@ public final class RewindCheck {
 
         // ------------------------------------------------ first pass
         Globals.run_ai = true;
-        int[] post = new int[end_tick / TPS + 2]; // the checksum after each second's tick
-        int measure_tick = end_tick / 2 / TPS * TPS;
+        int[] post = new int[end_tick + 2]; // the checksum after each tick
+        int measure_tick = end_tick / 2;
         long start = System.nanoTime();
         long measuring = 0;
         while (world.getTick() < end_tick) {
             world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
             int tick = world.getTick();
             checkpoints.atFrontier(world);
-            if (tick % TPS == 0) {
-                post[tick / TPS] = world.getChecksum();
-                if (tick % (600 * TPS) == 0) {
-                    System.out.printf(Locale.ROOT, "  %s: %.1f s, %s%n", clock(tick),
-                            (System.nanoTime() - start - measuring) / 1e9, checkpoints.describe());
-                }
+            post[tick] = world.getChecksum();
+            if (tick % PROGRESS_TICKS == 0) {
+                System.out.printf(Locale.ROOT, "  %s: %.1f s, %s%n", clock(tick),
+                        (System.nanoTime() - start - measuring) / 1e9, checkpoints.describe(TIMES));
             }
             if (tick == measure_tick) {
                 long m = System.nanoTime();
@@ -254,11 +270,10 @@ public final class RewindCheck {
             }
         }
         double pass_seconds = (System.nanoTime() - start - measuring) / 1e9;
-        String pass = "first pass: %s in %.1f s (%.0f game s per s), %d checkpoints taken in %.1f s (%.0f ms each)";
-        System.out.printf(Locale.ROOT, pass + ", %s%n", clock(end_tick), pass_seconds,
-                end_tick / (double) TPS / pass_seconds, checkpoints.taken(),
-                checkpoints.taken() * checkpoints.meanCopyMillis() / 1000, checkpoints.meanCopyMillis(),
-                checkpoints.describe());
+        String pass = "first pass: %s in %.1f s (%.0f ticks per s), %d checkpoints taken in %.1f s (%.0f ms each)";
+        System.out.printf(Locale.ROOT, pass + ", %s%n", clock(end_tick), pass_seconds, end_tick / pass_seconds,
+                checkpoints.taken(), checkpoints.taken() * checkpoints.meanCopyMillis() / 1000,
+                checkpoints.meanCopyMillis(), checkpoints.describe(TIMES));
         if (checkpoints.failure() != null) {
             problems.add("checkpoints stopped: " + checkpoints.failure());
         }
@@ -268,36 +283,37 @@ public final class RewindCheck {
 
         // ------------------------------------------------ restores
         List<Integer> at = new ArrayList<>(options.at() != null ? options.at() : defaultPoints(end_tick));
-        at.replaceAll(s -> Math.min(s, end_tick / TPS));
+        at.replaceAll(tick -> Math.min(tick, end_tick));
         at.sort(null);
         List<Integer> schedule = new ArrayList<>(at);
         schedule.add(at.get(Math.min(1, at.size() - 1))); // an earlier checkpoint after later ones, and one again
-        System.out.println("restores (span " + options.span() + " s):");
-        String columns = "checkpoint  restore ms  replayed    s  game s/s  after restore  track  ai log  at end";
+        System.out.println("restores (span " + clock(options.span()) + ", times at " + TIMES.speedName() + "):");
+        String columns = "checkpoint  restore ms  replayed    s   ticks/s  after restore  track  ai log  at end";
         System.out.println("     at  " + columns);
-        for (int second : schedule) {
-            restoreAndReplay(checkpoints, world, track, lines, post, second, options.span(), end_tick, problems);
+        for (int tick : schedule) {
+            restoreAndReplay(checkpoints, world, track, lines, post, tick, options.span(), end_tick, problems);
         }
-        System.out.println("checkpoints: " + checkpoints.describe() + "; ticks " + ticksText(checkpoints.ticks()));
+        System.out.println("checkpoints: " + checkpoints.describe(TIMES) + "; at " + ticksText(checkpoints.ticks()));
         System.out.printf(Locale.ROOT, "track: %d mismatches%s; ai log: %,d lines replayed, %d mismatching ticks%s%n",
-                track.mismatches(), track.firstMismatch() < 0 ? "" : " (first at " + track.firstMismatch() + " s)",
+                track.mismatches(), track.firstMismatch() < 0 ? "" : " (first at " + clock(track.firstMismatch()) + ")",
                 lines.replayed_lines, lines.mismatches,
                 lines.first_mismatch < 0 ? "" : " (first at tick " + lines.first_mismatch + ")");
     }
 
     /** One restore and its replay, as one row of the table. */
     private static void restoreAndReplay(@NonNull Checkpoints checkpoints, @NonNull World world,
-            @NonNull Track track, @NonNull AiLines lines, int @NonNull [] post, int second, int span, int end_tick,
+            @NonNull Track track, @NonNull AiLines lines, int @NonNull [] post, int at, int span, int end_tick,
             @NonNull Problems problems) {
         AiLog handle = AiLog.peek(world, 0);
-        int restored = checkpoints.restoreAtOrBefore(world, second * TPS);
+        int restored = checkpoints.restoreAtOrBefore(world, at);
         double restore_ms = checkpoints.lastRestoreMillis();
         lines.startReplay(restored);
         // the AIs' handles are the restored ones: AiLog must hand out those, not the handles of before
         boolean handles_ok = handle == null || AiLog.peek(world, 0) != handle;
-        boolean restored_ok = world.getTick() == restored && handles_ok
-                && (restored % TPS != 0 || world.getChecksum() == post[restored / TPS]);
-        int target = Math.min(end_tick, (second + span) * TPS);
+        // the first pass recorded no checksum before its first tick
+        boolean restored_ok = world.getTick() == restored && handles_ok && (restored == 0
+                || world.getChecksum() == post[restored]);
+        int target = Math.min(end_tick, at + span);
         int track_before = track.mismatches();
         int lines_before = lines.mismatches;
         long start = System.nanoTime();
@@ -309,14 +325,13 @@ public final class RewindCheck {
         double replay_seconds = (System.nanoTime() - start) / 1e9;
         boolean track_ok = track.mismatches() == track_before;
         boolean lines_ok = lines.mismatches == lines_before;
-        boolean end_ok = target % TPS != 0 || world.getChecksum() == post[target / TPS];
-        double played = (target - restored) / (double) TPS;
-        System.out.printf(Locale.ROOT, "%7s  %10s  %10.0f  %8s  %4.1f  %8.0f", clock(second * TPS),
-                clock(restored), restore_ms, clock(target - restored), replay_seconds,
-                replay_seconds > 0 ? played / replay_seconds : 0);
+        boolean end_ok = target == 0 || world.getChecksum() == post[target];
+        int played = target - restored;
+        System.out.printf(Locale.ROOT, "%7s  %10s  %10.0f  %8s  %4.1f  %8.0f", clock(at), clock(restored),
+                restore_ms, clock(played), replay_seconds, replay_seconds > 0 ? played / replay_seconds : 0);
         System.out.printf(Locale.ROOT, "  %13s  %5s  %6s  %6s%n", ok(restored_ok), ok(track_ok), ok(lines_ok),
                 ok(end_ok));
-        String where = "restore for " + clock(second * TPS) + " (checkpoint " + clock(restored) + ")";
+        String where = "restore for " + clock(at) + " (checkpoint " + clock(restored) + ")";
         if (!handles_ok) {
             problems.add(where + ": the restore did not bind the restored AI log handles");
         } else if (!restored_ok) {
@@ -324,7 +339,7 @@ public final class RewindCheck {
                     where + ": the world after the restore differs from the first pass (tick " + world.getTick() + ")");
         }
         if (!track_ok) {
-            problems.add(where + ": REWIND MISMATCH, first at " + track.firstMismatch() + " s");
+            problems.add(where + ": REWIND MISMATCH, first at " + clock(track.firstMismatch()));
         }
         if (!lines_ok) {
             problems.add(where + ": the AI log differs from the first pass, first at tick " + lines.first_mismatch);
@@ -334,7 +349,10 @@ public final class RewindCheck {
         }
     }
 
-    /** Census checksums (in-tick, every 30 s) against the Track, and the end line against the world after its tick. */
+    /**
+     * Census checksums (in-tick, every 30 game seconds) against the Track, and the end line against the world after
+     * its tick.
+     */
     private static void checkRecording(@NonNull World world, @NonNull Track track, @NonNull Recording recording,
             int end_tick, boolean limited, @NonNull Problems problems) {
         int compared = 0;
@@ -342,11 +360,11 @@ public final class RewindCheck {
         int bad = 0;
         for (Map.Entry<Integer, Integer> census : recording.census.entrySet()) {
             int tick = census.getKey();
-            if (tick % CENSUS_TICKS != 0 || tick > end_tick || tick / TPS > track.frontier()) {
+            if (tick > end_tick || tick > track.frontier()) {
                 continue;
             }
             compared++;
-            if (track.checksum(tick / TPS) != census.getValue()) {
+            if (track.checksum(tick) != census.getValue()) {
                 bad++;
                 first_bad = first_bad < 0 ? tick : first_bad;
             }
@@ -409,7 +427,10 @@ public final class RewindCheck {
 
     // ---------------------------------------------------------------- the game and its recording
 
-    /** What the game file says: census checksums by tick (every slot's line at a tick has the same), the end. */
+    /**
+     * What the game file says: the periodic census checksums by tick (every slot's line at a tick has the same), the
+     * end. analysis.Game gives every t in game seconds at the game's speed.
+     */
     private static final class Recording {
         final @NonNull Map<Integer, Integer> census = new TreeMap<>();
         int inconsistent;
@@ -418,20 +439,24 @@ public final class RewindCheck {
 
         static @NonNull Recording read(@NonNull Path file) {
             Game game = Game.file(file);
+            int millis_per_tick = Times.gameMillisPerTick(game.header());
             Recording recording = new Recording();
             for (Map<String, Object> player : game.players()) {
                 int slot = (int) Game.num(player, "s");
                 for (Map<String, Object> census : game.census(slot)) {
-                    int tick = (int) Math.round(Game.num(census, "t") * TPS);
+                    int tick = Times.tickOf(Game.num(census, "t"), millis_per_tick);
+                    if (!Times.isCensusTick(tick, millis_per_tick)) {
+                        continue; // the end's, after the last tick
+                    }
                     int checksum = (int) Game.num(census, "checksum");
                     Integer before = recording.census.putIfAbsent(tick, checksum);
-                    if (before != null && before != checksum && tick % CENSUS_TICKS == 0) {
+                    if (before != null && before != checksum) {
                         recording.inconsistent++;
                     }
                 }
             }
             for (Map<String, Object> end : game.events("end")) {
-                recording.end_tick = (int) Math.round(Game.num(end, "t") * TPS);
+                recording.end_tick = Times.tickOf(Game.num(end, "t"), millis_per_tick);
                 recording.end_checksum = (int) Game.num(end, "checksum");
             }
             return recording;
@@ -553,10 +578,9 @@ public final class RewindCheck {
         }
     }
 
-    /** Early, at a quarter, half and three quarters, and a minute before the end. */
+    /** Early, at a quarter, half and three quarters, and 3000 ticks before the end, in ticks. */
     private static @NonNull List<Integer> defaultPoints(int end_tick) {
-        int end = end_tick / TPS;
-        return List.of(0, end / 4, end / 2, end * 3 / 4, Math.max(0, end - 60));
+        return List.of(0, end_tick / 4, end_tick / 2, end_tick * 3 / 4, Math.max(0, end_tick - 3000));
     }
 
     private static long usedHeap() {
@@ -583,10 +607,9 @@ public final class RewindCheck {
         return ok ? "ok" : "BAD";
     }
 
+    /** A tick as the viewer's clock writes it. */
     private static @NonNull String clock(int tick) {
-        int s = tick / TPS;
-        return s >= 3600 ? String.format(Locale.ROOT, "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String.format(
-                Locale.ROOT, "%d:%02d", s / 60, s % 60);
+        return TIMES.precise(tick);
     }
 
     private static @NonNull String mb(long bytes) {

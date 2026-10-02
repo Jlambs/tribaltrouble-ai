@@ -1,6 +1,5 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aikit.harness.AiSpec;
 import com.oddlabs.util.Color;
 import org.joml.Vector4f;
@@ -27,6 +26,8 @@ final class AiLogPanel extends TextPanel {
     /** Lines the wheel moves per notch. */
     private static final int WHEEL_LINES = 3;
     private static final String FLEE = "flee of ";
+    /** Lines this many ticks old or newer stand out: a real second of play at 1x. */
+    private static final int RECENT_TICKS = 50;
 
     private final @NonNull WatchGame game;
     private boolean show_flee;
@@ -85,7 +86,7 @@ final class AiLogPanel extends TextPanel {
         }
         List<Line> notes = new ArrayList<>();
         if (tick > book.frontier()) {
-            notes.add(new Line("the log has lines only to " + Times.clockTicks(book.frontier()), TextPanel.WARN));
+            notes.add(new Line("the log has lines only to " + game.times().precise(book.frontier()), TextPanel.WARN));
         }
         int room = max_lines - 1 - notes.size(); // under the title line
         // the newest lines first, as many as the scroll skips and the room shows
@@ -96,14 +97,15 @@ final class AiLogPanel extends TextPanel {
                 continue;
             }
             int line_tick = book.tick(slot, index);
-            newest.add(new Line(time(line_tick) + "  " + parsed.topic() + "  " + parsed.text(), colorOf(parsed,
-                    line_tick, tick)));
+            newest.add(new Line(game.times().hundredths(line_tick) + "  " + parsed.topic() + "  " + parsed.text(),
+                    colorOf(parsed,
+                            line_tick, tick)));
         }
         scroll = Math.clamp(newest.size() - room, 0, scroll); // never further back than a full panel of the oldest
         List<Line> body = new ArrayList<>(newest.subList(scroll, Math.min(newest.size(), scroll + room)));
         if (body.isEmpty()) {
             String hidden = show_flee ? "" : " (flee of lines hidden)";
-            notes.add(new Line("no lines up to " + Times.clockTicks(tick) + " yet" + hidden, TextPanel.DIM));
+            notes.add(new Line("no lines up to " + game.times().precise(tick) + " yet" + hidden, TextPanel.DIM));
         }
         String flee = show_flee ? "flee of: shown (Shift+L)" : "flee of: hidden (Shift+L)";
         lines.add(new Line(title + "    " + flee + (scroll > 0 ? "    " + scroll + " lines back (wheel)" : ""),
@@ -134,19 +136,13 @@ final class AiLogPanel extends TextPanel {
         return new Parsed(rest.substring(0, space), rest.substring(space + 1).stripLeading());
     }
 
-    /** {@code tick} as m:ss.hh, the log's own precision. */
-    private static @NonNull String time(int tick) {
-        int hundredths = tick % GameTime.TICKS_PER_SECOND * 100 / GameTime.TICKS_PER_SECOND;
-        return Times.clock(tick) + String.format(Locale.ROOT, ".%02d", hundredths);
-    }
-
-    /** Recent lines (of the last game second) stand out; statistics and errors are dim and red. */
+    /** Recent lines (of the last {@value #RECENT_TICKS} ticks) stand out; statistics and errors are dim and red. */
     private static @NonNull Vector4fc colorOf(@NonNull Parsed parsed, int line_tick, int now) {
         String topic = parsed.topic().toUpperCase(Locale.ROOT);
         if (topic.startsWith("ERR") || topic.equals("FAIL")) {
             return TextPanel.BAD;
         }
-        if (line_tick > now - GameTime.TICKS_PER_SECOND) {
+        if (line_tick > now - RECENT_TICKS) {
             return TextPanel.WARN;
         }
         return topic.equals("STAT") ? TextPanel.DIM : Color.WHITE;

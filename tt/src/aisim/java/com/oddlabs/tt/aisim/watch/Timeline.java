@@ -1,6 +1,5 @@
 package com.oddlabs.tt.aisim.watch;
 
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.font.TextLineRenderer;
@@ -31,15 +30,25 @@ final class Timeline extends HudPanel {
      * @param color  its colour
      * @param height how far it reaches above the bar (taller is more important)
      * @param text   the event, such as {@code s3 hard out}
+     * @param span   for a window of deaths, its length in ticks (which {@link #describe} quotes); 0 for none
      */
-    record Mark(int tick, @NonNull Vector4fc color, int height, @NonNull String text) {
+    record Mark(int tick, @NonNull Vector4fc color, int height, @NonNull String text, int span) {
+        Mark(int tick, @NonNull Vector4fc color, int height, @NonNull String text) {
+            this(tick, color, height, text, 0);
+        }
+
+        /** The event as the view writes it, a window's length quoted by {@code times}. */
+        @NonNull
+        String describe(@NonNull Times times) {
+            return span > 0 ? text + " in " + times.span(span) : text;
+        }
     }
 
     /** A window of deaths of one player is a mark from this many units (team A's from {@link #TEAM_A_DEATHS}). */
     private static final int DEATHS = 20;
     private static final int TEAM_A_DEATHS = 10;
-    /** B jumps to the mark before this one when the view is less than this past a mark (one game second). */
-    private static final int PREVIOUS_GRACE = GameTime.TICKS_PER_SECOND;
+    /** B jumps to the mark before this one when the view is less than this many ticks past a mark (a second at 1x). */
+    private static final int PREVIOUS_GRACE = 50;
     private static final int PADDING = TextPanel.PADDING;
     private static final int TRACK_HEIGHT = 8;
     private static final int CHECKPOINT_HEIGHT = 4;
@@ -122,8 +131,8 @@ final class Timeline extends HudPanel {
                 case "deaths" -> {
                     int units = (int) num(event, "n");
                     if (valid && units >= (team_a ? TEAM_A_DEATHS : DEATHS)) {
-                        marks.add(new Mark(event.tick(), DEATHS_COLOR, SHORT,
-                                who + " lost " + units + " units in " + Recording.DEATH_WINDOW + " s"));
+                        marks.add(new Mark(event.tick(), DEATHS_COLOR, SHORT, who + " lost " + units + " units",
+                                Recording.DEATH_WINDOW_TICKS));
                     }
                 }
                 default -> {
@@ -259,7 +268,7 @@ final class Timeline extends HudPanel {
         int y = getHeight() - PADDING - font.getHeight();
         String start = "0:00";
         int end = game.endTick();
-        String end_text = end > 0 ? Times.clock(end) : "end unknown";
+        String end_text = end > 0 ? game.times().clock(end) : "end unknown";
         TextLineRenderer.render(renderer, font, start, barLeft(), y, 0, getWidth(), TextPanel.DIM);
         int end_width = font.getWidth(end_text);
         TextLineRenderer.render(renderer, font, end_text, barRight() - end_width, y, 0, getWidth(), TextPanel.DIM);
@@ -267,7 +276,7 @@ final class Timeline extends HudPanel {
         Vector4fc color = Color.WHITE;
         int at_x;
         if (dragging) {
-            middle = "jump to " + Times.clock(tickAt(drag_x)) + " (let go)";
+            middle = "jump to " + game.times().clock(tickAt(drag_x)) + " (let go)";
             color = DRAG;
             at_x = drag_x;
         } else if (hover_x >= 0) {
@@ -276,9 +285,9 @@ final class Timeline extends HudPanel {
         } else {
             Clock clock = game.clock();
             if (end <= 0) {
-                middle = "simulated to " + Times.clock(clock.frontier()) + " (end unknown)";
+                middle = "simulated to " + game.times().clock(clock.frontier()) + " (end unknown)";
             } else {
-                middle = clock.frontier() >= end ? "simulated to the end" : "simulated to " + Times.clock(
+                middle = clock.frontier() >= end ? "simulated to the end" : "simulated to " + game.times().clock(
                         clock.frontier()) + "  (E: simulate it all)";
             }
             color = TextPanel.DIM;
@@ -300,13 +309,14 @@ final class Timeline extends HudPanel {
             }
         }
         if (near.isEmpty()) {
-            return Times.clock(tickAt(x));
+            return game.times().clock(tickAt(x));
         }
         near.sort((a, b) -> Integer.compare(Math.abs(xOf(a.tick()) - x), Math.abs(xOf(b.tick()) - x)));
         StringBuilder text = new StringBuilder();
         for (int i = 0; i < Math.min(near.size(), HOVER_SHOWN); i++) {
             Mark mark = near.get(i);
-            text.append(i == 0 ? "" : "  |  ").append(Times.clock(mark.tick())).append(' ').append(mark.text());
+            text.append(i == 0 ? "" : "  |  ").append(game.times().clock(mark.tick())).append(' ').append(
+                    mark.describe(game.times()));
         }
         if (near.size() > HOVER_SHOWN) {
             text.append("  (+").append(near.size() - HOVER_SHOWN).append(')');

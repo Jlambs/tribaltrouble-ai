@@ -4,7 +4,6 @@ import com.oddlabs.matchmaking.Game;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.aikit.harness.AiSpec;
 import com.oddlabs.tt.aisim.Aisim;
 import com.oddlabs.tt.aisim.UsageException;
@@ -55,8 +54,11 @@ public final class WatchCommand {
     public static final String HEAP_VARIABLE = "AISIM_WATCH_HEAP";
     /** The watch game's heap without {@link #HEAP_VARIABLE}: aisim.sh's default, keep the two in sync. */
     public static final String DEFAULT_HEAP = "6g";
-    /** Game seconds between rewind checkpoints by default (the store thins them out to stay within its memory). */
-    public static final int DEFAULT_CHECKPOINT_SECONDS = 60;
+    /**
+     * World ticks between rewind checkpoints by default (the store thins them out to stay within its memory): a minute
+     * of play at 1x, 4 game minutes at ludicrous.
+     */
+    public static final int DEFAULT_CHECKPOINT_TICKS = 3000;
     /** The share of the heap in percent that the checkpoints may take by default, and at most. */
     public static final int DEFAULT_CHECKPOINT_PERCENT = 45;
     public static final int MAX_CHECKPOINT_PERCENT = 80;
@@ -81,7 +83,7 @@ public final class WatchCommand {
      * What watch was asked for: the game ({@code RUN KEY} or {@code FILE.jsonl}) and the options that go into the
      * watch file, as {@link WatchFile} describes them; the options are checked by Aisim.
      */
-    public record Request(@NonNull List<String> game, boolean aiFromRun, int checkpointSeconds,
+    public record Request(@NonNull List<String> game, boolean aiFromRun, int checkpointTicks,
                           int checkpointMegabytes, boolean presim, @Nullable String selftest) {
     }
 
@@ -115,7 +117,7 @@ public final class WatchCommand {
         }
         String game_file = game.gameFile() == null ? null : slash(game.gameFile());
         WatchFile watch = new WatchFile(game.job(), game_file, game.endTick(), snap, game.runSnap(), game.loaders(),
-                slash(out), request.checkpointSeconds(), request.checkpointMegabytes(), request.presim(),
+                slash(out), request.checkpointTicks(), request.checkpointMegabytes(), request.presim(),
                 request.selftest());
         Aisim.JSON.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), watch);
         Job job = game.job();
@@ -128,8 +130,9 @@ public final class WatchCommand {
             System.out.println("  " + snapshotNote(game, snap, request.aiFromRun()));
         }
         System.out.printf(Locale.ROOT,
-                "  rewind: a checkpoint every %d game seconds, within %d MB of the %s heap (%s)%n",
-                request.checkpointSeconds(), request.checkpointMegabytes(), heapText(System.getenv(HEAP_VARIABLE)),
+                "  rewind: a checkpoint every %d ticks (%s at %s), within %d MB of the %s heap (%s)%n",
+                request.checkpointTicks(), new Times().span(request.checkpointTicks()), new Times().speedName(),
+                request.checkpointMegabytes(), heapText(System.getenv(HEAP_VARIABLE)),
                 HEAP_VARIABLE);
         System.out.println("  watch file " + shown(file) + ", the session's output in " + shown(out) + "/");
         System.out.println(slash(file)); // last: aisim.sh starts the game with it
@@ -261,7 +264,7 @@ public final class WatchCommand {
             @NonNull String run_snap, @Nullable Path run_aisim, @NonNull Map<String, String> recorded_pools,
             boolean ai_from_run, @NonNull String name, @Nullable Map<String, Object> row,
             @NonNull List<String> notes) throws IOException {
-        noteRecording(recording, end_tick, run_snap, row, notes);
+        noteRecording(recording, end_tick, Times.speedIndex(job.speed()), run_snap, row, notes);
         Set<String> names = new LinkedHashSet<>();
         for (Job.Seat seat : job.seats()) {
             names.add(AiSpec.nameOf(seat.spec()));
@@ -361,18 +364,26 @@ public final class WatchCommand {
         return pools;
     }
 
-    /** The tick the recorded game ended at: its end line's time, else the row's; -1 when neither says. */
+    /**
+     * The tick the recorded game ended at: its end line's time, else the row's; -1 when neither says. The end line's t
+     * is game time at the game's speed when the header says clock game, else world ticks / 50; a row's t is game time,
+     * with its ticks next to it at a speed other than normal (rows from before the harness counted game time have
+     * none, and t in ticks / 50).
+     */
     private static int endTick(@Nullable Recording recording, @Nullable Map<String, Object> row) {
-        Object t = null;
         if (recording != null && recording.end() != null) {
-            t = recording.end().get("t");
-        } else if (row != null) {
-            t = row.get("t");
+            if (!(recording.end().get("t") instanceof Number t)) {
+                return -1;
+            }
+            return Times.tickOf(t.doubleValue(), Times.recordedMillisPerTick(recording.header()));
         }
-        if (!(t instanceof Number seconds)) {
+        if (row == null) {
             return -1;
         }
-        return (int) Math.round(seconds.doubleValue() * GameTime.TICKS_PER_SECOND);
+        if (row.get("ticks") instanceof Number ticks) {
+            return ticks.intValue();
+        }
+        return row.get("t") instanceof Number t ? Times.tickOf(t.doubleValue(), Times.NORMAL_MILLIS_PER_TICK) : -1;
     }
 
     /** The {@code aisim} folder of the checkout a run folder is in ({@code <aisim>/runs/<run>}), or null. */
@@ -388,11 +399,11 @@ public final class WatchCommand {
 
     /**
      * What watch reads of a game file: its header, the lineup text (the header's first {@code players}, which the
-     * players array after it hides from a JSON map), the end line (null if the game has none) and the number of game
-     * seconds with a census checksum.
+     * players array after it hides from a JSON map), the end line (null if the game has none) and the number of
+     * census times with a checksum.
      */
     record Recording(@NonNull Path file, @NonNull Map<String, Object> header, @Nullable String lineup,
-                     @Nullable Map<String, Object> end, int censusSeconds) {
+                     @Nullable Map<String, Object> end, int censusCount) {
 
         static @NonNull Recording read(@NonNull Path file) throws IOException {
             Map<String, Object> header = null;
@@ -729,8 +740,8 @@ public final class WatchCommand {
      * Notes what the recording offers: who recorded it, when and how it ended, and how much of it the viewer can
      * check the game against.
      */
-    private static void noteRecording(@Nullable Recording recording, int end_tick, @NonNull String run_snap,
-            @Nullable Map<String, Object> row, @NonNull List<String> notes) {
+    private static void noteRecording(@Nullable Recording recording, int end_tick, int played_speed,
+            @NonNull String run_snap, @Nullable Map<String, Object> row, @NonNull List<String> notes) {
         if (recording == null) {
             notes.add("!! no game file: the viewer has nothing to check the game against");
             return;
@@ -738,9 +749,14 @@ public final class WatchCommand {
         Map<String, Object> end_line = recording.end();
         String end = "no end line (still being played?), so the viewer plays on until you stop it";
         if (end_line != null) {
-            end = "ended at " + clock(end_tick) + " (" + end_line.get("end") + ")";
+            Times shown = new Times();
+            Times played = new Times(played_speed);
+            String game_time = played.speed() == shown.speed() ? "" : "; " + played.clock(
+                    end_tick) + " at " + played.speedName() + " speed, which it was played at";
+            end = "ended (" + end_line.get("end") + ") at tick " + end_tick + " = " + shown.clock(
+                    end_tick) + " at " + shown.speedName() + " speed, the viewer's clock" + game_time;
         }
-        String census = recording.censusSeconds() + " census checksums to check the game against";
+        String census = recording.censusCount() + " census checksums to check the game against";
         notes.add("recorded by snapshot " + run_snap + ": " + end + "; " + census);
         Object row_end = row == null ? null : row.get("end");
         if ("crash".equals(row_end) || "hang".equals(row_end) || "error".equals(row_end)) {
@@ -814,12 +830,6 @@ public final class WatchCommand {
     /** A file name part: {@code text} with every character but A-Z a-z 0-9 . _ - replaced by _. */
     private static @NonNull String safeName(@NonNull String text) {
         return text.replaceAll("[^A-Za-z0-9._-]", "_");
-    }
-
-    /** Game ticks as h:mm:ss. */
-    private static @NonNull String clock(int ticks) {
-        int seconds = ticks / GameTime.TICKS_PER_SECOND;
-        return String.format(Locale.ROOT, "%d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60);
     }
 
     private static @NonNull String shortSha(@NonNull String sha) {

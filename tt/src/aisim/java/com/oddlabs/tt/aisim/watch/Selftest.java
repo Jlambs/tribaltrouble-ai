@@ -29,7 +29,8 @@ import java.util.Set;
  * <ul>
  * <li>{@code play:SEC} plays SEC real seconds at the current speed;</li>
  * <li>{@code speed:X} sets the speed (1/8 ... 128, x16, max);</li>
- * <li>{@code seek:TIME} seeks as the jump box does (12:30, 90s, t4500, +30, end...);</li>
+ * <li>{@code seek:TIME} seeks as the jump box does (12:30, 90s, t4500, +30, +t500, end...: times at the clock
+ * speed, ludicrous unless a {@code key:T} changed it);</li>
  * <li>{@code step:+N}, {@code step:-N} plays N ticks on or back;</li>
  * <li>{@code shot:NAME} saves the next rendered frame to {@code outDir/NAME.png};</li>
  * <li>{@code select:SLOT:TYPE} picks the first object of slot SLOT whose kind or name contains TYPE (quarters, armory,
@@ -327,9 +328,9 @@ final class Selftest {
         long played = clock.ticksPlayed() - step_start_played;
         int restores = clock.restores() - step_start_restores;
         StringBuilder line = new StringBuilder(String.format(Locale.ROOT, "%-4s %-22s %7.2f s  at %s (t%d)",
-                failure == null ? "ok" : "FAIL", current, seconds, Times.clockTicks(clock.tick()), clock.tick()));
+                failure == null ? "ok" : "FAIL", current, seconds, game.times().precise(clock.tick()), clock.tick()));
         if (restores > 0) {
-            line.append("  restored ").append(Times.clockTicks(clock.lastRestoreTick())).append(
+            line.append("  restored ").append(game.times().precise(clock.lastRestoreTick())).append(
                     restores > 1 ? " (the last of " + restores + " restores)" : "");
         }
         // a screenshot's frame plays on as every frame does, and encoding it takes long: no rate worth showing
@@ -454,7 +455,7 @@ final class Selftest {
             case "timeline" -> {
                 Timeline timeline = hud.timeline();
                 requireShown(timeline, "the timeline");
-                int tick = Times.parse(argument, game.clock().tick(), game.endTick());
+                int tick = game.times().parse(argument, game.clock().tick(), game.endTick());
                 return new int[]{timeline.guiX() + timeline.xOf(tick), timeline.guiY() + timeline.barMiddleY()};
             }
             case "log" -> {
@@ -497,8 +498,8 @@ final class Selftest {
         String actual;
         switch (what) {
             case "tick" -> {
-                expected = Times.clockTicks(Times.parse(wanted, clock.tick(), game.endTick()));
-                actual = Times.clockTicks(clock.tick());
+                expected = game.times().precise(game.times().parse(wanted, clock.tick(), game.endTick()));
+                actual = game.times().precise(clock.tick());
             }
             case "follow" -> actual = String.valueOf(game.followedSlot());
             case "state" -> actual = clock.state().name();
