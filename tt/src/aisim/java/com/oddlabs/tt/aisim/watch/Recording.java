@@ -55,6 +55,8 @@ final class Recording {
     private Recording(@NonNull Game game) {
         this.game = game;
         this.millis_per_tick = Times.gameMillisPerTick(game.header());
+        // the grid the recorder took its census on: every 30 game seconds, or every 1500 ticks in older files
+        int census_millis_per_tick = Times.recordedMillisPerTick(game.header());
         Integer end_sum = null;
         int end = -1;
         List<Event> keys = new ArrayList<>();
@@ -67,7 +69,8 @@ final class Recording {
             switch (ev) {
                 case "census" -> {
                     // the periodic ones: the end's census follows the last tick, so its checksum is not the in-tick one
-                    if (line.get("checksum") instanceof Number sum && Times.isCensusTick(tick, millis_per_tick)) {
+                    if (line.get("checksum") instanceof Number sum && Times.isCensusTick(tick,
+                            census_millis_per_tick)) {
                         census_checksums.putIfAbsent(tick, sum.intValue());
                     }
                 }

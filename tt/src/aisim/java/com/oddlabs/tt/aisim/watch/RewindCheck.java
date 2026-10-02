@@ -78,7 +78,6 @@ public final class RewindCheck {
         System.exit(code);
     }
 
-    /** What the command line asks for. */
     /** What the command line asks for; times in ticks (limit -1 for none). */
     private record Options(@NonNull List<String> game, boolean ai_from_run, @Nullable List<Integer> at, int span,
                            boolean gl, int checkpoint_ticks, int megabytes, int limit, boolean logs,
@@ -140,7 +139,7 @@ public final class RewindCheck {
     /** A time of the command line as a tick, from the start: {@code 12:30}, {@code 90}, {@code t4500}. */
     private static int time(@NonNull String text, @NonNull String option) {
         try {
-            int tick = TIMES.parse(text, 0, -1);
+            int tick = TIMES.parse(text, 0, Integer.MAX_VALUE); // end: the recorded end, as every tick is clamped to it
             if (tick < 0) {
                 throw new UsageException(option + " takes times of 0 or more: " + text);
             }
@@ -313,7 +312,7 @@ public final class RewindCheck {
         // the first pass recorded no checksum before its first tick
         boolean restored_ok = world.getTick() == restored && handles_ok && (restored == 0
                 || world.getChecksum() == post[restored]);
-        int target = Math.min(end_tick, at + span);
+        int target = (int) Math.min(end_tick, (long) at + span);
         int track_before = track.mismatches();
         int lines_before = lines.mismatches;
         long start = System.nanoTime();
@@ -440,12 +439,14 @@ public final class RewindCheck {
         static @NonNull Recording read(@NonNull Path file) {
             Game game = Game.file(file);
             int millis_per_tick = Times.gameMillisPerTick(game.header());
+            // the grid the recorder took its census on: every 30 game seconds, or every 1500 ticks in older files
+            int census_millis_per_tick = Times.recordedMillisPerTick(game.header());
             Recording recording = new Recording();
             for (Map<String, Object> player : game.players()) {
                 int slot = (int) Game.num(player, "s");
                 for (Map<String, Object> census : game.census(slot)) {
                     int tick = Times.tickOf(Game.num(census, "t"), millis_per_tick);
-                    if (!Times.isCensusTick(tick, millis_per_tick)) {
+                    if (!Times.isCensusTick(tick, census_millis_per_tick)) {
                         continue; // the end's, after the last tick
                     }
                     int checksum = (int) Game.num(census, "checksum");

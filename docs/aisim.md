@@ -626,7 +626,7 @@ made with double-brace initialisation). When the first checkpoint, at 0:00, cann
 whole game: the game still plays forward, the status panel says `rewind: off (...)` with the reason (the copier
 names the field path from the world to the object; the game's log has all of it), and every jump back, and E, says it
 cannot. When a later checkpoint fails, the earlier ones stay and no more are taken; the status panel then says
-`no checkpoints after 12:00: ...`. `./aisim.sh rewindcheck RUN KEY --classes` lists what the copier copied and shared,
+`no checkpoints after 12:00 (tick 9000): ...`. `./aisim.sh rewindcheck RUN KEY --classes` lists what the copier copied and shared,
 by class. The AI guide says what to keep out of an AI's fields.
 
 **For scripts and agents**, `--selftest SCRIPT` runs steps instead of waiting for input, then quits with exit code 0
@@ -710,7 +710,7 @@ copies does; the stock AI and AIs frozen before AiView existed show nothing (the
   when the followed AI implements AiView and was never painted:
 
 ```bash
-./aisim.sh watch base s19-1 --selftest "play:3;overlay:check;overlay:next;shot:no-overlay;overlay:all;seek:1:00;verify;quit"
+./aisim.sh watch base s19-1 --selftest "play:3;overlay:check;overlay:next;shot:no-overlay;overlay:all;seek:4:00;verify;quit"
 ```
 
 ## Troubleshooting

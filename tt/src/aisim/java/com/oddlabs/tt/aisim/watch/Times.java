@@ -105,20 +105,29 @@ final class Times {
         return clockOfMillis(millisOf(tick));
     }
 
-    /** {@code tick} as {@link #clock} with hundredths when it falls inside a second, such as {@code 12:03.36}. */
+    /**
+     * {@code tick} as {@link #clock} with hundredths when it falls inside a second, such as {@code 12:03.36}: rounded
+     * to the hundredth, as AiLog and the recorder write game time, and never below the tick's time (half a hundredth
+     * rounds up), so the jump box takes it back to the same tick.
+     */
     @NonNull
     String precise(int tick) {
-        long millis = millisOf(tick);
-        long hundredths = millis % 1000 / 10;
-        return hundredths == 0 ? clockOfMillis(millis) : clockOfMillis(millis) + String.format(Locale.ROOT, ".%02d",
-                hundredths);
+        long centis = centisOf(tick);
+        return centis % 100 == 0 ? clockOfMillis(centis * 10) : hundredthsOf(centis);
     }
 
     /** {@code tick} as {@link #precise}, always with hundredths ({@code 12:03.00}): the AI log's precision. */
     @NonNull
     String hundredths(int tick) {
-        long millis = millisOf(tick);
-        return clockOfMillis(millis) + String.format(Locale.ROOT, ".%02d", millis % 1000 / 10);
+        return hundredthsOf(centisOf(tick));
+    }
+
+    private long centisOf(int tick) {
+        return Math.round(millisOf(tick) / 10.0);
+    }
+
+    private static @NonNull String hundredthsOf(long centis) {
+        return clockOfMillis(centis / 100 * 1000) + String.format(Locale.ROOT, ".%02d", centis % 100);
     }
 
     /**
@@ -169,13 +178,11 @@ final class Times {
         }
         Matcher m = RELATIVE_TICKS.matcher(t);
         if (m.matches()) {
-            int delta = ticks(m.group(2));
-            return m.group(1).equals("+") ? now + delta : now - delta;
+            return relative(now, m.group(1), ticks(m.group(2)));
         }
         m = RELATIVE.matcher(t);
         if (m.matches()) {
-            int delta = (int) Math.round(millis(m.group(2)) / (double) millisPerTick());
-            return m.group(1).equals("+") ? now + delta : now - delta;
+            return relative(now, m.group(1), Math.round(millis(m.group(2)) / (double) millisPerTick()));
         }
         m = TICK.matcher(t);
         if (m.matches()) {
@@ -183,15 +190,30 @@ final class Times {
         }
         m = CLOCK.matcher(t);
         if (m.matches()) {
-            long hours = m.group(1) == null ? 0 : Long.parseLong(m.group(1));
-            long minutes = Long.parseLong(m.group(2));
-            return tickAt((hours * 3600 + minutes * 60) * 1000 + millis(m.group(3)));
+            try {
+                long hours = m.group(1) == null ? 0 : Long.parseLong(m.group(1));
+                long minutes = Long.parseLong(m.group(2));
+                long whole = Math.addExact(Math.multiplyExact(hours, 3600), Math.multiplyExact(minutes, 60));
+                return tickAt(Math.addExact(Math.multiplyExact(whole, 1000), millis(m.group(3))));
+            } catch (NumberFormatException | ArithmeticException e) {
+                throw new IllegalArgumentException("too far: " + text.trim(), e);
+            }
         }
         m = SECONDS.matcher(t);
         if (m.matches()) {
             return tickAt(millis(m.group(1)));
         }
         throw new IllegalArgumentException("not a time: '" + text.trim() + "' (" + FORMS + ")");
+    }
+
+    /**
+     * {@code delta} ticks on ({@code +}) or back from {@code now}, within 0 and the largest tick (the clock clamps it
+     * to
+     * the start and the recorded end anyway).
+     */
+    private static int relative(int now, @NonNull String sign, long delta) {
+        long target = sign.equals("+") ? now + delta : now - delta;
+        return (int) Math.clamp(target, 0, Integer.MAX_VALUE);
     }
 
     /** The last tick at or before game time {@code millis} at the clock speed. */

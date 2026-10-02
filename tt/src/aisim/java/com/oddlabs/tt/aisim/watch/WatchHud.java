@@ -282,7 +282,7 @@ final class WatchHud implements WatchControls {
         }
         lines.add(game.aiOverlay().statusLine());
         lines.add(new TextPanel.Line(
-                "F1 help   P play/pause   +/- speed   , . step   J jump   N B events   [ ] players   T clock",
+                "F1 help  P pause  +/- speed  , . step  J jump  N B events  [ ] players  T clock",
                 TextPanel.DIM));
         return lines;
     }
