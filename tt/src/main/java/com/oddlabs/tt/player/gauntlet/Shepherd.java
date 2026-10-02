@@ -921,6 +921,15 @@ final class Shepherd {
         return f == null ? 0 : f.base_waves;
     }
 
+    /**
+     * Launches seen from a copy so far (its wave size is 10 + 5 per launch, so from two on it needs a chieftain), or -1
+     * while no flock watches it (shepherd off, or before the flocks start). Read by decapitate.
+     */
+    int launches(@NonNull Player p) {
+        Flock f = flockOf(p);
+        return f == null ? -1 : f.launches;
+    }
+
     /** Whether a live shepherd of ours stands within r cells of (x, y). */
     private boolean nearShepherd(int x, int y, int r) {
         for (Flock f : flocks) {
