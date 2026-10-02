@@ -1888,3 +1888,16 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
 - **Hills**: N=13 W h0 39.5 % / h1 29.7 / h2 20.0, N=14 15.8 / 13.4 / 9.5 (weaker at N=15-16). h0 -> h2: shepherd finds
   no ground spot +26 %, time at the spot -25 %, waves at the base +28 %, peon jams 4x. Next: the shepherd's spot search
   on rough terrain.
+- **Benchmark maps 0/10/10 from 2026-10-02 (user).** cur13 there: N=13 219 / 500, N=14 79 (hills 0..2 runs not comparable).
+- **cur14** (a87406e8, ee7cd473): the retune without the right-click quirk (user's goal): enter_move, repair_swarm
+  (design values), salvage, shelter_reach 15, late_caution .5. N=13 234, N=14 125, N=16 21, N=17 7 (5 clean wins,
+  replay VERIFIED). Steps: enter_move alone 202 (quirk worth ~17 wins), + swarm 219, + salvage 228, + shelter 15 236
+  (shelter_off 182, quarters_sortie 220), finish_copies 167, deny_rebuild 191 (finishing still costs); the aggressive
+  swarm +19 at N=13 but -17 at N=14 and tied at 16-17 (design values kept); late_caution within noise at N=16-17.
+- **Shepherd deep dive** (workflow; scratchpad shep/): a wave hits our base when no shepherd is in the copy's 0.707
+  disc at its decision tick; at base launches the copy's own shepherd was away after a flee in 62-70 %, had no spot in
+  23-30 %. Zero-code sweeps neutral (follow 241, safe_walk 246, sticky 241 vs 234). Built S1-S5 (9debd57d): at N=13
+  vs cur14 234: C3 flee pick + tether 2 + hunted **288 (z 4.4, surv60 +2.55 z 5.4, base launches 13.0 -> 10.0 %)**,
+  confirmed N=14 125 -> 162, N=16 21 -> 35; B2 calm peons + circles 247, D1 predicted origin 248, A1 site origin 227,
+  E2 fallback 227; stacks C3+B2 296, C3+D1 291, **C3+B2+D1 322 (z 6.9 vs cur14)**, N=14 / 16 so far 142 / 44 vs 100 / 21.
+- **cur15** (38cd5f9d) = cur14 + C3 + B2 + D1. Frontier blocks N=17-21 queued.
