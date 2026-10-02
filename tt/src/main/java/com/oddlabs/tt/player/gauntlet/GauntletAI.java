@@ -160,19 +160,24 @@ public final class GauntletAI extends AI {
             next_intel = nextRound(next_intel, INTEL_PERIOD_TICKS);
             military().tick();
             chieftain().tick();
-            shepherd().tick();
+            // last_stand: every unit is the military's
+            if (!military().lastStand())
+                shepherd().tick();
             if (jams != null)
                 jams.tick();
         }
         if (due_economy) {
             next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
-            economy().tick();
-            decoys().tick();
-            freeze().tick();
+            if (!military().lastStand()) {
+                economy().tick();
+                decoys().tick();
+                freeze().tick();
+            }
         }
         if (due_plan) {
             next_plan = nextRound(next_plan, PLAN_PERIOD_TICKS);
-            economy().plan();
+            if (!military().lastStand())
+                economy().plan();
             military().plan();
         }
         if (logging && now >= next_stat) {

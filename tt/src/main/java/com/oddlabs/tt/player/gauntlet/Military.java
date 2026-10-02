@@ -145,6 +145,8 @@ final class Military {
     /** last_stand: when the last orders went out, and whether it was counted and logged. */
     private float last_stand_order = -5000f;
     private boolean last_stand_seen;
+    /** last_stand: since when we have had no finished quarters or armory (-1: we have one). */
+    private float no_base_since = -1f;
     /** Log only: chooseTarget records its best candidates while this is non-null (the muster's explanation). */
     private @Nullable List<@NonNull String> explain;
     /** frozen_last: the frozen copies a choice has passed over at least once (counted once each). */
@@ -639,7 +641,12 @@ final class Military {
     void tick() {
         watchEnemyCasts();
         updateRoles();
-        // last_stand: no base and no peon to build one: nothing else is left to do
+        // last_stand: no base for a while: nothing else is left to do
+        Intel base_intel = ai.intel();
+        if (!base_intel.quarters.isEmpty() || !base_intel.armories.isEmpty())
+            no_base_since = -1f;
+        else if (no_base_since < 0f)
+            no_base_since = ai.now();
         if (lastStand()) {
             lastStandTick();
             flushOrders();
@@ -3429,18 +3436,20 @@ final class Military {
     }
 
     /**
-     * last_stand: from endgame_from_ticks, no quarters or armory of ours, finished or placed, no peon, and a warrior or
-     * the chieftain left (Strategy.last_stand).
+     * last_stand: from endgame_from_ticks, no finished quarters or armory of ours for last_stand_ticks, and a unit of
+     * ours outside a building (Strategy.last_stand; GauntletAI.think stands the economy down meanwhile).
      */
-    private boolean lastStand() {
+    boolean lastStand() {
         Strategy s = ai.strategy();
         Intel intel = ai.intel();
-        return s.last_stand && ai.now() >= s.endgame_from_ticks && intel.peons.isEmpty() && intel.quarters.isEmpty()
-                && intel.armories.isEmpty() && intel.quarters_sites.isEmpty() && intel.armory_sites.isEmpty()
-                && (!intel.warriors.isEmpty() || intel.chieftain != null);
+        return s.last_stand && ai.now() >= s.endgame_from_ticks && no_base_since >= 0f
+                && ai.now() - no_base_since >= s.last_stand_ticks
+                && (!intel.warriors.isEmpty() || intel.chieftain != null || !intel.peons.isEmpty());
     }
 
-    /** last_stand: every 30 s, every warrior and the chieftain attack the enemy unit or building nearest them. */
+    /**
+     * last_stand: every 30 s, every unit of ours outside a building attacks the enemy unit or building nearest them.
+     */
     private void lastStandTick() {
         if (!ai.periodDue(last_stand_order, 1500f))
             return;
@@ -3453,6 +3462,9 @@ final class Military {
         Unit chief = intel.chieftain;
         if (chief != null && !chief.isDead() && !chief.isMounted())
             units.add(chief);
+        for (Unit p : intel.peons)
+            if (!p.isDead() && !p.isMounted())
+                units.add(p);
         if (units.isEmpty())
             return;
         int[] c = MapAnalysis.centroid(units);
@@ -3472,7 +3484,8 @@ final class Military {
         if (!last_stand_seen) {
             last_stand_seen = true;
             ai.aiLog().count("last_stand");
-            ai.log(String.format("last stand: no base, no peon; %d units on %s", units.size(), describe(t)));
+            ai.log(String.format("last stand: no base for %.0f s; %d units on %s", GauntletAI.seconds(
+                    ai.now() - no_base_since), units.size(), describe(t)));
         }
         ai.aiLog().count("last_stand_order");
         ai.owner().setTarget(units.toArray(new Selectable<?>[0]), t, Action.ATTACK, true);

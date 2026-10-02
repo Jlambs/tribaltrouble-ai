@@ -244,13 +244,16 @@ class Strategy {
     float push_quiet_ticks = 90000f; // 30 min
     float push_period_ticks = 90000f; // 30 min
     /**
-     * last_stand: from endgame_from_ticks, with no quarters or armory of ours, finished or placed, and no peon left to
-     * build one, every warrior and the chieftain attack the nearest enemy, again every 30 s (Military.lastStand). Such
-     * a
-     * game is lost, and the collapse rule (8 units or fewer, no chieftain) cannot end it while more survive: s6274
-     * (cur11 N=17) kept 86 homeless warriors to the 360 min limit, a tenth of its block's compute.
+     * last_stand: from endgame_from_ticks, once we have had no finished quarters or armory for last_stand_ticks, every
+     * unit of ours outside a building (warriors, the chieftain, peons) attacks the nearest enemy, again every 30 s, and
+     * the economy, the shepherds, decoys and freeze stand down (GauntletAI.think, Military.lastStand). Such a game is
+     * lost (we never rebuild without a base), and the collapse rule (8 units or fewer, no chieftain, no quarters or
+     * armory built or started) cannot end it while more survive or an unbuilt site stands: s6274 (cur11 N=17) kept 86
+     * homeless warriors to the 360 min limit, a tenth of its block's compute; s6215 (cur12 N=6) 6 peons and 3 tower
+     * gunners, s8389 (cur12 N=15) a peon, a gunner and a site nobody built.
      */
     boolean last_stand = false;
+    float last_stand_ticks = 15000f; // 300 s
     /**
      * mopup and last_stand act only from this game tick (0: from the start; 120000 keeps games identical to 40 min).
      */
@@ -1502,6 +1505,7 @@ class Strategy {
         push_quiet_ticks = (float) params.getDouble("push_quiet_ticks", push_quiet_ticks);
         push_period_ticks = (float) params.getDouble("push_period_ticks", push_period_ticks);
         last_stand = params.getBoolean("last_stand", last_stand);
+        last_stand_ticks = (float) params.getDouble("last_stand_ticks", last_stand_ticks);
         endgame_from_ticks = (float) params.getDouble("endgame_from_ticks", endgame_from_ticks);
         defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);
         defense_others_from_ticks = (float) params.getDouble("defense_others_from_ticks", defense_others_from_ticks);
