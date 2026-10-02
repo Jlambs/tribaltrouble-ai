@@ -352,15 +352,17 @@ class Strategy {
      */
     boolean shelter_off = false;
     boolean swarm_cold = true;
-    // cur14, the aggressive swarm (the user's guess that aggressive repairing is best; the design's 1.25 / 20 / 10 / .5
-    // / 6): with enter_move, salvage and shelter_reach 15 at N=13 on 0/10/10, W 230 -> 249 of 500 (+51 / -32, z 2.1).
-    float swarm_margin = 1.5f;
+    // The design's values (cur14). The aggressive swarm (margin 1.5, rings 28 / 12, share .7, wood reserve 2; the user's
+    // guess that aggressive repairing is best) won at N=13 (230 -> 249 of 500, z 2.1) but lost at N=14 (131 -> 114,
+    // z -2.2) and tied at N=16-17 (with late_caution .5: 21 + 7 against these values' 21 + 9, whose shared wins came
+    // a median 74-83 min instead of 118-128).
+    float swarm_margin = 1.25f;
     float swarm_catchup_ticks = 1000f; // 20 s
-    int swarm_ring_qa = 28;
-    int swarm_ring_tower = 12;
-    float swarm_peon_share = .7f;
+    int swarm_ring_qa = 20;
+    int swarm_ring_tower = 10;
+    float swarm_peon_share = .5f;
     int swarm_reach = 40;
-    int swarm_wood_reserve = 2;
+    int swarm_wood_reserve = 6;
     int swarm_cold_reserve = 20;
     boolean swarm_lee = true;
     /**
