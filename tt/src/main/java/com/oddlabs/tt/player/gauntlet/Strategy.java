@@ -321,10 +321,11 @@ class Strategy {
      */
     boolean swarm_default = false;
     /**
-     * shelter_repair: an order into a damaged armory of ours with an enemy within 15 cells repairs it (GATHER_REPAIR)
-     * instead of entering it (GauntletAI.enterAction); quarters and towers already get repairers from DEFAULT. Peons
-     * entering a besieged armory vanish with it (26 a razing on average), and the accidental repairs of quarters, the
-     * peons outside repairing instead of inside, were what enter_move's loss showed to be valuable.
+     * shelter_repair: an order into a damaged building of ours (quarters, armory, tower) with an enemy within 15 cells
+     * repairs it from outside (GATHER_REPAIR) instead of entering it (GauntletAI.enterAction): the deliberate form of
+     * what the DEFAULT right-click did by accident to quarters and towers (enter_move alone, which removes that, lost
+     * about 6 points of wins at N=13 on 0/10/10), now for armories too, whose occupants vanish when it falls (26 a
+     * razing on average). Meant with enter_move=true, the retune's baseline (no accidental repairs).
      */
     boolean shelter_repair = false;
     boolean swarm_cold = true;
