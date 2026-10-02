@@ -713,9 +713,21 @@ final class Military {
             considerAttack();
         else if (mode == Mode.HOME && sweep_until < 0f && ai.now() >= next_wave_time && pushDue()) {
             // push_ticks: whatever stands at the base
-            Building weakest = weakestBase();
-            if (weakest != null)
-                allInMuster(weakest, true);
+            if (ai.strategy().push_soft) {
+                // push_soft: the usual muster decision, under the threat too
+                last_push = ai.now();
+                ai.aiLog().count("push_soft");
+                considerAttack();
+                if (mode == Mode.MUSTER) {
+                    ai.aiLog().count("push_soft_go");
+                    ai.log(String.format("soft push: no copy out for %.0f s, mustering under a threat of %.1f",
+                            GauntletAI.seconds(ai.now() - last_out_time), base_threat_strength));
+                }
+            } else {
+                Building weakest = weakestBase();
+                if (weakest != null)
+                    allInMuster(weakest, true);
+            }
         }
         // reinforce_threat_ratio: reinforce the attack with the base under threat too, while what stands in the base is
         // worth less than that share of our whole army.
@@ -3200,7 +3212,8 @@ final class Military {
         Strategy strategy = ai.strategy();
         all_in = false;
         // allin_ticks: on a frozen board the weakest copy base, past the gate
-        boolean push = pushDue();
+        // push_soft: pushes are this decision itself, not the all-in muster
+        boolean push = pushDue() && !strategy.push_soft;
         if (ai.now() >= next_wave_time && (push || allIn())) {
             Building weakest = weakestBase();
             if (weakest != null) {
