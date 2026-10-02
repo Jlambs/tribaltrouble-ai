@@ -1566,13 +1566,16 @@ class Strategy {
      * cells (such a peon starts no fight, and one beyond 8 that turns idle still cannot see the shepherd). Meant with
      * shepherd_all_circles: alone (a 16-seed smoke) it gave more spots but fewer arrivals.
      */
-    int shepherd_calm_peons = 0;
+    // cur15 (with shepherd_flee_pick, _tether 2, _hunted, _calm_peons 8, _all_circles, _predict), 0/10/10, 500 games
+    // each: N=13 W 234 -> 322 (z 6.9), the flee pick alone 288 (z 4.4); N=14 / N=16 so far 100 -> 142 / 21 -> 44 on the
+    // same seeds; launches at our base 13.0 -> 10.0 % (flee pick, N=13).
+    int shepherd_calm_peons = 8;
     /**
      * shepherd_all_circles (S2b): spots and sideways flee points keep DEFENSE_CELLS from every copy's finished quarters
      * and armories, not only from the shepherd's own copy's buildings (the Hard defends around its first finished
      * quarters, else its armory; every finished one is a conservative superset).
      */
-    boolean shepherd_all_circles = false;
+    boolean shepherd_all_circles = true; // cur15
     /**
      * shepherd_flee_clear (S2c): a shepherd flees from enemy warriors and peons within this many Chebyshev cells (12
      * before, a constant): a spot cleared below 12 cells (shepherd_clear) otherwise sets off a flee on arrival.
@@ -1590,11 +1593,11 @@ class Strategy {
      * shepherd counts as a threat anywhere within 40 cells (not only within the flee box), and holds the walk back to
      * the spot for 4 s after it was last seen.
      */
-    boolean shepherd_flee_pick = false;
+    boolean shepherd_flee_pick = true; // cur15
     int shepherd_flee_r = 22;
     float shepherd_flee_out = .5f;
-    float shepherd_tether = 0f;
-    boolean shepherd_hunted = false;
+    float shepherd_tether = 2f; // cur15
+    boolean shepherd_hunted = true; // cur15
     /**
      * shepherd_predict (S4): while a copy's oldest warrior, in its Army order, is out on an attack-move (its last wave
      * marching, or a hunter walking back), and the copy cannot launch yet (fewer idle warriors than its wave size, or
@@ -1605,7 +1608,7 @@ class Strategy {
      * peon fights where it lands, and around its target no spot was found for the whole walk (the first smoke:
      * shepherd_t_nospot +44 %). It replaces shepherd_follow.
      */
-    boolean shepherd_predict = false;
+    boolean shepherd_predict = true; // cur15
     /**
      * shepherd_fallback_r (cells, 0 = off; S5a): when no ring cell up to shepherd_max_r makes a spot, rings 26, 30, ...
      * up to this (and the leash) are tried, 32 cells to a ring. shepherd_clear_parked (cells, 0 = off; S5b): when those
