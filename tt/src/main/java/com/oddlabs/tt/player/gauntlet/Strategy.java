@@ -196,6 +196,18 @@ class Strategy {
      * by it.
      */
     boolean deny_rebuild = false;
+    /**
+     * late_caution (1 = off): from late_from_ticks, and while at most late_copies copies are still in (0: any number),
+     * every caution threshold of the attack is scaled at once (Military.lateCaution): the muster gate's ratios (attack,
+     * max strength, capped) and the threat at the base that keeps the army home are multiplied by it and divided by
+     * it respectively, the turn-back before contact and the worn retreat by it, the outmatched retreat divided by it.
+     * At .5 the army goes against twice the defense and turns back only twice as outmatched. The thresholds were set
+     * where the opening and the collapse window decide; late, with copies out and the map emptying, they kept the
+     * army home or turned it back (the fighting-at-the-cap and quiet-standoff timeouts).
+     */
+    float late_caution = 1f;
+    float late_from_ticks = 120000f; // 40 min
+    int late_copies = 0;
     int deny_rebuild_cells = 150;
     int finish_units = -1;
     float finish_ratio = 0f;
@@ -1624,6 +1636,9 @@ class Strategy {
         weapon_sync_three = params.getBoolean("weapon_sync_three", weapon_sync_three);
         finish_range = params.getInt("finish_range", finish_range);
         deny_rebuild = params.getBoolean("deny_rebuild", deny_rebuild);
+        late_caution = (float) params.getDouble("late_caution", late_caution);
+        late_from_ticks = (float) params.getDouble("late_from_ticks", late_from_ticks);
+        late_copies = params.getInt("late_copies", late_copies);
         deny_rebuild_cells = params.getInt("deny_rebuild_cells", deny_rebuild_cells);
         tower_cap = params.getBoolean("tower_cap", tower_cap);
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);

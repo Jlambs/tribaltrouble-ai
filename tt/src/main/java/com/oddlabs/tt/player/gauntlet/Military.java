@@ -140,6 +140,8 @@ final class Military {
      */
     private float last_base_threat;
     private boolean all_in;
+    /** late_caution: counted and logged once, when it first acts. */
+    private boolean late_caution_seen;
     /** push_ticks: when the last push mustered. */
     private float last_push = -1e9f;
     /** mopup: counted and logged once, when it first acts. */
@@ -709,7 +711,7 @@ final class Military {
             considerStrike();
         // Against many copies the base is rarely quiet: a small raid (next to the whole army) does not hold it back.
         boolean small_threat = threat_level >= 2
-                && base_threat_strength < ai.strategy().attack_threat_ratio * (ai.strategy().launch_recheck ? stagingStrength(
+                && base_threat_strength < ai.strategy().attack_threat_ratio / lateCaution() * (ai.strategy().launch_recheck ? stagingStrength(
                         40) : armyStrength());
         if (mode == Mode.HOME && (threat_level < 2 || small_threat) && sweep_until < 0f)
             considerAttack();
@@ -3583,6 +3585,23 @@ final class Military {
     }
 
     /**
+     * late_caution: the scale of the attack's caution thresholds, late_caution from late_from_ticks while at most
+     * late_copies copies are in (0: any), else 1 (Strategy.late_caution).
+     */
+    private float lateCaution() {
+        Strategy s = ai.strategy();
+        if (s.late_caution == 1f || ai.now() < s.late_from_ticks
+                || (s.late_copies > 0 && ai.enemiesAlive() > s.late_copies))
+            return 1f;
+        if (!late_caution_seen) {
+            late_caution_seen = true;
+            ai.aiLog().count("late_caution_on");
+            ai.log(String.format("late caution %.2f from now on (%d copies in)", s.late_caution, ai.enemiesAlive()));
+        }
+        return s.late_caution;
+    }
+
+    /**
      * The muster's gate: our army and stock ({@code potential}) against a target's defense. Chieftains decide battles:
      * ours counts as a big plus and theirs (the target owner's, or another copy's within {@code others} cells) as a
      * big minus, unless ours can answer his. {@code count}: count capped_min_blocked (the best target's test only).
@@ -3600,7 +3619,8 @@ final class Military {
                     || MapAnalysis.dist2(c.getGridX(), c.getGridY(), t.getGridX(), t.getGridY()) <= cr2);
         float bonus = chief && !enemy_chief ? 1.4f : chief ? 1.05f : enemy_chief ? .7f : 1f;
         boolean capped = nearUnitCap();
-        float caution = attack_caution;
+        // late_caution: the gate's ratios scaled late
+        float caution = attack_caution * lateCaution();
         boolean go = potential >= strategy.attack_min_strength
                 && potential * bonus >= strategy.attack_ratio * caution * defense;
         go |= potential >= strategy.attack_max_strength * caution && potential * bonus >= .8f * caution * defense;
@@ -4218,7 +4238,7 @@ final class Military {
             // back now costs nothing, walking into a stronger defense costs the army.
             float wide = withEnemyTowers(enemyFightersNear(c[0], c[1], 36), c[0], c[1], 36);
             float terrain = terrainFactor(army, intel.enemy_warriors, c[0], c[1], 36);
-            if (wide > 0f && total * terrain < ai.strategy().precontact_ratio * wide) {
+            if (wide > 0f && total * terrain < ai.strategy().precontact_ratio * lateCaution() * wide) {
                 ai.log(String.format("turning back before contact: %.1f against %.1f", total * terrain, wide));
                 beginRetreat();
                 return;
@@ -4227,17 +4247,20 @@ final class Military {
         Strategy strategy = ai.strategy();
         // retreat_split_guard: with most of the army away from its centre, weigh all of it.
         float weighed = strategy.retreat_split_guard && ours < .5f * total ? total : ours;
-        boolean outmatched = local_enemy > strategy.retreat_ratio * Math.max(weighed, 1f);
-        boolean worn = total < strategy.worn_ratio * worn_base && local_enemy > total;
+        // late_caution: retreats scaled late
+        float late = lateCaution();
+        float retreat_ratio = strategy.retreat_ratio / late;
+        boolean outmatched = local_enemy > retreat_ratio * Math.max(weighed, 1f);
+        boolean worn = total < strategy.worn_ratio * late * worn_base && local_enemy > total;
         if (!toot && !pinned && (outmatched || worn) && pillage(army, c, total))
             return;
         if (!toot && !pinned && !outmatched && !split_guard_counted
-                && local_enemy > strategy.retreat_ratio * Math.max(ours, 1f)) {
+                && local_enemy > retreat_ratio * Math.max(ours, 1f)) {
             split_guard_counted = true;
             ai.aiLog().count("split_guard_kept");
         }
         if (!all_in && !toot && !pinned && outmatched) {
-            if (local_raw <= strategy.retreat_ratio * Math.max(weighed, 1f))
+            if (local_raw <= retreat_ratio * Math.max(weighed, 1f))
                 ai.aiLog().count("stun_fear_retreat");
             ai.log(String.format("retreat: local %.1f vs enemy %.1f (army %.1f of %.1f)", ours, local_enemy, total,
                     attack_initial_strength));
