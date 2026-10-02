@@ -110,9 +110,10 @@ N>=7:
 - Logged-game readers: `lab/gauntlet/musters.py RUN` (campaign target choices), `lab/gauntlet/cuts.py RUN` (freeze
   path-(c) cuts and how they ended); `lab/gauntlet/chiefs.py RUN...` (enemy chieftain gating, from game records).
 - `./aisim.sh lab lab/gauntlet/PaintCheck.java RUN KEY [--every N] [--dump-every SEC] [--limit SEC]`: plays a
-  recorded game again with the watch view (AiView paint and describe) called every N ticks and requires it unchanged
-  (census, end checksum, counters, the decision log where the run kept it; logging on only if the run had it) and
-  every text within the viewer's limits; dumps what is painted to `aisim/paintcheck/` (see "Watch view").
+  recorded game again, at its recorded speed, with the watch view (AiView paint and describe) called every N world
+  ticks and requires it unchanged (census, end checksum, counters, the decision log where the run kept it; logging on
+  only if the run had it) and every text within the viewer's limits; dumps what is painted to `aisim/paintcheck/`
+  (see "Watch view"). SEC is game seconds; RUN is a run of this checkout or a run folder.
 
 ## Log
 
@@ -1892,6 +1893,27 @@ about to launch count each copy once. Proof: `replay paint-base s201-0 --snap la
 fixes); PaintCheck 0 differences on paint-fix s201-0 (every tick), natives-base s3-0 (gauntlet/n, no logs, played
 before the fixes, every tick), natives-lost s3-0 (--logs lost, won), paint-homepair s201-0 (shepherd_home_pair=200,
 2:58:29) and the main checkout's cur8-bench-vs15-e s8112-0 (no logs), whose watch selftest stays VERIFIED to the end.
+
+On the game-tick gauntlet (2026-10-01; gauntlet-watch = gauntlet 1b6056b9 + viewer 2c363037): the AI keeps every
+time in its own game ticks (GauntletAI.TICKS_PER_SECOND = 50 to a game second at every speed), and so does the
+painter: it compares in game ticks (ai.now(); the escort window 150 and the march waypoint's 100, as holdStaging and
+reinforce) and only its text turns them into game time, a span as whole game seconds (WatchView.seconds: the last
+cast, evacuating for, the re-site clock, mustering for, next attack in, a shepherd's time in post) and a moment as the
+game clock (WatchView.clock: a project's "placed at", now m:ss). The gather cycles, printed raw, read in game ticks
+after the rework (900 for 18 s); they are game seconds again, as the STAT line's cyc. Decision code is the gauntlet's
+line for line (`git diff gauntlet -- tt/src/main/java/com/oddlabs/tt/player/gauntlet` adds only the painter,
+Chieftain.stuns_judged and Economy.Project.held; VETO_UNSAFE is derived where held is set, so projectMayStart is the
+gauntlet's again). PaintCheck counts world ticks and turns game time into them at the recorded speed (the header's
+secondsPerTick: a census t in game seconds with clock "game" is world tick t * 1000 / ms per tick, an older file's t
+is world ticks / 50), samples the census on a 30-game-second clock of its own as the recorder does, plays the world at
+the recorded speed and refuses one at another; --limit and --dump-every are game seconds. Proof on snapshot
+1464da718f, against the cur11 games of the ludicrous benchmark (run snapshot 9635b3b0df; copies of their rows and
+game files in aisim/runs/watch-identity-cur11-vs18): `replay --snap latest` SAME on cur11-vs18 s6081-0 (lost at
+23:58) and s6220-0 (the N=18 win, 114:24, checksum 1334996688); PaintCheck with paint and describe on every world
+tick: s6081-0 47 of 47 census, end checksum same, counters same, 0 differences; s6220-0 (85,800 world ticks) 228 of
+228 census, end checksum same, counters same, 0 differences (paint 135 us, describe 254 us a round; longest status 84,
+label 50, describe 75; 2:13 of wall time). Painted times agree with the replay's log: "cast 121 s ago" at 20:00 after
+the stun at 1078.56, cycles 34/54 s as STAT cyc=34/54.
 
 Not shown, because the AI keeps it nowhere: why it is not attacking yet (considerAttack's army, potential, defense and
 caution are locals, logged only when the attack goes), the next target while at home (chooseTarget computes distance

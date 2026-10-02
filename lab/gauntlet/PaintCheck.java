@@ -3,14 +3,14 @@
 ///
 ///     ./aisim.sh lab lab/gauntlet/PaintCheck.java RUN KEY [--every N] [--dump-every SEC] [--limit SEC]
 ///
-/// It plays a recorded harness game again exactly as Match played it: ClientWorld.boot/create, the rng seed, a probe
-/// on the real-time manager where the GameRecorder sat, AiLog.begin (with decision logs only if the run kept logs, as
-/// Match; they go to aisim/paintcheck/RUN-KEY/), then the AIs in slot order with Match.createAI, and
-/// world.tick(ANIMATION_SECONDS_PER_TICK) to the recorded end.
-/// Every N ticks (default 1, or 10 for games over 20 minutes) it calls paint on a recording canvas and describe on
-/// every unit and building of each AI that implements AiView, as the watch viewer would between two ticks. Then it
-/// requires
-///   - every 30-s census checksum and the end checksum as recorded,
+/// It plays a recorded harness game again exactly as Match played it: ClientWorld.boot/create at the recorded game
+/// speed, the rng seed, a probe on the real-time manager where the GameRecorder sat, AiLog.begin (with decision logs
+/// only if the run kept logs, as Match; they go to aisim/paintcheck/RUN-KEY/), then the AIs in slot order with
+/// Match.createAI, and world.tick(ANIMATION_SECONDS_PER_TICK) to the recorded end.
+/// Every N world ticks (default 1, or 10 for games over 20 game minutes) it calls paint on a recording canvas and
+/// describe on every unit and building of each AI that implements AiView, as the watch viewer would between two ticks.
+/// Then it requires
+///   - every census checksum (each 30 game seconds) and the end checksum as recorded,
 ///   - each slot's decision log line for line as recorded (header lines aside), where the run kept it: a batch
 ///     without --logs plays with logging off (and so does this), --logs lost deletes the logs of the games team A
 ///     won (ours is then written, not compared),
@@ -20,8 +20,17 @@
 ///   - texts the viewer shows whole: a status line (key: value) and a mark label of at most MAX_LINE characters, a
 ///     describe text of at most MAX_DESCRIBE, at most MAX_STATUS status lines and MAX_SHAPES shapes in one paint.
 /// It also times paint and describe, and writes what was painted (statuses, shapes by layer, the describe texts) every
-/// --dump-every seconds (default 600) and at the end to aisim/paintcheck/RUN-KEY/paint-sSLOT-HHMMSS.txt (RUN-KEY-toSEC
-/// with --limit), so it can be read next to the AI log lines of the same moment. Exit 0 when all of it holds, 1 otherwise, 2 on usage errors.
+/// --dump-every game seconds (default 600) and at the end to aisim/paintcheck/RUN-KEY/paint-sSLOT-HHMMSS.txt
+/// (RUN-KEY-toSEC with --limit), so it can be read next to the AI log lines of the same moment. Exit 0 when all of it
+/// holds, 1 otherwise, 2 on usage errors.
+///
+/// Time: it counts world ticks, the steps it plays (50 a real second at every speed), and turns game time into world
+/// ticks at the game's speed, which the game file's header gives (secondsPerTick; normal speed without one): a census
+/// or end t is game seconds in a file with clock "game" (world tick t * 1000 / ms per tick: 80 ms at ludicrous, 35
+/// fast, 20 normal, 10 slow), else world ticks / 50 (older files). --limit and --dump-every are game seconds; every
+/// time it prints is game time (clock), with the world tick where it helps. The world plays at the job's speed
+/// (ClientWorld.parameters uses job.gameSpeed()); a job without one whose file was recorded at another speed plays at
+/// the file's, and a world whose speed differs from the recording's is refused.
 import com.fasterxml.jackson.databind.JsonNode;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aikit.AiView;
@@ -41,7 +50,13 @@ import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.UnitInfo;
 
 static final int TPS = GameTime.TICKS_PER_SECOND;
-static final int CENSUS_TICKS = 30 * TPS;
+/// The census period of the GameRecorder, in game ms.
+static final long CENSUS_MILLIS = 30_000;
+/// The game time a world tick covers, in ms, at the speed of the game being checked: set from its game file before
+/// anything is played or printed (clock).
+static int millis_per_tick = 20;
+/// Game speed names (Job.SPEEDS) by the game time of a world tick in ms (World.GAME_MILLIS_PER_TICK).
+static final Map<Integer, String> SPEED_BY_MILLIS = Map.of(10, "slow", 20, "normal", 35, "fast", 80, "ludicrous");
 // The viewer's limits (aisim/watch OverlayPaint and AiOverlay, package-private there): what it cuts or leaves out.
 /// A status line as the AI panel shows it ("key: value"), and a mark label: short enough to read whole at a glance
 /// (the viewer cuts a key, a value or a label longer than OverlayPaint.MAX_TEXT).
@@ -75,35 +90,53 @@ void main(String[] args) throws Exception {
     String run = positional.get(0);
     String key = positional.get(1);
     Path dir = Files.exists(Path.of(run).resolve("run.json")) ? Path.of(run) : Runs.dir(run);
-    Job job = job(dir, key);
+    Job listed = job(dir, key);
     Recorded recorded = Recorded.read(Runs.gameFile(dir, key));
     if (recorded.end_tick < 0) {
         IO.println("paintcheck: the game file has no end line");
         System.exit(2);
     }
-    int end_tick = limit >= 0 ? Math.min(recorded.end_tick, limit * TPS) : recorded.end_tick;
+    if (recorded.speed_changed) {
+        IO.println("paintcheck: the game speed changed during the game (a speed line): not supported");
+        System.exit(2);
+    }
+    millis_per_tick = recorded.millis_per_tick;
+    String speed = SPEED_BY_MILLIS.get(millis_per_tick);
+    if (speed == null) {
+        IO.println("paintcheck: the game file's secondsPerTick is no game speed's (" + millis_per_tick + " ms a tick)");
+        System.exit(2);
+    }
+    // a job from before speeds were written down plays at the recorded one
+    Job job = listed.speed() == null && !speed.equals("normal") ? atSpeed(listed, speed) : listed;
+    int end_tick = limit >= 0 ? (int) Math.min(recorded.end_tick, limit * 1000L / millis_per_tick)
+            : recorded.end_tick;
     boolean limited = end_tick < recorded.end_tick;
     if (every < 0)
-        every = recorded.end_tick <= 20 * 60 * TPS ? 1 : 10;
+        every = (long) recorded.end_tick * millis_per_tick <= 20 * 60_000L ? 1 : 10;
     // a run to a limit writes apart, so a short look and a whole check of the same game can run side by side
     Path out = Aisim.ROOT.resolve("paintcheck").resolve(dir.getFileName() + "-" + key + (limited ? "-to" + limit : ""));
     Files.createDirectories(out);
     for (int slot = 0; slot < job.slots(); slot++) // an earlier check's logs, which a check without logs would leave
         Files.deleteIfExists(out.resolve(key + "-ai-s" + slot + ".log"));
-    IO.println("paintcheck %s %s: %s, %s, recorded end %s (tick %d)%s, paint and describe every %d ticks%s".formatted(
-            run, key, job.players(), job.map(), clock(recorded.end_tick), recorded.end_tick,
-            limited ? ", played to " + clock(end_tick) : "", every, job.logs() == null ? ", no decision logs (as the run)"
-                    : ""));
+    IO.println(("paintcheck %s %s: %s, %s, %s speed (%d ms of game time a world tick), recorded end %s (world tick"
+            + " %d)%s, paint and describe every %d world ticks%s").formatted(run, key, job.players(), job.map(), speed,
+            millis_per_tick, clock(recorded.end_tick), recorded.end_tick, limited ? ", played to " + clock(end_tick)
+                    : "", every, job.logs() == null ? ", no decision logs (as the run)" : ""));
 
     List<String> problems = new ArrayList<>();
     ClientWorld.boot();
     try (ClientWorld client = ClientWorld.create(job)) {
         World world = client.world();
+        if (world.getGameMillisPerTick() != millis_per_tick) {
+            IO.println("paintcheck: the world plays %d ms a tick, the recording %d: not the recorded speed".formatted(
+                    world.getGameMillisPerTick(), millis_per_tick));
+            System.exit(2);
+        }
         if (job.rng() != null)
             world.getRandom().setSeed(job.rng() * 1000 + job.side()); // before anything draws from it
-        Map<Integer, Integer> sampled = new TreeMap<>();
+        Probe probe = new Probe(world);
         // where the harness's GameRecorder sits: on the real-time manager, before the AIs
-        world.getAnimationManagerRealTime().registerAnimation(new Probe(world, sampled));
+        world.getAnimationManagerRealTime().registerAnimation(probe);
         // logging on only if the game was played with it, as Match does: an AI may count some things only in logged
         // games (the gauntlet's shepherd_rej_*), and the counters must come out as the result row has them
         AiLog.begin(world, job.logs() == null ? null : slot -> out.resolve(key + "-ai-s" + slot + ".log"), "key="
@@ -127,10 +160,11 @@ void main(String[] args) throws Exception {
             long start = System.nanoTime();
             Globals.run_ai = true;
             watcher.watch(0, false); // the viewer shows tick 0 too, before the AIs' first think
+            GameTime.Every dump_clock = new GameTime.Every(dump_every * 1000L);
             while (world.getTick() < end_tick) {
                 world.tick(AnimationManager.ANIMATION_SECONDS_PER_TICK);
                 int tick = world.getTick();
-                boolean dump = tick % (dump_every * TPS) == 0 || tick == end_tick;
+                boolean dump = dump_clock.due(world) || tick == end_tick;
                 if (tick % every == 0 || dump)
                     watcher.watch(tick, dump);
             }
@@ -138,7 +172,7 @@ void main(String[] args) throws Exception {
             IO.println("played %s in %.1f s (paint and describe %.1f s of it)".formatted(clock(end_tick), seconds,
                     watcher.nanos() / 1e9));
             watcher.report();
-            checkCensus(recorded, sampled, end_tick, problems);
+            checkCensus(recorded, probe, end_tick, problems);
             if (!limited) {
                 boolean same = world.getChecksum() == recorded.end_checksum;
                 IO.println("end checksum: %d, recorded %d: %s".formatted(world.getChecksum(), recorded.end_checksum,
@@ -174,63 +208,112 @@ static Job job(Path dir, String key) throws IOException {
     throw new IllegalStateException();
 }
 
+/// A job as {@code job}, at game speed {@code speed} (a Job.SPEEDS name).
+static Job atSpeed(Job job, String speed) {
+    return new Job(job.run(), job.key(), job.seed(), job.side(), job.players(), job.seats(), job.size(), job.terrain(),
+            job.hills(), job.trees(), job.supplies(), job.minutes(), job.rng(), job.collapse(), job.stopWhenAOut(),
+            job.game(), job.logs(), speed);
+}
+
+/// World tick {@code tick} as game time, m:ss or h:mm:ss (the whole game seconds played by then, as the viewer's
+/// clock).
 static String clock(int tick) {
-    int s = tick / TPS;
+    long s = (long) tick * millis_per_tick / 1000;
     return s >= 3600 ? "%d:%02d:%02d".formatted(s / 3600, s / 60 % 60, s % 60) : "%d:%02d".formatted(s / 60, s % 60);
 }
 
-/// What the game file says: the census checksum at each census tick (every slot's line has the same), and the end.
+/// What the game file says: the census checksum at each world tick a census was written (every slot's line has the
+/// same), the end, and the speed it was played at. Read from the raw lines, so t is as the recorder wrote it.
 static final class Recorded {
     final Map<Integer, Integer> census = new TreeMap<>();
     int end_tick = -1;
     int end_checksum;
+    /// The game time of a world tick in ms, from the header's secondsPerTick (20, normal speed, without one).
+    int millis_per_tick = 20;
+    /// Whether t is game seconds (clock "game" in the header), not world ticks / 50 (files from before).
+    boolean game_clock;
+    /// Whether the speed changed during the game (a speed line), which the harness never does.
+    boolean speed_changed;
 
-    static Recorded read(Path file) {
-        Game game = Game.file(file);
+    static Recorded read(Path file) throws IOException {
         Recorded recorded = new Recorded();
-        for (Map<String, Object> player : game.players()) {
-            int slot = (int) Game.num(player, "s");
-            for (Map<String, Object> census : game.census(slot)) {
-                int tick = (int) Math.round(Game.num(census, "t") * TPS);
-                if (tick % CENSUS_TICKS == 0)
-                    recorded.census.putIfAbsent(tick, (int) Game.num(census, "checksum"));
-            }
+        List<Map<String, Object>> lines = Runs.readJsonl(file);
+        if (!lines.isEmpty()) {
+            Map<String, Object> header = lines.get(0);
+            if (header.get("secondsPerTick") instanceof Number seconds)
+                recorded.millis_per_tick = (int) Math.round(seconds.doubleValue() * 1000);
+            recorded.game_clock = "game".equals(header.get("clock"));
         }
-        for (Map<String, Object> end : game.events("end")) {
-            recorded.end_tick = (int) Math.round(Game.num(end, "t") * TPS);
-            recorded.end_checksum = (int) Game.num(end, "checksum");
+        for (Map<String, Object> line : lines) {
+            Object ev = line.get("ev");
+            if ("census".equals(ev)) {
+                recorded.census.putIfAbsent(recorded.tick(Game.num(line, "t")), (int) Game.num(line, "checksum"));
+            } else if ("end".equals(ev)) {
+                recorded.end_tick = recorded.tick(Game.num(line, "t"));
+                recorded.end_checksum = (int) Game.num(line, "checksum");
+            } else if ("speed".equals(ev)) {
+                recorded.speed_changed = true;
+            }
         }
         return recorded;
     }
-}
 
-/// The world's checksum at every census tick, sampled where the GameRecorder samples it (it only reads).
-record Probe(World world, Map<Integer, Integer> sampled) implements Animated {
-    @Override
-    public void animate(float t) {
-        int tick = world.getTick();
-        if (tick % CENSUS_TICKS == 0)
-            sampled.put(tick, world.getChecksum());
+    /// The world tick of a recorded t: game seconds at this file's speed, or world ticks / 50 in an older file.
+    int tick(double t) {
+        return (int) Math.round(game_clock ? t * 1000 / millis_per_tick : t * TPS);
     }
 }
 
-static void checkCensus(Recorded recorded, Map<Integer, Integer> sampled, int end_tick, List<String> problems) {
+/// The world's checksum at every census, sampled where and when the GameRecorder samples it: on the real-time manager
+/// before the AIs, on the tick its 30-game-second clock strikes (a GameTime.Every of its own). It only reads.
+static final class Probe implements Animated {
+    private final World world;
+    private final GameTime.Every census_clock = new GameTime.Every(CENSUS_MILLIS);
+    /// The checksum at each census, by world tick.
+    final Map<Integer, Integer> sampled = new TreeMap<>();
+    /// Census ticks whose game time was not the world tick's (game ms != tick * ms per tick): none at a fixed speed.
+    int clock_slips;
+
+    Probe(World world) {
+        this.world = world;
+    }
+
+    @Override
+    public void animate(float t) {
+        if (!census_clock.due(world))
+            return;
+        int tick = world.getTick();
+        if (world.getGameMillis() != (long) tick * millis_per_tick)
+            clock_slips++;
+        sampled.put(tick, world.getChecksum());
+    }
+}
+
+/// Every recorded census up to {@code end_tick} against the probe's: each one the recorder's clock wrote (all but a
+/// last census at the recorded end that falls between two census times: the recorder writes that one after the last
+/// tick's AIs, and the end checksum checks it).
+static void checkCensus(Recorded recorded, Probe probe, int end_tick, List<String> problems) {
     int compared = 0;
     int bad = 0;
     int first_bad = -1;
     for (Map.Entry<Integer, Integer> census : recorded.census.entrySet()) {
         int tick = census.getKey();
-        if (tick > end_tick)
+        Integer ours = probe.sampled.get(tick);
+        if (tick > end_tick || ours == null && tick >= recorded.end_tick)
             continue;
         compared++;
-        Integer ours = sampled.get(tick);
         if (ours == null || !ours.equals(census.getValue())) {
             bad++;
             first_bad = first_bad < 0 ? tick : first_bad;
         }
     }
-    IO.println("census: %d of %d recorded checksums match%s".formatted(compared - bad, compared,
-            bad == 0 ? "" : ", first difference at " + clock(first_bad)));
+    long struck = probe.sampled.keySet().stream().filter(tick -> tick <= end_tick).count();
+    IO.println("census: %d of %d recorded checksums match%s (the probe sampled %d census ticks, each 30 game seconds)"
+            .formatted(compared - bad, compared, bad == 0 ? "" : ", first difference at " + clock(first_bad)
+                    + " (world tick " + first_bad + ")", struck));
+    if (probe.clock_slips > 0)
+        problems.add("census: at " + probe.clock_slips + " census ticks the game time was not world tick * "
+                + millis_per_tick + " ms");
     if (bad > 0 || compared == 0)
         problems.add("census: " + bad + " of " + compared + " checksums differ" + (bad > 0 ? ", first at " + clock(
                 first_bad) : ""));
@@ -455,7 +538,7 @@ static final class Watcher {
                 texts.values().stream().mapToInt(Integer::intValue).sum()));
         texts.entrySet().stream().sorted((a, b) -> b.getValue() - a.getValue()).forEach(e -> sb.append(
                 "  %5d  %s%n".formatted(e.getValue(), e.getKey())));
-        int seconds = tick / TPS;
+        long seconds = Math.round((double) tick * millis_per_tick / 1000); // game seconds, to the nearest
         Path file = out.resolve("paint-s%d-%02d%02d%02d.txt".formatted(slot, seconds / 3600, seconds / 60 % 60,
                 seconds % 60));
         Files.writeString(file, sb.toString(), StandardCharsets.UTF_8);
