@@ -147,8 +147,10 @@ class Strategy {
      * field (Military.setTarget). The engine walks units through a corner cut, so a pocket joined to the map only by
      * one looked sealed: the army stalled 75 s after each launch ("staging cut off") and skipped the region, 24 to
      * 102 times a game, in 6 ludicrous timeouts that were all won positions (s6206 N=6, s6657 x4 and s8462 N=13).
+     * Default since the ludicrous timeout screens (late.py on the games alive at 40 min): with sealed_progress and
+     * dead_region_reach 4, wins +1 / -0 over 654 games of the cand-tsf bases at N=13-15 (s6657 draw -> win at 74 min).
      */
-    boolean corner_fields = false;
+    boolean corner_fields = true;
     /**
      * Cells around a building's centre that the dead-region test looks at (Military.inDeadRegion; units: 2). A
      * quarters' or armory's 7 x 7 footprint covers every cell within 2 of its centre, and no field but its own reaches
@@ -158,7 +160,7 @@ class Strategy {
      * (placing size - 1, at least 2): 4 for a quarters or armory, 2 for a tower, whose 3 x 3 footprint has its ring at
      * 2, so that a tower 2-3 cells past it, across a thin wall from a dead pocket, stays a target.
      */
-    int dead_region_reach = 2;
+    int dead_region_reach = 4;
     /**
      * sealed_progress: while no attacking unit stands where the target's field reaches (no pivot, as for a target in a
      * pocket the field calls sealed), a 20 m gain in straight-line distance from the army's centre to the target counts
@@ -166,7 +168,7 @@ class Strategy {
      * from the target (s8462 N=13: 23 stalls, each ~85 cells short of a lone chieftain in a 15-cell pocket); with it
      * the army walks up to the pocket, where the target may be in throw reach, before the stall.
      */
-    boolean sealed_progress = false;
+    boolean sealed_progress = true;
     /**
      * corner_fields, dead_region_reach and sealed_progress act only from this game tick (0: from the start), so games
      * stay identical up to it (late.py with T = 2400 s).
@@ -1139,9 +1141,11 @@ class Strategy {
      * in the musters' strength and gathering nor in the launches (retreat_stranded_kept, per launch that left some
      * out): counted in, the next attack marched the home army off with the stranded group, its centre between the
      * two, and turned back or was capped again (rep-fix-s6409: three launches within 190 s each, the same group 612 m
-     * away every time). It counts again once home (14 cells) or with the army as a reinforcement.
+     * away every time). It counts again once home (14 cells) or with the army as a reinforcement. Default 6000 since
+     * the
+     * ludicrous timeout screens: wins +1 / -0 over 654 games alive at 40 min (s6192 N=14 draw -> win).
      */
-    float retreat_cap_ticks = 0f;
+    float retreat_cap_ticks = 6000f; // 120 s
     /**
      * stall_cap_keep: the calm stall's retarget (75 s with no gain) no longer restarts the stall_cap clock, nor does
      * the first measure on the new target's field; only a 20 m gain, stall_cap_kills kills, a new field after a
@@ -1150,7 +1154,7 @@ class Strategy {
      * retargets in 222 min; s6036 N=6: 261, both with stall_cap 0). Now strike 1 retargets at 300 s and strike 2
      * walks the army home at 600 s.
      */
-    boolean stall_cap_keep = false;
+    boolean stall_cap_keep = true;
     /** retreat_cap_ticks and stall_cap_keep act only from this game tick (0: from the start). */
     float unlock_from_ticks = 120000f; // 40 min
     /**
@@ -1165,9 +1169,10 @@ class Strategy {
      * left out meanwhile: this does its job on every path and counts kills near the army, where stall_cap counted the
      * player's (tower kills at home restarted it). s6215 (N=15): 216 warriors stood 260 min at a 1-cell pass engaging
      * enemies they could not reach, no stall line and no stall_cap (it comes after the engage return), against five
-     * copies with 0 warriors.
+     * copies with 0 warriors. Default 15000 since the ludicrous timeout screens, as stall_cap_keep: no result changed
+     * over 654 games alive at 40 min (N=13-15) and 438 more (fresh N=14-15, N=16).
      */
-    float stall_engaged_ticks = 0f;
+    float stall_engaged_ticks = 15000f; // 300 s
     /**
      * stall_engaged_ticks: game ticks a wedge the army was walked home from is remembered (0: never). Target choice
      * passes over buildings whose way from the staging point runs within 12 cells of a remembered wedge (a detour
