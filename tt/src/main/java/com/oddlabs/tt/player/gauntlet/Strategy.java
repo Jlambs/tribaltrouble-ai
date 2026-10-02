@@ -205,7 +205,8 @@ class Strategy {
      * where the opening and the collapse window decide; late, with copies out and the map emptying, they kept the
      * army home or turned it back (the fighting-at-the-cap and quiet-standoff timeouts).
      */
-    float late_caution = 1f;
+    // .5 since cur14: on E's 375 games alive at 40 min (N=13, 0/10/10) +13 / -9, on cand14's 500 games W 230 -> 234
+    float late_caution = .5f;
     float late_from_ticks = 120000f; // 40 min
     int late_copies = 0;
     int deny_rebuild_cells = 150;
@@ -292,9 +293,11 @@ class Strategy {
      * entering it (GauntletAI.enterAction). Peons sheltering in a quarters under attack then stood outside it as
      * repairers: s6689 (N=13) had 60-69 peons blocked 40 cells from a quarters they all were "repairing" for 10+
      * min, s6129 (N=14) a column of them for 10 min; such jams cost up to 45 % of all peon time in the worst games
-     * (median 1 %). Repairs stay manageRepairs' (at most 4 a building, never under threat).
+     * (median 1 %). Repairs stay manageRepairs' (at most 4 a building, never under threat). On since cur14 (the user's
+     * retune goal: no repairs by accident); alone at N=13 on 0/10/10 it cost wins (219 -> 202 of 500), which
+     * repair_swarm, salvage and shelter_reach more than win back.
      */
-    boolean enter_move = false;
+    boolean enter_move = true;
     /**
      * repair_swarm (RepairSwarm, design-2 A): manageRepairs never repairs under threat and sends at most 4 tree
      * gatherers (who walk for wood), so a quarters or armory under attack falls at the attackers' pace, with the units
@@ -310,9 +313,10 @@ class Strategy {
      * swarm_reach cells; and tree gatherers only with a tree within 6 cells. A spent repairer walks into an armory to
      * be sent out again. swarm_cold: damaged buildings with no threat too (else manageRepairs keeps them). A building
      * it cannot hold (damage above its ring, falling, below half) is given up for 20 s. Forces enter_move's MOVE: with
-     * DEFAULT, peons sheltering in a damaged quarters stood outside it as unfed repairers.
+     * DEFAULT, peons sheltering in a damaged quarters stood outside it as unfed repairers. On since cur14: with
+     * enter_move at N=13 on 0/10/10, W 202 -> 219 of 500 (z 1.7, surv60 +1.1 min, z 2.8); with salvage 228.
      */
-    boolean repair_swarm = false;
+    boolean repair_swarm = true;
     /**
      * swarm_default: repair_swarm without its MOVE semantics: orders into our buildings keep DEFAULT, under which a
      * peon
@@ -338,21 +342,25 @@ class Strategy {
     /**
      * shelter_reach: evacuatePeons shelters peons only in a building with no threat within this many cells (6 before;
      * attackers hit a quarters or armory from up to ~12 cells, so a shelter with none within 6 is often under fire).
+     * 15 since cur14: with enter_move and repair_swarm at N=13 on 0/10/10, W 219 -> 236 of 500 (z 1.6; 10: 225, 20:
+     * 234), fewer quarters and armories razed (3.81 / 1.80 a game against 4.02 / 1.95); shelter_off: 182 (z -3.4).
      */
-    int shelter_reach = 6;
+    int shelter_reach = 15;
     /**
      * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
      * apart).
      */
     boolean shelter_off = false;
     boolean swarm_cold = true;
-    float swarm_margin = 1.25f;
+    // cur14, the aggressive swarm (the user's guess that aggressive repairing is best; the design's 1.25 / 20 / 10 / .5
+    // / 6): with enter_move, salvage and shelter_reach 15 at N=13 on 0/10/10, W 230 -> 249 of 500 (+51 / -32, z 2.1).
+    float swarm_margin = 1.5f;
     float swarm_catchup_ticks = 1000f; // 20 s
-    int swarm_ring_qa = 20;
-    int swarm_ring_tower = 10;
-    float swarm_peon_share = .5f;
+    int swarm_ring_qa = 28;
+    int swarm_ring_tower = 12;
+    float swarm_peon_share = .7f;
     int swarm_reach = 40;
-    int swarm_wood_reserve = 6;
+    int swarm_wood_reserve = 2;
     int swarm_cold_reserve = 20;
     boolean swarm_lee = true;
     /**
@@ -365,9 +373,11 @@ class Strategy {
      * threat within salvage_safe and at least 8 cells farther from the threat, and walks in without scanning; into an
      * armory the stock goes along as transporters. It ends when the building falls, after salvage_calm_ticks with no
      * threat within 15 cells, or after 120 s; a quarters that stood takes free peons back. The old evacuate fired on HP
-     * alone, too late, and let its evacuees out idle by the door or into the attackers.
+     * alone, too late, and let its evacuees out idle by the door or into the attackers. On since cur14: with enter_move
+     * and repair_swarm at N=13 on 0/10/10, W 219 -> 228 of 500 (surv60 +1.06 min, z 3.7; units lost a razed armory 31
+     * -> 20).
      */
-    boolean salvage = false;
+    boolean salvage = true;
     float salvage_ratio = 2f;
     float salvage_margin_ticks = 300f; // 6 s
     int salvage_min = 4;
