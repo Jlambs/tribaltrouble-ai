@@ -3384,7 +3384,7 @@ final class Military {
     private boolean pushDue() {
         Strategy s = ai.strategy();
         return s.push_ticks > 0f && ai.now() >= s.push_ticks && ai.now() - last_out_time >= s.push_quiet_ticks
-                && ai.periodDue(last_push, s.push_period_ticks);
+                && ai.periodDue(last_push, s.push_period_ticks) && (!s.push_calm || threat_level < 2);
     }
 
     /**

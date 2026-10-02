@@ -244,6 +244,11 @@ class Strategy {
     float push_quiet_ticks = 90000f; // 30 min
     float push_period_ticks = 90000f; // 30 min
     /**
+     * push_calm: a push musters only while no threat stands at our base (threat level below 2). Over 1,082 games alive
+     * at 40 min the push gained 5 wins and lost 8; 7 of the 8 lost had a push under threat, 3 of the 5 gained none.
+     */
+    boolean push_calm = false;
+    /**
      * last_stand: from endgame_from_ticks, once we have had no finished quarters or armory for last_stand_ticks, every
      * unit of ours outside a building (warriors, the chieftain, peons) attacks the nearest enemy, again every 30 s, and
      * the economy, the shepherds, decoys and freeze stand down (GauntletAI.think, Military.lastStand). Such a game is
@@ -1513,6 +1518,7 @@ class Strategy {
         push_ticks = (float) params.getDouble("push_ticks", push_ticks);
         push_quiet_ticks = (float) params.getDouble("push_quiet_ticks", push_quiet_ticks);
         push_period_ticks = (float) params.getDouble("push_period_ticks", push_period_ticks);
+        push_calm = params.getBoolean("push_calm", push_calm);
         last_stand = params.getBoolean("last_stand", last_stand);
         enter_move = params.getBoolean("enter_move", enter_move);
         last_stand_ticks = (float) params.getDouble("last_stand_ticks", last_stand_ticks);
