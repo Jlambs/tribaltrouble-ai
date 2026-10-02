@@ -111,11 +111,13 @@ run at once.
 A batch plays its games in parallel, one per worker JVM. By default (`--workers auto`) it uses as much of the machine
 as is free, and keeps adjusting: every 5 seconds it looks at the hardware threads, the CPU load and the available
 memory, and at the other batches running on the machine, from this checkout or any other. Every batch registers its
-live workers in `aisim-runs/` in the system's temp directory. The threads that nothing else uses are split evenly
-among the automatic batches, and a batch takes what another leaves unused. A new batch starts with a quarter of the
-machine at most and grows from there, so batches started together share rather than both grab everything; when the
-machine fills up, workers beyond a batch's share retire after their game, never during one. The progress output
-says when the count changes:
+live workers in `aisim-runs/` in the system's temp directory. The threads that nothing else uses, less one in
+sixteen (1 of 28) left for the desktop, are split evenly among the automatic batches (threads left over go one each
+to the batches that started first), and a batch takes what another leaves unused. A new batch starts with a quarter
+of the machine at most and grows from there, so batches started together share rather than both grab everything;
+when the machine fills up, workers beyond a batch's share retire after their game, never during one. Workers run
+below normal priority (`nice -n 10` off Windows), so the desktop and other programs come first and stay responsive;
+the games are the same at any priority. The progress output says when the count changes:
 
 ```
 workers: 7 to start, up to 28 (28 threads, 47% busy, 10.8 GB available)
@@ -157,7 +159,8 @@ harness) cheaper, find where the time goes, change it, and measure the change on
 ```
 
 `--profile` runs every worker under Java Flight Recorder (about 2% more CPU) and writes one file per worker JVM to
-the run's `prof/` when it exits; `replay RUN KEY --profile` profiles one game. `profile` reads the simulation
+the run's `prof/` when it exits (with `-XX:+DebugNonSafepoints`, so a sample inside an inlined method counts for that
+method rather than its caller); `replay RUN KEY --profile` profiles one game. `profile` reads the simulation
 thread's samples: the share of the engine, of each AI (the samples inside it, the engine calls it makes included), of
 map generation and of the recorder; then the methods by inclusive share (with everything they call) and own share
 (their own code), and the time the JIT compiled and the GC paused on other threads.
