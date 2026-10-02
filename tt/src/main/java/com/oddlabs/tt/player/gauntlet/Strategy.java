@@ -313,6 +313,20 @@ class Strategy {
      * DEFAULT, peons sheltering in a damaged quarters stood outside it as unfed repairers.
      */
     boolean repair_swarm = false;
+    /**
+     * swarm_default: repair_swarm without its MOVE semantics: orders into our buildings keep DEFAULT, under which a
+     * peon
+     * sent into a damaged quarters or tower repairs it (the accidental repairs, which enter_move alone showed were
+     * worth about 6 points of wins at N=13 on 0/10/10), and the swarm adds its deliberate repairs on top.
+     */
+    boolean swarm_default = false;
+    /**
+     * shelter_repair: an order into a damaged armory of ours with an enemy within 15 cells repairs it (GATHER_REPAIR)
+     * instead of entering it (GauntletAI.enterAction); quarters and towers already get repairers from DEFAULT. Peons
+     * entering a besieged armory vanish with it (26 a razing on average), and the accidental repairs of quarters, the
+     * peons outside repairing instead of inside, were what enter_move's loss showed to be valuable.
+     */
+    boolean shelter_repair = false;
     boolean swarm_cold = true;
     float swarm_margin = 1.25f;
     float swarm_catchup_ticks = 1000f; // 20 s
@@ -1603,6 +1617,8 @@ class Strategy {
         last_stand = params.getBoolean("last_stand", last_stand);
         enter_move = params.getBoolean("enter_move", enter_move);
         repair_swarm = params.getBoolean("repair_swarm", repair_swarm);
+        swarm_default = params.getBoolean("swarm_default", swarm_default);
+        shelter_repair = params.getBoolean("shelter_repair", shelter_repair);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
         swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);
         swarm_catchup_ticks = (float) params.getDouble("swarm_catchup_ticks", swarm_catchup_ticks);

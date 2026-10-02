@@ -261,7 +261,13 @@ public final class GauntletAI extends AI {
      */
     @NonNull
     Action enterAction(@NonNull Building b) {
-        return (strategy().enter_move || strategy().repair_swarm) && b.isComplete() ? Action.MOVE : Action.DEFAULT;
+        Strategy s = strategy();
+        // shelter_repair: a damaged armory under threat is repaired, not entered (DEFAULT enters an armory)
+        if (s.shelter_repair && b.isComplete() && b.isDamaged()
+                && b.getTemplate().getTemplateID() == com.oddlabs.tt.model.Race.BUILDING_ARMORY
+                && military().threatNearEcon(b.getGridX(), b.getGridY(), 15))
+            return Action.GATHER_REPAIR;
+        return (s.enter_move || (s.repair_swarm && !s.swarm_default)) && b.isComplete() ? Action.MOVE : Action.DEFAULT;
     }
 
     /** Enemy players still in the game. */
