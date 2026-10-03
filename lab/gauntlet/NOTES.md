@@ -1913,3 +1913,9 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   threats near the supply, not on the way; 7 of 500 N=14 games show such a repeat kill zone, all 160+ min). Wood
   stalls of 30+ min: only these 2 of 128 long N=14 games, none at N=16-19: real but rare. Parked fixes: relink_guard
   (exists), pool_linked, gather_kill_zone.
+- **N=20 beaten on 0/10/10 (cur15)**: cur15-flat-vs20-6501 s6881 won at 154:27 (checksum -1057084479), s6728 at 196:45
+  (1484509883), s6737 at 215:45 (951903458), all replay VERIFIED and clean (only the freeze target never armed; every
+  other copy armed by 4-5 min). N=20 so far 3 wins in ~1,400 games (6001..6500 0, 6501..7000 3, 8001..8500 0,
+  7001..7500 running): ~0.2 % a game, as the frontier judge estimated. N=21 0 / 500 and N=22 0 / 500 on 6001..6500;
+  N=21 queued on 6501..7000, 7001..7500, 8001..8500. freeze_targets=2 at N=17: 24 -> 19 on 344 games, surv60 -1.6
+  (z -2.7): rejected again.
