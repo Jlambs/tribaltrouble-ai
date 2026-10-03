@@ -1928,3 +1928,10 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   s6167 410), 5 are dead standoffs that 4 more hours never moved (N=14 s6330 both at the cap, s6095 13 copies parked
   and no fighting, N=17 s6314 slow decline, N=18 s6461 our base gone and 12 units left alone, N=20 s7123 16 copies and
   us at the cap). Frontier draws are ~1 in 1,000 games, so a longer limit buys nearly nothing there.
+- **N=22 beaten on 0/10/10 (cur15)**: cur15-flat-vs22-7001 s7412 won at 171:36 (checksum -492427892), replay VERIFIED,
+  clean (only the freeze target s5, 44 m away, never armed; every other copy armed by 5 min; starts 24-60 m apart). 9
+  copies out by 19 min (2-19 min, swept outward from 44 m to ~310 m), then 13 copies at the cap (~3,250 units) against
+  our 230-250 until 80 min, then the bases fell (13 with a base at 80 min, 4 at 120, 0 at 150) and the copies with
+  them, the last at 172 min. Found after 1,860 N=22 games (blocks 6001, 6501, 7001 and part of 8001); N=21 had 0 in
+  2,436. The user then stopped N=21 and N=22 and moved the search to N=23 and N=24 (frontier_search.py from 23; the
+  N=23 and N=24 blocks interleaved in the pool).
