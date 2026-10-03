@@ -1575,7 +1575,7 @@ class Strategy {
     float chief_refresh_arm_ticks = 3000f; // 60 s
     float chief_refresh_cull_ticks = 2250f; // 45 s
     /**
-     * chief_retrain_late (chief_refresh implies it): from chief_refresh_from_ticks, at the unit cap (training costs no
+     * chief_retrain_late: from chief_refresh_from_ticks, at the unit cap (training costs no
      * births there) a chieftain who died is retrained with one finished quarters and no armory, in a quarters with no
      * awake enemy warrior within chief_refresh_clear cells; the trainer keeps hold_chieftain peons at the cap too and
      * is

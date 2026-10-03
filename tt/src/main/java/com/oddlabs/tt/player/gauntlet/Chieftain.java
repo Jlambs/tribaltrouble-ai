@@ -1158,10 +1158,10 @@ final class Chieftain {
     private int last_hp;
     private float hp_trace = -50000f;
 
-    /** chief_refresh / chief_retrain_late: the late retrain rules apply now. */
+    /** chief_retrain_late: the late retrain rules apply now. */
     boolean retrainLate() {
         Strategy st = ai.strategy();
-        return (st.chief_retrain_late || st.chief_refresh) && ai.now() >= st.chief_refresh_from_ticks;
+        return st.chief_retrain_late && ai.now() >= st.chief_refresh_from_ticks;
     }
 
     /** chief_refresh: the quarters the next chieftain is to be trained in while a refresh is on, else null. */

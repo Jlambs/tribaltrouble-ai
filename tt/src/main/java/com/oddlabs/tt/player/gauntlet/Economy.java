@@ -5125,7 +5125,7 @@ final class Economy {
         if (refresh != null)
             trainer = refresh;
         boolean topup_ok = ai.military().baseThreatLevel() == 0 || ((ai.strategy().chief_topup_any
-                || ai.chieftain().retrainLate()) && trainer != null
+                || ai.chieftain().retrainLate() || refresh != null) && trainer != null
                 && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
         if (trainer != null && topup_ok && !evacuating.containsKey(trainer)) {
             boolean near = ai.strategy().chief_trainer_near;
