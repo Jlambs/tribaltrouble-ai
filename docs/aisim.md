@@ -563,9 +563,10 @@ AI changed in between:
 - **Timeline** (bottom, all along but for the compass): the whole recorded game, the part simulated so far (blue),
   the checkpoints (ticks under the bar), where you are (white) and where a seek goes (yellow), and marks for the
   recording's key events: players out (red for team A, grey for the others), the last team out and the end (white),
-  team A's buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made and lost (green, violet), and death tolls (amber,
-  inside the bar: a player losing 20 units or more within 250 ticks, 20 s at ludicrous, team A 10). Hover a mark to read its
-  event; click or drag and let go to jump there; N and B jump to the next and previous mark.
+  team A's buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made
+  and lost (green, violet), and death tolls (amber, inside the bar: a player losing 20 units or more within 250
+  ticks, 20 s at ludicrous, team A 10). Hover a mark to read its event; click or drag and let go to jump there; N and
+  B jump to the next and previous mark.
 
 **Keys and mouse.** F1 or H shows them all in the game.
 
