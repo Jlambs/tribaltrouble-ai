@@ -1988,3 +1988,10 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   cells of our buildings; far trips are 0-11 % (gatherer detours would not pay; kill zones target the clusters).
 - **cur16 candidates queued** (fresh seeds, N=17 11501..12000 and N=20 11001..11500, 500 each, paired with fresh cur15
   base runs): A rock_idle from 20 min; B A + tight shepherds (+ progress near base, detour) from 40 min; C B + kill zones.
+- **cur16 adopted** (on the user's go; Strategy defaults): rock_idle=1 from 20 min; shepherd stuck release 2 min near
+  our base / 4 min elsewhere, gap 4 min doubling to 16 (ended when the copy is ready), no-spot release 2 min, no-progress
+  3 min near base only, detour, all from 40 min; wedge_real_kills. Evidence (fresh seeds, paired): rock_idle from 20
+  min at N=17 over 1,000 games 55 vs 42 wins (+27 -14; 11001..11500 30 vs 17, 11501..12000 25 vs 25), frontier games
+  alive at 40 min 13 vs 9 (from 40 min); B (+ shepherds) 27 vs 25 on 11501..12000 (A 25), C (+ kill zones) 22: kill
+  zones not adopted; N=20 11001..11500: 0 wins in 500 for base and every candidate. Identity: cur16 defaults = the
+  explicit spec = cand-b on 10 N=17 games.
