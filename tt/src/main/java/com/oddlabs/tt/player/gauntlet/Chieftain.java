@@ -359,14 +359,15 @@ final class Chieftain {
 
     /**
      * giant_shred: whether the chieftain holds his charge (stun and blast share it) for the planned giant: a plan with
-     * a cast point, the base not seriously threatened, hit points above shred_min_hp, and no awake enemy warrior within
+     * a cast point, the base not seriously threatened, hit points above giant_shred_min_hp, and no awake enemy warrior
+     * within
      * 12 cells of him.
      */
     boolean holdingStun() {
         Unit chief = ai.intel().chieftain;
         if (!giantShredOn() || chief == null || chief.isDead() || giant_at == null)
             return false;
-        if (ai.military().baseThreatLevel() >= 2 || chief.getHitPoints() <= ai.strategy().shred_min_hp)
+        if (ai.military().baseThreatLevel() >= 2 || chief.getHitPoints() <= ai.strategy().giant_shred_min_hp)
             return false;
         return !awakeNear(chief.getGridX(), chief.getGridY(), 12);
     }
@@ -387,7 +388,8 @@ final class Chieftain {
 
     /**
      * giant_shred: the shred mission against giants (Giants). With the plan's cast point, the blast charged, more than
-     * shred_min_hp and no awake enemy within 9 cells (Chebyshev) of him, the chieftain walks alone to the cast point,
+     * giant_shred_min_hp and no awake enemy within 9 cells (Chebyshev) of him, the chieftain walks alone to the cast
+     * point,
      * around the giant if need be, and blasts once at least giant_shred_min enemies are in reach. Inert members never
      * react to being hit and scan only 8 cells, and a lone chieftain sets off no spell of a Hard's chieftain (stun
      * wants
@@ -409,7 +411,7 @@ final class Chieftain {
                     b == null ? "none" : b[2] + " at " + b[0] + "," + b[1],
                     a == null ? "none" : a[2] + " at " + a[0] + "," + a[1]));
         }
-        if (!charged || chief.getHitPoints() <= st.shred_min_hp || giant_blob == null || giant_at == null) {
+        if (!charged || chief.getHitPoints() <= st.giant_shred_min_hp || giant_blob == null || giant_at == null) {
             shred_target = null;
             return false;
         }
@@ -520,8 +522,9 @@ final class Chieftain {
      * walkers, one per 8-cell square; a seed's members are the inert units within 10 cells. A giant needs
      * giant_shred_min / 2 members, a centre within giant_shred_range cells of a finished building of ours or of a
      * gatherer of ours (in transit or at work), and at most half its stalled members walking to cells within 12 cells
-     * of its centre (a block sitting on its own targets is a fight at our buildings, not a giant). Best is most members
-     * for the walk: n / (30 + distance from the chieftain).
+     * of its centre and of a finished building of ours (a block sitting on its own targets there is a fight at our
+     * buildings, not a giant; one sent at a shepherd stands on empty ground). Best is most members for the walk: n /
+     * (30 + distance from the chieftain).
      */
     private java.util.@NonNull List<int @NonNull []> giantBlobs(int cx, int cy) {
         Strategy st = ai.strategy();
@@ -530,6 +533,7 @@ final class Chieftain {
         java.util.List<int[]> econ = new java.util.ArrayList<>();
         for (Building b : intel.finishedBuildings())
             econ.add(new int[]{b.getGridX(), b.getGridY()});
+        int homes = econ.size();
         for (java.util.Map.Entry<Unit, Intel.PeonState> e : intel.peon_states.entrySet()) {
             Intel.PeonState s = e.getValue();
             if (s == Intel.PeonState.GATHER_TREE || s == Intel.PeonState.GATHER_ROCK
@@ -575,8 +579,14 @@ final class Chieftain {
                 walkers++;
                 tx += t[0];
                 ty += t[1];
-                if (MapAnalysis.dist2(bx, by, t[0], t[1]) <= 12 * 12)
-                    inside++;
+                if (MapAnalysis.dist2(bx, by, t[0], t[1]) > 12 * 12)
+                    continue;
+                // at its targets by a building of ours (waves sent at our shepherds stand on empty ground)
+                for (int h = 0; h < homes; h++)
+                    if (MapAnalysis.dist2(t[0], t[1], econ.get(h)[0], econ.get(h)[1]) <= 12 * 12) {
+                        inside++;
+                        break;
+                    }
             }
             if (2 * inside > walkers) {
                 at_target++;

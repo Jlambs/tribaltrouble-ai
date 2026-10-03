@@ -1618,6 +1618,11 @@ class Strategy {
     /** giant_shred: most units of ours a blast may also catch (within 19 cells of the cast point). */
     int giant_shred_friends = 2;
     /**
+     * giant_shred: the chieftain shreds above this many hit points (he never heals; a dead one is trained afresh, and a
+     * blast from out of every scan costs him none).
+     */
+    int giant_shred_min_hp = 0;
+    /**
      * Shepherds from 120 s (was 200): vs hard*11 elim +.048 / +.024 on seeds 1..200 / 201..400, W 28 vs 19 over 400,
      * lsr15 +.16 / +.19 (st120b2-vs11-hv, -b); N=8 +.023 (W 118 vs 115). 90 s: same survival, fewer outs; 150 s: less.
      */
@@ -1810,6 +1815,7 @@ class Strategy {
         giant_shred_range = params.getInt("giant_shred_range", giant_shred_range);
         giant_shred_back = params.getBoolean("giant_shred_back", giant_shred_back);
         giant_shred_friends = params.getInt("giant_shred_friends", giant_shred_friends);
+        giant_shred_min_hp = params.getInt("giant_shred_min_hp", giant_shred_min_hp);
         shepherd_ticks = (float) params.getDouble("shepherd_ticks", shepherd_ticks);
         shepherd_until_ticks = (float) params.getDouble("shepherd_until_ticks", shepherd_until_ticks);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
