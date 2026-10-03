@@ -685,8 +685,14 @@ final class Shepherd {
             }
             // shepherd_stuck_ticks: after a stuck release, shepherd_stuck_gap_ticks
             if (ai.now() < f.gap_until) {
-                ai.aiLog().count("shepherd_stuck_gap_wait");
-                return;
+                // shepherd_gap_ready: a copy about to launch gets its shepherd at once
+                if (strategy.shepherd_gap_ready && f.ready) {
+                    ai.aiLog().count("shepherd_gap_ready");
+                    f.gap_until = -1f;
+                } else {
+                    ai.aiLog().count("shepherd_stuck_gap_wait");
+                    return;
+                }
             }
             // shepherd_range: far copies' shepherds walk 150-300 cells and die on the way (N=10 logs); skip them.
             int range = ai.strategy().shepherd_range;
@@ -756,8 +762,8 @@ final class Shepherd {
                                                 f.armory_at) + " s)" : ""));
         }
         Unit s = f.shepherd;
-        if (strategy.shepherd_stuck_ticks > 0f && ai.now() >= strategy.shepherd_fixes_ticks && !f.arrived
-                && stuck(f, s)) {
+        if ((strategy.shepherd_stuck_ticks > 0f || strategy.shepherd_stuck_base_ticks > 0f)
+                && ai.now() >= strategy.shepherd_fixes_ticks && !f.arrived && stuck(f, s)) {
             ai.aiLog().count("shepherd_stuck_release");
             if (ai.logging())
                 ai.log("shepherd of " + name(
@@ -814,7 +820,17 @@ final class Shepherd {
             else if (ai.now() - f.nospot_since > ai.strategy().shepherd_patience_ticks) {
                 ai.aiLog().count("shepherd_home");
                 release(f);
-            }
+            } else if (strategy.shepherd_nospot_ticks > 0f && ai.now() >= strategy.shepherd_fixes_ticks
+                    && ai.now() - f.nospot_since >= strategy.shepherd_nospot_ticks) {
+                        // shepherd_nospot_ticks: no spot for that long; home, and a gap before the next one
+                        ai.aiLog().count("shepherd_nospot_release");
+                        if (ai.logging())
+                            ai.log("shepherd of " + name(f) + " released: no spot for " + (int) GauntletAI.seconds(
+                                    ai.now() - f.nospot_since) + " s at " + s.getGridX() + "," + s.getGridY());
+                        f.lost_at = ai.now();
+                        f.gap_until = ai.now() + strategy.shepherd_stuck_gap_ticks;
+                        releaseKeepingLeader(f);
+                    }
             return;
         }
         f.nospot_since = -1f;
@@ -862,10 +878,55 @@ final class Shepherd {
                 || (strategy.shepherd_hunted && ai.now() < f.hunted_until);
         if (MapAnalysis.dist2(s.getGridX(), s.getGridY(), spot[0], spot[1]) > 2 * 2
                 && ai.periodDue(f.last_order, 100f) && !held) {
-            ai.landscapeOrder(Selectable.newArray(s), spot[0], spot[1], Action.MOVE, false);
+            int[] to = spot;
+            // shepherd_detour: around what stands on the straight walk
+            if (strategy.shepherd_detour && ai.now() >= strategy.shepherd_fixes_ticks
+                    && !walkClear(s.getGridX(), s.getGridY(), spot[0], spot[1], intel)) {
+                int[] wp = detour(s, spot, intel);
+                if (wp != null) {
+                    to = wp;
+                    ai.aiLog().count("shepherd_detour");
+                } else {
+                    ai.aiLog().count("shepherd_detour_none");
+                }
+            }
+            ai.landscapeOrder(Selectable.newArray(s), to[0], to[1], Action.MOVE, false);
             f.last_order = ai.now();
             f.flee_ordered = false;
         }
+    }
+
+    /**
+     * shepherd_detour: of the cells shepherd_detour_r and half that from shepherd s in 16 directions, reachable, with a
+     * clear walk there (walkClear) and at least 2 cells nearer the spot, the nearest the spot, one with a clear walk on
+     * to the spot first; null when none.
+     */
+    private int @Nullable [] detour(@NonNull Unit s, int @NonNull [] spot, @NonNull Intel intel) {
+        int sx = s.getGridX();
+        int sy = s.getGridY();
+        DistanceField reach = ai.planner().getStartField();
+        float here = (float) Math.sqrt(MapAnalysis.dist2(sx, sy, spot[0], spot[1]));
+        int r = ai.strategy().shepherd_detour_r;
+        int[] best = null;
+        float best_score = Float.MAX_VALUE;
+        for (int k = 0; k < 16; k++) {
+            double ang = k * Math.PI / 8;
+            for (int rr = r / 2; rr <= r; rr += Math.max(1, r / 2)) {
+                int x = sx + (int) Math.round(rr * Math.cos(ang));
+                int y = sy + (int) Math.round(rr * Math.sin(ang));
+                if (!reach.reachable(x, y) || !walkClear(sx, sy, x, y, intel))
+                    continue;
+                float left = (float) Math.sqrt(MapAnalysis.dist2(x, y, spot[0], spot[1]));
+                if (left > here - 2f)
+                    continue;
+                float score = left + (walkClear(x, y, spot[0], spot[1], intel) ? 0f : 15f);
+                if (score < best_score) {
+                    best_score = score;
+                    best = new int[]{x, y};
+                }
+            }
+        }
+        return best;
     }
 
     /**
@@ -886,7 +947,20 @@ final class Shepherd {
             f.stuck_spot_d = sd;
             return false;
         }
-        return ai.now() - f.stuck_since >= ai.strategy().shepherd_stuck_ticks;
+        float limit = stuckLimit(f);
+        return limit > 0f && ai.now() - f.stuck_since >= limit;
+    }
+
+    /**
+     * The stuck time for f's shepherd standing at (stuck_x, stuck_y): shepherd_stuck_base_ticks near one of our
+     * buildings, else shepherd_stuck_ticks (0: never).
+     */
+    private float stuckLimit(@NonNull Flock f) {
+        Strategy st = ai.strategy();
+        int c = st.shepherd_stuck_base_cells;
+        if (st.shepherd_stuck_base_ticks > 0f && nearestOwnBuilding2(f.stuck_x, f.stuck_y) <= c * c)
+            return st.shepherd_stuck_base_ticks;
+        return st.shepherd_stuck_ticks;
     }
 
     /**

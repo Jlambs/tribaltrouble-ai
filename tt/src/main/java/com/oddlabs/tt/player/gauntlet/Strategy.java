@@ -111,6 +111,25 @@ class Strategy {
      */
     float shepherd_stuck_ticks = 0f;
     float shepherd_stuck_gap_ticks = 0f;
+    /**
+     * shepherd_stuck_base_ticks (0: shepherd_stuck_ticks everywhere): the stuck time for a shepherd standing within
+     * shepherd_stuck_base_cells of one of our buildings (in or by our base, where nothing is drawn).
+     */
+    float shepherd_stuck_base_ticks = 0f;
+    int shepherd_stuck_base_cells = 28;
+    /** shepherd_gap_ready: a stuck or no-spot release's gap ends as soon as the copy is ready to launch. */
+    boolean shepherd_gap_ready = false;
+    /**
+     * shepherd_nospot_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has had no spot for this long goes
+     * home; its copy then waits shepherd_stuck_gap_ticks for the next one.
+     */
+    float shepherd_nospot_ticks = 0f;
+    /**
+     * shepherd_detour: from shepherd_fixes_ticks, a shepherd whose straight walk to its spot would set off the flee
+     * test walks to a waypoint shepherd_detour_r or half that away whose walk is clear and that gets it nearer.
+     */
+    boolean shepherd_detour = false;
+    int shepherd_detour_r = 16;
     /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
     float shepherd_fixes_ticks = 0f;
     /**
@@ -1762,6 +1781,12 @@ class Strategy {
         away_strike = params.getBoolean("away_strike", away_strike);
         shepherd_stuck_ticks = (float) params.getDouble("shepherd_stuck_ticks", shepherd_stuck_ticks);
         shepherd_stuck_gap_ticks = (float) params.getDouble("shepherd_stuck_gap_ticks", shepherd_stuck_gap_ticks);
+        shepherd_stuck_base_ticks = (float) params.getDouble("shepherd_stuck_base_ticks", shepherd_stuck_base_ticks);
+        shepherd_stuck_base_cells = params.getInt("shepherd_stuck_base_cells", shepherd_stuck_base_cells);
+        shepherd_gap_ready = params.getBoolean("shepherd_gap_ready", shepherd_gap_ready);
+        shepherd_nospot_ticks = (float) params.getDouble("shepherd_nospot_ticks", shepherd_nospot_ticks);
+        shepherd_detour = params.getBoolean("shepherd_detour", shepherd_detour);
+        shepherd_detour_r = params.getInt("shepherd_detour_r", shepherd_detour_r);
         shepherd_need = (float) params.getDouble("shepherd_need", shepherd_need);
         shepherd_fixes_ticks = (float) params.getDouble("shepherd_fixes_ticks", shepherd_fixes_ticks);
         shepherd_need_ticks = (float) params.getDouble("shepherd_need_ticks", shepherd_need_ticks);
