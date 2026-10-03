@@ -1004,7 +1004,8 @@ final class Military {
         // Strict shred never stuns: its charge is for the blast.
         boolean stable = ai.strategy().defend_stable;
         boolean toot_ready = chief != null && ai.chieftain().stunReady()
-                && !(ai.strategy().shred && ai.strategy().shred_strict);
+                && !(ai.strategy().shred && ai.strategy().shred_strict)
+                && !ai.chieftain().holdingStun();
         if (stable && toot_ready && MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), threat_x,
                 threat_y) > 30 * 30) {
             toot_ready = false;

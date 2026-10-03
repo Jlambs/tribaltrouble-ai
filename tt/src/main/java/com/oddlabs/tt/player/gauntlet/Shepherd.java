@@ -310,7 +310,8 @@ final class Shepherd {
             return;
         }
         Intel intel = ai.intel();
-        if (strategy.shepherd_coming_stalled > 0 && ai.periodDue(stall_snap, STALL_SNAP_TICKS))
+        if (strategy.shepherd_coming_stalled > 0 && ai.now() >= strategy.shepherd_coming_stalled_ticks
+                && ai.periodDue(stall_snap, STALL_SNAP_TICKS))
             snapStalled(intel);
         circles.clear();
         if (strategy.shepherd_all_circles || strategy.shepherd_flee_pick) {

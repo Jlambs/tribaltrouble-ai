@@ -195,6 +195,8 @@ class Strategy {
     float shepherd_recruit_clear_ticks = 90000f;
     /** shepherd_coming_stalled (0: off): attack-walkers that moved fewer cells than this in 10 s are not coming. */
     int shepherd_coming_stalled = 0;
+    /** shepherd_coming_stalled applies from then on. */
+    float shepherd_coming_stalled_ticks = 0f;
     float away_strike_ticks = 0f;
     int away_home_cells = 40;
     float away_idle_value = .5f;
@@ -1594,6 +1596,28 @@ class Strategy {
     /** The chieftain never stuns: every charge goes to shred blasts. */
     boolean shred_strict = false;
     /**
+     * Giants (Giants, late): from giants_from_ticks, stalled blocks of attack-walkers and parked enemies count as
+     * inert.
+     * giant_keepout (cells, 0 = off): a project site, a re-site target or an expansion site with at least giant_min
+     * inert
+     * enemy warriors within it waits (a builder within their 8-cell scan wakes them). giant_stun_hold: the chieftain's
+     * stun leaves inert enemies out of its count unless a tower of ours reaches them (a stun drops their walks, and
+     * their copies relaunch them). giant_shred: the shred mission blasts blocks of at least giant_shred_min inert
+     * warriors within giant_shred_range cells of our buildings or gatherers, from 9 cells (Chebyshev) outside every
+     * enemy,
+     * and with giant_shred_back from behind (away from the members' targets).
+     */
+    float giants_from_ticks = 120000f; // 40 min
+    int giant_keepout = 0;
+    int giant_min = 5;
+    boolean giant_stun_hold = false;
+    boolean giant_shred = false;
+    int giant_shred_min = 40;
+    int giant_shred_range = 45;
+    boolean giant_shred_back = true;
+    /** giant_shred: most units of ours a blast may also catch (within 19 cells of the cast point). */
+    int giant_shred_friends = 2;
+    /**
      * Shepherds from 120 s (was 200): vs hard*11 elim +.048 / +.024 on seeds 1..200 / 201..400, W 28 vs 19 over 400,
      * lsr15 +.16 / +.19 (st120b2-vs11-hv, -b); N=8 +.023 (W 118 vs 115). 90 s: same survival, fewer outs; 150 s: less.
      */
@@ -1777,6 +1801,15 @@ class Strategy {
         shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
         shred_range = params.getInt("shred_range", shred_range);
         shred_strict = params.getBoolean("shred_strict", shred_strict);
+        giants_from_ticks = (float) params.getDouble("giants_from_ticks", giants_from_ticks);
+        giant_keepout = params.getInt("giant_keepout", giant_keepout);
+        giant_min = params.getInt("giant_min", giant_min);
+        giant_stun_hold = params.getBoolean("giant_stun_hold", giant_stun_hold);
+        giant_shred = params.getBoolean("giant_shred", giant_shred);
+        giant_shred_min = params.getInt("giant_shred_min", giant_shred_min);
+        giant_shred_range = params.getInt("giant_shred_range", giant_shred_range);
+        giant_shred_back = params.getBoolean("giant_shred_back", giant_shred_back);
+        giant_shred_friends = params.getInt("giant_shred_friends", giant_shred_friends);
         shepherd_ticks = (float) params.getDouble("shepherd_ticks", shepherd_ticks);
         shepherd_until_ticks = (float) params.getDouble("shepherd_until_ticks", shepherd_until_ticks);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
@@ -1856,6 +1889,8 @@ class Strategy {
         shepherd_recruit_clear_ticks = (float) params.getDouble("shepherd_recruit_clear_ticks",
                 shepherd_recruit_clear_ticks);
         shepherd_coming_stalled = params.getInt("shepherd_coming_stalled", shepherd_coming_stalled);
+        shepherd_coming_stalled_ticks = (float) params.getDouble("shepherd_coming_stalled_ticks",
+                shepherd_coming_stalled_ticks);
         away_strike_ticks = (float) params.getDouble("away_strike_ticks", away_strike_ticks);
         away_home_cells = params.getInt("away_home_cells", away_home_cells);
         away_idle_value = (float) params.getDouble("away_idle_value", away_idle_value);

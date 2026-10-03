@@ -1260,6 +1260,8 @@ final class Economy {
             if (!projectMayStart(p)) {
                 if (last_veto == VETO_THREAT && resiteEligible(p))
                     vetoResite(p, it);
+                else if (last_veto == VETO_GIANT)
+                    giantVeto(p, it);
                 continue;
             }
             p.veto_since = -1f;
@@ -1333,6 +1335,14 @@ final class Economy {
             last_veto = VETO_THREAT;
             return false;
         }
+        // giant_keepout: nor one sent next to a stalled army, which it would wake (but an armory to replace the last
+        // one is worth the risk).
+        if ((p.type != Race.BUILDING_ARMORY || !ai.intel().armories.isEmpty()) && ai.giants().keepOff(p.site.x,
+                p.site.y)) {
+            ai.aiLog().count("giant_veto"); // economy ticks (1 s)
+            last_veto = VETO_GIANT;
+            return false;
+        }
         if (ai.strategy().tower_cooldown && p.type == Race.BUILDING_TOWER && recentlyRazedNear(p.site.x, p.site.y)) {
             ai.aiLog().count("tower_cooldown_skip");
             last_veto = VETO_COOLDOWN;
@@ -1385,12 +1395,35 @@ final class Economy {
     private static final int VETO_COOLDOWN = 2;
     private static final int VETO_ESCORT = 3;
     private static final int VETO_SITES = 4;
+    /** giant_keepout: a stalled army stands near the site (Giants.keepOff). */
+    private static final int VETO_GIANT = 5;
     private int last_veto;
     /**
      * veto_resite: tower (quarters) planning pauses until then after a vetoed project with no clear site is dropped.
      */
     private float tower_hold_until = -1f;
     private float quarters_hold_until = -1f;
+
+    /**
+     * giant_keepout: a giant stands for tens of minutes, so a project it vetoes is moved or dropped as veto_resite
+     * does (a tower or quarters after veto_resite_ticks, whatever veto_resite_quarters says), and an armory project is
+     * dropped after 90 s (an expansion project would block every later one).
+     */
+    private void giantVeto(@NonNull Project p, @NonNull Iterator<Project> it) {
+        if (p.building != null || p.forward || p.sniper || p.use_scout)
+            return;
+        if (p.type != Race.BUILDING_ARMORY) {
+            vetoResite(p, it);
+            return;
+        }
+        if (p.veto_since < 0f)
+            p.veto_since = ai.now();
+        if (ai.now() - p.veto_since < RELOC_WAIT_TICKS)
+            return;
+        ai.log("drop " + p.describe() + ": a giant stands by its site");
+        it.remove();
+        ai.aiLog().count("giant_veto_drop_armory");
+    }
 
     /** veto_resite: a project a threat keeps from starting may be moved or dropped once it has waited long enough. */
     private boolean resiteEligible(@NonNull Project p) {
@@ -1447,7 +1480,7 @@ final class Economy {
         Intel intel = ai.intel();
         boolean tower = type == Race.BUILDING_TOWER;
         SitePlanner.CellOk ok = (x, y) -> !m.threatNearEcon(x, y, st.veto_resite_clear)
-                && !(st.tower_cooldown && tower && recentlyRazedNear(x, y));
+                && !(st.tower_cooldown && tower && recentlyRazedNear(x, y)) && !ai.giants().keepOff(x, y);
         List<Site> reserved = reservedSites(except);
         List<int[]> anchors = new ArrayList<>();
         anchors.add(new int[]{ox, oy});
@@ -2243,7 +2276,7 @@ final class Economy {
      * clear site, else it stays for the veto path; counts counter or counter_none.
      */
     private @NonNull Site clearAtBirth(@NonNull Site site, int type, @NonNull String counter) {
-        if (!ai.military().threatNearEcon(site.x, site.y, 16))
+        if (!ai.military().threatNearEcon(site.x, site.y, 16) && !ai.giants().keepOff(site.x, site.y))
             return site;
         Site clear = clearSite(type, site.x, site.y, null);
         ai.aiLog().count(clear != null ? counter : counter + "_none");
@@ -2995,6 +3028,11 @@ final class Economy {
         }
         if (site == null)
             return;
+        // giant_keepout: not next to a stalled army.
+        if (ai.giants().keepOff(site.x, site.y)) {
+            ai.aiLog().count("giant_expansion_skip");
+            return;
+        }
         // retire: not where a building of ours was just razed to free a slot.
         if (retire.retiredNear(site.x, site.y)) {
             ai.aiLog().count("retire_site_skip");

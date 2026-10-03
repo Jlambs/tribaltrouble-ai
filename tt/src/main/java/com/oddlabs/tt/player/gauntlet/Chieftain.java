@@ -217,6 +217,8 @@ final class Chieftain {
      */
     private boolean shred(@NonNull Unit chief) {
         Strategy strategy = ai.strategy();
+        if (giantShredOn() && shredGiant(chief))
+            return true;
         if (!strategy.shred || !isViking())
             return false;
         boolean charged = chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST);
@@ -329,6 +331,8 @@ final class Chieftain {
      * chieftain holds his stun until the blast (70 s) is charged.
      */
     private boolean savingForBlast(@NonNull Unit chief) {
+        if (giantShredOn())
+            return holdingStun(); // giant_shred: the charge waits for a giant he can reach
         if (ai.strategy().shred && isViking() && ai.strategy().shred_strict)
             return true; // any cast zeroes both charges (Unit.java:727): a stun would throw the blast away
         if (!ai.strategy().shred || !isViking() || chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST))
@@ -336,6 +340,377 @@ final class Chieftain {
         if (ai.military().baseThreatLevel() >= 2 || chief.getHitPoints() <= ai.strategy().shred_min_hp)
             return false;
         return findBlob(chief.getGridX(), chief.getGridY()) != null;
+    }
+
+    private boolean giantShredOn() {
+        return ai.strategy().giant_shred && isViking() && ai.giants().on();
+    }
+
+    /**
+     * giant_shred: the plan of the last refresh (every 2 s, charged or not): the giant, {x, y, members, mean target x,
+     * y (-1: none)}, and where to blast it from, {x, y, caught, ray}; null when there is none.
+     */
+    private int @Nullable [] giant_blob;
+    private int @Nullable [] giant_at;
+    /** giant_shred: the first clear cell out from the giant's centre along each of 24 directions (null: none). */
+    private final int @Nullable [][] giant_rays = new int[24][];
+    private float giant_plan_time = -5000f;
+    private float giant_trace = -50000f;
+
+    /**
+     * giant_shred: whether the chieftain holds his charge (stun and blast share it) for the planned giant: a plan with
+     * a cast point, the base not seriously threatened, hit points above shred_min_hp, and no awake enemy warrior within
+     * 12 cells of him.
+     */
+    boolean holdingStun() {
+        Unit chief = ai.intel().chieftain;
+        if (!giantShredOn() || chief == null || chief.isDead() || giant_at == null)
+            return false;
+        if (ai.military().baseThreatLevel() >= 2 || chief.getHitPoints() <= ai.strategy().shred_min_hp)
+            return false;
+        return !awakeNear(chief.getGridX(), chief.getGridY(), 12);
+    }
+
+    /** An enemy warrior or chieftain that is not inert (Giants) within c cells (Chebyshev) of (x, y). */
+    private boolean awakeNear(int x, int y, int c) {
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        int[] near = index.queryUnordered(x, y, 2 * c * c);
+        Giants giants = ai.giants();
+        for (int k = 0; k < index.count(); k++) {
+            Unit e = index.unit(near[k]);
+            if (!e.isDead() && !e.getAbilities().hasAbilities(com.oddlabs.tt.model.Abilities.BUILD)
+                    && Math.max(Math.abs(e.getGridX() - x), Math.abs(e.getGridY() - y)) <= c && !giants.isInert(e))
+                return true;
+        }
+        return false;
+    }
+
+    /**
+     * giant_shred: the shred mission against giants (Giants). With the plan's cast point, the blast charged, more than
+     * shred_min_hp and no awake enemy within 9 cells (Chebyshev) of him, the chieftain walks alone to the cast point,
+     * around the giant if need be, and blasts once at least giant_shred_min enemies are in reach. Inert members never
+     * react to being hit and scan only 8 cells, and a lone chieftain sets off no spell of a Hard's chieftain (stun
+     * wants
+     * 5 of our units within 15 cells, blast 7 of our selectables). Returns whether the mission took charge of him this
+     * round.
+     */
+    private boolean shredGiant(@NonNull Unit chief) {
+        Strategy st = ai.strategy();
+        int cx = chief.getGridX();
+        int cy = chief.getGridY();
+        refreshGiantPlan(cx, cy);
+        boolean charged = chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST);
+        if (ai.logging() && ai.periodDue(giant_trace, 1000f)) {
+            giant_trace = ai.now();
+            int[] b = giant_blob;
+            int[] a = giant_at;
+            ai.log(String.format("giant shred: charged %b hp %d blast %.2f giant %s point %s", charged,
+                    chief.getHitPoints(), chief.getMagicProgress(RacesResources.INDEX_MAGIC_BLAST),
+                    b == null ? "none" : b[2] + " at " + b[0] + "," + b[1],
+                    a == null ? "none" : a[2] + " at " + a[0] + "," + a[1]));
+        }
+        if (!charged || chief.getHitPoints() <= st.shred_min_hp || giant_blob == null || giant_at == null) {
+            shred_target = null;
+            return false;
+        }
+        if (awakeNear(cx, cy, 9)) {
+            if (shred_target != null)
+                ai.aiLog().count("giant_shred_abort");
+            shred_target = null;
+            return false;
+        }
+        int[] blob = giant_blob;
+        int[] at = giant_at;
+        shred_target = blob;
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        if (!frontSide(blob, cx, cy)) {
+            int here = giantCastValue(cx, cy, ownExceptChief(), index);
+            if (here >= st.giant_shred_min) {
+                ai.log(String.format("chieftain blasts a giant of %d at %d,%d from %d,%d (%d in reach)", blob[2],
+                        blob[0], blob[1], cx, cy, here));
+                ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+                last_cast = ai.now();
+                last_move = ai.now();
+                ai.aiLog().count("giant_shred_blast");
+                for (int i = 0; i < here; i++)
+                    ai.aiLog().count("giant_shred_caught");
+                shred_target = null;
+                giant_plan_time = -5000f;
+                return true;
+            }
+        }
+        if (ai.periodDue(last_move, 50f) && !ai.military().isDodging(chief) && !ai.dodges().chiefBusy()) {
+            int[] step = nextStep(blob, at, cx, cy, index);
+            if (step == null) {
+                ai.aiLog().count("giant_shred_nowalk");
+                return false;
+            }
+            ai.landscapeOrder(Selectable.newArray(chief), step[0], step[1], Action.MOVE, false);
+            last_move = ai.now();
+        }
+        return true;
+    }
+
+    /** giant_shred: with giant_shred_back, whether (x, y) lies on the side of the giant its walkers head for. */
+    private boolean frontSide(int @NonNull [] blob, int x, int y) {
+        if (!ai.strategy().giant_shred_back || blob[3] < 0)
+            return false;
+        return (x - blob[0]) * (blob[3] - blob[0]) + (y - blob[1]) * (blob[4] - blob[1]) > 0;
+    }
+
+    /**
+     * giant_shred: where the chieftain walks next: straight to the cast point if that walk is clear, else to the ray
+     * point furthest round the giant towards it (the shorter way round, starting from his own direction) that he can
+     * walk to clear; null when he can reach none.
+     */
+    private int @Nullable [] nextStep(int @NonNull [] blob, int @NonNull [] at, int cx, int cy,
+            @NonNull EnemyIndex index) {
+        if (walkClear(cx, cy, at[0], at[1], index))
+            return at;
+        int from = Math.floorMod((int) Math.round(Math.atan2(cy - blob[1], cx - blob[0]) / (Math.PI / 12)), 24);
+        int to = at[3];
+        int d = Math.floorMod(to - from, 24);
+        int dir = d <= 12 ? 1 : -1;
+        int n = d <= 12 ? d : 24 - d;
+        for (int i = n - 1; i >= 0; i--) {
+            int[] p = giant_rays[Math.floorMod(from + dir * i, 24)];
+            if (p != null && walkClear(cx, cy, p[0], p[1], index))
+                return p;
+        }
+        return null;
+    }
+
+    private java.util.@NonNull List<@NonNull Selectable<?>> ownExceptChief() {
+        java.util.List<Selectable<?>> ours = new java.util.ArrayList<>();
+        Unit chief = ai.intel().chieftain;
+        for (Selectable<?> s : ai.owner().getUnits().getSet())
+            if (!s.isDead() && s != chief)
+                ours.add(s);
+        return ours;
+    }
+
+    /**
+     * giant_shred: refreshes the plan every 2 s: of the up to 3 best giants (giantBlobs), the first with a cast point
+     * (giantCastPoint).
+     */
+    private void refreshGiantPlan(int cx, int cy) {
+        if (!ai.periodDue(giant_plan_time, 100f))
+            return;
+        giant_plan_time = ai.now();
+        giant_blob = null;
+        giant_at = null;
+        java.util.List<int[]> blobs = giantBlobs(cx, cy);
+        if (blobs.isEmpty())
+            return;
+        java.util.List<Selectable<?>> ours = ownExceptChief();
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        for (int i = 0; i < Math.min(3, blobs.size()); i++) {
+            int[] at = giantCastPoint(blobs.get(i), cx, cy, ours, index);
+            if (at != null) {
+                giant_blob = blobs.get(i);
+                giant_at = at;
+                return;
+            }
+        }
+        giant_blob = blobs.getFirst();
+    }
+
+    /**
+     * giant_shred: the giants, best first, {x, y, members, mean target x, y (-1, -1: none)}. Seeds are the stalled
+     * walkers, one per 8-cell square; a seed's members are the inert units within 10 cells. A giant needs
+     * giant_shred_min / 2 members, a centre within giant_shred_range cells of a finished building of ours or of a
+     * gatherer of ours (in transit or at work), and at most half its stalled members walking to cells within 12 cells
+     * of its centre (a block sitting on its own targets is a fight at our buildings, not a giant). Best is most members
+     * for the walk: n / (30 + distance from the chieftain).
+     */
+    private java.util.@NonNull List<int @NonNull []> giantBlobs(int cx, int cy) {
+        Strategy st = ai.strategy();
+        Giants giants = ai.giants();
+        Intel intel = ai.intel();
+        java.util.List<int[]> econ = new java.util.ArrayList<>();
+        for (Building b : intel.finishedBuildings())
+            econ.add(new int[]{b.getGridX(), b.getGridY()});
+        for (java.util.Map.Entry<Unit, Intel.PeonState> e : intel.peon_states.entrySet()) {
+            Intel.PeonState s = e.getValue();
+            if (s == Intel.PeonState.GATHER_TREE || s == Intel.PeonState.GATHER_ROCK
+                    || s == Intel.PeonState.GATHER_IRON || s == Intel.PeonState.TRANSIT)
+                econ.add(new int[]{e.getKey().getGridX(), e.getKey().getGridY()});
+        }
+        int range2 = st.giant_shred_range * st.giant_shred_range;
+        java.util.Set<Integer> seeded = new java.util.HashSet<>();
+        java.util.List<float[]> scored = new java.util.ArrayList<>();
+        int at_target = 0;
+        for (Unit seed : giants.stalledNow()) {
+            int sx = seed.getGridX();
+            int sy = seed.getGridY();
+            if (!seeded.add((sy >> 3) * 4096 + (sx >> 3)))
+                continue;
+            java.util.List<Unit> members = giants.inertNear(sx, sy, 10, 0);
+            if (members.size() < st.giant_shred_min / 2)
+                continue;
+            long x = 0;
+            long y = 0;
+            for (Unit e : members) {
+                x += e.getGridX();
+                y += e.getGridY();
+            }
+            int bx = (int) (x / members.size());
+            int by = (int) (y / members.size());
+            boolean on_econ = false;
+            for (int[] c : econ)
+                if (MapAnalysis.dist2(bx, by, c[0], c[1]) <= range2) {
+                    on_econ = true;
+                    break;
+                }
+            if (!on_econ)
+                continue;
+            long tx = 0;
+            long ty = 0;
+            int walkers = 0;
+            int inside = 0;
+            for (Unit e : members) {
+                int[] t = giants.stalledTarget(e);
+                if (t == null)
+                    continue;
+                walkers++;
+                tx += t[0];
+                ty += t[1];
+                if (MapAnalysis.dist2(bx, by, t[0], t[1]) <= 12 * 12)
+                    inside++;
+            }
+            if (2 * inside > walkers) {
+                at_target++;
+                continue;
+            }
+            float score = members.size() / (30f + (float) Math.sqrt(MapAnalysis.dist2(cx, cy, bx, by)));
+            scored.add(
+                    new float[]{score, bx, by, members.size(), walkers > 0 ? tx / walkers : -1, walkers > 0 ? ty / walkers : -1});
+        }
+        if (at_target > 0)
+            ai.aiLog().count("giant_shred_at_target");
+        scored.sort((p, q) -> Float.compare(q[0], p[0]));
+        java.util.List<int[]> out = new java.util.ArrayList<>();
+        for (float[] s : scored)
+            out.add(new int[]{(int) s[1], (int) s[2], (int) s[3], (int) s[4], (int) s[5]});
+        return out;
+    }
+
+    /**
+     * giant_shred: the enemies (not peons) a blast from (x, y) catches, or -1 when (x, y) is no place to blast from:
+     * not
+     * walkable, an enemy unit within 9 cells (Chebyshev: out of every scan), an enemy tower within 22, more than two of
+     * our buildings or one below 40 hit points within 18, or more than giant_shred_friends of our units within 19.
+     */
+    private int giantCastValue(int x, int y, java.util.@NonNull List<@NonNull Selectable<?>> ours,
+            @NonNull EnemyIndex index) {
+        if (!ai.map().passable(x, y) || index.groupsInBox(x, y, 9) != 0)
+            return -1;
+        for (Building t : ai.intel().enemy_towers)
+            if (MapAnalysis.dist2(x, y, t.getGridX(), t.getGridY()) <= 22 * 22)
+                return -1;
+        int buildings = 0;
+        int friends = 0;
+        for (Selectable<?> s : ours) {
+            int d2 = MapAnalysis.dist2(x, y, s.getGridX(), s.getGridY());
+            if (s instanceof Building b) {
+                if (d2 <= 18 * 18 && (++buildings > 2 || b.getHitPoints() < 40))
+                    return -1;
+            } else if (d2 <= 19 * 19 && ++friends > ai.strategy().giant_shred_friends) {
+                return -1;
+            }
+        }
+        int[] in = index.queryUnordered(x, y, 17 * 17);
+        int hit = 0;
+        for (int k = 0; k < index.count(); k++) {
+            Unit e = index.unit(in[k]);
+            if (!e.isDead() && !e.getAbilities().hasAbilities(com.oddlabs.tt.model.Abilities.BUILD))
+                hit++;
+        }
+        return hit;
+    }
+
+    /**
+     * giant_shred: where to blast the giant from, {x, y, caught, ray}. Along each of 24 directions out from its centre,
+     * the first cell with no enemy unit within 9 cells (Chebyshev), up to 80 cells out, is that direction's ray point
+     * (kept in giant_rays for the walk round); it and the cells 2 and 4 further out are candidates. A candidate needs
+     * giantCastValue at least giant_shred_min and, with giant_shred_back, not to lie on the side the giant's walkers
+     * head
+     * for (a hole there lets the rest walk on to their cells, go idle and be launched again). Score: caught, 8 more per
+     * enemy chieftain in reach, less the straight distance from the chieftain. Null if there is none.
+     */
+    private int @Nullable [] giantCastPoint(int @NonNull [] blob, int cx, int cy,
+            java.util.@NonNull List<@NonNull Selectable<?>> ours, @NonNull EnemyIndex index) {
+        Strategy st = ai.strategy();
+        int size = ai.map().getSize();
+        int[] best = null;
+        float best_score = -Float.MAX_VALUE;
+        int unsafe = 0;
+        int few = 0;
+        for (int a = 0; a < 24; a++) {
+            giant_rays[a] = null;
+            double ang = a * Math.PI / 12;
+            double dx = Math.cos(ang);
+            double dy = Math.sin(ang);
+            int r0 = -1;
+            for (int r = 4; r <= 80; r += 2) {
+                int x = blob[0] + (int) Math.round(r * dx);
+                int y = blob[1] + (int) Math.round(r * dy);
+                if (x < 2 || y < 2 || x >= size - 2 || y >= size - 2)
+                    break;
+                if (index.groupsInBox(x, y, 9) == 0 && ai.map().passable(x, y)) {
+                    r0 = r;
+                    giant_rays[a] = new int[]{x, y};
+                    break;
+                }
+            }
+            if (r0 < 0)
+                continue;
+            for (int r = r0; r <= r0 + 4; r += 2) {
+                int x = blob[0] + (int) Math.round(r * dx);
+                int y = blob[1] + (int) Math.round(r * dy);
+                if (frontSide(blob, x, y))
+                    continue;
+                int hit = giantCastValue(x, y, ours, index);
+                if (hit < st.giant_shred_min) {
+                    if (hit < 0)
+                        unsafe++;
+                    else
+                        few++;
+                    continue;
+                }
+                int chiefs = 0;
+                for (Unit c : ai.intel().enemy_chieftains)
+                    if (!c.isDead() && MapAnalysis.dist2(x, y, c.getGridX(), c.getGridY()) <= 17 * 17)
+                        chiefs++;
+                float score = 10f * (hit + 8 * chiefs) - (float) Math.sqrt(MapAnalysis.dist2(x, y, cx, cy));
+                if (score > best_score) {
+                    best_score = score;
+                    best = new int[]{x, y, hit, a};
+                }
+            }
+        }
+        if (best == null)
+            ai.aiLog().count(few > unsafe ? "giant_shred_nopoint_few" : "giant_shred_nopoint_unsafe");
+        return best;
+    }
+
+    /**
+     * giant_shred: a straight walk keeps 9 cells (Chebyshev) from every enemy unit and 17 from every active enemy
+     * tower,
+     * sampled at most every 3 cells.
+     */
+    private boolean walkClear(int x0, int y0, int x1, int y1, @NonNull EnemyIndex index) {
+        int steps = (Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) + 2) / 3;
+        for (int i = 1; i <= steps; i++) {
+            int x = x0 + (x1 - x0) * i / steps;
+            int y = y0 + (y1 - y0) * i / steps;
+            if (index.groupsInBox(x, y, 9) != 0)
+                return false;
+            for (Building t : ai.intel().enemy_towers)
+                if (Intel.isTowerActive(t) && MapAnalysis.dist2(x, y, t.getGridX(), t.getGridY()) <= 17 * 17)
+                    return false;
+        }
+        return true;
     }
 
     /** Strict shred: blasts from where the chieftain stands if that catches enough; true if it did. */
@@ -688,7 +1063,8 @@ final class Chieftain {
             if (Intel.isStunned(e))
                 continue;
             int d2 = MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY());
-            if (d2 <= r2)
+            // giant_stun_hold: a stun drops a stalled walker's walk, and its copy launches it again
+            if (d2 <= r2 && !ai.giants().stunHold(e))
                 warriors += !dodges || d2 <= core2 ? 1f : .25f;
         }
         int towers = 0;
@@ -732,6 +1108,15 @@ final class Chieftain {
         // way, keep it to catch him too or to answer his spell.
         float coming = warriors + Combat.countNear(intel.enemy_warriors, x, y, 32) - Combat.countNear(
                 intel.enemy_warriors, x, y, STUN_CELLS);
+        if (ai.strategy().giant_stun_hold && ai.giants().on()) {
+            // giant_stun_hold: held walkers in the ring are not coming either
+            coming = warriors;
+            for (Unit e : intel.enemy_warriors) {
+                int d2 = MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY());
+                if (!e.isDead() && d2 > r2 && d2 <= 32 * 32 && !ai.giants().stunHold(e))
+                    coming++;
+            }
+        }
         float share = caught / Math.max(1f, coming + 3f * towers + 3f * chiefs);
         boolean answer = false;
         for (Unit e : intel.enemy_chieftains)
@@ -775,7 +1160,7 @@ final class Chieftain {
                 tx = stop[0];
                 ty = stop[1];
             }
-        } else if (enemies != null && stunReady()) {
+        } else if (enemies != null && stunReady() && !holdingStun()) {
             // Walk into stun range of the nearest enemies; the stun goes off as soon as enough are caught. Stop short
             // of their throws: the radius reaches well past them.
             tx = enemies[0];
@@ -917,7 +1302,7 @@ final class Chieftain {
         Selectable<?> nearest = null;
         int best = radius * radius;
         for (Unit e : intel.enemy_warriors) {
-            if (Intel.isStunned(e))
+            if (Intel.isStunned(e) || ai.giants().stunHold(e))
                 continue;
             int d = MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY());
             if (d < best) {

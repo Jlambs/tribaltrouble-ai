@@ -60,6 +60,8 @@ public final class GauntletAI extends AI {
     private @Nullable Dodges dodges;
     /** Traffic jams of our units: counters and log lines, and the blocked warriors that unjam acts on. */
     private @Nullable Jams jams;
+    /** Stalled enemy armies and parked enemies (giant_keepout, giant_stun_hold, giant_shred). */
+    private @Nullable Giants giants;
     private @Nullable Freeze freeze;
 
     /** World ticks seen: a cache key and same-tick check only, never a time. */
@@ -158,6 +160,7 @@ public final class GauntletAI extends AI {
             intel.update();
         if (due_intel) {
             next_intel = nextRound(next_intel, INTEL_PERIOD_TICKS);
+            giants().tick();
             military().tick();
             chieftain().tick();
             // last_stand: every unit is the military's
@@ -221,6 +224,7 @@ public final class GauntletAI extends AI {
         freeze = new Freeze(this);
         if (freeze.plan(start_field))
             intel.update();
+        giants = new Giants(this);
         economy = new Economy(this);
         military = new Military(this);
         chieftain = new Chieftain(this);
@@ -426,6 +430,12 @@ public final class GauntletAI extends AI {
     Military military() {
         assert military != null;
         return military;
+    }
+
+    @NonNull
+    Giants giants() {
+        assert giants != null;
+        return giants;
     }
 
     @NonNull
