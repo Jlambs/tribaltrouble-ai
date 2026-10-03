@@ -675,7 +675,7 @@ final class Retire {
                 for (Unit u : busy)
                     ai.landscapeOrder(Selectable.newArray(u), u.getGridX(), u.getGridY(), Action.MOVE, false);
             else
-                ai.owner().setTarget(busy.toArray(new Selectable<?>[0]), home, Action.DEFAULT, false);
+                ai.owner().setTarget(busy.toArray(new Selectable<?>[0]), home, ai.enterAction(home), false);
         }
         if (lent)
             ai.military().release(razers);

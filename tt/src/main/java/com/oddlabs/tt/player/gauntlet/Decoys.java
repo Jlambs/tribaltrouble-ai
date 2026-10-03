@@ -1,7 +1,6 @@
 package com.oddlabs.tt.player.gauntlet;
 
 import com.oddlabs.tt.model.Abilities;
-import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.Race;
@@ -150,11 +149,14 @@ final class Decoys {
     }
 
     private void sendHome(@NonNull Unit runner) {
-        Building home = ai.intel().armory();
-        if (home == null && !ai.intel().quarters.isEmpty())
+        Building armory = ai.intel().armory();
+        // salvage: into the refuge while the main armory is emptied
+        Building home = ai.economy().homeFor(armory);
+        if (armory == null && !ai.intel().quarters.isEmpty())
             home = ai.intel().quarters.getFirst();
+        // enterAction: DEFAULT would make the runner repair a damaged quarters instead of entering it
         if (home != null && !home.isDead())
-            ai.owner().setTarget(Selectable.newArray(runner), home, Action.DEFAULT, false);
+            ai.owner().setTarget(Selectable.newArray(runner), home, ai.enterAction(home), false);
     }
 
     /** Where the copy's next wave starts from: its oldest idle warrior, else its armory, else its start. */

@@ -369,6 +369,9 @@ final class Lures {
                 continue;
             if (intel.shepherds.contains(p) || intel.lures.contains(p) || p.isDead() || ai.economy().reservedPlacer(p))
                 continue;
+            // repair_swarm: not its repairers nor its fresh wood transporters
+            if (ai.strategy().repair_swarm && ai.economy().swarmExempt(p))
+                continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), x, y);
             if (d >= best_d)
                 continue;
