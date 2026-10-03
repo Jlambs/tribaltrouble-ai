@@ -364,7 +364,9 @@ census and the final checksum with the original game.
   number of identity hashes before its first game (`perturb` in the row), so hash-order bugs show up as mismatches,
   though not in every game: replay a few games after changing collections or iteration.
 - `--snap latest` replays the game on your newest build instead: `SAME` or `DIFFERENT from t=...` tells whether and
-  when your change altered this game. `--until MIN` stops early.
+  when your change altered this game. `--until MIN` stops early. Census samples are compared on the fields both
+  have, so a field one build records and the other does not (such as `lostInside` against older runs) is no
+  difference.
 - Replaying a hang takes up to the hang limit again: `AISIM_JAVA_OPTS=-Daisim.hangCpu=30 ./aisim.sh replay ...`,
   and read `g/<key>.err` for the stuck stack.
 
