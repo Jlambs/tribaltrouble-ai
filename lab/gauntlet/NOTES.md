@@ -1919,3 +1919,12 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   7001..7500 running): ~0.2 % a game, as the frontier judge estimated. N=21 0 / 500 and N=22 0 / 500 on 6001..6500;
   N=21 queued on 6501..7000, 7001..7500, 8001..8500. freeze_targets=2 at N=17: 24 -> 19 on 344 games, surv60 -1.6
   (z -2.7): rejected again.
+- **N=20 final 2,000 / N=21 first 2,000**: N=20 3 / 2,000 (all in 6501..7000), 16 games past 60 min, 1 draw. N=21 0 /
+  2,000, no draws, 6 past 60 min, longest 98 min; extended to 5,000 by frontier_search.py. Fewest copies alive in any
+  N=21 game: 12 (s6285 at 53 min, 9 with a base, then stalled 55-90 min while the copies rebuilt; lost at 90 min); at
+  N=20 no lost game got below 12 either, the wins fell 12 -> 0 over 2-3 h (scratchpad mincopies.py).
+- **The 360-min limit stays** (user asked for a few draws at 600 min; draws600-vs14/17/18/20, cur15, every game equal to
+  its original at 360 min by checksum): 4 of 9 draws are slow wins (N=14 s6439 399 min, s6241 465, s6298 473; N=17
+  s6167 410), 5 are dead standoffs that 4 more hours never moved (N=14 s6330 both at the cap, s6095 13 copies parked
+  and no fighting, N=17 s6314 slow decline, N=18 s6461 our base gone and 12 units left alone, N=20 s7123 16 copies and
+  us at the cap). Frontier draws are ~1 in 1,000 games, so a longer limit buys nearly nothing there.
