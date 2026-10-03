@@ -76,6 +76,30 @@ class Strategy {
     int defense_radius = 150;
     /** Share of the ore gatherers sent for rock, with rock weapons always on order (0: rock only as a fallback). */
     float rock_share = 0f;
+    /**
+     * rock_share_late (-1: off): from rock_late_ticks on, the share of the ore gatherers sent for rock is this instead
+     * of rock_share, so rock can come in late only (rock_share 0), early only (rock_share_late 0) or in two steps.
+     */
+    float rock_share_late = -1f;
+    float rock_late_ticks = 120000f; // 40 min
+    /**
+     * rock_on_fail: an iron pick that finds no iron (all of it near a threat, avoided after stuck gatherers or out of
+     * reach) sends the gatherer for rock instead, and rock axes stay on order for the next 60 s.
+     */
+    boolean rock_on_fail = false;
+    /** rock_on_fail: from this game time on (0: from the start). */
+    float rock_fail_from_ticks = 0f;
+    /**
+     * rock_idle (0: off): while the main armory holds at most rock_idle_iron iron, this share of the workers inside
+     * it beyond rock_idle_keep make rock axes on top of the ore gatherers (not out of the iron share): split between
+     * rock
+     * gatherers, forgers staying in and, while its wood stock is under 20, wood gatherers, as the economy's ore model
+     * splits its pool. From rock_idle_ticks on.
+     */
+    float rock_idle = 0f;
+    float rock_idle_ticks = 0f;
+    int rock_idle_keep = 4;
+    int rock_idle_iron = 2;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
     boolean quarters_first = false;
     /**
@@ -1695,6 +1719,14 @@ class Strategy {
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
         rock_share = (float) params.getDouble("rock_share", rock_share);
+        rock_share_late = (float) params.getDouble("rock_share_late", rock_share_late);
+        rock_late_ticks = (float) params.getDouble("rock_late_ticks", rock_late_ticks);
+        rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
+        rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
+        rock_idle = (float) params.getDouble("rock_idle", rock_idle);
+        rock_idle_ticks = (float) params.getDouble("rock_idle_ticks", rock_idle_ticks);
+        rock_idle_keep = params.getInt("rock_idle_keep", rock_idle_keep);
+        rock_idle_iron = params.getInt("rock_idle_iron", rock_idle_iron);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         decapitate = params.getBoolean("decapitate", decapitate);

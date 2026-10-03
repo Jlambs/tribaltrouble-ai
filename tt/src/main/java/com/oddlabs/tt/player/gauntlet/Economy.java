@@ -39,6 +39,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Runs the base: where and when to build, who builds, how many peons stay in each quarters, how the armory's peons
@@ -3875,8 +3876,21 @@ final class Economy {
     }
 
     private boolean wantsRockWeapons() {
-        return rock_weapons || rock_filler || ai.strategy().rock_share > 0f || rock_stream_on;
+        return rock_weapons || rock_filler || rockShare() > 0f || rock_stream_on || ai.now() < rock_fail_until
+                || rock_idle_on;
     }
+
+    /** rock_idle: whether this plan tick sends the armory's idle workers for rock. */
+    private boolean rock_idle_on;
+
+    /** rock_share, or rock_share_late from rock_late_ticks on. */
+    private float rockShare() {
+        Strategy st = ai.strategy();
+        return st.rock_share_late >= 0f && ai.now() >= st.rock_late_ticks ? st.rock_share_late : st.rock_share;
+    }
+
+    /** rock_on_fail: rock axes stay on order until then, after an iron pick fell back on rock. */
+    private float rock_fail_until = -1f;
 
     /**
      * weapon_reserve: the main armory whose weapons were held back on the last economy tick, the chicken, iron and rock
@@ -4803,7 +4817,7 @@ final class Economy {
             want_tree = Math.max(1, want_tree);
             want_ore = Math.max(1, want_ore);
         }
-        float rock_share = ai.strategy().rock_share;
+        float rock_share = rockShare();
         if (rock_weapons) {
             want_rock += want_ore;
             want_iron = 0;
@@ -4844,8 +4858,141 @@ final class Economy {
                 want_workers -= filler;
             }
         }
+        // rock_idle: while the armory waits for iron, rock_idle of its idle workers beyond rock_idle_keep make rock
+        // axes: split, as the ore share above, between rock gatherers, forgers (half an iron axe's work) and, while
+        // its wood runs low, wood gatherers, with fewer gatherers as rock piles up unforged
+        rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
+                && iron_stock <= st.rock_idle_iron;
+        if (rock_idle_on) {
+            // the workers actually inside: those the plan sends for iron often cannot go (no iron pick)
+            float spare = Math.max(0, armory_workers - st.rock_idle_keep) * st.rock_idle;
+            float rock_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
+            float wood_c = tree_stock < 20 ? 2 * tree_cycle : 0f;
+            float xr = spare / (IRON_WORK_TICKS / 2 + rock_c + wood_c);
+            float rock_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
+            int rock_g = Math.round(rock_c * xr * rock_adj);
+            int wood_g = Math.round(wood_c * xr);
+            if (rock_g + wood_g > 0) {
+                want_rock += rock_g;
+                want_tree += wood_g;
+                want_workers = Math.max(2, want_workers - rock_g - wood_g);
+                ai.aiLog().count("rock_idle"); // plan ticks (3 s) that sent idle workers out
+            }
+        }
+        if (ai.logging() && ai.periodDue(ore_log, 3000f)) { // 60 s
+            ore_log = ai.now();
+            ai.log(String.format(
+                    "ORE iron %s | rock %s | %s weapons%s%s, stock iron %d rock %d, gatherers iron %d rock %d (want %d/%d)," + " armory workers %d, iron cycle %.0f s, iron in the 400 m field %d",
+                    oreCensus(map.getIron(), armory), oreCensus(map.getRocks(), armory),
+                    rock_weapons ? "rock" : "iron", rock_filler ? " + rock filler" : "", ore_far ? ", far ore" : "",
+                    iron_stock, rock_stock, g_iron, g_rock, want_iron, want_rock, armory_workers,
+                    GauntletAI.seconds(iron_cycle), iron_left));
+            ai.log("ORE threats " + oreThreats(armory));
+        }
         if (st.reloc_lock_ticks > 0)
             trackLock(armory);
+    }
+
+    /**
+     * Log only (ORE threats lines): who keeps our gatherers off supplies, as the pick's threat test sees it. Each
+     * threatened iron or rock within 200 cells of the main armory, and tree within 60, goes to the nearest enemy
+     * warrior within 14 cells; those are summed per copy, parked (idle, as a drawn wave ends up) or active, with the
+     * warriors' centre. Reads only.
+     */
+    private @NonNull String oreThreats(@NonNull Building armory) {
+        Map<String, int[]> groups = new TreeMap<>(); // iron, rock, trees, sum x, sum y, warriors summed
+        List<List<? extends Supply>> lists = List.of(ai.map().getIron(), ai.map().getRocks(), ai.map().getTrees());
+        int[] radii = {200, 200, 60};
+        int ax = armory.getGridX();
+        int ay = armory.getGridY();
+        for (int k = 0; k < 3; k++) {
+            for (Supply s : lists.get(k)) {
+                if (s.isEmpty())
+                    continue;
+                int x = s.getGridX();
+                int y = s.getGridY();
+                if (MapAnalysis.dist2(ax, ay, x, y) > radii[k] * radii[k] || !ai.military().threatNearEcon(x, y, 14))
+                    continue;
+                Unit near = null;
+                int best = 14 * 14 + 1;
+                for (Unit w : ai.intel().enemy_warriors) {
+                    int d2 = MapAnalysis.dist2(x, y, w.getGridX(), w.getGridY());
+                    if (!w.isDead() && d2 < best) {
+                        best = d2;
+                        near = w;
+                    }
+                }
+                String key = near == null ? "other" : near.getOwner().getPlayerInfo().getName() + (Intel.isParked(
+                        near) ? " parked" : " active");
+                int[] g = groups.computeIfAbsent(key, unused -> new int[6]);
+                g[k]++;
+                if (near != null) {
+                    g[3] += near.getGridX();
+                    g[4] += near.getGridY();
+                    g[5]++;
+                }
+            }
+        }
+        if (groups.isEmpty())
+            return "none";
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, int[]> en : groups.entrySet()) {
+            int[] g = en.getValue();
+            sb.append(sb.isEmpty() ? "" : "; ").append(en.getKey()).append(": iron ").append(g[0]).append(
+                    " rock ").append(g[1]).append(" trees ").append(g[2]);
+            if (g[5] > 0)
+                sb.append(" at ").append(g[3] / g[5]).append(',').append(g[4] / g[5]);
+        }
+        return sb.toString();
+    }
+
+    /** Log only: when the last ORE line was written (once a game minute). */
+    private float ore_log = -5000f;
+
+    /**
+     * Log only (ORE lines): the non-empty supplies around the main armory as the gatherers' pick sees them within 200
+     * cells (free, near a threat, avoided after stuck gatherers, or unreachable in the 400 m walking field), the walk
+     * to
+     * the nearest free one, and those 400 m to 2 x ore_reach m of walk away. Reads only.
+     */
+    private @NonNull String oreCensus(@NonNull List<? extends Supply> supplies, @NonNull Building armory) {
+        DistanceField near = armory_field;
+        if (near == null)
+            return "no field";
+        int far_reach = 2 * Math.max(ai.strategy().ore_reach, 200);
+        DistanceField far = ai.map().computeField(armory.getGridX(), armory.getGridY(), far_reach);
+        int free = 0;
+        int threat = 0;
+        int avoided = 0;
+        int unreachable = 0;
+        int beyond = 0;
+        int nearest = -1;
+        for (Supply s : supplies) {
+            if (s.isEmpty())
+                continue;
+            int x = s.getGridX();
+            int y = s.getGridY();
+            if (MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), x, y) <= 200 * 200) {
+                int d = near.getAround(x, y, 1);
+                Float bad = bad_supplies.get(s);
+                if (d == DistanceField.UNREACHABLE) {
+                    unreachable++;
+                } else if (ai.military().threatNearEcon(x, y, 14)) {
+                    threat++;
+                } else if (bad != null && bad > ai.now()) {
+                    avoided++;
+                } else {
+                    free++;
+                    if (nearest < 0 || d < nearest)
+                        nearest = d;
+                }
+            }
+            int fd = far.getAround(x, y, 1);
+            if (fd != DistanceField.UNREACHABLE && fd > 400 && fd <= far_reach)
+                beyond++;
+        }
+        return String.format("%d free (nearest %s m), %d threat, %d avoided, %d unreachable; %d at 400-%d m", free,
+                nearest < 0 ? "-" : Integer.toString(nearest), threat, avoided, unreachable, beyond, far_reach);
     }
 
     private int countReachable(@NonNull List<? extends Supply> supplies, int max_meters) {
@@ -5734,6 +5881,15 @@ final class Economy {
         if (best != null && tree && MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), best.getGridX(),
                 best.getGridY()) > 60 * 60)
             ai.aiLog().count("wood_far");
+        if (best == null && type == IronSupply.class && st.rock_on_fail && ai.now() >= st.rock_fail_from_ticks) {
+            // rock_on_fail: no iron to be had; rock, the plentiful ore, keeps the forge going meanwhile
+            best = scanSupplies(RockSupply.class, armory, radius, armory_field);
+            if (best != null) {
+                rock_fail_until = ai.now() + 3000f; // 60 s
+                if (peon != null) // not the gather probe's look
+                    ai.aiLog().count("rock_on_fail");
+            }
+        }
         return best;
     }
 
