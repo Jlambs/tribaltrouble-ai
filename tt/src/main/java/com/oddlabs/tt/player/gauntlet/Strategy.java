@@ -91,8 +91,9 @@ class Strategy {
     float rock_fail_from_ticks = 0f;
     /**
      * rock_idle (0: off): while the main armory holds at most rock_idle_iron iron, this share of its idle workers
-     * beyond rock_idle_keep go for rock, on top of the ore gatherers (not out of the iron share), with rock axes on
-     * order; a third of them go for wood while its wood stock is under 20. From rock_idle_ticks on.
+     * beyond rock_idle_keep make rock axes on top of the ore gatherers (not out of the iron share): split between rock
+     * gatherers, forgers staying in and, while its wood stock is under 20, wood gatherers, as the economy's ore model
+     * splits its pool. From rock_idle_ticks on.
      */
     float rock_idle = 0f;
     float rock_idle_ticks = 0f;

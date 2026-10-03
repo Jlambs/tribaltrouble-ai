@@ -4820,16 +4820,23 @@ final class Economy {
                 want_workers -= filler;
             }
         }
-        // rock_idle: the armory's idle workers go for rock (and some for wood) while it waits for iron
+        // rock_idle: while the armory waits for iron, rock_idle of its idle workers beyond rock_idle_keep make rock
+        // axes: split, as the ore share above, between rock gatherers, forgers (half an iron axe's work) and, while
+        // its wood runs low, wood gatherers, with fewer gatherers as rock piles up unforged
         rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
                 && iron_stock <= st.rock_idle_iron;
         if (rock_idle_on) {
-            int add = Math.round(Math.max(0, want_workers - st.rock_idle_keep) * st.rock_idle);
-            if (add > 0) {
-                int wood = tree_stock < 20 ? add / 3 : 0;
-                want_rock += add - wood;
-                want_tree += wood;
-                want_workers -= add;
+            float spare = Math.max(0, want_workers - st.rock_idle_keep) * st.rock_idle;
+            float rock_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
+            float wood_c = tree_stock < 20 ? 2 * tree_cycle : 0f;
+            float xr = spare / (IRON_WORK_TICKS / 2 + rock_c + wood_c);
+            float rock_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
+            int rock_g = Math.round(rock_c * xr * rock_adj);
+            int wood_g = Math.round(wood_c * xr);
+            if (rock_g + wood_g > 0) {
+                want_rock += rock_g;
+                want_tree += wood_g;
+                want_workers -= rock_g + wood_g;
                 ai.aiLog().count("rock_idle"); // plan ticks (3 s) that sent idle workers out
             }
         }
