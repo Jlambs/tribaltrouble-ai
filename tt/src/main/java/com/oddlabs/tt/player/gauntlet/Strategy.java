@@ -160,6 +160,12 @@ class Strategy {
      * got 10 cells nearer it (the same spot, within 10 cells) for this long goes home, with the gap as a stuck one.
      */
     float shepherd_progress_ticks = 0f;
+    /**
+     * shepherd_progress_base: shepherd_progress_ticks releases only a shepherd within shepherd_stuck_base_cells of one
+     * of our buildings (one far out is on a long walk to a far copy's spot and still draws its waves: tight2 N=24 s7062
+     * lost its base 81 s after such a release).
+     */
+    boolean shepherd_progress_base = false;
     int shepherd_detour_r = 16;
     /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
     float shepherd_fixes_ticks = 0f;
@@ -1829,6 +1835,7 @@ class Strategy {
         shepherd_gap_backoff = params.getBoolean("shepherd_gap_backoff", shepherd_gap_backoff);
         shepherd_gap_max_ticks = (float) params.getDouble("shepherd_gap_max_ticks", shepherd_gap_max_ticks);
         shepherd_progress_ticks = (float) params.getDouble("shepherd_progress_ticks", shepherd_progress_ticks);
+        shepherd_progress_base = params.getBoolean("shepherd_progress_base", shepherd_progress_base);
         shepherd_detour_r = params.getInt("shepherd_detour_r", shepherd_detour_r);
         shepherd_need = (float) params.getDouble("shepherd_need", shepherd_need);
         shepherd_fixes_ticks = (float) params.getDouble("shepherd_fixes_ticks", shepherd_fixes_ticks);

@@ -1011,7 +1011,11 @@ final class Shepherd {
             f.prog_y = f.spot_y;
             return false;
         }
-        return ai.now() - f.prog_since >= ai.strategy().shepherd_progress_ticks;
+        if (ai.now() - f.prog_since < ai.strategy().shepherd_progress_ticks)
+            return false;
+        // shepherd_progress_base: only one in or by our base
+        int c = ai.strategy().shepherd_stuck_base_cells;
+        return !ai.strategy().shepherd_progress_base || nearestOwnBuilding2(s.getGridX(), s.getGridY()) <= c * c;
     }
 
     /**
