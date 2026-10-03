@@ -97,6 +97,41 @@ class Strategy {
      * splits its pool. From rock_idle_ticks on.
      */
     float rock_idle = 0f;
+    /**
+     * away_strike (off): when the usual gate holds the army home, muster on the copy base whose own army is away
+     * (kited by shepherds or stuck in an attack-move): its warriors within away_home_cells count in full, beyond that
+     * its idle ones (a Hard recalls all of them) at away_idle_value and the rest at away_walk_value. From
+     * away_strike_ticks on.
+     */
+    boolean away_strike = false;
+    /**
+     * shepherd_stuck_ticks (0: off): a shepherd that has not reached its spot and stood within 6 cells of one point for
+     * this long, not getting 10 cells nearer its spot, goes home; its copy gets no new shepherd for
+     * shepherd_stuck_gap_ticks.
+     */
+    float shepherd_stuck_ticks = 0f;
+    float shepherd_stuck_gap_ticks = 0f;
+    /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
+    float shepherd_fixes_ticks = 0f;
+    /**
+     * shepherd_need (0: off): a copy whose idle warriors are below this share of its wave size, that launched 3 waves
+     * or more and none within shepherd_need_ticks, gets no shepherd, and its shepherd goes home once that has lasted
+     * shepherd_need_ticks.
+     */
+    float shepherd_need = 0f;
+    float shepherd_need_ticks = 30000f;
+    /**
+     * shepherd_recruit_clear: from shepherd_recruit_clear_ticks, a shepherd is recruited only from the up to 5 peons
+     * nearest the origin whose straight walk to the spot starts clear of the flee test.
+     */
+    boolean shepherd_recruit_clear = false;
+    float shepherd_recruit_clear_ticks = 90000f;
+    /** shepherd_coming_stalled (0: off): attack-walkers that moved fewer cells than this in 10 s are not coming. */
+    int shepherd_coming_stalled = 0;
+    float away_strike_ticks = 0f;
+    int away_home_cells = 40;
+    float away_idle_value = .5f;
+    float away_walk_value = .15f;
     float rock_idle_ticks = 0f;
     int rock_idle_keep = 4;
     int rock_idle_iron = 2;
@@ -1724,6 +1759,20 @@ class Strategy {
         rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
         rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
         rock_idle = (float) params.getDouble("rock_idle", rock_idle);
+        away_strike = params.getBoolean("away_strike", away_strike);
+        shepherd_stuck_ticks = (float) params.getDouble("shepherd_stuck_ticks", shepherd_stuck_ticks);
+        shepherd_stuck_gap_ticks = (float) params.getDouble("shepherd_stuck_gap_ticks", shepherd_stuck_gap_ticks);
+        shepherd_need = (float) params.getDouble("shepherd_need", shepherd_need);
+        shepherd_fixes_ticks = (float) params.getDouble("shepherd_fixes_ticks", shepherd_fixes_ticks);
+        shepherd_need_ticks = (float) params.getDouble("shepherd_need_ticks", shepherd_need_ticks);
+        shepherd_recruit_clear = params.getBoolean("shepherd_recruit_clear", shepherd_recruit_clear);
+        shepherd_recruit_clear_ticks = (float) params.getDouble("shepherd_recruit_clear_ticks",
+                shepherd_recruit_clear_ticks);
+        shepherd_coming_stalled = params.getInt("shepherd_coming_stalled", shepherd_coming_stalled);
+        away_strike_ticks = (float) params.getDouble("away_strike_ticks", away_strike_ticks);
+        away_home_cells = params.getInt("away_home_cells", away_home_cells);
+        away_idle_value = (float) params.getDouble("away_idle_value", away_idle_value);
+        away_walk_value = (float) params.getDouble("away_walk_value", away_walk_value);
         rock_idle_ticks = (float) params.getDouble("rock_idle_ticks", rock_idle_ticks);
         rock_idle_keep = params.getInt("rock_idle_keep", rock_idle_keep);
         rock_idle_iron = params.getInt("rock_idle_iron", rock_idle_iron);

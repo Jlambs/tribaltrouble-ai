@@ -4886,7 +4886,7 @@ final class Economy {
                 }
                 String key = near == null ? "other" : near.getOwner().getPlayerInfo().getName() + (Intel.isParked(
                         near) ? " parked" : " active");
-                int[] g = groups.computeIfAbsent(key, unused -> new int[6]);
+                int[] g = groups.computeIfAbsent(key, _ -> new int[6]);
                 g[k]++;
                 if (near != null) {
                     g[3] += near.getGridX();

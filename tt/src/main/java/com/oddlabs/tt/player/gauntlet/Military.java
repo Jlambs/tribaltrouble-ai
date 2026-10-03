@@ -10,6 +10,7 @@ import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.EnterController;
 import com.oddlabs.tt.model.behaviour.HuntController;
+import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.gauntlet.Intel.PeonState;
 import com.oddlabs.tt.player.gauntlet.Intel.WarriorState;
@@ -3339,8 +3340,10 @@ final class Military {
         scored = null;
         boolean fallback = ladder_fallback;
         ladder_fallback = false;
-        if (t == null && rungs == null)
+        if (t == null && rungs == null) {
+            awayStrike();
             return;
+        }
         float army = armyStrength();
         // retreat_cap_ticks: the attackers a capped retreat left out do not march with the next attack (launchAttack)
         if (!stranded.isEmpty())
@@ -3425,8 +3428,10 @@ final class Military {
                 }
             }
         }
-        if (t == null || !go || ai.now() < next_wave_time)
+        if (t == null || !go || ai.now() < next_wave_time) {
+            awayStrike();
             return;
+        }
         // decapitate: count and log a muster on one of the campaign's targets
         noteDecapitate(t, "muster");
         target = t;
@@ -3458,6 +3463,88 @@ final class Military {
                         others, defense, wide, strategy.defense_radius));
             }
         }
+    }
+
+    /**
+     * away_strike: when the usual gate holds the army home, the copy base (a quarters or armory, finished or placed)
+     * whose own army is away, kited by our shepherds or stuck in an attack-move, and so defended by little more than
+     * its towers, peons and home warriors (awayDefense), is mustered on if the gate passes on that defense. Whether it
+     * mustered (considerAttack).
+     */
+    private boolean awayStrike() {
+        Strategy s = ai.strategy();
+        if (!s.away_strike || ai.now() < s.away_strike_ticks || ai.now() < next_wave_time)
+            return false;
+        float army = armyStrength();
+        if (!stranded.isEmpty())
+            army -= strandedStrength();
+        float potential = army + stockStrength();
+        if (potential < s.attack_min_strength)
+            return false;
+        float w = s.target_defense_weight;
+        int others = othersRadius();
+        Building best = null;
+        float best_score = Float.MAX_VALUE;
+        float best_defense = 0f;
+        for (Building b : ai.intel().enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (b.isDead() || !b.getOwner().isAlive() || (id != Race.BUILDING_QUARTERS && id != Race.BUILDING_ARMORY)
+                    || ai.freeze().isFrozenSite(b) || stalled_targets.containsKey(b) || inDeadRegion(b))
+                continue;
+            float defense = awayDefense(b, others);
+            float score = w * defense + MapAnalysis.meters(staging_x, staging_y, b.getGridX(), b.getGridY());
+            if (score < best_score && musterGo(b, potential, defense, others, false)) {
+                best_score = score;
+                best = b;
+                best_defense = defense;
+            }
+        }
+        if (best == null)
+            return false;
+        ai.aiLog().count("away_strike");
+        ai.log(String.format(
+                "away strike: %s (%s), its army away: defense %.1f (usual %.1f) against army %.1f + stock" + " %.1f",
+                describe(best), copyStatus(best.getOwner()), best_defense, defenseFor(best), army,
+                potential - army));
+        target = best;
+        ladder_target = null;
+        ladder_owner = null;
+        mode = Mode.MUSTER;
+        muster_start = ai.now();
+        return true;
+    }
+
+    /**
+     * away_strike: the defense of a copy's building as the copy can raise it (AdvancedAI.nodeDefendBase): its warriors
+     * within away_home_cells in full; beyond, its idle warriors at away_idle_value (it sends them all, from wherever
+     * they stand) and the rest at away_walk_value (warriors on an attack-move are never recalled; a wave walking to
+     * a shepherd's spot goes idle there and comes later); other copies' warriors within others cells in full; then
+     * towers and peons as in defenseFor.
+     */
+    private float awayDefense(@NonNull Selectable<?> t, int others) {
+        Strategy st = ai.strategy();
+        Intel intel = ai.intel();
+        int x = t.getGridX();
+        int y = t.getGridY();
+        Player owner = t.getOwner();
+        int h2 = st.away_home_cells * st.away_home_cells;
+        int o2 = others * others;
+        float s = 0f;
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
+            for (Unit u : group) {
+                if (u.isDead())
+                    continue;
+                int d2 = MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY());
+                if (u.getOwner() == owner)
+                    s += Combat.value(
+                            u) * (d2 <= h2 ? 1f : u.getPrimaryController() instanceof IdleController ? st.away_idle_value : st.away_walk_value);
+                else if (d2 <= o2)
+                    s += Combat.value(u);
+            }
+        s *= 1.1f;
+        s = withEnemyTowers(s, x, y, 22);
+        s += .5f * Combat.strengthNear(intel.enemy_peons, x, y, 40);
+        return s;
     }
 
     /**
