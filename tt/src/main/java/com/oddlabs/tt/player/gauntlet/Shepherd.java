@@ -854,6 +854,15 @@ final class Shepherd {
         f.nospot_since = -1f;
         if (f.prev_spot_x >= 0 && MapAnalysis.dist2(f.prev_spot_x, f.prev_spot_y, spot[0], spot[1]) > 30 * 30) {
             ai.aiLog().count("shepherd_spot_jump");
+            // the late release rules: a shepherd that reached its old spot is on its way again
+            Strategy st = ai.strategy();
+            if (f.arrived && ai.now() >= st.shepherd_fixes_ticks && (st.shepherd_stuck_ticks > 0f
+                    || st.shepherd_stuck_base_ticks > 0f || st.shepherd_progress_ticks > 0f)) {
+                f.arrived = false;
+                f.stuck_since = -1f;
+                f.prog_since = -1f;
+                ai.aiLog().count("shepherd_rearm");
+            }
             // log only: a jump back to where the last logged one went, within JUMP_LOG_TICKS, is not logged again
             if (ai.logging() && (MapAnalysis.dist2(spot[0], spot[1], f.jump_log_x, f.jump_log_y) > 8 * 8
                     || ai.periodDue(f.jump_log_at, JUMP_LOG_TICKS))) {
@@ -1149,7 +1158,10 @@ final class Shepherd {
         float len = (float) Math.sqrt(MapAnalysis.dist2(x0, y0, x1, y1));
         int clear = ai.strategy().shepherd_flee_clear;
         EnemyIndex index = intel.enemyIndex(ai.worldTicks());
-        for (float d = 0f; d <= Math.min(60f, len); d += 4f) {
+        float end = Math.min(60f, len);
+        // every 4 cells, and the last cell looked at too (else a waypoint's own cell can go untested)
+        for (float step = 0f;; step += 4f) {
+            float d = Math.min(step, end);
             int x = len > 0f ? Math.round(x0 + (x1 - x0) * d / len) : x0;
             int y = len > 0f ? Math.round(y0 + (y1 - y0) * d / len) : y0;
             int[] candidates = index.queryUnordered(x, y, 40 * 40);
@@ -1171,6 +1183,8 @@ final class Shepherd {
                         return false;
                 }
             }
+            if (d >= end)
+                break;
         }
         return true;
     }
