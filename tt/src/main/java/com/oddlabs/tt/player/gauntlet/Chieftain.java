@@ -1151,6 +1151,15 @@ final class Chieftain {
     private final java.util.Map<@NonNull Building, @NonNull Unit> cull_towers = new java.util.LinkedHashMap<>();
     /** CULL: warriors lent by the military to attack him (when no tower reaches him). */
     private final java.util.List<@NonNull Unit> cull_lent = new java.util.ArrayList<>();
+
+    /** Watch view: whether u is one of the warriors chief_refresh lent to cull our chieftain (compared with ==). */
+    boolean culls(@NonNull Unit u) {
+        for (Unit c : cull_lent)
+            if (c == u)
+                return true;
+        return false;
+    }
+
     private float cull_order = -5000f;
     /** When the living chieftain was born, and when he last made a useful cast (chief_refresh_useful caught). */
     private float chief_born = -1f;

@@ -7165,8 +7165,9 @@ final class Military {
             }
         if (role == null) {
             for (Map.Entry<Unit, Float> e : lent.entrySet())
-                if (e.getKey() == u)
-                    return "lent to the economy to raze a building of ours";
+                if (e.getKey() == u) // lend's two borrowers: Retire, and chief_refresh's cull
+                    return ai.chieftain().culls(
+                            u) ? "lent to cull our chieftain for a fresh one (chief refresh)" : "lent to the economy to raze a building of ours";
             return null;
         }
         Unit hunted = null;

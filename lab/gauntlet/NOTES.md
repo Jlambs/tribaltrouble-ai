@@ -2153,3 +2153,12 @@ to its spot; shepherd_predict's origin is drawn ("next wave of sN from here", on
 flock) and the shepherd's describe names what its spot was picked around. Proof: PaintCheck on cur15-flat-vs22-7001
 s7412-0 (the N=22 win, 171:36, every tick): 343 of 343 census, end checksum and counters the same; watch VERIFIED to
 the end on it.
+
+cur16 port (2026-10-03, after merging gauntlet-ticks c1315065): the decision bytecode equals the cur16 tip's (snapshot
+e8d034fc03, the build of 910e4e31's gauntlet code) method for method but the painter's methods and the bookkeeping
+writes; no cur16 method shares a name with a painter method. cur16's VETO_GIANT took 5, so Project.held's painter-only
+codes are VETO_UNSAFE 6 and VETO_PLACER 7, and a project held by giant_keepout says "a stalled army stands near the
+site". A warrior chief_refresh lent to cull our chieftain says so (it shared Retire's "raze a building of ours").
+Known gap: with shepherd_detour (from 40 min) the shepherd's line still goes straight to its spot, not to the detour
+waypoint, which no field keeps. Proof: PaintCheck on cur16-flat-vs24-9501 s9902-0 (the N=24 record, 216:52, every
+tick): 433 of 433 census, end checksum and counters the same; watch VERIFIED to the end on it.
