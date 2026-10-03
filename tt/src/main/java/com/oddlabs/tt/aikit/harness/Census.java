@@ -52,7 +52,8 @@ public final class Census {
         armyY,
         status,
         strength,
-        errors;
+        errors,
+        lostInside;
 
         /** This field's value in {@code census}. */
         public int of(int @NonNull [] census) {
@@ -77,10 +78,11 @@ public final class Census {
     }
 
     /**
-     * The census of {@code player}. The recorder keeps two numbers the player has no getter for: how many of its
-     * units were stunned so far, and how many errors its AI swallowed.
+     * The census of {@code player}. The recorder keeps three numbers the player has no getter for: how many of its
+     * units were stunned so far, how many errors its AI swallowed, and how many of its units were lost inside razed
+     * buildings (which the engine's lost leaves out).
      */
-    static int @NonNull [] of(@NonNull Player player, int stunned_total, int ai_errors) {
+    static int @NonNull [] of(@NonNull Player player, int stunned_total, int ai_errors, int lost_inside) {
         Race race = player.getRace();
         int[] census = new int[Field.values().length];
         int warriors = 0;
@@ -110,6 +112,7 @@ public final class Census {
         Field.status.set(census, status);
         Field.strength.set(census, status + garrison_status);
         Field.errors.set(census, ai_errors);
+        Field.lostInside.set(census, lost_inside);
         return census;
     }
 

@@ -717,7 +717,7 @@ older ones.
 |---|---|
 | `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (team A's players), `players`, map, seed, map code, snapshot, `secondsPerTick` (the game time of a tick at the start), `clock: "game"` when that is not the normal 0.02, and per player `s name team race ai x y` (start). |
 | `census` | Census of player `s` every 30 game seconds and at the end (fields below), plus `checksum` (the world's). |
-| `placed`, `built`, `razed` | A building (`b` quarters/armory/tower, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). |
+| `placed`, `built`, `razed` | A building (`b` quarters/armory/tower, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). `razed` also has `inside`, the units lost with the building (see `lostInside` below), and when there were any, how many of each kind (`rock iron rubber peon chief`). |
 | `chief`, `chief_died` | The player gained or lost an active chieftain. |
 | `cast` | The chieftain cast `magic` (e.g. `Stun`, `PoisonFog`) at `x`, `y`. |
 | `stunned` | `n` of the player's units in the field became stunned, around `x`, `y` (tower garrisons are not seen). |
@@ -730,7 +730,7 @@ older ones.
 
 The census fields, in order: `alive units peons rock iron rubber inside garrison quarters armories towers sites kills
 lost razed buildingsLost harvestedTree harvestedRock harvestedIron harvestedRubber stockRock stockIron stockRubber
-chief casts stunned armyX armyY status strength errors`.
+chief casts stunned armyX armyY status strength errors lostInside`.
 
 - `units` counts everyone, including peons inside buildings; `peons`, `rock`, `iron` and `rubber` are units outside.
 - `inside` sits in quarters and armories, `garrison` in towers; `quarters armories towers` count completed buildings,
@@ -741,9 +741,14 @@ chief casts stunned armyX armyY status strength errors`.
 - `armyX armyY`: the centre of the player's warriors (where the army is), -1 without warriors.
 - `status`: the engine's score (`Player.getStatus()`); `strength`: `status` plus tower garrisons; `errors`: the AI's
   swallowed errors so far.
+- `lostInside`: units lost inside razed buildings so far, which `lost` leaves out (below), so `lost + lostInside` is
+  every unit lost.
 
-Units inside a razed building (tower garrisons, quarters and armory occupants) vanish from `units`, `inside` and
-`garrison` without dying: they are in neither `deaths` nor `lost`, and the attacker gets no `kills` for them.
+Units inside a razed building vanish from `units`, `inside` and `garrison` without dying: a quarters' or armory's
+peons, inside or queued to deploy, and a tower's gunner. The engine counts no death for them, so they are in neither
+`deaths` nor `lost`, and the attacker gets no `kills` for them. The recorder counts them instead: every tick it reads
+what each building holds, and when one is razed, the `razed` event and `lostInside` take the count it read the tick
+before (exact unless a unit went in or out in that last tick). Files from before `lostInside` lack it.
 
 **CSV tables** (`export`): every line of both starts with its game's `run key seed side result` (`side` is the first
 player's slot, `result` team A's win, loss or draw), so the tables of several runs can be joined into one.
