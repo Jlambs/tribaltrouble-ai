@@ -3844,6 +3844,10 @@ final class Economy {
 
     /** rock_idle: whether this plan tick sends the armory's idle workers for rock. */
     private boolean rock_idle_on;
+    /** rock_idle: the rock and wood gatherers it added on the last plan tick, and whether its wood share is on. */
+    private int idle_rock_out;
+    private int idle_wood_out;
+    private boolean idle_wood;
 
     /** rock_share, or rock_share_late from rock_late_ticks on. */
     private float rockShare() {
@@ -4823,23 +4827,36 @@ final class Economy {
         // rock_idle: while the armory waits for iron, rock_idle of its idle workers beyond rock_idle_keep make rock
         // axes: split, as the ore share above, between rock gatherers, forgers (half an iron axe's work) and, while
         // its wood runs low, wood gatherers, with fewer gatherers as rock piles up unforged
+        // It goes off only once the armory holds 3 iron more than that (a burst of iron deliveries does not recall
+        // its gatherers for one plan tick), and the wood share likewise once the wood stock is back to 30.
+        boolean idle_was = rock_idle_on;
         rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
-                && iron_stock <= st.rock_idle_iron;
+                && iron_stock <= st.rock_idle_iron + (idle_was ? 3 : 0);
         if (rock_idle_on) {
-            // the workers actually inside: those the plan sends for iron often cannot go (no iron pick)
-            float spare = Math.max(0, armory_workers - st.rock_idle_keep) * st.rock_idle;
+            // The workers actually inside (those the plan sends for iron often cannot go: no iron pick), plus the
+            // gatherers rock_idle already has out (else the ones it sends shrink its own share the next plan tick).
+            int out = Math.min(idle_rock_out, Math.max(0, g_rock - want_rock)) + Math.min(idle_wood_out, Math.max(0,
+                    g_tree - want_tree));
+            float spare = Math.max(0, armory_workers + out - st.rock_idle_keep) * st.rock_idle;
             float rock_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
-            float wood_c = tree_stock < 20 ? 2 * tree_cycle : 0f;
+            idle_wood = tree_stock < (idle_wood ? 30 : 20);
+            float wood_c = idle_wood ? 2 * tree_cycle : 0f;
             float xr = spare / (IRON_WORK_TICKS / 2 + rock_c + wood_c);
             float rock_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
             int rock_g = Math.round(rock_c * xr * rock_adj);
             int wood_g = Math.round(wood_c * xr);
+            idle_rock_out = rock_g;
+            idle_wood_out = wood_g;
             if (rock_g + wood_g > 0) {
                 want_rock += rock_g;
                 want_tree += wood_g;
                 want_workers = Math.max(2, want_workers - rock_g - wood_g);
                 ai.aiLog().count("rock_idle"); // plan ticks (3 s) that sent idle workers out
             }
+        } else {
+            idle_rock_out = 0;
+            idle_wood_out = 0;
+            idle_wood = false;
         }
         if (ai.logging() && ai.periodDue(ore_log, 3000f)) { // 60 s
             ore_log = ai.now();

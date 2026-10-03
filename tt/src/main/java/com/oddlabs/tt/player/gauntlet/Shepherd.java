@@ -257,7 +257,7 @@ final class Shepherd {
      * shepherd_coming_stalled: the enemy warriors' cells at the last snapshot, the attack-walkers that moved fewer than
      * shepherd_coming_stalled cells since the one before, and when the last one was taken.
      */
-    private final Map<@NonNull Unit, int[]> stall_cells = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, int[]> stall_cells = new LinkedHashMap<>(); // x, y, walk target x, y (-1)
     private final Set<@NonNull Unit> stalled = new LinkedHashSet<>();
     private float stall_snap = -5000f;
 
@@ -272,10 +272,17 @@ final class Shepherd {
             int[] was = stall_cells.get(e);
             int x = e.getGridX();
             int y = e.getGridY();
-            if (was != null && e.getPrimaryController() instanceof WalkController w && w.isAgressive()
+            int tx = -1;
+            int ty = -1;
+            if (e.getPrimaryController() instanceof WalkController w && w.isAgressive()) {
+                tx = w.getTarget().getGridX();
+                ty = w.getTarget().getGridY();
+            }
+            // stalled: walking at the same target at both snapshots (a wave just launched was idle at the last one)
+            if (was != null && tx >= 0 && was[2] == tx && was[3] == ty
                     && Math.max(Math.abs(x - was[0]), Math.abs(y - was[1])) < n)
                 stalled.add(e);
-            next.put(e, new int[]{x, y});
+            next.put(e, new int[]{x, y, tx, ty});
         }
         stall_cells.clear();
         stall_cells.putAll(next);
@@ -423,6 +430,16 @@ final class Shepherd {
         f.shepherd = null;
         f.spot_x = -1;
         f.leader = null;
+    }
+
+    /**
+     * shepherd_stuck_ticks and shepherd_need: release f's shepherd, keeping f.leader, the launch-tracking state this
+     * tend has just set (release() clears it, so the next tend would miss a launch).
+     */
+    private void releaseKeepingLeader(@NonNull Flock f) {
+        Unit leader = f.leader;
+        release(f);
+        f.leader = leader;
     }
 
     /**
@@ -656,7 +673,7 @@ final class Shepherd {
                             ai.now() - Math.max(0f,
                                     f.launched_at)) + " s, " + f.idle_n + " idle of a wave of " + Math.min(40,
                                             10 + 5 * f.launches));
-                release(f);
+                releaseKeepingLeader(f);
                 return;
             }
         }
@@ -749,7 +766,7 @@ final class Shepherd {
                                         ai.now() - f.recruited) + " s ago)");
             f.lost_at = ai.now();
             f.gap_until = ai.now() + strategy.shepherd_stuck_gap_ticks;
-            release(f);
+            releaseKeepingLeader(f);
             return;
         }
         int moved = Math.abs(s.getGridX() - f.last_x) + Math.abs(s.getGridY() - f.last_y);
@@ -967,7 +984,7 @@ final class Shepherd {
         Strategy st = ai.strategy();
         if (st.shepherd_recruit_clear && ai.now() >= st.shepherd_recruit_clear_ticks)
             return recruitClear(ox, oy, spot, intel);
-        return nearestRecruit(ox, oy, intel, null);
+        return nearestRecruit(ox, oy, intel);
     }
 
     /**
@@ -976,14 +993,24 @@ final class Shepherd {
      * (Chebyshev) and no attack-walker within 40 cells aiming within 14 cells of the point. Null when none is clear.
      */
     private @Nullable Unit recruitClear(int ox, int oy, int @NonNull [] spot, @NonNull Intel intel) {
-        List<Unit> tried = new ArrayList<>();
-        for (int k = 0; k < 5; k++) {
-            Unit p = nearestRecruit(ox, oy, intel, tried);
-            if (p == null)
-                break;
+        // one pass: the eligible peons by distance to the origin (a stable sort keeps the list order on ties, as
+        // nearestRecruit's strict comparison does)
+        List<Unit> eligible = new ArrayList<>();
+        List<Integer> dist = new ArrayList<>();
+        for (Unit p : intel.peons) {
+            if (!eligible(p, intel))
+                continue;
+            eligible.add(p);
+            dist.add(MapAnalysis.dist2(p.getGridX(), p.getGridY(), ox, oy));
+        }
+        Integer[] order = new Integer[eligible.size()];
+        for (int i = 0; i < order.length; i++)
+            order[i] = i;
+        Arrays.sort(order, Comparator.comparingInt(dist::get));
+        for (int k = 0; k < Math.min(5, order.length); k++) {
+            Unit p = eligible.get(order[k]);
             if (walkClear(p.getGridX(), p.getGridY(), spot[0], spot[1], intel))
                 return p;
-            tried.add(p);
         }
         ai.aiLog().count("shepherd_norecruit_clear");
         return null;
@@ -1008,7 +1035,8 @@ final class Shepherd {
                 int dy = e.getGridY() - y;
                 if (Math.abs(dx) <= clear && Math.abs(dy) <= clear)
                     return false;
-                if (e.getPrimaryController() instanceof WalkController w && w.isAgressive()) {
+                if (e.getPrimaryController() instanceof WalkController w && w.isAgressive()
+                        && !(ai.strategy().shepherd_coming_stalled > 0 && stalled.contains(e))) {
                     int tx = w.getTarget().getGridX() - x;
                     int ty = w.getTarget().getGridY() - y;
                     if (tx * tx + ty * ty <= 14 * 14)
@@ -1019,24 +1047,27 @@ final class Shepherd {
         return true;
     }
 
-    /** The eligible peon nearest (ox, oy), leaving out those in {@code skip}. */
-    private @Nullable Unit nearestRecruit(int ox, int oy, @NonNull Intel intel, @Nullable List<Unit> skip) {
+    /** Whether peon p may become a shepherd: at work that can stop, no one's placer or repairer, no enemy near. */
+    private boolean eligible(@NonNull Unit p, @NonNull Intel intel) {
+        PeonState st = intel.peon_states.get(p);
+        if (st != PeonState.IDLE && st != PeonState.GATHER_TREE && st != PeonState.GATHER_ROCK
+                && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
+            return false;
+        if (intel.shepherds.contains(p) || ai.economy().reservedPlacer(p))
+            return false;
+        // repair_swarm: not its repairers nor its fresh wood transporters
+        if (ai.strategy().repair_swarm && ai.economy().swarmExempt(p))
+            return false;
+        int danger = nearestEnemy(intel.enemy_warriors, p.getGridX(), p.getGridY());
+        return danger < 0 || danger > 14;
+    }
+
+    /** The eligible peon nearest (ox, oy). */
+    private @Nullable Unit nearestRecruit(int ox, int oy, @NonNull Intel intel) {
         Unit best = null;
         int best_d = Integer.MAX_VALUE;
         for (Unit p : intel.peons) {
-            if (skip != null && skip.contains(p))
-                continue;
-            PeonState st = intel.peon_states.get(p);
-            if (st != PeonState.IDLE && st != PeonState.GATHER_TREE && st != PeonState.GATHER_ROCK
-                    && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
-                continue;
-            if (intel.shepherds.contains(p) || ai.economy().reservedPlacer(p))
-                continue;
-            // repair_swarm: not its repairers nor its fresh wood transporters
-            if (ai.strategy().repair_swarm && ai.economy().swarmExempt(p))
-                continue;
-            int danger = nearestEnemy(intel.enemy_warriors, p.getGridX(), p.getGridY());
-            if (danger >= 0 && danger <= 14)
+            if (!eligible(p, intel))
                 continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), ox, oy);
             if (d < best_d) {

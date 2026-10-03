@@ -3489,7 +3489,8 @@ final class Military {
         for (Building b : ai.intel().enemy_buildings) {
             int id = b.getTemplate().getTemplateID();
             if (b.isDead() || !b.getOwner().isAlive() || (id != Race.BUILDING_QUARTERS && id != Race.BUILDING_ARMORY)
-                    || ai.freeze().isFrozenSite(b) || stalled_targets.containsKey(b) || inDeadRegion(b))
+                    || ai.freeze().isFrozenSite(b) || stalled_targets.containsKey(b) || inDeadRegion(b)
+                    || wedgeOn(b) != null)
                 continue;
             float defense = awayDefense(b, others);
             float score = w * defense + MapAnalysis.meters(staging_x, staging_y, b.getGridX(), b.getGridY());
