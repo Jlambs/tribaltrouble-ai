@@ -1995,3 +1995,21 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   alive at 40 min 13 vs 9 (from 40 min); B (+ shepherds) 27 vs 25 on 11501..12000 (A 25), C (+ kill zones) 22: kill
   zones not adopted; N=20 11001..11500: 0 wins in 500 for base and every candidate. Identity: cur16 defaults = the
   explicit spec = cand-b on 10 N=17 games.
+- **Record N=24 (cur16)**: cur16-flat-vs24-9501 s9902-0 won at 216:52 after 4,320 N=24 games (replay VERIFIED; spawns
+  clean: no two copies within 20 cells, nearest copies 45 and 51 cells from us). A long defence: 19 copies alive at 60
+  min with 1,045 warriors out, our 15-17 towers held (37 buildings lost over the game), the copies' armies wore down
+  (792 warriors at 120 min, 72 at 180); a 240-strength army at 118 min, then one campaign from 137 min razed 13 copies.
+  cur16 N=23: 0 wins in 5,000 (6001..11000). Search goes on at N=25 and N=26.
+- **Why the base falls at N=23** (5,000 cur16 games, falls.py; 13 logged losses, falls_log.py / falls_sum.py): median
+  end 26.7 min; first building razed ~16 min, first quarters/armory 18-19. At 15 min longer games had fewer copies
+  alive, more iron and warriors (each moves the median end ~3 min, best vs worst fifth). In 9 of 13 logged losses the
+  army was abroad (ATTACK, 40-130 warriors, 0-16 at home, 40-127 parked enemies by our buildings) when the first home
+  fell; the attack ran ~6-18 min fighting a stream of waves 30-100 m from its target (64-85 % of battle samples
+  fighting) and had knocked out a median 2 copies (0-5). The N=22 win s7412 ran the same plan but knocked out 9 copies
+  by 19.5 min (3 at once at 10.5) with no parked mass at home until 17 min. Queued: recall_ratio 0.5,
+  target_home_weight 1, home_guard 20 at N=23 (6001..6200, paired with cur16).
+- **Giants** (dbddecb0, 9b485f78; all off): classifier of stalled attack-walkers (Giants.java), giant_keepout (sites),
+  giant_stun_hold, giant_shred (chieftain blasts giants from outside every scan). Smoke from 40 min on the 25 cur16
+  N=23/24 games past 40 min: first arm never blasted (chieftain at 5-19 hp under shred_min_hp 35; giants sent at our
+  shepherds counted as "at their targets"); 19 games: same end minute in most, s8164 +10, s6129 +7, s7959 -118 (no
+  blast; more stuns by a 5-hp chieftain). Fixed in giant_shred_min_hp 0 and at-target only by our buildings; shred2 queued.
