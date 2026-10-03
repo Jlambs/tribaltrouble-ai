@@ -4806,8 +4806,66 @@ final class Economy {
                 want_workers -= filler;
             }
         }
+        if (ai.logging() && ai.periodDue(ore_log, 3000f)) { // 60 s
+            ore_log = ai.now();
+            ai.log(String.format(
+                    "ORE iron %s | rock %s | %s weapons%s%s, stock iron %d rock %d, gatherers iron %d rock %d (want %d/%d)," + " armory workers %d, iron cycle %.0f s, iron in the 400 m field %d",
+                    oreCensus(map.getIron(), armory), oreCensus(map.getRocks(), armory),
+                    rock_weapons ? "rock" : "iron", rock_filler ? " + rock filler" : "", ore_far ? ", far ore" : "",
+                    iron_stock, rock_stock, g_iron, g_rock, want_iron, want_rock, armory_workers,
+                    GauntletAI.seconds(iron_cycle), iron_left));
+        }
         if (st.reloc_lock_ticks > 0)
             trackLock(armory);
+    }
+
+    /** Log only: when the last ORE line was written (once a game minute). */
+    private float ore_log = -5000f;
+
+    /**
+     * Log only (ORE lines): the non-empty supplies around the main armory as the gatherers' pick sees them within 200
+     * cells (free, near a threat, avoided after stuck gatherers, or unreachable in the 400 m walking field), the walk
+     * to
+     * the nearest free one, and those 400 m to 2 x ore_reach m of walk away. Reads only.
+     */
+    private @NonNull String oreCensus(@NonNull List<? extends Supply> supplies, @NonNull Building armory) {
+        DistanceField near = armory_field;
+        if (near == null)
+            return "no field";
+        int far_reach = 2 * Math.max(ai.strategy().ore_reach, 200);
+        DistanceField far = ai.map().computeField(armory.getGridX(), armory.getGridY(), far_reach);
+        int free = 0;
+        int threat = 0;
+        int avoided = 0;
+        int unreachable = 0;
+        int beyond = 0;
+        int nearest = -1;
+        for (Supply s : supplies) {
+            if (s.isEmpty())
+                continue;
+            int x = s.getGridX();
+            int y = s.getGridY();
+            if (MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), x, y) <= 200 * 200) {
+                int d = near.getAround(x, y, 1);
+                Float bad = bad_supplies.get(s);
+                if (d == DistanceField.UNREACHABLE) {
+                    unreachable++;
+                } else if (ai.military().threatNearEcon(x, y, 14)) {
+                    threat++;
+                } else if (bad != null && bad > ai.now()) {
+                    avoided++;
+                } else {
+                    free++;
+                    if (nearest < 0 || d < nearest)
+                        nearest = d;
+                }
+            }
+            int fd = far.getAround(x, y, 1);
+            if (fd != DistanceField.UNREACHABLE && fd > 400 && fd <= far_reach)
+                beyond++;
+        }
+        return String.format("%d free (nearest %s m), %d threat, %d avoided, %d unreachable; %d at 400-%d m", free,
+                nearest < 0 ? "-" : Integer.toString(nearest), threat, avoided, unreachable, beyond, far_reach);
     }
 
     private int countReachable(@NonNull List<? extends Supply> supplies, int max_meters) {
