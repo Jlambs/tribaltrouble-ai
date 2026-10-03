@@ -2030,3 +2030,10 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
 - **B attack params at N=23** (200 seeds each, paired): recall_ratio 0.5 -0.01 min (SE 0.17), target_home_weight 1
   +0.00 (0.28), home_guard 20 -0.24 (0.25) and fewer copies out by 20 min (2.4 vs 2.9). No lever; needs code (target
   choice for multi-copy knockouts, or a time box on attacks that knock nothing out).
+- **cur16 frontier search ended** (frontier_search.py, 2026-10-03, 0/10/10, ludicrous): N=23 0 in 5,000 (2 draws:
+  s6232, s7125); **N=24 1 win in 4,320** (s9902, 216:52, replay VERIFIED, clean spawns: effective N 24; s7062 draw);
+  N=25 0 in 5,000 (2 draws, both stalemates: s7146 a base-less remnant, s10858 capped at 250 units with no armory
+  among 4,142 jammed enemy warriors; longest loss s10612 122 min); N=26 0 in 5,000 (no draws; longest s9646 70 min:
+  2 copies out by 16 min, then 24 copies with ~2,300 warriors outlasted a base that held to 57 min). Stop rule met
+  (N=25 and N=26 both 0 in 5,000). **Final record: N=24 (cur16, s9902).** Per the user's wrap-up, the open research
+  lines (giants, chief refresh, attack params) ended without a promising result, so the record stands.
