@@ -2013,3 +2013,20 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   N=23/24 games past 40 min: first arm never blasted (chieftain at 5-19 hp under shred_min_hp 35; giants sent at our
   shepherds counted as "at their targets"); 19 games: same end minute in most, s8164 +10, s6129 +7, s7959 -118 (no
   blast; more stuns by a 5-hp chieftain). Fixed in giant_shred_min_hp 0 and at-target only by our buildings; shred2 queued.
+- **Chieftain refresh** (workflow: engine, behaviour and data readers, 3 designs, 3 critiques; 58ee3a1d, 7821ec9d,
+  910e4e31; all off): a chieftain never heals, can enter no building, and no other trains while he lives; at 24 hp or
+  less position() parks him at the armory for good, and at 20 or less he stuns single warriors. hp trace (log only,
+  identical play): the N=24 win s9902's third chief sat at 12 hp at the armory with no cast for the last 143 min;
+  s7062's at 20 hp from 30 to 236 min. In cur16 games past 60 min, 59 % of chief time is in 10+ min stretches with no
+  cast; parked casts catch a median of 1 (47 % nothing). A refresh is a UI order (towers or warriors Attack our own
+  chief; a tower cull takes ~5 s) and retraining is free at the unit cap. Decision batch, N=17, the 203 cur16 games
+  alive at 40 min (cur16-cand-b-vs17-11501, 27 wins; checksums 203/203 agree to 2400 s): chief_refresh + retrain_late
+  27 -> 24 (-6 +3, 66 culls in 34 games), chief_retrain_late alone 27 -> 24 (-5 +2; its gate fired once, the flips come
+  from the trainer top-up at the cap), chief_refresh alone 27 -> 23 (-6 +2, 61 culls in 36 games; both-won games end
+  6 min sooner). Not adopted: a fresh chief does not pay at N=17. Smoke at N=23/24 caught two bugs (retrain into a
+  fight; no killer within 30 cells) and lost s9902 in both versions, diverging at 66 min through peon top-ups (chaos,
+  not the cull).
+- **giant_shred2** (25 games): blasted in 1 game (s7062: 3 blasts, 138 caught; draw -> loss at 357). Parked.
+- **B attack params at N=23** (200 seeds each, paired): recall_ratio 0.5 -0.01 min (SE 0.17), target_home_weight 1
+  +0.00 (0.28), home_guard 20 -0.24 (0.25) and fewer copies out by 20 min (2.4 vs 2.9). No lever; needs code (target
+  choice for multi-copy knockouts, or a time box on attacks that knock nothing out).
