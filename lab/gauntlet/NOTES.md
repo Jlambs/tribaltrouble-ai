@@ -1935,3 +1935,6 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   them, the last at 172 min. Found after 1,860 N=22 games (blocks 6001, 6501, 7001 and part of 8001); N=21 had 0 in
   2,436. The user then stopped N=21 and N=22 and moved the search to N=23 and N=24 (frontier_search.py from 23; the
   N=23 and N=24 blocks interleaved in the pool).
+- **N=23 first draw, s6232 (cur15-flat-vs23-6001)**: class A, our base held 360 min against 15 copies with bases at
+  the cap (3 copies out by 17 min, kills 11,515 / lost 8,260, margin -0.87). At 600 min (draw600-vs23, equal at 360 min
+  by checksum) it is a **loss at 522 min**: the copies went back from 15 to 17 bases by 480 min and our base fell.
