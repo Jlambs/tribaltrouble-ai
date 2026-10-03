@@ -1938,3 +1938,28 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
 - **N=23 first draw, s6232 (cur15-flat-vs23-6001)**: class A, our base held 360 min against 15 copies with bases at
   the cap (3 copies out by 17 min, kills 11,515 / lost 8,260, margin -0.87). At 600 min (draw600-vs23, equal at 360 min
   by checksum) it is a **loss at 522 min**: the copies went back from 15 to 17 bases by 480 min and our base fell.
+- **Frontier search ends at N=22** (cur15, 0/10/10): N=23 0 wins in 5,000 (1 draw, s6232, a loss at 522 min when
+  played to 600; 3 games past 60 min), N=24 0 in 3,298 (stopped by the user; 1 past 60 min).
+- **Long defences are warrior-starved, not cap-starved** (defense.py; cur15 games at N>=17 past 120 min, defence
+  phase): wins hold 83 warriors (15 in towers) and 143 peons, the long losses / draws 28 warriors and 153 peons; weapon
+  stock is ~0 throughout (every axe goes out at once). Iron income per defence hour 703 against 304 (rubber 84 / 23,
+  wood 1,706 / 1,127); the long losses' counters: iron picks unreachable 632/h (5 in wins), far ore picks 572/h (4),
+  peons blocked 3x. ORE log lines (8e9260a6, log only) on 5 replays: from 40 min the nearest free iron is a median
+  164-246 m walk, threatened iron a median 0-1 deposit, rock nearer than iron in 44-95 % of minutes (s7125: rock 59 m,
+  iron 246 m, iron stock <= 1 every minute), 25-95 workers idle in the armory with wood stocked (s7125: 70, 181 wood).
+  Threatened supply-minutes (ORE threats, 74039b8f): lured parked waves 5-20 %, active warriors most.
+- **rock_share by stage: no gain.** 40 min on (rock40-share30/60, 209 / 157 frontier games alive at 40 min, paired,
+  identical to 40 min): rock +43/+66 per h, iron -23/-27, rock warriors +1.6/+1.8, all warriors +0.3/+0.3 (SE 1.0 /
+  0.6), kills / losses unchanged, survival +1.8 / +0.7 min (SE 2.1 / 2.4), wins 10-9 / 3-4. Rock replaces iron. From the
+  start / 20 min at N=20 (partial, biased): worse (the N=20 wins lost). rock_on_fail never fired (iron picks do not
+  fail, they walk far). rock_idle (dca3dc8c, c15fad8c; idle armory workers make rock axes on top of the iron, split
+  between gatherers and forgers by the ore model) under test.
+- **Why shepherd recruiting stops** (workflow, code + 4 replays, skeptic): a flock recruits only when empty, and in
+  the collapse games (s7125 from ~35 min, s7123 from ~97 min) the shepherds never die: recruited from inside our base,
+  their spots 65-330 cells out behind stalled enemy armies, they walk-flee every ~4.5 s at the edge of a 'coming' disc
+  or stand with no spot (73 % of tends), pinned among our towers; the copies nearly stop launching (all at the cap,
+  their armies in attack-moves that never end, so too few idle warriors). Starts when our forward army / towers fall
+  and the base waves stop dying. New options (55c8aefb, all off): shepherd_stuck_ticks / _gap_ticks, shepherd_need /
+  _need_ticks, shepherd_fixes_ticks, shepherd_recruit_clear / _ticks, shepherd_coming_stalled; away_strike (muster on a
+  copy base whose own army is away: awayDefense counts its warriors beyond away_home_cells at away_idle_value if idle,
+  away_walk_value if not, as a Hard recalls only idle ones). Identity: 3 replays SAME.
