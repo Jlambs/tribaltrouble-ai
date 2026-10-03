@@ -1901,3 +1901,15 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   confirmed N=14 125 -> 162, N=16 21 -> 35; B2 calm peons + circles 247, D1 predicted origin 248, A1 site origin 227,
   E2 fallback 227; stacks C3+B2 296, C3+D1 291, **C3+B2+D1 322 (z 6.9 vs cur14)**, N=14 / 16 so far 142 / 44 vs 100 / 21.
 - **cur15** (38cd5f9d) = cur14 + C3 + B2 + D1. Frontier blocks N=17-21 queued.
+- **cur15 frontier on 0/10/10** (6001..6500, 500 games each): N=14 221 (5 draws), N=16 59, N=17 26 (2 draws), N=18 9
+  (1 draw), **N=19 5** (all replay VERIFIED: s6037 78:19, s6265 91:51, s6154 136:55, s6387 156:19, s6050 166:31; 4
+  clean, s6037 had two copies that never built an armory until 65 min), N=20 0 (30 alive at 40 min, all lost by 99
+  min, 8-15 copies still with a base at 40 min against ~5-6 in the quick N=19 wins), N=21 0. cur14 had N=16 21, N=17 7.
+  Fresh N=20 blocks (6501..7000, 8001..8500) and N=22 running.
+- **cur15 draws at N=14** (logged replays): s6241 unclosed remnants: a gatherer recall loop (drainSecondary every 10 s
+  after the primary switched; loads re-link to the old armory, the new one counts no gatherers, want_tree 1; 118 wood
+  in 5 h) left the army at 40 against a 147-warrior homeless blob; s6095: the only wood behind a 3-cell ridge gap held
+  by 5-6 parked warriors, 25 peons a minute walked into it for hours (5,405 deaths in one 6x6 box; supply picks test
+  threats near the supply, not on the way; 7 of 500 N=14 games show such a repeat kill zone, all 160+ min). Wood
+  stalls of 30+ min: only these 2 of 128 long N=14 games, none at N=16-19: real but rare. Parked fixes: relink_guard
+  (exists), pool_linked, gather_kill_zone.
