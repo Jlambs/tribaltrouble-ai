@@ -76,6 +76,17 @@ class Strategy {
     int defense_radius = 150;
     /** Share of the ore gatherers sent for rock, with rock weapons always on order (0: rock only as a fallback). */
     float rock_share = 0f;
+    /**
+     * rock_share_late (-1: off): from rock_late_ticks on, the share of the ore gatherers sent for rock is this instead
+     * of rock_share, so rock can come in late only (rock_share 0), early only (rock_share_late 0) or in two steps.
+     */
+    float rock_share_late = -1f;
+    float rock_late_ticks = 120000f; // 40 min
+    /**
+     * rock_on_fail: an iron pick that finds no iron (all of it near a threat, avoided after stuck gatherers or out of
+     * reach) sends the gatherer for rock instead, and rock axes stay on order for the next 60 s.
+     */
+    boolean rock_on_fail = false;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
     boolean quarters_first = false;
     /**
@@ -1695,6 +1706,9 @@ class Strategy {
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
         rock_share = (float) params.getDouble("rock_share", rock_share);
+        rock_share_late = (float) params.getDouble("rock_share_late", rock_share_late);
+        rock_late_ticks = (float) params.getDouble("rock_late_ticks", rock_late_ticks);
+        rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         decapitate = params.getBoolean("decapitate", decapitate);

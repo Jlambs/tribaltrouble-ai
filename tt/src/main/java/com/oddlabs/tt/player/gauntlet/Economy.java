@@ -3837,8 +3837,17 @@ final class Economy {
     }
 
     private boolean wantsRockWeapons() {
-        return rock_weapons || rock_filler || ai.strategy().rock_share > 0f || rock_stream_on;
+        return rock_weapons || rock_filler || rockShare() > 0f || rock_stream_on || ai.now() < rock_fail_until;
     }
+
+    /** rock_share, or rock_share_late from rock_late_ticks on. */
+    private float rockShare() {
+        Strategy st = ai.strategy();
+        return st.rock_share_late >= 0f && ai.now() >= st.rock_late_ticks ? st.rock_share_late : st.rock_share;
+    }
+
+    /** rock_on_fail: rock axes stay on order until then, after an iron pick fell back on rock. */
+    private float rock_fail_until = -1f;
 
     /**
      * weapon_reserve: the main armory whose weapons were held back on the last economy tick, the chicken, iron and rock
@@ -4765,7 +4774,7 @@ final class Economy {
             want_tree = Math.max(1, want_tree);
             want_ore = Math.max(1, want_ore);
         }
-        float rock_share = ai.strategy().rock_share;
+        float rock_share = rockShare();
         if (rock_weapons) {
             want_rock += want_ore;
             want_iron = 0;
@@ -5754,6 +5763,15 @@ final class Economy {
         if (best != null && tree && MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), best.getGridX(),
                 best.getGridY()) > 60 * 60)
             ai.aiLog().count("wood_far");
+        if (best == null && type == IronSupply.class && st.rock_on_fail) {
+            // rock_on_fail: no iron to be had; rock, the plentiful ore, keeps the forge going meanwhile
+            best = scanSupplies(RockSupply.class, armory, radius, armory_field);
+            if (best != null) {
+                rock_fail_until = ai.now() + 3000f; // 60 s
+                if (peon != null) // not the gather probe's look
+                    ai.aiLog().count("rock_on_fail");
+            }
+        }
         return best;
     }
 
