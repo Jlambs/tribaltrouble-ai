@@ -1575,10 +1575,12 @@ class Strategy {
     float chief_refresh_arm_ticks = 3000f; // 60 s
     float chief_refresh_cull_ticks = 2250f; // 45 s
     /**
-     * chief_retrain_late (chief_refresh implies it): from chief_refresh_from_ticks, a chieftain who died is retrained
-     * with one finished quarters at the unit cap (two below it) and no armory, and the trainer keeps hold_chieftain
-     * peons at the cap too and is topped up whenever no threat is within 20 cells of it (s7125: no chief for the last
-     * 105 min with 2 quarters and no armory; s9902: 415 s waiting for a third quarters).
+     * chief_retrain_late (chief_refresh implies it): from chief_refresh_from_ticks, at the unit cap (training costs no
+     * births there) a chieftain who died is retrained with one finished quarters and no armory, in a quarters with no
+     * awake enemy warrior within chief_refresh_clear cells; the trainer keeps hold_chieftain peons at the cap too and
+     * is
+     * topped up whenever no threat is within 20 cells of it (s7125: no chief for the last 105 min with 2 quarters and
+     * no armory). Below the cap the old gates hold (smoke: chiefs trained at once in a fight died at once).
      */
     boolean chief_retrain_late = false;
 

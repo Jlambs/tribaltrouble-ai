@@ -130,9 +130,11 @@ final class Chieftain {
                     float since = ai.now() - last_cast;
                     if (since >= 250f && since <= 2000f)
                         ai.aiLog().count("chief_lost_wake");
-                    // chief_refresh: a trainer being filled for him trains the next one
-                    if (refresh_state == RefreshState.ARM)
-                        refresh_state = RefreshState.TRAIN;
+                    // chief_refresh: a refresh being armed is off (he likely died in a fight)
+                    if (refresh_state == RefreshState.ARM) {
+                        refresh_state = RefreshState.NONE;
+                        refresh_q = null;
+                    }
                 }
             }
             considerTraining();
@@ -1069,22 +1071,38 @@ final class Chieftain {
         Intel intel = ai.intel();
         if (ai.owner().isTrainingChieftain() || !ai.owner().canBuildChieftains())
             return;
-        // chief_retrain_late: after the first chief, one finished quarters at the unit cap (two below it), no armory
-        boolean late = retrainLate() && chiefs_seen > 0;
-        int min_q = strategy.chieftain_min_quarters;
-        if (late) {
-            int pop = ai.owner().getUnitCountContainer().getNumSupplies();
-            min_q = pop >= ai.owner().getWorld().getMaxUnitCount() - 2 ? 1 : 2;
-        }
-        if (intel.quarters.size() < min_q || ai.now() < strategy.chieftain_ticks)
+        if (ai.now() < strategy.chieftain_ticks)
             return;
-        if (intel.armory() == null && !late)
+        boolean normal = intel.quarters.size() >= strategy.chieftain_min_quarters && intel.armory() != null;
+        // chief_refresh: after a cull, at once in the trainer that was filled for it (calm when he was culled)
+        Building refresh_trainer = refresh_state == RefreshState.TRAIN ? refresh_q : null;
+        boolean refreshing = refresh_trainer != null && trainerValid(refresh_trainer)
+                && refresh_trainer.canBuildChieftain();
+        // chief_retrain_late: after the first chief, at the unit cap (where training costs no births) one finished
+        // quarters and no armory will do, in a quarters with no awake enemy warrior near (s9902: chiefs trained in a
+        // fight below the cap were born into it and died at once)
+        boolean late = !normal && !refreshing && retrainLate() && chiefs_seen > 0
+                && ai.owner().getUnitCountContainer().getNumSupplies() >= ai.owner().getWorld().getMaxUnitCount() - 2;
+        if (!normal && !refreshing && !late)
             return;
         Building best = null;
         float best_score = -Float.MAX_VALUE;
-        Building refresh_trainer = refresh_state == RefreshState.TRAIN ? refresh_q : null;
-        if (refresh_trainer != null && trainerValid(refresh_trainer) && refresh_trainer.canBuildChieftain()) {
+        if (refreshing) {
             best = refresh_trainer;
+        } else if (late) {
+            for (Building q : intel.quarters) {
+                if (!q.canBuildChieftain() || ai.economy().isDoomed(q)
+                        || awakeWarriorNear(q.getGridX(), q.getGridY(), strategy.chief_refresh_clear))
+                    continue;
+                float score = q.getUnitContainer().getNumSupplies() - 20f * ai.planner().exposure(q.getGridX(),
+                        q.getGridY());
+                if (score > best_score) {
+                    best_score = score;
+                    best = q;
+                }
+            }
+            if (best != null)
+                ai.aiLog().count("chief_retrain_early");
         } else if (strategy.chief_trainer_near) {
             if (train_possible < 0f)
                 train_possible = ai.now();
@@ -1104,8 +1122,6 @@ final class Chieftain {
                 }
             }
         if (best != null) {
-            if (late && (intel.quarters.size() < strategy.chieftain_min_quarters || intel.armory() == null))
-                ai.aiLog().count("chief_retrain_early");
             ai.log("training chieftain in quarters at " + best.getGridX() + "," + best.getGridY());
             ai.owner().trainChieftain(best, true);
         }
@@ -1343,7 +1359,7 @@ final class Chieftain {
         return false;
     }
 
-    /** chief_refresh: a manned tower within 30 cells of him, or a home warrior the military would lend within 40. */
+    /** chief_refresh: a manned tower within 60 cells of him, or a home warrior the military would lend within 40. */
     private boolean killerAt(@NonNull Unit chief) {
         int cx = chief.getGridX();
         int cy = chief.getGridY();
@@ -1352,7 +1368,7 @@ final class Chieftain {
                 continue;
             Unit g = Intel.gunner(t);
             if (g != null && !g.isDead() && !Intel.isStunned(g)
-                    && MapAnalysis.dist2(cx, cy, t.getGridX(), t.getGridY()) <= 30 * 30)
+                    && MapAnalysis.dist2(cx, cy, t.getGridX(), t.getGridY()) <= 60 * 60)
                 return true;
         }
         return ai.military().lendable(cx, cy, 40) > 0;
@@ -1388,7 +1404,7 @@ final class Chieftain {
      * chief_refresh, CULL: every manned tower whose garrison reaches him (15 cells from the gunner's cell) is told to
      * attack him (the tower's Attack button and a click on our own chief): once per gunner, and again at most every
      * 2.5 s while its gunner stands idle (the order lapsed, or tower re-aiming let it out and back in). With none in
-     * reach he walks to 6 cells from the nearest manned tower within 30 cells; with none of those either, up to 8 idle
+     * reach he walks to 6 cells from the nearest manned tower within 60 cells; with none of those either, up to 8 idle
      * home warriors are lent to attack him. True while some killer is on him.
      */
     private boolean cull(@NonNull Unit chief) {
@@ -1397,7 +1413,7 @@ final class Chieftain {
         float now = ai.now();
         boolean any = false;
         Building nearest = null;
-        int nearest_d = 30 * 30 + 1;
+        int nearest_d = 60 * 60 + 1;
         for (Building t : ai.intel().towers) {
             if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
                 continue;
