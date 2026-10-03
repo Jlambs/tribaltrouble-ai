@@ -115,7 +115,8 @@ final class Timeline extends HudPanel {
                         marks.add(new Mark(event.tick(), RAZED, MEDIUM,
                                 who + " lost its " + event.event().get(
                                         "b") + (site != null ? " site" : "") + " at " + (int) num(event,
-                                                "x") + "," + (int) num(event, "y")));
+                                                "x") + "," + (int) num(event, "y") + Recording.insideText(
+                                                        event.event())));
                     }
                 }
                 case "chief" -> {

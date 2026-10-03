@@ -132,8 +132,9 @@ public final class Replay {
                 continue;
             }
             compared++;
-            if (!before.equals(sample.getValue())) {
-                difference = "t=" + sample.getKey() + ": " + changedFields(before, sample.getValue());
+            Map<String, String> changed = changedFields(before, sample.getValue());
+            if (!changed.isEmpty()) {
+                difference = "t=" + sample.getKey() + ": " + changed;
                 break;
             }
         }
@@ -169,16 +170,17 @@ public final class Replay {
         return failed ? 1 : 0;
     }
 
-    /** The fields of a sample that changed, as {field=old -> new, ...} over the original's fields. */
-    private static @NonNull String changedFields(@NonNull Map<String, Object> before,
+    /** The members two samples both have that differ, as {field=old -> new, ...}. */
+    private static @NonNull Map<String, String> changedFields(@NonNull Map<String, Object> before,
             @NonNull Map<String, Object> after) {
         Map<String, String> fields = new TreeMap<>();
         before.forEach((k, v) -> {
-            if (!Objects.equals(v, after.get(k))) {
+            // a member only one sample has is a field only one build's recorder writes, not a change in the game
+            if (after.containsKey(k) && !Objects.equals(v, after.get(k))) {
                 fields.put(k, v + " -> " + after.get(k));
             }
         });
-        return fields.toString();
+        return fields;
     }
 
     /** A game file's census samples keyed by time and slot, in file order. */

@@ -125,7 +125,7 @@ final class Recording {
         text.append(ev);
         switch (ev) {
             case "razed", "built" -> text.append(' ').append(line.get("b")).append(line.get(
-                    "site") != null ? " (site)" : "").append(" at ").append(at(line));
+                    "site") != null ? " (site)" : "").append(" at ").append(at(line)).append(insideText(line));
             case "cast" -> text.append(' ').append(line.get("magic")).append(" at ").append(at(line));
             case "stunned" -> text.append(' ').append(line.get("n")).append(" units at ").append(at(line));
             case "team_out" -> text.append(" team ").append(line.get("team")).append(" (").append(line.get(
@@ -136,6 +136,14 @@ final class Recording {
             }
         }
         return text.toString();
+    }
+
+    /**
+     * A razed building's units lost with it ({@code inside}, in files since the recorder counts them), such as
+     * {@code " with 12 inside"}; empty for none or an older file.
+     */
+    static @NonNull String insideText(@NonNull Map<String, Object> line) {
+        return line.get("inside") instanceof Number n && n.intValue() > 0 ? " with " + n.intValue() + " inside" : "";
     }
 
     private static @NonNull String at(@NonNull Map<String, Object> line) {

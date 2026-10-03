@@ -99,7 +99,7 @@ final class Scoreboard extends HudPanel {
         for (int slot = 0; slot < cells.length; slot++) {
             int[] census;
             try {
-                census = Census.of(players[slot], 0, 0);
+                census = Census.of(players[slot], 0, 0, 0); // only the live counts: stuns, errors and losses are not kept
             } catch (RuntimeException | AssertionError e) {
                 continue; // a getter asserted on a dying object: the last row stays
             }
