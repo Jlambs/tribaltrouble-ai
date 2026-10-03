@@ -1551,6 +1551,36 @@ class Strategy {
     int chief_wake_keep = 12;
     /** Hit points at which the chieftain walks home to the armory. */
     int chief_flee_hp = 24;
+    /**
+     * chief_refresh (late): from chief_refresh_from_ticks, a chieftain at chief_refresh_hp or less (parked at the
+     * armory
+     * for good: he never heals, can enter no building, and no other chief trains while he lives) who made no useful
+     * cast (chief_refresh_useful unstunned warriors in reach, or an enemy chief) for chief_refresh_idle_ticks at the
+     * unit
+     * cap (where training costs no births) or chief_refresh_idle_low_ticks below it is killed by our own towers (Attack
+     * and a click on him), or by lent warriors when no tower reaches him, at a calm moment (no awake enemy warrior
+     * within
+     * chief_refresh_clear cells of him, the armory or the trainer), once the trainer quarters holds chief_refresh_hold
+     * peons (or chief_refresh_min_inside after chief_refresh_arm_ticks); a fresh 60-hp chief is trained there at once.
+     */
+    boolean chief_refresh = false;
+    float chief_refresh_from_ticks = 120000f; // 40 min
+    int chief_refresh_hp = 24;
+    float chief_refresh_idle_ticks = 15000f; // 5 min
+    float chief_refresh_idle_low_ticks = 30000f; // 10 min
+    int chief_refresh_useful = 4;
+    int chief_refresh_clear = 30;
+    int chief_refresh_hold = 20;
+    int chief_refresh_min_inside = 8;
+    float chief_refresh_arm_ticks = 3000f; // 60 s
+    float chief_refresh_cull_ticks = 2250f; // 45 s
+    /**
+     * chief_retrain_late (chief_refresh implies it): from chief_refresh_from_ticks, a chieftain who died is retrained
+     * with one finished quarters at the unit cap (two below it) and no armory, and the trainer keeps hold_chieftain
+     * peons at the cap too and is topped up whenever no threat is within 20 cells of it (s7125: no chief for the last
+     * 105 min with 2 quarters and no armory; s9902: 415 s waiting for a third quarters).
+     */
+    boolean chief_retrain_late = false;
 
     /**
      * Judge a threat in the base by everything within this many cells of it, not just what is inside the base: a few
@@ -2267,6 +2297,19 @@ class Strategy {
         chief_wake_retreat_ticks = (float) params.getDouble("chief_wake_retreat_ticks", chief_wake_retreat_ticks);
         chief_wake_keep = params.getInt("chief_wake_keep", chief_wake_keep);
         chief_flee_hp = params.getInt("chief_flee_hp", chief_flee_hp);
+        chief_refresh = params.getBoolean("chief_refresh", chief_refresh);
+        chief_refresh_from_ticks = (float) params.getDouble("chief_refresh_from_ticks", chief_refresh_from_ticks);
+        chief_refresh_hp = params.getInt("chief_refresh_hp", chief_refresh_hp);
+        chief_refresh_idle_ticks = (float) params.getDouble("chief_refresh_idle_ticks", chief_refresh_idle_ticks);
+        chief_refresh_idle_low_ticks = (float) params.getDouble("chief_refresh_idle_low_ticks",
+                chief_refresh_idle_low_ticks);
+        chief_refresh_useful = params.getInt("chief_refresh_useful", chief_refresh_useful);
+        chief_refresh_clear = params.getInt("chief_refresh_clear", chief_refresh_clear);
+        chief_refresh_hold = params.getInt("chief_refresh_hold", chief_refresh_hold);
+        chief_refresh_min_inside = params.getInt("chief_refresh_min_inside", chief_refresh_min_inside);
+        chief_refresh_arm_ticks = (float) params.getDouble("chief_refresh_arm_ticks", chief_refresh_arm_ticks);
+        chief_refresh_cull_ticks = (float) params.getDouble("chief_refresh_cull_ticks", chief_refresh_cull_ticks);
+        chief_retrain_late = params.getBoolean("chief_retrain_late", chief_retrain_late);
         threat_look = params.getInt("threat_look", threat_look);
         hold_ratio = (float) params.getDouble("hold_ratio", hold_ratio);
         chief_per_hit = params.getBoolean("chief_per_hit", chief_per_hit);

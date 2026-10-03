@@ -111,22 +111,56 @@ final class Chieftain {
         Unit chief = ai.intel().chieftain;
         if (chief == null) {
             if (had_chief) {
-                // counters only: how many of his deaths come in the wake window after his own cast
                 had_chief = false;
-                ai.aiLog().count("chief_lost");
-                float since = ai.now() - last_cast;
-                if (since >= 250f && since <= 2000f)
-                    ai.aiLog().count("chief_lost_wake");
+                if (ai.logging())
+                    ai.log(String.format("our chieftain died (hp %d at the last round, %.0f s after his cast)%s",
+                            last_hp, GauntletAI.seconds(ai.now() - last_cast),
+                            refresh_state == RefreshState.CULL ? ": refreshed" : ""));
+                if (refresh_state == RefreshState.CULL) {
+                    // chief_refresh: our towers did it; train the next one at once
+                    ai.aiLog().count("chief_refresh_culled");
+                    if (!cull_lent.isEmpty())
+                        ai.military().release(cull_lent);
+                    cull_lent.clear();
+                    cull_towers.clear();
+                    refresh_state = RefreshState.TRAIN;
+                } else {
+                    // counters only: how many of his deaths come in the wake window after his own cast
+                    ai.aiLog().count("chief_lost");
+                    float since = ai.now() - last_cast;
+                    if (since >= 250f && since <= 2000f)
+                        ai.aiLog().count("chief_lost_wake");
+                    // chief_refresh: a trainer being filled for him trains the next one
+                    if (refresh_state == RefreshState.ARM)
+                        refresh_state = RefreshState.TRAIN;
+                }
             }
             considerTraining();
             return;
         }
+        if (!had_chief) {
+            chiefs_seen++;
+            chief_born = ai.now();
+            last_useful = ai.now();
+        }
         had_chief = true;
+        last_hp = chief.getHitPoints();
+        if (ai.logging() && ai.periodDue(hp_trace, 3000f)) {
+            hp_trace = ai.now();
+            ai.log(String.format("chief: hp %d at %d,%d, %.0f s since his cast, %.0f s since a useful one%s",
+                    chief.getHitPoints(), chief.getGridX(), chief.getGridY(), GauntletAI.seconds(ai.now() - last_cast),
+                    GauntletAI.seconds(ai.now() - last_useful),
+                    refresh_state == RefreshState.NONE ? "" : ", refresh " + refresh_state.name().toLowerCase(
+                            java.util.Locale.ROOT)));
+        }
+        if (refresh(chief))
+            return;
         if (Intel.isStunned(chief))
             return;
         if (ai.strategy().blast && isViking() && chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST)
                 && shouldBlast(chief)) {
             ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+            last_useful = ai.now();
             last_cast = ai.now();
             return;
         }
@@ -143,7 +177,8 @@ final class Chieftain {
                             e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController ? " casting" : "",
                             ai.military().enemySpellReady(e) ? " ready" : "");
             ai.log("chieftain stuns at " + x + "," + y + ": " + Combat.countNear(ai.intel().enemy_warriors, x, y,
-                    17) + " enemy warriors in reach" + rivals);
+                    17) + " enemy warriors in reach (hp " + chief.getHitPoints() + ")" + rivals);
+            noteCast(x, y);
             ai.owner().doMagic(chief, magicIndex());
             last_cast = ai.now();
             if (isViking()) {
@@ -293,6 +328,7 @@ final class Chieftain {
                 ai.log(String.format("chieftain blasts a parked blob at %d,%d from %d,%d (%d in reach)", blob[0],
                         blob[1], cx, cy, at[2]));
                 ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+                last_useful = ai.now();
                 last_cast = ai.now();
                 last_move = ai.now();
                 ai.aiLog().count("shred_blast");
@@ -311,6 +347,7 @@ final class Chieftain {
             ai.log(String.format("chieftain blasts a parked blob of %d at %d,%d (nearest %d cells)", blob[3], blob[0],
                     blob[1], nearest));
             ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+            last_useful = ai.now();
             last_cast = ai.now();
             last_move = ai.now();
             ai.aiLog().count("shred_blast");
@@ -431,6 +468,7 @@ final class Chieftain {
                 ai.log(String.format("chieftain blasts a giant of %d at %d,%d from %d,%d (%d in reach)", blob[2],
                         blob[0], blob[1], cx, cy, here));
                 ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+                last_useful = ai.now();
                 last_cast = ai.now();
                 last_move = ai.now();
                 ai.aiLog().count("giant_shred_blast");
@@ -737,6 +775,7 @@ final class Chieftain {
             return false;
         ai.log(String.format("chieftain blasts from %d,%d (%d enemy warriors in reach)", cx, cy, here));
         ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+        last_useful = ai.now();
         last_cast = ai.now();
         last_move = ai.now();
         ai.aiLog().count("shred_blast");
@@ -1030,13 +1069,23 @@ final class Chieftain {
         Intel intel = ai.intel();
         if (ai.owner().isTrainingChieftain() || !ai.owner().canBuildChieftains())
             return;
-        if (intel.quarters.size() < strategy.chieftain_min_quarters || ai.now() < strategy.chieftain_ticks)
+        // chief_retrain_late: after the first chief, one finished quarters at the unit cap (two below it), no armory
+        boolean late = retrainLate() && chiefs_seen > 0;
+        int min_q = strategy.chieftain_min_quarters;
+        if (late) {
+            int pop = ai.owner().getUnitCountContainer().getNumSupplies();
+            min_q = pop >= ai.owner().getWorld().getMaxUnitCount() - 2 ? 1 : 2;
+        }
+        if (intel.quarters.size() < min_q || ai.now() < strategy.chieftain_ticks)
             return;
-        if (intel.armory() == null)
+        if (intel.armory() == null && !late)
             return;
         Building best = null;
         float best_score = -Float.MAX_VALUE;
-        if (strategy.chief_trainer_near) {
+        Building refresh_trainer = refresh_state == RefreshState.TRAIN ? refresh_q : null;
+        if (refresh_trainer != null && trainerValid(refresh_trainer) && refresh_trainer.canBuildChieftain()) {
+            best = refresh_trainer;
+        } else if (strategy.chief_trainer_near) {
             if (train_possible < 0f)
                 train_possible = ai.now();
             best = nearTrainer(intel);
@@ -1055,9 +1104,405 @@ final class Chieftain {
                 }
             }
         if (best != null) {
+            if (late && (intel.quarters.size() < strategy.chieftain_min_quarters || intel.armory() == null))
+                ai.aiLog().count("chief_retrain_early");
             ai.log("training chieftain in quarters at " + best.getGridX() + "," + best.getGridY());
             ai.owner().trainChieftain(best, true);
         }
+    }
+
+    // ------------------------------------------------------------------------------------------------------------
+    // chief_refresh: a wounded, idle chieftain is killed by our own towers and a fresh one trained
+
+    private enum RefreshState {
+        NONE,
+        /** The trainer quarters fills up while the old chief keeps his post. */
+        ARM,
+        /** Our towers (or lent warriors) attack him. */
+        CULL,
+        /** He is dead: train the next one in the trainer at once. */
+        TRAIN
+    }
+
+    private RefreshState refresh_state = RefreshState.NONE;
+    private @Nullable Building refresh_q;
+    private float refresh_since = -1f;
+    private float refresh_retry_at = -1f;
+    /** CULL: the towers told to attack him, with the gunner each was told through. */
+    private final java.util.Map<@NonNull Building, @NonNull Unit> cull_towers = new java.util.LinkedHashMap<>();
+    /** CULL: warriors lent by the military to attack him (when no tower reaches him). */
+    private final java.util.List<@NonNull Unit> cull_lent = new java.util.ArrayList<>();
+    private float cull_order = -5000f;
+    /** When the living chieftain was born, and when he last made a useful cast (chief_refresh_useful caught). */
+    private float chief_born = -1f;
+    private float last_useful = -1f;
+    /** Chieftains we have had so far (chief_retrain_late applies from the second). */
+    private int chiefs_seen;
+    /** Log only: his hit points at the last round, and the hit-point trace's clock. */
+    private int last_hp;
+    private float hp_trace = -50000f;
+
+    /** chief_refresh / chief_retrain_late: the late retrain rules apply now. */
+    boolean retrainLate() {
+        Strategy st = ai.strategy();
+        return (st.chief_retrain_late || st.chief_refresh) && ai.now() >= st.chief_refresh_from_ticks;
+    }
+
+    /** chief_refresh: the quarters the next chieftain is to be trained in while a refresh is on, else null. */
+    @Nullable
+    Building refreshTrainer() {
+        if (refresh_state == RefreshState.NONE)
+            return null;
+        Building q = refresh_q;
+        return q != null && !q.isDead() ? q : null;
+    }
+
+    /** Marks a cast as useful when it catches chief_refresh_useful unstunned warriors or an enemy chieftain. */
+    private void noteCast(int x, int y) {
+        int caught = 0;
+        for (Unit e : ai.intel().enemy_warriors)
+            if (!e.isDead() && !Intel.isStunned(e) && MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= 17 * 17)
+                caught++;
+        boolean rival = false;
+        for (Unit e : ai.intel().enemy_chieftains)
+            rival |= !e.isDead() && !Intel.isStunned(e)
+                    && MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()) <= STUN_REACH * STUN_REACH;
+        if (caught >= ai.strategy().chief_refresh_useful || rival)
+            last_useful = ai.now();
+    }
+
+    /** chief_refresh: consecutive failed refreshes; each doubles the wait before the next try (reset on success). */
+    private int refresh_failures;
+    /** chief_refresh, CULL: when each tower was last told to attack him. */
+    private final java.util.Map<@NonNull Building, @NonNull Float> cull_tower_orders = new java.util.LinkedHashMap<>();
+
+    /**
+     * chief_refresh: runs the refresh of a living chieftain; true while it has him (CULL), so tick() leaves him be.
+     * Runs before the stunned test, so a refresh aborts even while he is stunned. Vikings only (a native chief has 40
+     * hp and other spells).
+     */
+    private boolean refresh(@NonNull Unit chief) {
+        Strategy st = ai.strategy();
+        if (!st.chief_refresh || !isViking() || ai.now() < st.chief_refresh_from_ticks)
+            return false;
+        float now = ai.now();
+        switch (refresh_state) {
+            case NONE -> {
+                if (now < refresh_retry_at || !refreshDue(chief))
+                    return false;
+                if (!killerAt(chief)) {
+                    ai.aiLog().count("chief_refresh_nokiller_pre");
+                    refresh_retry_at = now + 1500f;
+                    return false;
+                }
+                Building q = pickRefreshTrainer();
+                if (q == null) {
+                    ai.aiLog().count("chief_refresh_noq");
+                    refresh_retry_at = now + 1500f;
+                    return false;
+                }
+                refresh_q = q;
+                refresh_state = RefreshState.ARM;
+                refresh_since = now;
+                ai.aiLog().count("chief_refresh_arm");
+                ai.log(String.format(
+                        "chief refresh: hp %d, no useful cast for %.0f s; trainer quarters at %d,%d (%d " + "inside)",
+                        chief.getHitPoints(), GauntletAI.seconds(now - Math.max(chief_born, last_useful)),
+                        q.getGridX(), q.getGridY(), q.getUnitContainer().getNumSupplies()));
+                return false;
+            }
+            case ARM -> {
+                Building q = refresh_q;
+                if (q == null || !trainerValid(q)) {
+                    abortRefresh("arm: the trainer is gone", true);
+                    return false;
+                }
+                // he made himself useful again: no cull
+                if (last_useful > refresh_since) {
+                    ai.aiLog().count("chief_refresh_useful_abort");
+                    abortRefresh("arm: a useful cast", false);
+                    return false;
+                }
+                if (now - refresh_since >= 3f * st.chief_refresh_arm_ticks) {
+                    abortRefresh("arm: never calm with the trainer filled", true);
+                    return false;
+                }
+                // the old chief keeps his post while the trainer fills; the cull waits for a calm moment
+                String why = calmWhy(chief, q);
+                if (why != null)
+                    return false;
+                int inside = q.getUnitContainer().getNumSupplies();
+                boolean waited = now - refresh_since >= st.chief_refresh_arm_ticks;
+                if (inside >= st.chief_refresh_hold || (waited && inside >= st.chief_refresh_min_inside)) {
+                    if (!killerAt(chief)) {
+                        ai.aiLog().count("chief_refresh_nokiller");
+                        abortRefresh("arm: no tower or warrior to do it", true);
+                        return false;
+                    }
+                    refresh_state = RefreshState.CULL;
+                    refresh_since = now;
+                    ai.aiLog().count("chief_refresh_cull");
+                    ai.log(String.format("chief refresh: culling him (hp %d) with %d in the trainer",
+                            chief.getHitPoints(), inside));
+                    // stop any walk of his, so he stays in the towers' reach
+                    ai.landscapeOrder(Selectable.newArray(chief), chief.getGridX(), chief.getGridY(), Action.MOVE,
+                            false);
+                    last_move = now;
+                    return cull(chief);
+                }
+                if (waited && now - refresh_since >= 2f * st.chief_refresh_arm_ticks) {
+                    ai.aiLog().count("chief_refresh_unarmed");
+                    abortRefresh("arm: only " + inside + " in the trainer", true);
+                }
+                return false;
+            }
+            case CULL -> {
+                Building q = refresh_q;
+                String why = q == null || !trainerValid(q) ? "no trainer" : calmWhy(chief, q);
+                if (why != null) {
+                    abortRefresh("cull: " + why, true);
+                    return false;
+                }
+                if (now - refresh_since >= st.chief_refresh_cull_ticks) {
+                    ai.aiLog().count("chief_refresh_timeout");
+                    abortRefresh("cull: timed out", true);
+                    return false;
+                }
+                return cull(chief);
+            }
+            default -> {
+                // TRAIN with a chieftain alive: the new one is born
+                refresh_state = RefreshState.NONE;
+                refresh_q = null;
+                refresh_failures = 0;
+                return false;
+            }
+        }
+    }
+
+    /**
+     * chief_refresh: at chief_refresh_hp or less, not casting, no useful cast for chief_refresh_idle_ticks (at the unit
+     * cap, where training costs no births) or chief_refresh_idle_low_ticks, and calm (each failing clause counted).
+     */
+    private boolean refreshDue(@NonNull Unit chief) {
+        Strategy st = ai.strategy();
+        if (chief.getHitPoints() > st.chief_refresh_hp
+                || chief.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.MagicController)
+            return false;
+        int pop = ai.owner().getUnitCountContainer().getNumSupplies();
+        boolean capped = pop >= ai.owner().getWorld().getMaxUnitCount() - 10;
+        float idle = capped ? st.chief_refresh_idle_ticks : st.chief_refresh_idle_low_ticks;
+        if (ai.now() - Math.max(chief_born, last_useful) < idle)
+            return false;
+        String why = calmWhy(chief, null);
+        if (why != null) {
+            ai.aiLog().count("chief_refresh_notcalm_" + why); // intel rounds (0.5 s)
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * chief_refresh: null when calm, else the failing clause: an awake enemy warrior (unstunned, not parked, not inert)
+     * within chief_refresh_clear cells of the chief ("chief"), the armory ("armory") or the trainer ("trainer"), or
+     * within base_radius of a finished building of ours ("base"); or an awake enemy chieftain within 60 cells of him
+     * ("enemychief"). Parked enemies ring a long-held base for hours and never come unless poked.
+     */
+    private @Nullable String calmWhy(@NonNull Unit chief, @Nullable Building q) {
+        int r = ai.strategy().chief_refresh_clear;
+        if (awakeWarriorNear(chief.getGridX(), chief.getGridY(), r))
+            return "chief";
+        Building armory = ai.intel().armory();
+        if (armory != null && awakeWarriorNear(armory.getGridX(), armory.getGridY(), r))
+            return "armory";
+        if (q != null && awakeWarriorNear(q.getGridX(), q.getGridY(), r))
+            return "trainer";
+        int base = ai.strategy().base_radius;
+        for (Building b : ai.intel().finishedBuildings())
+            if (awakeWarriorNear(b.getGridX(), b.getGridY(), base))
+                return "base";
+        for (Unit e : ai.intel().enemy_chieftains)
+            if (!e.isDead() && !Intel.isStunned(e) && !Intel.isParked(e)
+                    && MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), e.getGridX(), e.getGridY()) <= 60 * 60)
+                return "enemychief";
+        return null;
+    }
+
+    /** An unstunned enemy warrior that is neither parked nor inert (Giants) within r cells of (x, y). */
+    private boolean awakeWarriorNear(int x, int y, int r) {
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        Giants giants = ai.giants();
+        int[] near = index.queryUnordered(x, y, r * r);
+        for (int k = 0; k < index.count(); k++) {
+            Unit e = index.unit(near[k]);
+            if (!e.isDead() && !e.getAbilities().hasAbilities(com.oddlabs.tt.model.Abilities.BUILD)
+                    && !e.getAbilities().hasAbilities(com.oddlabs.tt.model.Abilities.MAGIC) && !Intel.isStunned(e)
+                    && !Intel.isParked(e) && !giants.isStalled(e))
+                return true;
+        }
+        return false;
+    }
+
+    /** chief_refresh: a manned tower within 30 cells of him, or a home warrior the military would lend within 40. */
+    private boolean killerAt(@NonNull Unit chief) {
+        int cx = chief.getGridX();
+        int cy = chief.getGridY();
+        for (Building t : ai.intel().towers) {
+            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
+                continue;
+            Unit g = Intel.gunner(t);
+            if (g != null && !g.isDead() && !Intel.isStunned(g)
+                    && MapAnalysis.dist2(cx, cy, t.getGridX(), t.getGridY()) <= 30 * 30)
+                return true;
+        }
+        return ai.military().lendable(cx, cy, 40) > 0;
+    }
+
+    /** chief_refresh: a finished quarters that is standing and not being razed by Retire. */
+    private boolean trainerValid(@NonNull Building q) {
+        return !q.isDead() && q.isComplete() && q.getChieftainContainer() != null && !ai.economy().isDoomed(q);
+    }
+
+    /**
+     * chief_refresh: the trainer: of the valid quarters with no awake enemy warrior within chief_refresh_clear cells,
+     * the one considerTraining would pick (most peons inside, less 20 per unit of exposure).
+     */
+    private @Nullable Building pickRefreshTrainer() {
+        Building best = null;
+        float best_score = -Float.MAX_VALUE;
+        int r = ai.strategy().chief_refresh_clear;
+        for (Building q : ai.intel().quarters) {
+            if (!trainerValid(q) || awakeWarriorNear(q.getGridX(), q.getGridY(), r))
+                continue;
+            float score = q.getUnitContainer().getNumSupplies() - 20f * ai.planner().exposure(q.getGridX(),
+                    q.getGridY());
+            if (score > best_score) {
+                best_score = score;
+                best = q;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * chief_refresh, CULL: every manned tower whose garrison reaches him (15 cells from the gunner's cell) is told to
+     * attack him (the tower's Attack button and a click on our own chief): once per gunner, and again at most every
+     * 2.5 s while its gunner stands idle (the order lapsed, or tower re-aiming let it out and back in). With none in
+     * reach he walks to 6 cells from the nearest manned tower within 30 cells; with none of those either, up to 8 idle
+     * home warriors are lent to attack him. True while some killer is on him.
+     */
+    private boolean cull(@NonNull Unit chief) {
+        int cx = chief.getGridX();
+        int cy = chief.getGridY();
+        float now = ai.now();
+        boolean any = false;
+        Building nearest = null;
+        int nearest_d = 30 * 30 + 1;
+        for (Building t : ai.intel().towers) {
+            if (t.isDead() || !t.isComplete() || t.getUnitContainer() == null || t.getUnitCount() == 0)
+                continue;
+            Unit g = Intel.gunner(t);
+            if (g == null || g.isDead() || Intel.isStunned(g))
+                continue;
+            int d = MapAnalysis.dist2(cx, cy, t.getGridX(), t.getGridY());
+            if (d < nearest_d) {
+                nearest_d = d;
+                nearest = t;
+            }
+            if (MapAnalysis.dist2(cx, cy, g.getGridX(), g.getGridY()) > 15 * 15)
+                continue;
+            any = true;
+            Float last = cull_tower_orders.get(t);
+            boolean fresh = cull_towers.get(t) != g;
+            boolean lapsed = g.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.IdleController
+                    && (last == null || now - last >= 125f);
+            if (fresh || lapsed) {
+                ai.owner().setTarget(Selectable.newArray(t), chief, Action.ATTACK, false);
+                cull_towers.put(t, g);
+                cull_tower_orders.put(t, now);
+                ai.aiLog().count("chief_refresh_tower_orders");
+            }
+        }
+        if (any)
+            return true;
+        if (nearest != null) {
+            if (ai.periodDue(last_move, MOVE_PERIOD_TICKS)) {
+                int[] at = MapAnalysis.towards(nearest.getGridX(), nearest.getGridY(), cx, cy, 6);
+                ai.landscapeOrder(Selectable.newArray(chief), at[0], at[1], Action.MOVE, false);
+                last_move = now;
+            }
+            return true;
+        }
+        boolean had = !cull_lent.isEmpty();
+        cull_lent.removeIf(Unit::isDead);
+        if (had && cull_lent.isEmpty()) {
+            // something calmWhy cannot see killed them all: do not send more
+            ai.aiLog().count("chief_refresh_killers_lost");
+            abortRefresh("cull: the lent warriors died", true);
+            return false;
+        }
+        if (cull_lent.isEmpty()) {
+            int n = Math.max(3, Math.min(8, chief.getHitPoints() / 4 + 1));
+            cull_lent.addAll(ai.military().lend(cx, cy, n, 1, 40, ai.strategy().chief_refresh_cull_ticks));
+            if (cull_lent.isEmpty()) {
+                ai.aiLog().count("chief_refresh_nokiller");
+                abortRefresh("cull: no tower or warrior to do it", true);
+                return false;
+            }
+            ai.aiLog().count("chief_refresh_lent");
+            ai.owner().setTarget(cull_lent.toArray(new Selectable<?>[0]), chief, Action.ATTACK, false);
+            cull_order = now;
+        } else if (ai.periodDue(cull_order, 125f)) {
+            java.util.List<Unit> idle = new java.util.ArrayList<>();
+            for (Unit u : cull_lent)
+                if (!(u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.HuntController h
+                        && h.getTarget() == chief))
+                    idle.add(u);
+            if (!idle.isEmpty())
+                ai.owner().setTarget(idle.toArray(new Selectable<?>[0]), chief, Action.ATTACK, false);
+            cull_order = now;
+        }
+        return true;
+    }
+
+    /**
+     * chief_refresh: calls a refresh off. Towers told to attack him let their garrison out (the exit button: it clears
+     * the gunner's orders, and tower manning sends it back in), lent warriors still after him stop where they stand
+     * and go back to the military. The next try waits 60 s, doubled for each failure in a row (failed) up to 16 min.
+     */
+    private void abortRefresh(@NonNull String why, boolean failed) {
+        Unit chief = ai.intel().chieftain;
+        int exits = 0;
+        for (java.util.Map.Entry<Building, Unit> e : cull_towers.entrySet()) {
+            Building t = e.getKey();
+            if (!t.isDead() && t.isComplete() && t.getUnitContainer() != null && t.getUnitCount() > 0
+                    && Intel.gunner(t) == e.getValue()) {
+                ai.owner().exitTower(t);
+                exits++;
+            }
+        }
+        java.util.List<Unit> busy = new java.util.ArrayList<>();
+        for (Unit u : cull_lent)
+            if (!u.isDead() && !u.isMounted() && chief != null
+                    && u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.HuntController h
+                    && h.getTarget() == chief)
+                busy.add(u);
+        for (Unit u : busy)
+            ai.landscapeOrder(Selectable.newArray(u), u.getGridX(), u.getGridY(), Action.MOVE, false);
+        if (!cull_lent.isEmpty())
+            ai.military().release(cull_lent);
+        ai.aiLog().count(refresh_state == RefreshState.CULL ? "chief_refresh_abort" : "chief_refresh_arm_abort");
+        if (failed)
+            refresh_failures++;
+        float wait = 3000f * (float) Math.pow(2, Math.min(4, failed ? refresh_failures - 1 : 0));
+        ai.log(String.format("chief refresh off (%s)%s; next try in %.0f s", why,
+                exits > 0 ? ", " + exits + " towers emptied" : "", GauntletAI.seconds(wait)));
+        cull_towers.clear();
+        cull_tower_orders.clear();
+        cull_lent.clear();
+        refresh_state = RefreshState.NONE;
+        refresh_q = null;
+        refresh_retry_at = ai.now() + wait;
     }
 
     private boolean shouldStun(@NonNull Unit chief) {

@@ -47,9 +47,9 @@ final class Giants {
         buckets = new List[side * side];
     }
 
-    /** Whether any user of the classifier is switched on. */
+    /** Whether any user of the classifier is switched on (chief_refresh: its calm test skips stalled walkers). */
     static boolean wanted(@NonNull Strategy st) {
-        return st.giant_keepout > 0 || st.giant_stun_hold || st.giant_shred;
+        return st.giant_keepout > 0 || st.giant_stun_hold || st.giant_shred || st.chief_refresh;
     }
 
     /** Whether the users act now: switched on, and from giants_from_ticks. */

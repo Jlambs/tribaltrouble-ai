@@ -2655,8 +2655,11 @@ final class Economy {
         int pop = owner.getUnitCountContainer().getNumSupplies();
         int max = owner.getWorld().getMaxUnitCount();
         boolean training = quarters.getChieftainContainer() != null && quarters.getChieftainContainer().isTraining();
+        // chief_refresh: the trainer of the next chieftain fills up first, at the unit cap too
+        if (quarters == ai.chieftain().refreshTrainer())
+            return Math.max(strategy.chief_refresh_hold, strategy.hold_chieftain);
         // Training takes 40 breed ticks of the trainer, 440 / n^(1/3) s with n inside, and goes on at the unit cap.
-        if (training && strategy.chief_topup_any)
+        if (training && (strategy.chief_topup_any || ai.chieftain().retrainLate()))
             return strategy.hold_chieftain;
         if (pop >= max - 2)
             return 0;
@@ -5117,12 +5120,19 @@ final class Economy {
 
         // 2. Chieftain training quarters top-up.
         Building trainer = ai.chieftain().trainingQuarters();
-        boolean topup_ok = ai.military().baseThreatLevel() == 0 || (ai.strategy().chief_topup_any && trainer != null
+        // chief_refresh: the trainer of the next chieftain, filled from the gatherers too
+        Building refresh = ai.chieftain().refreshTrainer();
+        if (refresh != null)
+            trainer = refresh;
+        boolean topup_ok = ai.military().baseThreatLevel() == 0 || ((ai.strategy().chief_topup_any
+                || ai.chieftain().retrainLate()) && trainer != null
                 && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
         if (trainer != null && topup_ok && !evacuating.containsKey(trainer)) {
             boolean near = ai.strategy().chief_trainer_near;
             int heading = near ? countSentTo(trainer) : countHeadingTo(trainer);
-            int need = ai.strategy().hold_chieftain - trainer.getUnitContainer().getNumSupplies() - heading;
+            int hold = refresh != null ? Math.max(ai.strategy().chief_refresh_hold,
+                    ai.strategy().hold_chieftain) : ai.strategy().hold_chieftain;
+            int need = hold - trainer.getUnitContainer().getNumSupplies() - heading;
             if (need > 0) {
                 List<Unit> chosen = new ArrayList<>();
                 takeNearest(free, chosen, need, trainer.getGridX(), trainer.getGridY());
@@ -5137,6 +5147,23 @@ final class Economy {
                 takeNearest(walkers, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
                 if (walkers != transit)
                     transit.removeAll(chosen);
+                if (refresh != null && chosen.size() < need) {
+                    List<Unit> gatherers = new ArrayList<>();
+                    for (Unit u : intel.peons) {
+                        PeonState st = intel.peon_states.get(u);
+                        if ((st == PeonState.GATHER_TREE || st == PeonState.GATHER_ROCK || st == PeonState.GATHER_IRON)
+                                && !chosen.contains(u) && MapAnalysis.dist2(u.getGridX(), u.getGridY(),
+                                        trainer.getGridX(), trainer.getGridY()) <= 60 * 60)
+                            gatherers.add(u);
+                    }
+                    int before = chosen.size();
+                    takeNearest(gatherers, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
+                    for (int i = before; i < chosen.size(); i++) {
+                        // no longer gatherers for the rest of this round
+                        intel.peon_states.put(chosen.get(i), PeonState.TRANSIT);
+                        ai.aiLog().count("chief_refresh_gatherers");
+                    }
+                }
                 order(chosen, trainer, ai.enterAction(trainer));
                 if (near)
                     for (Unit u : chosen) {
