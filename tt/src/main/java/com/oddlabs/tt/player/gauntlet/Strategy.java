@@ -90,13 +90,14 @@ class Strategy {
     /** rock_on_fail: from this game time on (0: from the start). */
     float rock_fail_from_ticks = 0f;
     /**
-     * rock_idle (0: off): while the main armory holds at most rock_idle_iron iron, this share of the workers inside
+     * rock_idle (0: off; cur16: 1 from 20 min): while the main armory holds at most rock_idle_iron iron, this share of
+     * the workers inside
      * it beyond rock_idle_keep make rock axes on top of the ore gatherers (not out of the iron share): split between
      * rock
      * gatherers, forgers staying in and, while its wood stock is under 20, wood gatherers, as the economy's ore model
      * splits its pool. From rock_idle_ticks on.
      */
-    float rock_idle = 0f;
+    float rock_idle = 1f; // cur16
     /**
      * away_strike (off): when the usual gate holds the army home, muster on the copy base whose own army is away
      * (kited by shepherds or stuck in an attack-move): its warriors within away_home_cells count in full, beyond that
@@ -105,12 +106,13 @@ class Strategy {
      */
     boolean away_strike = false;
     /**
-     * wedge_real_kills (off: as before): the wedge watchdog's kills and losses, and its and the column march's
+     * wedge_real_kills (cur16: on; off as before cur16): the wedge watchdog's kills and losses, and its and the column
+     * march's
      * "target fell", count only units killed (0 hit points). A unit that walked into a building is removed (dead) with
      * its hit points: near a live Hard base its peons commute in and out, 10 'kills' in 300 s cleared the strikes and
      * the watchdog never fired (the dead-vs-killed audit).
      */
-    boolean wedge_real_kills = false;
+    boolean wedge_real_kills = true; // cur16
     /**
      * gather_kill_zone (off): where gather_kill_n of our peons (shepherds left out) died within gather_kill_cells of
      * each
@@ -132,50 +134,52 @@ class Strategy {
     int gather_route_tries = 5;
     float gather_fixes_ticks = 0f;
     /**
-     * shepherd_stuck_ticks (0: off): a shepherd that has not reached its spot and stood within 6 cells of one point for
+     * shepherd_stuck_ticks (0: off; cur16 on, with the tight settings below, from 40 min): a shepherd that has not
+     * reached its spot and stood within 6 cells of one point for
      * this long, not getting 10 cells nearer its spot, goes home; its copy gets no new shepherd for
      * shepherd_stuck_gap_ticks.
      */
-    float shepherd_stuck_ticks = 0f;
-    float shepherd_stuck_gap_ticks = 0f;
+    float shepherd_stuck_ticks = 12000f; // cur16: 4 min
+    float shepherd_stuck_gap_ticks = 12000f; // cur16: 4 min
     /**
      * shepherd_stuck_base_ticks (0: shepherd_stuck_ticks everywhere): the stuck time for a shepherd standing within
      * shepherd_stuck_base_cells of one of our buildings (in or by our base, where nothing is drawn).
      */
-    float shepherd_stuck_base_ticks = 0f;
+    float shepherd_stuck_base_ticks = 6000f; // cur16: 2 min
     int shepherd_stuck_base_cells = 28;
     /** shepherd_gap_ready: a stuck or no-spot release's gap ends as soon as the copy is ready to launch. */
-    boolean shepherd_gap_ready = false;
+    boolean shepherd_gap_ready = true; // cur16
     /**
      * shepherd_nospot_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has had no spot for this long goes
      * home; its copy then waits shepherd_stuck_gap_ticks for the next one.
      */
-    float shepherd_nospot_ticks = 0f;
+    float shepherd_nospot_ticks = 6000f; // cur16: 2 min
     /**
-     * shepherd_detour: from shepherd_fixes_ticks, a shepherd whose straight walk to its spot would set off the flee
+     * shepherd_detour (cur16: on): from shepherd_fixes_ticks, a shepherd whose straight walk to its spot would set off
+     * the flee
      * test walks to a waypoint shepherd_detour_r or half that away whose walk is clear and that gets it nearer.
      */
-    boolean shepherd_detour = false;
+    boolean shepherd_detour = true; // cur16
     /**
      * shepherd_gap_backoff: each further stuck, no-progress or no-spot release in a row for a copy doubles its gap,
      * up to shepherd_gap_max_ticks; a shepherd of the copy reaching its spot, or a wave aimed at a shepherd, resets it.
      */
-    boolean shepherd_gap_backoff = false;
+    boolean shepherd_gap_backoff = true; // cur16
     float shepherd_gap_max_ticks = 48000f; // 16 min
     /**
      * shepherd_progress_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has not reached its spot and has not
      * got 10 cells nearer it (the same spot, within 10 cells) for this long goes home, with the gap as a stuck one.
      */
-    float shepherd_progress_ticks = 0f;
+    float shepherd_progress_ticks = 9000f; // cur16: 3 min
     /**
      * shepherd_progress_base: shepherd_progress_ticks releases only a shepherd within shepherd_stuck_base_cells of one
      * of our buildings (one far out is on a long walk to a far copy's spot and still draws its waves: tight2 N=24 s7062
      * lost its base 81 s after such a release).
      */
-    boolean shepherd_progress_base = false;
+    boolean shepherd_progress_base = true; // cur16
     int shepherd_detour_r = 16;
     /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
-    float shepherd_fixes_ticks = 0f;
+    float shepherd_fixes_ticks = 120000f; // cur16: 40 min
     /**
      * shepherd_need (0: off): a copy whose idle warriors are below this share of its wave size, that launched 3 waves
      * or more and none within shepherd_need_ticks, gets no shepherd, and its shepherd goes home once that has lasted
@@ -195,7 +199,7 @@ class Strategy {
     int away_home_cells = 40;
     float away_idle_value = .5f;
     float away_walk_value = .15f;
-    float rock_idle_ticks = 0f;
+    float rock_idle_ticks = 60000f; // cur16: 20 min
     int rock_idle_keep = 4;
     int rock_idle_iron = 2;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
