@@ -264,6 +264,8 @@ final class Economy {
         manageQuarters();
         manageArmory();
         guardBank();
+        if (st.gather_kill_zone && ai.now() >= st.gather_fixes_ticks)
+            trackPeonDeaths(intel);
         if (st.repair_swarm)
             swarm.tick();
         allocatePeons();
@@ -5892,6 +5894,14 @@ final class Economy {
         int threat = 0;
         int parked = 0;
         int avoided = 0;
+        Strategy gst = ai.strategy();
+        boolean late = ai.now() >= gst.gather_fixes_ticks;
+        boolean kill_on = gst.gather_kill_zone && late;
+        int killed = 0;
+        boolean route_on = gst.gather_route_clear && late;
+        Supply[] route_cand = route_on ? new Supply[Math.max(1, gst.gather_route_tries)] : null;
+        float[] route_cost = route_on ? new float[route_cand.length] : null;
+        int route_n = 0;
         for (Supply s : supplies) {
             if (s.isEmpty())
                 continue;
@@ -5920,12 +5930,47 @@ final class Economy {
             Float other = other_armory_supplies.get(s);
             if (other != null && other > ai.now())
                 continue;
+            // gather_kill_zone: where our peons keep dying
+            if (kill_on && inKillZone(s.getGridX(), s.getGridY())) {
+                threat++;
+                killed++;
+                continue;
+            }
             int load = supply_load.getOrDefault(s, 0);
             float cost = d + load * load_penalty + (load >= max_load ? 60f : 0f);
+            if (route_on) {
+                // gather_route_clear: keep the cheapest few, in cost order (ties: the first found)
+                int at = route_n;
+                while (at > 0 && cost < route_cost[at - 1])
+                    at--;
+                if (at < route_cand.length) {
+                    int last = Math.min(route_n, route_cand.length - 1);
+                    for (int k = last; k > at; k--) {
+                        route_cand[k] = route_cand[k - 1];
+                        route_cost[k] = route_cost[k - 1];
+                    }
+                    route_cand[at] = s;
+                    route_cost[at] = cost;
+                    route_n = Math.min(route_n + 1, route_cand.length);
+                }
+            }
             if (cost < best_cost) {
                 best_cost = cost;
                 best = s;
             }
+        }
+        if (killed > 0)
+            ai.aiLog().count("pick_kill_zone");
+        if (route_on && best != null) {
+            Supply clear = null;
+            for (int k = 0; k < route_n && clear == null; k++)
+                if (routeClear(ax, ay, route_cand[k].getGridX(), route_cand[k].getGridY()))
+                    clear = route_cand[k];
+            if (clear != best)
+                ai.aiLog().count(clear == null ? "pick_route_none" : "pick_route_other");
+            if (clear == null)
+                threat++;
+            best = clear;
         }
         if (best == null) {
             String kind = type == TreeSupply.class ? "tree" : type == IronSupply.class ? "iron" : "rock";
@@ -5934,6 +5979,86 @@ final class Economy {
             ai.aiLog().count("pick_null_" + kind + "_" + SCAN_WHY_NAMES[scan_why]);
         }
         return best;
+    }
+
+    /** gather_kill_zone: our peons' cells at the last tick (shepherds left out), recent deaths and the zones. */
+    private final Map<@NonNull Unit, int[]> peon_cells = new LinkedHashMap<>();
+    private final List<float[]> peon_deaths = new ArrayList<>(); // t, x, y
+    private final List<float[]> kill_zones = new ArrayList<>(); // x, y, until
+
+    /**
+     * gather_kill_zone: records the peons of ours that died since the last tick (at their last cell), and makes a kill
+     * zone where gather_kill_n died within gather_kill_cells inside gather_kill_window_ticks.
+     */
+    private void trackPeonDeaths(@NonNull Intel intel) {
+        Strategy st = ai.strategy();
+        float now = ai.now();
+        Map<Unit, int[]> next = new LinkedHashMap<>();
+        for (Unit p : intel.peons)
+            if (!p.isDead() && !intel.shepherds.contains(p))
+                next.put(p, new int[]{p.getGridX(), p.getGridY()});
+        int c = st.gather_kill_cells;
+        for (Map.Entry<Unit, int[]> e : peon_cells.entrySet()) {
+            if (next.containsKey(e.getKey()) || !e.getKey().isDead())
+                continue;
+            int x = e.getValue()[0];
+            int y = e.getValue()[1];
+            peon_deaths.add(new float[]{now, x, y});
+            int n = 0;
+            for (float[] d : peon_deaths)
+                if (now - d[0] <= st.gather_kill_window_ticks && Math.abs(d[1] - x) <= c && Math.abs(d[2] - y) <= c)
+                    n++;
+            if (n >= st.gather_kill_n) {
+                boolean merged = false;
+                for (float[] z : kill_zones)
+                    if (Math.abs(z[0] - x) <= c && Math.abs(z[1] - y) <= c) {
+                        z[2] = now + st.gather_kill_ticks;
+                        merged = true;
+                        break;
+                    }
+                if (!merged) {
+                    kill_zones.add(new float[]{x, y, now + st.gather_kill_ticks});
+                    ai.aiLog().count("kill_zone");
+                    if (ai.logging())
+                        ai.log(String.format("kill zone at %d,%d: %d peons dead there in %.0f s", x, y, n,
+                                GauntletAI.seconds(st.gather_kill_window_ticks)));
+                }
+            }
+        }
+        peon_cells.clear();
+        peon_cells.putAll(next);
+        peon_deaths.removeIf(d -> now - d[0] > st.gather_kill_window_ticks);
+        kill_zones.removeIf(z -> z[2] <= now);
+    }
+
+    /** gather_kill_zone: whether (x, y) lies within gather_kill_cells of a live kill zone. */
+    private boolean inKillZone(int x, int y) {
+        int c = ai.strategy().gather_kill_cells;
+        for (float[] z : kill_zones)
+            if (z[2] > ai.now() && Math.abs(z[0] - x) <= c && Math.abs(z[1] - y) <= c)
+                return true;
+        return false;
+    }
+
+    /**
+     * gather_route_clear: whether the straight walk from (x0, y0) to (x1, y1), sampled every 6 cells and at its end,
+     * keeps gather_route_cells from every enemy warrior.
+     */
+    private boolean routeClear(int x0, int y0, int x1, int y1) {
+        int r = ai.strategy().gather_route_cells;
+        float len = (float) Math.sqrt(MapAnalysis.dist2(x0, y0, x1, y1));
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        for (float step = 0f;; step += 6f) {
+            float d = Math.min(step, len);
+            int x = len > 0f ? Math.round(x0 + (x1 - x0) * d / len) : x0;
+            int y = len > 0f ? Math.round(y0 + (y1 - y0) * d / len) : y0;
+            int[] found = index.queryUnordered(x, y, r * r);
+            for (int k = 0, m = index.count(); k < m; k++)
+                if (index.group(found[k]) == EnemyIndex.WARRIOR && !index.unit(found[k]).isDead())
+                    return false;
+            if (d >= len)
+                return true;
+        }
     }
 
     /**

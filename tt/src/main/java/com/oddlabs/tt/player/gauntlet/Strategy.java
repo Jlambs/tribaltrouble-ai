@@ -105,6 +105,25 @@ class Strategy {
      */
     boolean away_strike = false;
     /**
+     * gather_kill_zone (off): where gather_kill_n of our peons (shepherds left out) died within gather_kill_cells of
+     * each
+     * other within gather_kill_window_ticks, no supply within gather_kill_cells is picked for gather_kill_ticks after
+     * the last of those deaths (gatherers keep walking into the same parked army). From gather_fixes_ticks on.
+     */
+    boolean gather_kill_zone = false;
+    int gather_kill_n = 3;
+    int gather_kill_cells = 8;
+    float gather_kill_window_ticks = 6000f; // 2 min
+    float gather_kill_ticks = 15000f; // 5 min
+    /**
+     * gather_route_clear (off): a supply pick takes the best of its gather_route_tries cheapest supplies whose straight
+     * walk from the armory keeps gather_route_cells from every enemy warrior (none: no pick). From gather_fixes_ticks.
+     */
+    boolean gather_route_clear = false;
+    int gather_route_cells = 10;
+    int gather_route_tries = 5;
+    float gather_fixes_ticks = 0f;
+    /**
      * shepherd_stuck_ticks (0: off): a shepherd that has not reached its spot and stood within 6 cells of one point for
      * this long, not getting 10 cells nearer its spot, goes home; its copy gets no new shepherd for
      * shepherd_stuck_gap_ticks.
@@ -1790,6 +1809,15 @@ class Strategy {
         rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
         rock_idle = (float) params.getDouble("rock_idle", rock_idle);
         away_strike = params.getBoolean("away_strike", away_strike);
+        gather_kill_zone = params.getBoolean("gather_kill_zone", gather_kill_zone);
+        gather_kill_n = params.getInt("gather_kill_n", gather_kill_n);
+        gather_kill_cells = params.getInt("gather_kill_cells", gather_kill_cells);
+        gather_kill_window_ticks = (float) params.getDouble("gather_kill_window_ticks", gather_kill_window_ticks);
+        gather_kill_ticks = (float) params.getDouble("gather_kill_ticks", gather_kill_ticks);
+        gather_route_clear = params.getBoolean("gather_route_clear", gather_route_clear);
+        gather_route_cells = params.getInt("gather_route_cells", gather_route_cells);
+        gather_route_tries = params.getInt("gather_route_tries", gather_route_tries);
+        gather_fixes_ticks = (float) params.getDouble("gather_fixes_ticks", gather_fixes_ticks);
         shepherd_stuck_ticks = (float) params.getDouble("shepherd_stuck_ticks", shepherd_stuck_ticks);
         shepherd_stuck_gap_ticks = (float) params.getDouble("shepherd_stuck_gap_ticks", shepherd_stuck_gap_ticks);
         shepherd_stuck_base_ticks = (float) params.getDouble("shepherd_stuck_base_ticks", shepherd_stuck_base_ticks);
