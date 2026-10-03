@@ -87,6 +87,8 @@ class Strategy {
      * reach) sends the gatherer for rock instead, and rock axes stay on order for the next 60 s.
      */
     boolean rock_on_fail = false;
+    /** rock_on_fail: from this game time on (0: from the start). */
+    float rock_fail_from_ticks = 0f;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
     boolean quarters_first = false;
     /**
@@ -1709,6 +1711,7 @@ class Strategy {
         rock_share_late = (float) params.getDouble("rock_share_late", rock_share_late);
         rock_late_ticks = (float) params.getDouble("rock_late_ticks", rock_late_ticks);
         rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
+        rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         decapitate = params.getBoolean("decapitate", decapitate);

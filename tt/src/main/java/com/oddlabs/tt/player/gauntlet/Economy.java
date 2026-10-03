@@ -5818,7 +5818,7 @@ final class Economy {
         if (best != null && tree && MapAnalysis.dist2(armory.getGridX(), armory.getGridY(), best.getGridX(),
                 best.getGridY()) > 60 * 60)
             ai.aiLog().count("wood_far");
-        if (best == null && type == IronSupply.class && st.rock_on_fail) {
+        if (best == null && type == IronSupply.class && st.rock_on_fail && ai.now() >= st.rock_fail_from_ticks) {
             // rock_on_fail: no iron to be had; rock, the plentiful ore, keeps the forge going meanwhile
             best = scanSupplies(RockSupply.class, armory, radius, armory_field);
             if (best != null) {
