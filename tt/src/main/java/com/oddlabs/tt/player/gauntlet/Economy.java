@@ -3838,8 +3838,12 @@ final class Economy {
     }
 
     private boolean wantsRockWeapons() {
-        return rock_weapons || rock_filler || rockShare() > 0f || rock_stream_on || ai.now() < rock_fail_until;
+        return rock_weapons || rock_filler || rockShare() > 0f || rock_stream_on || ai.now() < rock_fail_until
+                || rock_idle_on;
     }
+
+    /** rock_idle: whether this plan tick sends the armory's idle workers for rock. */
+    private boolean rock_idle_on;
 
     /** rock_share, or rock_share_late from rock_late_ticks on. */
     private float rockShare() {
@@ -4814,6 +4818,19 @@ final class Economy {
             if (filler > 0) {
                 want_rock += filler;
                 want_workers -= filler;
+            }
+        }
+        // rock_idle: the armory's idle workers go for rock (and some for wood) while it waits for iron
+        rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
+                && iron_stock <= st.rock_idle_iron;
+        if (rock_idle_on) {
+            int add = Math.round(Math.max(0, want_workers - st.rock_idle_keep) * st.rock_idle);
+            if (add > 0) {
+                int wood = tree_stock < 20 ? add / 3 : 0;
+                want_rock += add - wood;
+                want_tree += wood;
+                want_workers -= add;
+                ai.aiLog().count("rock_idle"); // plan ticks (3 s) that sent idle workers out
             }
         }
         if (ai.logging() && ai.periodDue(ore_log, 3000f)) { // 60 s

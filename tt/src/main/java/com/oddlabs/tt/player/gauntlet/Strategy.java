@@ -89,6 +89,15 @@ class Strategy {
     boolean rock_on_fail = false;
     /** rock_on_fail: from this game time on (0: from the start). */
     float rock_fail_from_ticks = 0f;
+    /**
+     * rock_idle (0: off): while the main armory holds at most rock_idle_iron iron, this share of its idle workers
+     * beyond rock_idle_keep go for rock, on top of the ore gatherers (not out of the iron share), with rock axes on
+     * order; a third of them go for wood while its wood stock is under 20. From rock_idle_ticks on.
+     */
+    float rock_idle = 0f;
+    float rock_idle_ticks = 0f;
+    int rock_idle_keep = 4;
+    int rock_idle_iron = 2;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
     boolean quarters_first = false;
     /**
@@ -1712,6 +1721,10 @@ class Strategy {
         rock_late_ticks = (float) params.getDouble("rock_late_ticks", rock_late_ticks);
         rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
         rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
+        rock_idle = (float) params.getDouble("rock_idle", rock_idle);
+        rock_idle_ticks = (float) params.getDouble("rock_idle_ticks", rock_idle_ticks);
+        rock_idle_keep = params.getInt("rock_idle_keep", rock_idle_keep);
+        rock_idle_iron = params.getInt("rock_idle_iron", rock_idle_iron);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         decapitate = params.getBoolean("decapitate", decapitate);
