@@ -6186,9 +6186,15 @@ final class Economy {
                 String placed = p.placed_time >= 0f ? ", placed at " + WatchView.clock(p.placed_time) : "";
                 parts.add("project " + p.label(p == expansion_project) + placed);
             }
+        String evacuation = null; // salvage's (on since cur14), or a raid's: new peons and units sent home go elsewhere
+        for (Map.Entry<Building, Float> e : evacuating.entrySet())
+            if (e.getKey() == b)
+                evacuation = "evacuating for " + WatchView.seconds(ai.now() - e.getValue()) + " s";
         if (b == ai.intel().armory() && !b.isDead() && b.getUnitContainer() != null) {
             int workers = b.getUnitContainer().getNumSupplies();
-            parts.add("primary armory (new peons go here), workers " + workers + "/" + want_workers);
+            String role = evacuation != null ? "primary armory, " + evacuation : "primary armory (new peons go here)";
+            parts.add(role + ", workers " + workers + "/" + want_workers);
+            evacuation = null;
         }
         if (b == expansion)
             parts.add("expansion armory");
@@ -6198,9 +6204,8 @@ final class Economy {
         for (Building t : sniper_towers)
             if (t == b)
                 parts.add("sniper tower by parked enemies");
-        for (Map.Entry<Building, Float> e : evacuating.entrySet())
-            if (e.getKey() == b)
-                parts.add("evacuating for " + WatchView.seconds(ai.now() - e.getValue()) + " s");
+        if (evacuation != null)
+            parts.add(evacuation);
         return parts.isEmpty() ? null : String.join(", ", parts);
     }
 }

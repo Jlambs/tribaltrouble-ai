@@ -1721,9 +1721,12 @@ final class Shepherd {
 
     /**
      * Layer "shepherds", for each copy's flock: the spot its next wave should be drawn to, the shepherd with a line to
-     * the spot, the copy's leader (its oldest idle warrior, whose cell the next wave starts from) with its idle
-     * warriors against the wave size, and while the copy's last wave walks a line from that wave's leader to where it
-     * goes. A copy about to launch (as many idle warriors as its wave size, as tend's shepherd_hold test counts them,
+     * the spot (none while it is held after a flee, shepherd_safe_walk and shepherd_hunted), the copy's leader (its
+     * oldest idle warrior) with its idle warriors against the wave size, with shepherd_predict the origin tend
+     * predicted
+     * the next wave from (where the copy's first warrior walks), and while the copy's last wave walks a line from that
+     * wave's leader to where it goes. A copy about to launch (as many idle warriors as its wave size, as tend's
+     * shepherd_hold test counts them,
      * worked out here whether or not shepherd_hold is on, from the copy's launches: a home flock's are its partner's)
      * has its spot and the leader's line to it in orange. Status lines shepherds (flocks and their shepherds) and
      * waves (copies about to launch, waves walking, waves seen).
@@ -1766,13 +1769,14 @@ final class Shepherd {
             if (s != null && !s.isDead()) {
                 shepherds++;
                 boolean there = f.last_state.equals("at");
+                boolean held = heldAfterFlee(f);
                 if (there)
                     at_spot++;
-                else if (f.last_state.equals("flee"))
+                else if (f.last_state.equals("flee") || held)
                     fleeing++;
-                String label = "shepherd " + name + " (" + f.last_state + ")";
+                String label = "shepherd " + name + " (" + (held ? "held" : f.last_state) + ")";
                 canvas.mark(layer, s.getGridX(), s.getGridY(), WatchView.SHEPHERD, label);
-                if (spot && !there)
+                if (spot && !there && !held)
                     canvas.line(layer, s.getGridX(), s.getGridY(), f.spot_x, f.spot_y, WatchView.SHEPHERD);
             }
             Unit leader = f.leader;
@@ -1782,6 +1786,12 @@ final class Shepherd {
                 if (spot && launching)
                     canvas.line(layer, leader.getGridX(), leader.getGridY(), f.spot_x, f.spot_y,
                             WatchView.SPOT_IMMINENT);
+            }
+            // the last tend's origin, where the copy's first warrior walked, while tend still runs for the flock (it
+            // runs every 25 ticks; a released flock or a dead copy keeps the flag of its last tend)
+            if (f.predicted && f.pred_at >= 0f && ai.now() - f.pred_at <= 50f) {
+                canvas.line(layer, f.pred_ux, f.pred_uy, f.pred_x, f.pred_y, WatchView.LEADER);
+                canvas.mark(layer, f.pred_x, f.pred_y, WatchView.LEADER, "next wave of " + name + " from here");
             }
             int[] to = waveTarget(f.prev_wave);
             if (to != null) {
@@ -1824,17 +1834,30 @@ final class Shepherd {
         return MapAnalysis.dist2(tx, ty, leader.getGridX(), leader.getGridY()) > 20 * 20 ? new int[]{tx, ty} : null;
     }
 
+    /**
+     * Whether tend holds f's shepherd where its last flee took it rather than walk it back to the spot: tend's own
+     * test (shepherd_safe_walk, shepherd_hunted) on a shepherd it last found off the spot.
+     */
+    private boolean heldAfterFlee(@NonNull Flock f) {
+        Strategy strategy = ai.strategy();
+        return f.last_state.equals("walk") && ((strategy.shepherd_safe_walk && ai.now() < f.flee_until)
+                || (strategy.shepherd_hunted && ai.now() < f.hunted_until));
+    }
+
     /** A shepherd's flock and what it is doing (watch view), or null when u shepherds no flock. */
     @Nullable
     String describeUnit(@NonNull Unit u) {
         for (Flock f : flocks) {
             if (f.shepherd != u)
                 continue;
+            // with what the spot was picked around (the last tend's origin) while the shepherd keeps to it
+            String origin = f.origin.isEmpty() ? "" : " (" + f.origin + ")";
             String doing = switch (f.last_state) {
-                case "at" -> "at the spot " + WatchView.at(f.spot_x, f.spot_y);
+                case "at" -> "at spot " + WatchView.at(f.spot_x, f.spot_y) + origin;
                 case "flee" -> "fleeing";
                 case "nospot" -> "no spot draws the wave";
-                default -> f.spot_x >= 0 ? "walking to the spot " + WatchView.at(f.spot_x, f.spot_y) : "walking";
+                default -> heldAfterFlee(f) ? "held after a flee" : f.spot_x >= 0 ? "walking to spot " + WatchView.at(
+                        f.spot_x, f.spot_y) + origin : "walking";
             };
             int ago = WatchView.seconds(ai.now() - f.recruited);
             return "shepherd of " + name(f) + " for " + ago + " s: " + doing + "; " + copyLaunches(f) + " waves seen";

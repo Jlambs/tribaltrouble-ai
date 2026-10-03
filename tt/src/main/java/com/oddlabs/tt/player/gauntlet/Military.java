@@ -6995,6 +6995,10 @@ final class Military {
         int atk = Role.ATTACK.ordinal();
         int home = Role.ARMY.ordinal();
         StringBuilder sb = new StringBuilder(mode.name()).append(": ");
+        // a last stand: think skips the economy, shepherds and freeze, and tick the staging, threat and muster
+        boolean stand = lastStand();
+        if (stand)
+            sb.append("LAST STAND ").append(WatchView.seconds(now - no_base_since)).append(" s, ");
         if (mode == Mode.ATTACK || mode == Mode.RETREAT || n[atk] > 0)
             sb.append(String.format(Locale.ROOT, "%d attacking (%.1f), ", n[atk], s[atk]));
         sb.append(String.format(Locale.ROOT, "%d home (%.1f)", n[home], s[home]));
@@ -7003,19 +7007,31 @@ final class Military {
         for (int i = 0; i < others.length; i++)
             if (n[others[i].ordinal()] > 0)
                 sb.append(", ").append(n[others[i].ordinal()]).append(doing[i]);
-        if (mode == Mode.MUSTER)
+        if (mode == Mode.MUSTER && !stand)
             sb.append(", mustering for ").append(WatchView.seconds(now - muster_start)).append(" s");
-        if (mode == Mode.HOME && next_wave_time > now)
-            sb.append(", next attack in ").append(WatchView.seconds(next_wave_time - now)).append(" s at the earliest");
+        if (mode == Mode.HOME && next_wave_time > now && !stand)
+            sb.append(", no attack for ").append(WatchView.seconds(next_wave_time - now)).append(" s");
         if (escorting)
             sb.append(", guarding builders");
         if (sweep_until >= 0f)
             sb.append(", sweeping the parked ring");
         if (siege_start >= 0f)
             sb.append(", besieging towers");
+        float late = paintedLateCaution(); // the gate and the retreat use attack_caution * late
         if (attack_caution != 1f)
             sb.append(String.format(Locale.ROOT, ", caution %.2f", attack_caution));
+        if (late != 1f)
+            sb.append(String.format(Locale.ROOT, ", late x%.2f", late));
         return sb.toString();
+    }
+
+    /** lateCaution()'s factor without its side effects (the first call's log line and counter). */
+    private float paintedLateCaution() {
+        Strategy s = ai.strategy();
+        if (s.late_caution == 1f || ai.now() < s.late_from_ticks
+                || (s.late_copies > 0 && ai.enemiesAlive() > s.late_copies))
+            return 1f;
+        return s.late_caution;
     }
 
     /** The threat status line: level, enemies, strength (and the part in the base), whether defenders engage. */

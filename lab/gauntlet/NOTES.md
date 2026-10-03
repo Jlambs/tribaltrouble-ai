@@ -2044,3 +2044,13 @@ Not shown, because the AI keeps it nowhere: why it is not attacking yet (conside
 caution are locals, logged only when the attack goes), the next target while at home (chooseTarget computes distance
 fields), and the battle numbers between traceBattle lines. Showing them means the AI keeping them in fields, which
 the next AI change could add.
+
+cur15 port (2026-10-02, after merging gauntlet-ticks): the decision bytecode equals snapshot 16015265a7's (the cur15
+runs) method for method but the painter's own methods and the bookkeeping writes, and no gauntlet call binds to a
+painter method. Painter texts brought up to cur12-cur15: the army line shows late caution ("late x0.50", which the
+gate, the threat and the retreat apply) next to attack_caution, and a last stand; a salvaged primary armory no longer
+says new peons go there; a shepherd held after a flee (shepherd_safe_walk, shepherd_hunted) reads "held" with no line
+to its spot; shepherd_predict's origin is drawn ("next wave of sN from here", only while tend still runs for the
+flock) and the shepherd's describe names what its spot was picked around. Proof: PaintCheck on cur15-flat-vs22-7001
+s7412-0 (the N=22 win, 171:36, every tick): 343 of 343 census, end checksum and counters the same; watch VERIFIED to
+the end on it.
