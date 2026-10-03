@@ -4826,7 +4826,8 @@ final class Economy {
         rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
                 && iron_stock <= st.rock_idle_iron;
         if (rock_idle_on) {
-            float spare = Math.max(0, want_workers - st.rock_idle_keep) * st.rock_idle;
+            // the workers actually inside: those the plan sends for iron often cannot go (no iron pick)
+            float spare = Math.max(0, armory_workers - st.rock_idle_keep) * st.rock_idle;
             float rock_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
             float wood_c = tree_stock < 20 ? 2 * tree_cycle : 0f;
             float xr = spare / (IRON_WORK_TICKS / 2 + rock_c + wood_c);
@@ -4836,7 +4837,7 @@ final class Economy {
             if (rock_g + wood_g > 0) {
                 want_rock += rock_g;
                 want_tree += wood_g;
-                want_workers -= rock_g + wood_g;
+                want_workers = Math.max(2, want_workers - rock_g - wood_g);
                 ai.aiLog().count("rock_idle"); // plan ticks (3 s) that sent idle workers out
             }
         }
