@@ -38,6 +38,7 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Runs the base: where and when to build, who builds, how many peons stay in each quarters, how the armory's peons
@@ -4823,9 +4824,63 @@ final class Economy {
                     rock_weapons ? "rock" : "iron", rock_filler ? " + rock filler" : "", ore_far ? ", far ore" : "",
                     iron_stock, rock_stock, g_iron, g_rock, want_iron, want_rock, armory_workers,
                     GauntletAI.seconds(iron_cycle), iron_left));
+            ai.log("ORE threats " + oreThreats(armory));
         }
         if (st.reloc_lock_ticks > 0)
             trackLock(armory);
+    }
+
+    /**
+     * Log only (ORE threats lines): who keeps our gatherers off supplies, as the pick's threat test sees it. Each
+     * threatened iron or rock within 200 cells of the main armory, and tree within 60, goes to the nearest enemy
+     * warrior within 14 cells; those are summed per copy, parked (idle, as a drawn wave ends up) or active, with the
+     * warriors' centre. Reads only.
+     */
+    private @NonNull String oreThreats(@NonNull Building armory) {
+        Map<String, int[]> groups = new TreeMap<>(); // iron, rock, trees, sum x, sum y, warriors summed
+        List<List<? extends Supply>> lists = List.of(ai.map().getIron(), ai.map().getRocks(), ai.map().getTrees());
+        int[] radii = {200, 200, 60};
+        int ax = armory.getGridX();
+        int ay = armory.getGridY();
+        for (int k = 0; k < 3; k++) {
+            for (Supply s : lists.get(k)) {
+                if (s.isEmpty())
+                    continue;
+                int x = s.getGridX();
+                int y = s.getGridY();
+                if (MapAnalysis.dist2(ax, ay, x, y) > radii[k] * radii[k] || !ai.military().threatNearEcon(x, y, 14))
+                    continue;
+                Unit near = null;
+                int best = 14 * 14 + 1;
+                for (Unit w : ai.intel().enemy_warriors) {
+                    int d2 = MapAnalysis.dist2(x, y, w.getGridX(), w.getGridY());
+                    if (!w.isDead() && d2 < best) {
+                        best = d2;
+                        near = w;
+                    }
+                }
+                String key = near == null ? "other" : near.getOwner().getPlayerInfo().getName() + (Intel.isParked(
+                        near) ? " parked" : " active");
+                int[] g = groups.computeIfAbsent(key, unused -> new int[6]);
+                g[k]++;
+                if (near != null) {
+                    g[3] += near.getGridX();
+                    g[4] += near.getGridY();
+                    g[5]++;
+                }
+            }
+        }
+        if (groups.isEmpty())
+            return "none";
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, int[]> en : groups.entrySet()) {
+            int[] g = en.getValue();
+            sb.append(sb.isEmpty() ? "" : "; ").append(en.getKey()).append(": iron ").append(g[0]).append(
+                    " rock ").append(g[1]).append(" trees ").append(g[2]);
+            if (g[5] > 0)
+                sb.append(" at ").append(g[3] / g[5]).append(',').append(g[4] / g[5]);
+        }
+        return sb.toString();
     }
 
     /** Log only: when the last ORE line was written (once a game minute). */
