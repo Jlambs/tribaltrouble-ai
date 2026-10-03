@@ -265,6 +265,8 @@ final class Economy {
         manageQuarters();
         manageArmory();
         guardBank();
+        if (st.gather_kill_zone && ai.now() >= st.gather_fixes_ticks)
+            trackPeonDeaths(intel);
         if (st.repair_swarm)
             swarm.tick();
         allocatePeons();
@@ -1291,6 +1293,8 @@ final class Economy {
                 p.held = p.sniper && last_veto == VETO_NONE ? VETO_UNSAFE : last_veto;
                 if (last_veto == VETO_THREAT && resiteEligible(p))
                     vetoResite(p, it);
+                else if (last_veto == VETO_GIANT)
+                    giantVeto(p, it);
                 continue;
             }
             p.veto_since = -1f;
@@ -1324,7 +1328,9 @@ final class Economy {
         p.placer = null;
         if (u == null)
             return;
-        if (u.isDead()) {
+        if (u.isDead() && u.getHitPoints() > 0) {
+            ai.aiLog().count("rearm_placer_entered"); // walked into a building: removed, not killed
+        } else if (u.isDead()) {
             ai.aiLog().count("rearm_placer_died");
             if (p.evac_skipped)
                 ai.aiLog().count("rearm_placer_died_exempt");
@@ -1361,6 +1367,14 @@ final class Economy {
         // A placer sent into a fight only dies there.
         if (ai.military().threatNearEcon(p.site.x, p.site.y, 16)) {
             last_veto = VETO_THREAT;
+            return false;
+        }
+        // giant_keepout: nor one sent next to a stalled army, which it would wake (but an armory to replace the last
+        // one is worth the risk).
+        if ((p.type != Race.BUILDING_ARMORY || !ai.intel().armories.isEmpty()) && ai.giants().keepOff(p.site.x,
+                p.site.y)) {
+            ai.aiLog().count("giant_veto"); // economy ticks (1 s)
+            last_veto = VETO_GIANT;
             return false;
         }
         if (ai.strategy().tower_cooldown && p.type == Race.BUILDING_TOWER && recentlyRazedNear(p.site.x, p.site.y)) {
@@ -1415,16 +1429,39 @@ final class Economy {
     private static final int VETO_COOLDOWN = 2;
     private static final int VETO_ESCORT = 3;
     private static final int VETO_SITES = 4;
+    /** giant_keepout: a stalled army stands near the site (Giants.keepOff). */
+    private static final int VETO_GIANT = 5;
     /** Project.held only (watch view): sniperSafe refused a sniper site, which projectMayStart leaves at VETO_NONE. */
-    private static final int VETO_UNSAFE = 5;
+    private static final int VETO_UNSAFE = 6;
     /** Project.held only (watch view): the project may start, but no placer is free. */
-    private static final int VETO_PLACER = 6;
+    private static final int VETO_PLACER = 7;
     private int last_veto;
     /**
      * veto_resite: tower (quarters) planning pauses until then after a vetoed project with no clear site is dropped.
      */
     private float tower_hold_until = -1f;
     private float quarters_hold_until = -1f;
+
+    /**
+     * giant_keepout: a giant stands for tens of minutes, so a project it vetoes is moved or dropped as veto_resite
+     * does (a tower or quarters after veto_resite_ticks, whatever veto_resite_quarters says), and an armory project is
+     * dropped after 90 s (an expansion project would block every later one).
+     */
+    private void giantVeto(@NonNull Project p, @NonNull Iterator<Project> it) {
+        if (p.building != null || p.forward || p.sniper || p.use_scout)
+            return;
+        if (p.type != Race.BUILDING_ARMORY) {
+            vetoResite(p, it);
+            return;
+        }
+        if (p.veto_since < 0f)
+            p.veto_since = ai.now();
+        if (ai.now() - p.veto_since < RELOC_WAIT_TICKS)
+            return;
+        ai.log("drop " + p.describe() + ": a giant stands by its site");
+        it.remove();
+        ai.aiLog().count("giant_veto_drop_armory");
+    }
 
     /** veto_resite: a project a threat keeps from starting may be moved or dropped once it has waited long enough. */
     private boolean resiteEligible(@NonNull Project p) {
@@ -1481,7 +1518,7 @@ final class Economy {
         Intel intel = ai.intel();
         boolean tower = type == Race.BUILDING_TOWER;
         SitePlanner.CellOk ok = (x, y) -> !m.threatNearEcon(x, y, st.veto_resite_clear)
-                && !(st.tower_cooldown && tower && recentlyRazedNear(x, y));
+                && !(st.tower_cooldown && tower && recentlyRazedNear(x, y)) && !ai.giants().keepOff(x, y);
         List<Site> reserved = reservedSites(except);
         List<int[]> anchors = new ArrayList<>();
         anchors.add(new int[]{ox, oy});
@@ -2277,7 +2314,7 @@ final class Economy {
      * clear site, else it stays for the veto path; counts counter or counter_none.
      */
     private @NonNull Site clearAtBirth(@NonNull Site site, int type, @NonNull String counter) {
-        if (!ai.military().threatNearEcon(site.x, site.y, 16))
+        if (!ai.military().threatNearEcon(site.x, site.y, 16) && !ai.giants().keepOff(site.x, site.y))
             return site;
         Site clear = clearSite(type, site.x, site.y, null);
         ai.aiLog().count(clear != null ? counter : counter + "_none");
@@ -2656,8 +2693,11 @@ final class Economy {
         int pop = owner.getUnitCountContainer().getNumSupplies();
         int max = owner.getWorld().getMaxUnitCount();
         boolean training = quarters.getChieftainContainer() != null && quarters.getChieftainContainer().isTraining();
+        // chief_refresh: the trainer of the next chieftain fills up first, at the unit cap too
+        if (quarters == ai.chieftain().refreshTrainer())
+            return Math.max(strategy.chief_refresh_hold, strategy.hold_chieftain);
         // Training takes 40 breed ticks of the trainer, 440 / n^(1/3) s with n inside, and goes on at the unit cap.
-        if (training && strategy.chief_topup_any)
+        if (training && (strategy.chief_topup_any || ai.chieftain().retrainLate()))
             return strategy.hold_chieftain;
         if (pop >= max - 2)
             return 0;
@@ -3029,6 +3069,11 @@ final class Economy {
         }
         if (site == null)
             return;
+        // giant_keepout: not next to a stalled army.
+        if (ai.giants().keepOff(site.x, site.y)) {
+            ai.aiLog().count("giant_expansion_skip");
+            return;
+        }
         // retire: not where a building of ours was just razed to free a slot.
         if (retire.retiredNear(site.x, site.y)) {
             ai.aiLog().count("retire_site_skip");
@@ -3882,6 +3927,10 @@ final class Economy {
 
     /** rock_idle: whether this plan tick sends the armory's idle workers for rock. */
     private boolean rock_idle_on;
+    /** rock_idle: the rock and wood gatherers it added on the last plan tick, and whether its wood share is on. */
+    private int idle_rock_out;
+    private int idle_wood_out;
+    private boolean idle_wood;
 
     /** rock_share, or rock_share_late from rock_late_ticks on. */
     private float rockShare() {
@@ -4861,23 +4910,36 @@ final class Economy {
         // rock_idle: while the armory waits for iron, rock_idle of its idle workers beyond rock_idle_keep make rock
         // axes: split, as the ore share above, between rock gatherers, forgers (half an iron axe's work) and, while
         // its wood runs low, wood gatherers, with fewer gatherers as rock piles up unforged
+        // It goes off only once the armory holds 3 iron more than that (a burst of iron deliveries does not recall
+        // its gatherers for one plan tick), and the wood share likewise once the wood stock is back to 30.
+        boolean idle_was = rock_idle_on;
         rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
-                && iron_stock <= st.rock_idle_iron;
+                && iron_stock <= st.rock_idle_iron + (idle_was ? 3 : 0);
         if (rock_idle_on) {
-            // the workers actually inside: those the plan sends for iron often cannot go (no iron pick)
-            float spare = Math.max(0, armory_workers - st.rock_idle_keep) * st.rock_idle;
+            // The workers actually inside (those the plan sends for iron often cannot go: no iron pick), plus the
+            // gatherers rock_idle already has out (else the ones it sends shrink its own share the next plan tick).
+            int out = Math.min(idle_rock_out, Math.max(0, g_rock - want_rock)) + Math.min(idle_wood_out, Math.max(0,
+                    g_tree - want_tree));
+            float spare = Math.max(0, armory_workers + out - st.rock_idle_keep) * st.rock_idle;
             float rock_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
-            float wood_c = tree_stock < 20 ? 2 * tree_cycle : 0f;
+            idle_wood = tree_stock < (idle_wood ? 30 : 20);
+            float wood_c = idle_wood ? 2 * tree_cycle : 0f;
             float xr = spare / (IRON_WORK_TICKS / 2 + rock_c + wood_c);
             float rock_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
             int rock_g = Math.round(rock_c * xr * rock_adj);
             int wood_g = Math.round(wood_c * xr);
+            idle_rock_out = rock_g;
+            idle_wood_out = wood_g;
             if (rock_g + wood_g > 0) {
                 want_rock += rock_g;
                 want_tree += wood_g;
                 want_workers = Math.max(2, want_workers - rock_g - wood_g);
                 ai.aiLog().count("rock_idle"); // plan ticks (3 s) that sent idle workers out
             }
+        } else {
+            idle_rock_out = 0;
+            idle_wood_out = 0;
+            idle_wood = false;
         }
         if (ai.logging() && ai.periodDue(ore_log, 3000f)) { // 60 s
             ore_log = ai.now();
@@ -4924,7 +4986,7 @@ final class Economy {
                 }
                 String key = near == null ? "other" : near.getOwner().getPlayerInfo().getName() + (Intel.isParked(
                         near) ? " parked" : " active");
-                int[] g = groups.computeIfAbsent(key, unused -> new int[6]);
+                int[] g = groups.computeIfAbsent(key, _ -> new int[6]);
                 g[k]++;
                 if (near != null) {
                     g[3] += near.getGridX();
@@ -5096,12 +5158,19 @@ final class Economy {
 
         // 2. Chieftain training quarters top-up.
         Building trainer = ai.chieftain().trainingQuarters();
-        boolean topup_ok = ai.military().baseThreatLevel() == 0 || (ai.strategy().chief_topup_any && trainer != null
+        // chief_refresh: the trainer of the next chieftain, filled from the gatherers too
+        Building refresh = ai.chieftain().refreshTrainer();
+        if (refresh != null)
+            trainer = refresh;
+        boolean topup_ok = ai.military().baseThreatLevel() == 0 || ((ai.strategy().chief_topup_any
+                || ai.chieftain().retrainLate() || refresh != null) && trainer != null
                 && !ai.military().threatNear(trainer.getGridX(), trainer.getGridY(), 20));
         if (trainer != null && topup_ok && !evacuating.containsKey(trainer)) {
             boolean near = ai.strategy().chief_trainer_near;
             int heading = near ? countSentTo(trainer) : countHeadingTo(trainer);
-            int need = ai.strategy().hold_chieftain - trainer.getUnitContainer().getNumSupplies() - heading;
+            int hold = refresh != null ? Math.max(ai.strategy().chief_refresh_hold,
+                    ai.strategy().hold_chieftain) : ai.strategy().hold_chieftain;
+            int need = hold - trainer.getUnitContainer().getNumSupplies() - heading;
             if (need > 0) {
                 List<Unit> chosen = new ArrayList<>();
                 takeNearest(free, chosen, need, trainer.getGridX(), trainer.getGridY());
@@ -5116,6 +5185,23 @@ final class Economy {
                 takeNearest(walkers, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
                 if (walkers != transit)
                     transit.removeAll(chosen);
+                if (refresh != null && chosen.size() < need) {
+                    List<Unit> gatherers = new ArrayList<>();
+                    for (Unit u : intel.peons) {
+                        PeonState st = intel.peon_states.get(u);
+                        if ((st == PeonState.GATHER_TREE || st == PeonState.GATHER_ROCK || st == PeonState.GATHER_IRON)
+                                && !chosen.contains(u) && MapAnalysis.dist2(u.getGridX(), u.getGridY(),
+                                        trainer.getGridX(), trainer.getGridY()) <= 60 * 60)
+                            gatherers.add(u);
+                    }
+                    int before = chosen.size();
+                    takeNearest(gatherers, chosen, need - chosen.size(), trainer.getGridX(), trainer.getGridY());
+                    for (int i = before; i < chosen.size(); i++) {
+                        // no longer gatherers for the rest of this round
+                        intel.peon_states.put(chosen.get(i), PeonState.TRANSIT);
+                        ai.aiLog().count("chief_refresh_gatherers");
+                    }
+                }
                 order(chosen, trainer, ai.enterAction(trainer));
                 if (near)
                     for (Unit u : chosen) {
@@ -5913,6 +5999,14 @@ final class Economy {
         int threat = 0;
         int parked = 0;
         int avoided = 0;
+        Strategy gst = ai.strategy();
+        boolean late = ai.now() >= gst.gather_fixes_ticks;
+        boolean kill_on = gst.gather_kill_zone && late;
+        int killed = 0;
+        boolean route_on = gst.gather_route_clear && late;
+        Supply[] route_cand = route_on ? new Supply[Math.max(1, gst.gather_route_tries)] : null;
+        float[] route_cost = route_on ? new float[route_cand.length] : null;
+        int route_n = 0;
         for (Supply s : supplies) {
             if (s.isEmpty())
                 continue;
@@ -5941,12 +6035,48 @@ final class Economy {
             Float other = other_armory_supplies.get(s);
             if (other != null && other > ai.now())
                 continue;
+            // gather_kill_zone: where our peons keep dying
+            if (kill_on && inKillZone(s.getGridX(), s.getGridY())) {
+                threat++;
+                killed++;
+                continue;
+            }
             int load = supply_load.getOrDefault(s, 0);
             float cost = d + load * load_penalty + (load >= max_load ? 60f : 0f);
+            if (route_on) {
+                // gather_route_clear: keep the cheapest few, in cost order (ties: the first found)
+                int at = route_n;
+                while (at > 0 && cost < route_cost[at - 1])
+                    at--;
+                if (at < route_cand.length) {
+                    int last = Math.min(route_n, route_cand.length - 1);
+                    for (int k = last; k > at; k--) {
+                        route_cand[k] = route_cand[k - 1];
+                        route_cost[k] = route_cost[k - 1];
+                    }
+                    route_cand[at] = s;
+                    route_cost[at] = cost;
+                    route_n = Math.min(route_n + 1, route_cand.length);
+                }
+            }
             if (cost < best_cost) {
                 best_cost = cost;
                 best = s;
             }
+        }
+        if (killed > 0)
+            ai.aiLog().count("pick_kill_zone");
+        if (route_on && best != null) {
+            // the cheapest of the few whose walk is clear; with none clear, the cheapest as without the option (a
+            // strict rule left gatherers home near a besieged base, where nearly every walk passes some enemy)
+            Supply clear = null;
+            for (int k = 0; k < route_n && clear == null; k++)
+                if (routeClear(ax, ay, route_cand[k].getGridX(), route_cand[k].getGridY()))
+                    clear = route_cand[k];
+            if (clear != best)
+                ai.aiLog().count(clear == null ? "pick_route_none" : "pick_route_other");
+            if (clear != null)
+                best = clear;
         }
         if (best == null) {
             String kind = type == TreeSupply.class ? "tree" : type == IronSupply.class ? "iron" : "rock";
@@ -5955,6 +6085,87 @@ final class Economy {
             ai.aiLog().count("pick_null_" + kind + "_" + SCAN_WHY_NAMES[scan_why]);
         }
         return best;
+    }
+
+    /** gather_kill_zone: our peons' cells at the last tick (shepherds left out), recent deaths and the zones. */
+    private final Map<@NonNull Unit, int[]> peon_cells = new LinkedHashMap<>();
+    private final List<float[]> peon_deaths = new ArrayList<>(); // t, x, y
+    private final List<float[]> kill_zones = new ArrayList<>(); // x, y, until
+
+    /**
+     * gather_kill_zone: records the peons of ours that died since the last tick (at their last cell), and makes a kill
+     * zone where gather_kill_n died within gather_kill_cells inside gather_kill_window_ticks.
+     */
+    private void trackPeonDeaths(@NonNull Intel intel) {
+        Strategy st = ai.strategy();
+        float now = ai.now();
+        Map<Unit, int[]> next = new LinkedHashMap<>();
+        for (Unit p : intel.peons)
+            if (!p.isDead() && !intel.shepherds.contains(p))
+                next.put(p, new int[]{p.getGridX(), p.getGridY()});
+        int c = st.gather_kill_cells;
+        for (Map.Entry<Unit, int[]> e : peon_cells.entrySet()) {
+            // a real kill only: a peon that walked into a building is removed too (dead), but keeps its hit points
+            if (next.containsKey(e.getKey()) || !e.getKey().isDead() || e.getKey().getHitPoints() > 0)
+                continue;
+            int x = e.getValue()[0];
+            int y = e.getValue()[1];
+            peon_deaths.add(new float[]{now, x, y});
+            int n = 0;
+            for (float[] d : peon_deaths)
+                if (now - d[0] <= st.gather_kill_window_ticks && Math.abs(d[1] - x) <= c && Math.abs(d[2] - y) <= c)
+                    n++;
+            if (n >= st.gather_kill_n) {
+                boolean merged = false;
+                for (float[] z : kill_zones)
+                    if (Math.abs(z[0] - x) <= c && Math.abs(z[1] - y) <= c) {
+                        z[2] = now + st.gather_kill_ticks;
+                        merged = true;
+                        break;
+                    }
+                if (!merged) {
+                    kill_zones.add(new float[]{x, y, now + st.gather_kill_ticks});
+                    ai.aiLog().count("kill_zone");
+                    if (ai.logging())
+                        ai.log(String.format("kill zone at %d,%d: %d peons dead there in %.0f s", x, y, n,
+                                GauntletAI.seconds(st.gather_kill_window_ticks)));
+                }
+            }
+        }
+        peon_cells.clear();
+        peon_cells.putAll(next);
+        peon_deaths.removeIf(d -> now - d[0] > st.gather_kill_window_ticks);
+        kill_zones.removeIf(z -> z[2] <= now);
+    }
+
+    /** gather_kill_zone: whether (x, y) lies within gather_kill_cells of a live kill zone. */
+    private boolean inKillZone(int x, int y) {
+        int c = ai.strategy().gather_kill_cells;
+        for (float[] z : kill_zones)
+            if (z[2] > ai.now() && Math.abs(z[0] - x) <= c && Math.abs(z[1] - y) <= c)
+                return true;
+        return false;
+    }
+
+    /**
+     * gather_route_clear: whether the straight walk from (x0, y0) to (x1, y1), sampled every 6 cells and at its end,
+     * keeps gather_route_cells from every enemy warrior.
+     */
+    private boolean routeClear(int x0, int y0, int x1, int y1) {
+        int r = ai.strategy().gather_route_cells;
+        float len = (float) Math.sqrt(MapAnalysis.dist2(x0, y0, x1, y1));
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        for (float step = 0f;; step += 6f) {
+            float d = Math.min(step, len);
+            int x = len > 0f ? Math.round(x0 + (x1 - x0) * d / len) : x0;
+            int y = len > 0f ? Math.round(y0 + (y1 - y0) * d / len) : y0;
+            int[] found = index.queryUnordered(x, y, r * r);
+            for (int k = 0, m = index.count(); k < m; k++)
+                if (index.group(found[k]) == EnemyIndex.WARRIOR && !index.unit(found[k]).isDead())
+                    return false;
+            if (d >= len)
+                return true;
+        }
     }
 
     /**
@@ -6236,6 +6447,7 @@ final class Economy {
             case VETO_COOLDOWN -> "held: a tower was razed near it";
             case VETO_ESCORT -> "waiting for the army's escort";
             case VETO_SITES -> "waiting for a site slot";
+            case VETO_GIANT -> "held: a stalled army stands near the site";
             case VETO_UNSAFE -> "waiting: enemies near the sniper site";
             case VETO_PLACER -> "waiting for a free placer";
             default -> "planned";

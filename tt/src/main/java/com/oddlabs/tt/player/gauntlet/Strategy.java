@@ -90,14 +90,118 @@ class Strategy {
     /** rock_on_fail: from this game time on (0: from the start). */
     float rock_fail_from_ticks = 0f;
     /**
-     * rock_idle (0: off): while the main armory holds at most rock_idle_iron iron, this share of the workers inside
+     * rock_idle (0: off; cur16: 1 from 20 min): while the main armory holds at most rock_idle_iron iron, this share of
+     * the workers inside
      * it beyond rock_idle_keep make rock axes on top of the ore gatherers (not out of the iron share): split between
      * rock
      * gatherers, forgers staying in and, while its wood stock is under 20, wood gatherers, as the economy's ore model
      * splits its pool. From rock_idle_ticks on.
      */
-    float rock_idle = 0f;
-    float rock_idle_ticks = 0f;
+    float rock_idle = 1f; // cur16
+    /**
+     * away_strike (off): when the usual gate holds the army home, muster on the copy base whose own army is away
+     * (kited by shepherds or stuck in an attack-move): its warriors within away_home_cells count in full, beyond that
+     * its idle ones (a Hard recalls all of them) at away_idle_value and the rest at away_walk_value. From
+     * away_strike_ticks on.
+     */
+    boolean away_strike = false;
+    /**
+     * wedge_real_kills (cur16: on; off as before cur16): the wedge watchdog's kills and losses, and its and the column
+     * march's
+     * "target fell", count only units killed (0 hit points). A unit that walked into a building is removed (dead) with
+     * its hit points: near a live Hard base its peons commute in and out, 10 'kills' in 300 s cleared the strikes and
+     * the watchdog never fired (the dead-vs-killed audit).
+     */
+    boolean wedge_real_kills = true; // cur16
+    /**
+     * gather_kill_zone (off): where gather_kill_n of our peons (shepherds left out) died within gather_kill_cells of
+     * each
+     * other within gather_kill_window_ticks, no supply within gather_kill_cells is picked for gather_kill_ticks after
+     * the last of those deaths (gatherers keep walking into the same parked army). From gather_fixes_ticks on.
+     */
+    boolean gather_kill_zone = false;
+    int gather_kill_n = 3;
+    int gather_kill_cells = 8;
+    float gather_kill_window_ticks = 6000f; // 2 min
+    float gather_kill_ticks = 15000f; // 5 min
+    /**
+     * gather_route_clear (off): a supply pick takes the best of its gather_route_tries cheapest supplies whose straight
+     * walk from the armory keeps gather_route_cells from every enemy warrior (none clear: the cheapest, as without it).
+     * From gather_fixes_ticks.
+     */
+    boolean gather_route_clear = false;
+    int gather_route_cells = 10;
+    int gather_route_tries = 5;
+    float gather_fixes_ticks = 0f;
+    /**
+     * shepherd_stuck_ticks (0: off; cur16 on, with the tight settings below, from 40 min): a shepherd that has not
+     * reached its spot and stood within 6 cells of one point for
+     * this long, not getting 10 cells nearer its spot, goes home; its copy gets no new shepherd for
+     * shepherd_stuck_gap_ticks.
+     */
+    float shepherd_stuck_ticks = 12000f; // cur16: 4 min
+    float shepherd_stuck_gap_ticks = 12000f; // cur16: 4 min
+    /**
+     * shepherd_stuck_base_ticks (0: shepherd_stuck_ticks everywhere): the stuck time for a shepherd standing within
+     * shepherd_stuck_base_cells of one of our buildings (in or by our base, where nothing is drawn).
+     */
+    float shepherd_stuck_base_ticks = 6000f; // cur16: 2 min
+    int shepherd_stuck_base_cells = 28;
+    /** shepherd_gap_ready: a stuck or no-spot release's gap ends as soon as the copy is ready to launch. */
+    boolean shepherd_gap_ready = true; // cur16
+    /**
+     * shepherd_nospot_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has had no spot for this long goes
+     * home; its copy then waits shepherd_stuck_gap_ticks for the next one.
+     */
+    float shepherd_nospot_ticks = 6000f; // cur16: 2 min
+    /**
+     * shepherd_detour (cur16: on): from shepherd_fixes_ticks, a shepherd whose straight walk to its spot would set off
+     * the flee
+     * test walks to a waypoint shepherd_detour_r or half that away whose walk is clear and that gets it nearer.
+     */
+    boolean shepherd_detour = true; // cur16
+    /**
+     * shepherd_gap_backoff: each further stuck, no-progress or no-spot release in a row for a copy doubles its gap,
+     * up to shepherd_gap_max_ticks; a shepherd of the copy reaching its spot, or a wave aimed at a shepherd, resets it.
+     */
+    boolean shepherd_gap_backoff = true; // cur16
+    float shepherd_gap_max_ticks = 48000f; // 16 min
+    /**
+     * shepherd_progress_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has not reached its spot and has not
+     * got 10 cells nearer it (the same spot, within 10 cells) for this long goes home, with the gap as a stuck one.
+     */
+    float shepherd_progress_ticks = 9000f; // cur16: 3 min
+    /**
+     * shepherd_progress_base: shepherd_progress_ticks releases only a shepherd within shepherd_stuck_base_cells of one
+     * of our buildings (one far out is on a long walk to a far copy's spot and still draws its waves: tight2 N=24 s7062
+     * lost its base 81 s after such a release).
+     */
+    boolean shepherd_progress_base = true; // cur16
+    int shepherd_detour_r = 16;
+    /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
+    float shepherd_fixes_ticks = 120000f; // cur16: 40 min
+    /**
+     * shepherd_need (0: off): a copy whose idle warriors are below this share of its wave size, that launched 3 waves
+     * or more and none within shepherd_need_ticks, gets no shepherd, and its shepherd goes home once that has lasted
+     * shepherd_need_ticks.
+     */
+    float shepherd_need = 0f;
+    float shepherd_need_ticks = 30000f;
+    /**
+     * shepherd_recruit_clear: from shepherd_recruit_clear_ticks, a shepherd is recruited only from the up to 5 peons
+     * nearest the origin whose straight walk to the spot starts clear of the flee test.
+     */
+    boolean shepherd_recruit_clear = false;
+    float shepherd_recruit_clear_ticks = 90000f;
+    /** shepherd_coming_stalled (0: off): attack-walkers that moved fewer cells than this in 10 s are not coming. */
+    int shepherd_coming_stalled = 0;
+    /** shepherd_coming_stalled applies from then on. */
+    float shepherd_coming_stalled_ticks = 0f;
+    float away_strike_ticks = 0f;
+    int away_home_cells = 40;
+    float away_idle_value = .5f;
+    float away_walk_value = .15f;
+    float rock_idle_ticks = 60000f; // cur16: 20 min
     int rock_idle_keep = 4;
     int rock_idle_iron = 2;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
@@ -1447,6 +1551,38 @@ class Strategy {
     int chief_wake_keep = 12;
     /** Hit points at which the chieftain walks home to the armory. */
     int chief_flee_hp = 24;
+    /**
+     * chief_refresh (late): from chief_refresh_from_ticks, a chieftain at chief_refresh_hp or less (parked at the
+     * armory
+     * for good: he never heals, can enter no building, and no other chief trains while he lives) who made no useful
+     * cast (chief_refresh_useful unstunned warriors in reach, or an enemy chief) for chief_refresh_idle_ticks at the
+     * unit
+     * cap (where training costs no births) or chief_refresh_idle_low_ticks below it is killed by our own towers (Attack
+     * and a click on him), or by lent warriors when no tower reaches him, at a calm moment (no awake enemy warrior
+     * within
+     * chief_refresh_clear cells of him, the armory or the trainer), once the trainer quarters holds chief_refresh_hold
+     * peons (or chief_refresh_min_inside after chief_refresh_arm_ticks); a fresh 60-hp chief is trained there at once.
+     */
+    boolean chief_refresh = false;
+    float chief_refresh_from_ticks = 120000f; // 40 min
+    int chief_refresh_hp = 24;
+    float chief_refresh_idle_ticks = 15000f; // 5 min
+    float chief_refresh_idle_low_ticks = 30000f; // 10 min
+    int chief_refresh_useful = 4;
+    int chief_refresh_clear = 30;
+    int chief_refresh_hold = 20;
+    int chief_refresh_min_inside = 8;
+    float chief_refresh_arm_ticks = 3000f; // 60 s
+    float chief_refresh_cull_ticks = 2250f; // 45 s
+    /**
+     * chief_retrain_late: from chief_refresh_from_ticks, at the unit cap (training costs no
+     * births there) a chieftain who died is retrained with one finished quarters and no armory, in a quarters with no
+     * awake enemy warrior within chief_refresh_clear cells; the trainer keeps hold_chieftain peons at the cap too and
+     * is
+     * topped up whenever no threat is within 20 cells of it (s7125: no chief for the last 105 min with 2 quarters and
+     * no armory). Below the cap the old gates hold (smoke: chiefs trained at once in a fight died at once).
+     */
+    boolean chief_retrain_late = false;
 
     /**
      * Judge a threat in the base by everything within this many cells of it, not just what is inside the base: a few
@@ -1491,6 +1627,33 @@ class Strategy {
     int shred_range = 140;
     /** The chieftain never stuns: every charge goes to shred blasts. */
     boolean shred_strict = false;
+    /**
+     * Giants (Giants, late): from giants_from_ticks, stalled blocks of attack-walkers and parked enemies count as
+     * inert.
+     * giant_keepout (cells, 0 = off): a project site, a re-site target or an expansion site with at least giant_min
+     * inert
+     * enemy warriors within it waits (a builder within their 8-cell scan wakes them). giant_stun_hold: the chieftain's
+     * stun leaves inert enemies out of its count unless a tower of ours reaches them (a stun drops their walks, and
+     * their copies relaunch them). giant_shred: the shred mission blasts blocks of at least giant_shred_min inert
+     * warriors within giant_shred_range cells of our buildings or gatherers, from 9 cells (Chebyshev) outside every
+     * enemy,
+     * and with giant_shred_back from behind (away from the members' targets).
+     */
+    float giants_from_ticks = 120000f; // 40 min
+    int giant_keepout = 0;
+    int giant_min = 5;
+    boolean giant_stun_hold = false;
+    boolean giant_shred = false;
+    int giant_shred_min = 40;
+    int giant_shred_range = 45;
+    boolean giant_shred_back = true;
+    /** giant_shred: most units of ours a blast may also catch (within 19 cells of the cast point). */
+    int giant_shred_friends = 2;
+    /**
+     * giant_shred: the chieftain shreds above this many hit points (he never heals; a dead one is trained afresh, and a
+     * blast from out of every scan costs him none).
+     */
+    int giant_shred_min_hp = 0;
     /**
      * Shepherds from 120 s (was 200): vs hard*11 elim +.048 / +.024 on seeds 1..200 / 201..400, W 28 vs 19 over 400,
      * lsr15 +.16 / +.19 (st120b2-vs11-hv, -b); N=8 +.023 (W 118 vs 115). 90 s: same survival, fewer outs; 150 s: less.
@@ -1675,6 +1838,16 @@ class Strategy {
         shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
         shred_range = params.getInt("shred_range", shred_range);
         shred_strict = params.getBoolean("shred_strict", shred_strict);
+        giants_from_ticks = (float) params.getDouble("giants_from_ticks", giants_from_ticks);
+        giant_keepout = params.getInt("giant_keepout", giant_keepout);
+        giant_min = params.getInt("giant_min", giant_min);
+        giant_stun_hold = params.getBoolean("giant_stun_hold", giant_stun_hold);
+        giant_shred = params.getBoolean("giant_shred", giant_shred);
+        giant_shred_min = params.getInt("giant_shred_min", giant_shred_min);
+        giant_shred_range = params.getInt("giant_shred_range", giant_shred_range);
+        giant_shred_back = params.getBoolean("giant_shred_back", giant_shred_back);
+        giant_shred_friends = params.getInt("giant_shred_friends", giant_shred_friends);
+        giant_shred_min_hp = params.getInt("giant_shred_min_hp", giant_shred_min_hp);
         shepherd_ticks = (float) params.getDouble("shepherd_ticks", shepherd_ticks);
         shepherd_until_ticks = (float) params.getDouble("shepherd_until_ticks", shepherd_until_ticks);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
@@ -1724,6 +1897,42 @@ class Strategy {
         rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
         rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
         rock_idle = (float) params.getDouble("rock_idle", rock_idle);
+        away_strike = params.getBoolean("away_strike", away_strike);
+        wedge_real_kills = params.getBoolean("wedge_real_kills", wedge_real_kills);
+        gather_kill_zone = params.getBoolean("gather_kill_zone", gather_kill_zone);
+        gather_kill_n = params.getInt("gather_kill_n", gather_kill_n);
+        gather_kill_cells = params.getInt("gather_kill_cells", gather_kill_cells);
+        gather_kill_window_ticks = (float) params.getDouble("gather_kill_window_ticks", gather_kill_window_ticks);
+        gather_kill_ticks = (float) params.getDouble("gather_kill_ticks", gather_kill_ticks);
+        gather_route_clear = params.getBoolean("gather_route_clear", gather_route_clear);
+        gather_route_cells = params.getInt("gather_route_cells", gather_route_cells);
+        gather_route_tries = params.getInt("gather_route_tries", gather_route_tries);
+        gather_fixes_ticks = (float) params.getDouble("gather_fixes_ticks", gather_fixes_ticks);
+        shepherd_stuck_ticks = (float) params.getDouble("shepherd_stuck_ticks", shepherd_stuck_ticks);
+        shepherd_stuck_gap_ticks = (float) params.getDouble("shepherd_stuck_gap_ticks", shepherd_stuck_gap_ticks);
+        shepherd_stuck_base_ticks = (float) params.getDouble("shepherd_stuck_base_ticks", shepherd_stuck_base_ticks);
+        shepherd_stuck_base_cells = params.getInt("shepherd_stuck_base_cells", shepherd_stuck_base_cells);
+        shepherd_gap_ready = params.getBoolean("shepherd_gap_ready", shepherd_gap_ready);
+        shepherd_nospot_ticks = (float) params.getDouble("shepherd_nospot_ticks", shepherd_nospot_ticks);
+        shepherd_detour = params.getBoolean("shepherd_detour", shepherd_detour);
+        shepherd_gap_backoff = params.getBoolean("shepherd_gap_backoff", shepherd_gap_backoff);
+        shepherd_gap_max_ticks = (float) params.getDouble("shepherd_gap_max_ticks", shepherd_gap_max_ticks);
+        shepherd_progress_ticks = (float) params.getDouble("shepherd_progress_ticks", shepherd_progress_ticks);
+        shepherd_progress_base = params.getBoolean("shepherd_progress_base", shepherd_progress_base);
+        shepherd_detour_r = params.getInt("shepherd_detour_r", shepherd_detour_r);
+        shepherd_need = (float) params.getDouble("shepherd_need", shepherd_need);
+        shepherd_fixes_ticks = (float) params.getDouble("shepherd_fixes_ticks", shepherd_fixes_ticks);
+        shepherd_need_ticks = (float) params.getDouble("shepherd_need_ticks", shepherd_need_ticks);
+        shepherd_recruit_clear = params.getBoolean("shepherd_recruit_clear", shepherd_recruit_clear);
+        shepherd_recruit_clear_ticks = (float) params.getDouble("shepherd_recruit_clear_ticks",
+                shepherd_recruit_clear_ticks);
+        shepherd_coming_stalled = params.getInt("shepherd_coming_stalled", shepherd_coming_stalled);
+        shepherd_coming_stalled_ticks = (float) params.getDouble("shepherd_coming_stalled_ticks",
+                shepherd_coming_stalled_ticks);
+        away_strike_ticks = (float) params.getDouble("away_strike_ticks", away_strike_ticks);
+        away_home_cells = params.getInt("away_home_cells", away_home_cells);
+        away_idle_value = (float) params.getDouble("away_idle_value", away_idle_value);
+        away_walk_value = (float) params.getDouble("away_walk_value", away_walk_value);
         rock_idle_ticks = (float) params.getDouble("rock_idle_ticks", rock_idle_ticks);
         rock_idle_keep = params.getInt("rock_idle_keep", rock_idle_keep);
         rock_idle_iron = params.getInt("rock_idle_iron", rock_idle_iron);
@@ -2090,6 +2299,19 @@ class Strategy {
         chief_wake_retreat_ticks = (float) params.getDouble("chief_wake_retreat_ticks", chief_wake_retreat_ticks);
         chief_wake_keep = params.getInt("chief_wake_keep", chief_wake_keep);
         chief_flee_hp = params.getInt("chief_flee_hp", chief_flee_hp);
+        chief_refresh = params.getBoolean("chief_refresh", chief_refresh);
+        chief_refresh_from_ticks = (float) params.getDouble("chief_refresh_from_ticks", chief_refresh_from_ticks);
+        chief_refresh_hp = params.getInt("chief_refresh_hp", chief_refresh_hp);
+        chief_refresh_idle_ticks = (float) params.getDouble("chief_refresh_idle_ticks", chief_refresh_idle_ticks);
+        chief_refresh_idle_low_ticks = (float) params.getDouble("chief_refresh_idle_low_ticks",
+                chief_refresh_idle_low_ticks);
+        chief_refresh_useful = params.getInt("chief_refresh_useful", chief_refresh_useful);
+        chief_refresh_clear = params.getInt("chief_refresh_clear", chief_refresh_clear);
+        chief_refresh_hold = params.getInt("chief_refresh_hold", chief_refresh_hold);
+        chief_refresh_min_inside = params.getInt("chief_refresh_min_inside", chief_refresh_min_inside);
+        chief_refresh_arm_ticks = (float) params.getDouble("chief_refresh_arm_ticks", chief_refresh_arm_ticks);
+        chief_refresh_cull_ticks = (float) params.getDouble("chief_refresh_cull_ticks", chief_refresh_cull_ticks);
+        chief_retrain_late = params.getBoolean("chief_retrain_late", chief_retrain_late);
         threat_look = params.getInt("threat_look", threat_look);
         hold_ratio = (float) params.getDouble("hold_ratio", hold_ratio);
         chief_per_hit = params.getBoolean("chief_per_hit", chief_per_hit);

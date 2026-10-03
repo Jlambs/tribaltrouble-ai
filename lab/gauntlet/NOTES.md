@@ -1943,6 +1943,105 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
 - **N=23 first draw, s6232 (cur15-flat-vs23-6001)**: class A, our base held 360 min against 15 copies with bases at
   the cap (3 copies out by 17 min, kills 11,515 / lost 8,260, margin -0.87). At 600 min (draw600-vs23, equal at 360 min
   by checksum) it is a **loss at 522 min**: the copies went back from 15 to 17 bases by 480 min and our base fell.
+- **Frontier search ends at N=22** (cur15, 0/10/10): N=23 0 wins in 5,000 (1 draw, s6232, a loss at 522 min when
+  played to 600; 3 games past 60 min), N=24 0 in 3,298 (stopped by the user; 1 past 60 min).
+- **Long defences are warrior-starved, not cap-starved** (defense.py; cur15 games at N>=17 past 120 min, defence
+  phase): wins hold 83 warriors (15 in towers) and 143 peons, the long losses / draws 28 warriors and 153 peons; weapon
+  stock is ~0 throughout (every axe goes out at once). Iron income per defence hour 703 against 304 (rubber 84 / 23,
+  wood 1,706 / 1,127); the long losses' counters: iron picks unreachable 632/h (5 in wins), far ore picks 572/h (4),
+  peons blocked 3x. ORE log lines (8e9260a6, log only) on 5 replays: from 40 min the nearest free iron is a median
+  164-246 m walk, threatened iron a median 0-1 deposit, rock nearer than iron in 44-95 % of minutes (s7125: rock 59 m,
+  iron 246 m, iron stock <= 1 every minute), 25-95 workers idle in the armory with wood stocked (s7125: 70, 181 wood).
+  Threatened supply-minutes (ORE threats, 74039b8f): lured parked waves 5-20 %, active warriors most.
+- **rock_share by stage: no gain.** 40 min on (rock40-share30/60, 209 / 157 frontier games alive at 40 min, paired,
+  identical to 40 min): rock +43/+66 per h, iron -23/-27, rock warriors +1.6/+1.8, all warriors +0.3/+0.3 (SE 1.0 /
+  0.6), kills / losses unchanged, survival +1.8 / +0.7 min (SE 2.1 / 2.4), wins 10-9 / 3-4. Rock replaces iron. From the
+  start / 20 min at N=20 (partial, biased): worse (the N=20 wins lost). rock_on_fail never fired (iron picks do not
+  fail, they walk far). rock_idle (dca3dc8c, c15fad8c; idle armory workers make rock axes on top of the iron, split
+  between gatherers and forgers by the ore model) under test.
+- **Why shepherd recruiting stops** (workflow, code + 4 replays, skeptic): a flock recruits only when empty, and in
+  the collapse games (s7125 from ~35 min, s7123 from ~97 min) the shepherds never die: recruited from inside our base,
+  their spots 65-330 cells out behind stalled enemy armies, they walk-flee every ~4.5 s at the edge of a 'coming' disc
+  or stand with no spot (73 % of tends), pinned among our towers; the copies nearly stop launching (all at the cap,
+  their armies in attack-moves that never end, so too few idle warriors). Starts when our forward army / towers fall
+  and the base waves stop dying. New options (55c8aefb, all off): shepherd_stuck_ticks / _gap_ticks, shepherd_need /
+  _need_ticks, shepherd_fixes_ticks, shepherd_recruit_clear / _ticks, shepherd_coming_stalled; away_strike (muster on a
+  copy base whose own army is away: awayDefense counts its warriors beyond away_home_cells at away_idle_value if idle,
+  away_walk_value if not, as a Hard recalls only idle ones). Identity: 3 replays SAME.
+- **rock_idle (idle armory workers make rock axes on top of the iron; balanced gatherers / forgers, counts its gatherers
+  out, hysteresis; dca3dc8c..ad095765)**: frontier games alive at 40 min (248, N=19-24, paired, identical to 40 min),
+  rock_idle=1 from 40 min: wins 13 vs 9 (+6 -2: N=19 s6305, s6453, N=20 s6208, s7296, s8247, N=22 s6037; lost s6050,
+  s6737), survival +4.5 min (SE 2.2); half the workers 10 vs 9. Start time at N=17 (fresh 11001..11500, 500 each, base
+  17 wins): from the start 21 (+15 -11, games past 60 min 51 vs 69), **from 20 min 30 (+16 -3)**, from 40 min 22 (+6 -1).
+  idlefix40-all-vs22 s6037 (N=22 win, 111:29, replay VERIFIED) had two copies that never armed (s13, s22): not clean.
+- **Shepherd fixes, smoke on the 13 frontier games past 90 min, from 40 min** (better / worse / same against cur15):
+  tight2 8/3/2, detour 8/3/2, tight 7/4/2, tight+detour 7/4/2 (N=21 s8093 won at 237), kill zones 7/4/2, rock_idle 6/4/3,
+  stuck (5 min, 10 min gap) 6/3/4, clear 6/6/1, tight3 5/6/2, away_strike 5/6/2 (exposes the base: parked), need 5/7/1
+  (drop), route check 4/5/0 (drop: farther supplies; strict version starved the economy), wedge_real_kills 0/0/13.
+  Tight: stuck 2 min within 28 cells of our buildings, 4 min elsewhere, gap 4 min (ready ends it), no-spot 2 min;
+  tight2 adds backoff (max 16 min) and a 3-min no-progress release, which released far shepherds mid-walk (N=24 s7062
+  lost at 74, log: s1's wave hit our base 81 s after its shepherd's release); tight3 limits it to near our base.
+  Stuck releases in N=23 s7125: 76 of them, median 17 cells from our buildings, 49 with no spot, 3 launches meanwhile.
+  Big paired runs on the 248 games: stuck (old settings) 9 vs 9; rock_idle + stuck 12 vs 9 (= rock_idle alone).
+- **Dead is not killed** (audit, 8 agents): a unit entering an armory / quarters is removed (dead, hit points kept), and
+  a razed building drops its occupants and gunner uncounted. Fixed: gather_kill_zone counted door entries as deaths
+  (50052219); the wedge watchdog's kills count commuting peons near a live Hard base (wedge_real_kills, off; no effect on
+  the 13 games); counters shepherd_entered, rearm_placer_entered, lure_home. Harness (headless e264397e, a1a765f2):
+  census lostInside and razed "inside" (cur15 N>=19 long games: +4.6 % losses hidden, up to 22 % per game; the copies
+  lost 2,405 inside the bases we razed in the N=22 s7412 win).
+- **Peon churn**: long frontier games lose 300-900 non-shepherd peons per hour against 100-165 alive, 90 % within 60
+  cells of our buildings; far trips are 0-11 % (gatherer detours would not pay; kill zones target the clusters).
+- **cur16 candidates queued** (fresh seeds, N=17 11501..12000 and N=20 11001..11500, 500 each, paired with fresh cur15
+  base runs): A rock_idle from 20 min; B A + tight shepherds (+ progress near base, detour) from 40 min; C B + kill zones.
+- **cur16 adopted** (on the user's go; Strategy defaults): rock_idle=1 from 20 min; shepherd stuck release 2 min near
+  our base / 4 min elsewhere, gap 4 min doubling to 16 (ended when the copy is ready), no-spot release 2 min, no-progress
+  3 min near base only, detour, all from 40 min; wedge_real_kills. Evidence (fresh seeds, paired): rock_idle from 20
+  min at N=17 over 1,000 games 55 vs 42 wins (+27 -14; 11001..11500 30 vs 17, 11501..12000 25 vs 25), frontier games
+  alive at 40 min 13 vs 9 (from 40 min); B (+ shepherds) 27 vs 25 on 11501..12000 (A 25), C (+ kill zones) 22: kill
+  zones not adopted; N=20 11001..11500: 0 wins in 500 for base and every candidate. Identity: cur16 defaults = the
+  explicit spec = cand-b on 10 N=17 games.
+- **Record N=24 (cur16)**: cur16-flat-vs24-9501 s9902-0 won at 216:52 after 4,320 N=24 games (replay VERIFIED; spawns
+  clean: no two copies within 20 cells, nearest copies 45 and 51 cells from us). A long defence: 19 copies alive at 60
+  min with 1,045 warriors out, our 15-17 towers held (37 buildings lost over the game), the copies' armies wore down
+  (792 warriors at 120 min, 72 at 180); a 240-strength army at 118 min, then one campaign from 137 min razed 13 copies.
+  cur16 N=23: 0 wins in 5,000 (6001..11000). Search goes on at N=25 and N=26.
+- **Why the base falls at N=23** (5,000 cur16 games, falls.py; 13 logged losses, falls_log.py / falls_sum.py): median
+  end 26.7 min; first building razed ~16 min, first quarters/armory 18-19. At 15 min longer games had fewer copies
+  alive, more iron and warriors (each moves the median end ~3 min, best vs worst fifth). In 9 of 13 logged losses the
+  army was abroad (ATTACK, 40-130 warriors, 0-16 at home, 40-127 parked enemies by our buildings) when the first home
+  fell; the attack ran ~6-18 min fighting a stream of waves 30-100 m from its target (64-85 % of battle samples
+  fighting) and had knocked out a median 2 copies (0-5). The N=22 win s7412 ran the same plan but knocked out 9 copies
+  by 19.5 min (3 at once at 10.5) with no parked mass at home until 17 min. Queued: recall_ratio 0.5,
+  target_home_weight 1, home_guard 20 at N=23 (6001..6200, paired with cur16).
+- **Giants** (dbddecb0, 9b485f78; all off): classifier of stalled attack-walkers (Giants.java), giant_keepout (sites),
+  giant_stun_hold, giant_shred (chieftain blasts giants from outside every scan). Smoke from 40 min on the 25 cur16
+  N=23/24 games past 40 min: first arm never blasted (chieftain at 5-19 hp under shred_min_hp 35; giants sent at our
+  shepherds counted as "at their targets"); 19 games: same end minute in most, s8164 +10, s6129 +7, s7959 -118 (no
+  blast; more stuns by a 5-hp chieftain). Fixed in giant_shred_min_hp 0 and at-target only by our buildings; shred2 queued.
+- **Chieftain refresh** (workflow: engine, behaviour and data readers, 3 designs, 3 critiques; 58ee3a1d, 7821ec9d,
+  910e4e31; all off): a chieftain never heals, can enter no building, and no other trains while he lives; at 24 hp or
+  less position() parks him at the armory for good, and at 20 or less he stuns single warriors. hp trace (log only,
+  identical play): the N=24 win s9902's third chief sat at 12 hp at the armory with no cast for the last 143 min;
+  s7062's at 20 hp from 30 to 236 min. In cur16 games past 60 min, 59 % of chief time is in 10+ min stretches with no
+  cast; parked casts catch a median of 1 (47 % nothing). A refresh is a UI order (towers or warriors Attack our own
+  chief; a tower cull takes ~5 s) and retraining is free at the unit cap. Decision batch, N=17, the 203 cur16 games
+  alive at 40 min (cur16-cand-b-vs17-11501, 27 wins; checksums 203/203 agree to 2400 s): chief_refresh + retrain_late
+  27 -> 24 (-6 +3, 66 culls in 34 games), chief_retrain_late alone 27 -> 24 (-5 +2; its gate fired once, the flips come
+  from the trainer top-up at the cap), chief_refresh alone 27 -> 23 (-6 +2, 61 culls in 36 games; both-won games end
+  6 min sooner). Not adopted: a fresh chief does not pay at N=17. Smoke at N=23/24 caught two bugs (retrain into a
+  fight; no killer within 30 cells) and lost s9902 in both versions, diverging at 66 min through peon top-ups (chaos,
+  not the cull).
+- **giant_shred2** (25 games): blasted in 1 game (s7062: 3 blasts, 138 caught; draw -> loss at 357). Parked.
+- **B attack params at N=23** (200 seeds each, paired): recall_ratio 0.5 -0.01 min (SE 0.17), target_home_weight 1
+  +0.00 (0.28), home_guard 20 -0.24 (0.25) and fewer copies out by 20 min (2.4 vs 2.9). No lever; needs code (target
+  choice for multi-copy knockouts, or a time box on attacks that knock nothing out).
+- **cur16 frontier search ended** (frontier_search.py, 2026-10-03, 0/10/10, ludicrous): N=23 0 in 5,000 (2 draws:
+  s6232, s7125); **N=24 1 win in 4,320** (s9902, 216:52, replay VERIFIED, clean spawns: effective N 24; s7062 draw);
+  N=25 0 in 5,000 (2 draws, both stalemates: s7146 a base-less remnant, s10858 capped at 250 units with no armory
+  among 4,142 jammed enemy warriors; longest loss s10612 122 min); N=26 0 in 5,000 (no draws; longest s9646 70 min:
+  2 copies out by 16 min, then 24 copies with ~2,300 warriors outlasted a base that held to 57 min). Stop rule met
+  (N=25 and N=26 both 0 in 5,000). **Final record: N=24 (cur16, s9902).** Per the user's wrap-up, the open research
+  lines (giants, chief refresh, attack params) ended without a promising result, so the record stands.
 
 ### Watch view: what the AI shows when its game is watched (AiView, 2026-09-30)
 
