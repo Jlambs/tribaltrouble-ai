@@ -18,6 +18,7 @@ import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.PlayerInfo;
+import com.oddlabs.tt.render.Picker;
 import com.oddlabs.tt.render.RenderQueues;
 import com.oddlabs.tt.render.Renderer;
 import com.oddlabs.tt.resource.IslandGenerator;
@@ -168,6 +169,7 @@ final class WatchGame implements Clock.Listener {
                 selftest.frame(now);
             }
             clock.frame(now);
+            dropDeadHover();
             dropDeadPick();
             overlay.frame();
             hud.frame(now);
@@ -181,6 +183,19 @@ final class WatchGame implements Clock.Listener {
 
     private boolean menuPaused() {
         return viewer.isPaused();
+    }
+
+    /**
+     * Forgets the object under the mouse once it died. A game re-picks it right after each world tick (the local
+     * animation manager's pickHover), and dying units are never picked; the clock plays its ticks after that pick and
+     * before the frame is drawn, so a unit that died meanwhile would keep its tool tip, whose renderer asserts that it
+     * is alive. The next pick finds what is under the mouse again.
+     */
+    private void dropDeadHover() {
+        Picker picker = viewer.getPicker();
+        if (picker.getCurrentHovered() instanceof Selectable<?> hovered && hovered.isDead()) {
+            picker.resetCurrentHovered();
+        }
     }
 
     private void dropDeadPick() {
