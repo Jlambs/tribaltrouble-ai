@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Frontier seed search: python lab/gauntlet/frontier_search.py JOBFILE LOG [first_N]
+"""Frontier seed search: python lab/gauntlet/frontier_search.py JOBFILE LOG [first_N] [PREFIX] [POOL_SLOTS]
 
 The user's rule (2026-10-02): search each N with 2,000 games (four 500-seed blocks); with no win there, extend it to
 5,000 (six more blocks); an N with a win is beaten (its unstarted blocks are cancelled) and the next N starts; keep
@@ -17,6 +17,9 @@ import time
 
 JOBS, LOG = sys.argv[1], sys.argv[2]
 FIRST = int(sys.argv[3]) if len(sys.argv) > 3 else 21
+# the run-name prefix (the AI version searched: its defaults are the spec) and the pool's batch slots
+PREFIX = sys.argv[4] if len(sys.argv) > 4 else 'cur15'
+SLOTS = sys.argv[5] if len(sys.argv) > 5 else '4'
 RUNS = 'aisim/runs'
 FIRST_BLOCKS = [6001, 6501, 7001, 8001]
 MORE_BLOCKS = [7501, 8501, 9001, 9501, 10001, 10501]
@@ -24,10 +27,10 @@ SPEC = 'gauntlet'
 
 
 def name(n, start):
-    # the first blocks of N=21 and N=22 were queued by hand under these names
-    if start == 6001 and n in (21, 22):
+    # the first cur15 blocks of N=21 and N=22 were queued by hand under these names
+    if PREFIX == 'cur15' and start == 6001 and n in (21, 22):
         return f'cur15-flat-vs{n}'
-    return f'cur15-flat-vs{n}-{start}'
+    return f'{PREFIX}-flat-vs{n}-{start}'
 
 
 def log(msg):
@@ -73,7 +76,7 @@ def cancel_unstarted(n):
     out = []
     for line in lines:
         run = line.split('|')[0]
-        if re.fullmatch(rf'cur15-flat-vs{n}(-\d+)?', run) and not started(run):
+        if re.fullmatch(rf'{re.escape(PREFIX)}-flat-vs{n}(-\d+)?', run) and not started(run):
             out.append('#frontier-done ' + line)
         else:
             out.append(line)
@@ -82,17 +85,21 @@ def cancel_unstarted(n):
 
 
 def pool_alive():
+    # Git Bash's ps can fail under load (cmalloc): an unreadable process list counts as alive, so a second pool is
+    # never started on the same job file
     try:
-        out = subprocess.run(['ps', '-ef'], capture_output=True, text=True).stdout
+        r = subprocess.run(['ps', '-ef'], capture_output=True, text=True)
     except OSError:
         return True
-    return 'pool.sh' in out
+    if r.returncode != 0 or not r.stdout.strip():
+        return True
+    return any('pool.sh' in line and os.path.basename(JOBS) in line for line in r.stdout.splitlines())
 
 
 def ensure_pool():
     if not pool_alive():
         kw = {'creationflags': subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
-        subprocess.Popen(['bash', './lab/gauntlet/pool.sh', '4', JOBS], stdout=open(LOG + '.pool', 'a'),
+        subprocess.Popen(['bash', './lab/gauntlet/pool.sh', SLOTS, JOBS], stdout=open(LOG + '.pool', 'a'),
                          stderr=subprocess.STDOUT, **kw)
         log('pool restarted')
 
