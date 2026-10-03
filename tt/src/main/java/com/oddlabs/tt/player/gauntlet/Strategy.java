@@ -117,7 +117,8 @@ class Strategy {
     float gather_kill_ticks = 15000f; // 5 min
     /**
      * gather_route_clear (off): a supply pick takes the best of its gather_route_tries cheapest supplies whose straight
-     * walk from the armory keeps gather_route_cells from every enemy warrior (none: no pick). From gather_fixes_ticks.
+     * walk from the armory keeps gather_route_cells from every enemy warrior (none clear: the cheapest, as without it).
+     * From gather_fixes_ticks.
      */
     boolean gather_route_clear = false;
     int gather_route_cells = 10;

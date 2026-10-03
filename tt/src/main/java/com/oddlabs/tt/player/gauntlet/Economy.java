@@ -5962,15 +5962,16 @@ final class Economy {
         if (killed > 0)
             ai.aiLog().count("pick_kill_zone");
         if (route_on && best != null) {
+            // the cheapest of the few whose walk is clear; with none clear, the cheapest as without the option (a
+            // strict rule left gatherers home near a besieged base, where nearly every walk passes some enemy)
             Supply clear = null;
             for (int k = 0; k < route_n && clear == null; k++)
                 if (routeClear(ax, ay, route_cand[k].getGridX(), route_cand[k].getGridY()))
                     clear = route_cand[k];
             if (clear != best)
                 ai.aiLog().count(clear == null ? "pick_route_none" : "pick_route_other");
-            if (clear == null)
-                threat++;
-            best = clear;
+            if (clear != null)
+                best = clear;
         }
         if (best == null) {
             String kind = type == TreeSupply.class ? "tree" : type == IronSupply.class ? "iron" : "rock";
