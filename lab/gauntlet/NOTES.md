@@ -1963,3 +1963,28 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   _need_ticks, shepherd_fixes_ticks, shepherd_recruit_clear / _ticks, shepherd_coming_stalled; away_strike (muster on a
   copy base whose own army is away: awayDefense counts its warriors beyond away_home_cells at away_idle_value if idle,
   away_walk_value if not, as a Hard recalls only idle ones). Identity: 3 replays SAME.
+- **rock_idle (idle armory workers make rock axes on top of the iron; balanced gatherers / forgers, counts its gatherers
+  out, hysteresis; dca3dc8c..ad095765)**: frontier games alive at 40 min (248, N=19-24, paired, identical to 40 min),
+  rock_idle=1 from 40 min: wins 13 vs 9 (+6 -2: N=19 s6305, s6453, N=20 s6208, s7296, s8247, N=22 s6037; lost s6050,
+  s6737), survival +4.5 min (SE 2.2); half the workers 10 vs 9. Start time at N=17 (fresh 11001..11500, 500 each, base
+  17 wins): from the start 21 (+15 -11, games past 60 min 51 vs 69), **from 20 min 30 (+16 -3)**, from 40 min 22 (+6 -1).
+  idlefix40-all-vs22 s6037 (N=22 win, 111:29, replay VERIFIED) had two copies that never armed (s13, s22): not clean.
+- **Shepherd fixes, smoke on the 13 frontier games past 90 min, from 40 min** (better / worse / same against cur15):
+  tight2 8/3/2, detour 8/3/2, tight 7/4/2, tight+detour 7/4/2 (N=21 s8093 won at 237), kill zones 7/4/2, rock_idle 6/4/3,
+  stuck (5 min, 10 min gap) 6/3/4, clear 6/6/1, tight3 5/6/2, away_strike 5/6/2 (exposes the base: parked), need 5/7/1
+  (drop), route check 4/5/0 (drop: farther supplies; strict version starved the economy), wedge_real_kills 0/0/13.
+  Tight: stuck 2 min within 28 cells of our buildings, 4 min elsewhere, gap 4 min (ready ends it), no-spot 2 min;
+  tight2 adds backoff (max 16 min) and a 3-min no-progress release, which released far shepherds mid-walk (N=24 s7062
+  lost at 74, log: s1's wave hit our base 81 s after its shepherd's release); tight3 limits it to near our base.
+  Stuck releases in N=23 s7125: 76 of them, median 17 cells from our buildings, 49 with no spot, 3 launches meanwhile.
+  Big paired runs on the 248 games: stuck (old settings) 9 vs 9; rock_idle + stuck 12 vs 9 (= rock_idle alone).
+- **Dead is not killed** (audit, 8 agents): a unit entering an armory / quarters is removed (dead, hit points kept), and
+  a razed building drops its occupants and gunner uncounted. Fixed: gather_kill_zone counted door entries as deaths
+  (50052219); the wedge watchdog's kills count commuting peons near a live Hard base (wedge_real_kills, off; no effect on
+  the 13 games); counters shepherd_entered, rearm_placer_entered, lure_home. Harness (headless e264397e, a1a765f2):
+  census lostInside and razed "inside" (cur15 N>=19 long games: +4.6 % losses hidden, up to 22 % per game; the copies
+  lost 2,405 inside the bases we razed in the N=22 s7412 win).
+- **Peon churn**: long frontier games lose 300-900 non-shepherd peons per hour against 100-165 alive, 90 % within 60
+  cells of our buildings; far trips are 0-11 % (gatherer detours would not pay; kill zones target the clusters).
+- **cur16 candidates queued** (fresh seeds, N=17 11501..12000 and N=20 11001..11500, 500 each, paired with fresh cur15
+  base runs): A rock_idle from 20 min; B A + tight shepherds (+ progress near base, detour) from 40 min; C B + kill zones.
