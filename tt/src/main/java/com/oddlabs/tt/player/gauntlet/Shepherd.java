@@ -346,8 +346,11 @@ final class Shepherd {
             }
         for (Flock f : flocks) {
             if (f.shepherd != null && f.shepherd.isDead()) {
-                ai.aiLog().count("shepherd_lost");
-                ai.aiLog().count("shepherd_lost_" + f.last_state);
+                // killed, or walked into a building (removed with its hit points: counters and log only)
+                boolean killed = f.shepherd.getHitPoints() <= 0;
+                ai.aiLog().count(killed ? "shepherd_lost" : "shepherd_entered");
+                if (killed)
+                    ai.aiLog().count("shepherd_lost_" + f.last_state);
                 f.lost_at = ai.now();
                 if (ai.logging())
                     ai.log("shepherd of " + name(

@@ -4597,7 +4597,7 @@ final class Military {
         }
         String why = null;
         if (t != was) {
-            if (was.isDead())
+            if (fell(was))
                 why = "the target fell";
             engaged_target = t;
             engaged_hp = hitPoints(t);
@@ -4697,12 +4697,20 @@ final class Military {
         return t instanceof Building b ? b.getHitPoints() : -1;
     }
 
-    private static int deadCount(java.util.@NonNull Collection<@NonNull Unit> units) {
+    private int deadCount(java.util.@NonNull Collection<@NonNull Unit> units) {
         int n = 0;
         for (Unit u : units)
-            if (u.isDead())
+            if (fell(u))
                 n++;
         return n;
+    }
+
+    /**
+     * Whether t is gone for the wedge watchdog: dead, and with wedge_real_kills killed (a unit at 0 hit points, not one
+     * that walked into a building).
+     */
+    private boolean fell(@NonNull Selectable<?> t) {
+        return t.isDead() && (!ai.strategy().wedge_real_kills || !(t instanceof Unit u) || u.getHitPoints() <= 0);
     }
 
     /**
@@ -4817,7 +4825,7 @@ final class Military {
                 && dist != DistanceField.UNREACHABLE ? column_start_dist - dist : 0;
         Selectable<?> was = column_target;
         String outcome = was == null
-                || was.isDead() ? "through" : was != target ? "retarget" : gain >= 30 ? "through" : "still";
+                || fell(was) ? "through" : was != target ? "retarget" : gain >= 30 ? "through" : "still";
         ai.aiLog().count("unjam_" + outcome);
         ai.log(String.format(
                 "unjam: column march over (%s), pivot %d m from the target at %d,%d (%d m at the start), army at %d,%d",

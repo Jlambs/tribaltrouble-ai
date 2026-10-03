@@ -1292,7 +1292,9 @@ final class Economy {
         p.placer = null;
         if (u == null)
             return;
-        if (u.isDead()) {
+        if (u.isDead() && u.getHitPoints() > 0) {
+            ai.aiLog().count("rearm_placer_entered"); // walked into a building: removed, not killed
+        } else if (u.isDead()) {
             ai.aiLog().count("rearm_placer_died");
             if (p.evac_skipped)
                 ai.aiLog().count("rearm_placer_died_exempt");

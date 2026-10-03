@@ -105,6 +105,13 @@ class Strategy {
      */
     boolean away_strike = false;
     /**
+     * wedge_real_kills (off: as before): the wedge watchdog's kills and losses, and its and the column march's
+     * "target fell", count only units killed (0 hit points). A unit that walked into a building is removed (dead) with
+     * its hit points: near a live Hard base its peons commute in and out, 10 'kills' in 300 s cleared the strikes and
+     * the watchdog never fired (the dead-vs-killed audit).
+     */
+    boolean wedge_real_kills = false;
+    /**
      * gather_kill_zone (off): where gather_kill_n of our peons (shepherds left out) died within gather_kill_cells of
      * each
      * other within gather_kill_window_ticks, no supply within gather_kill_cells is picked for gather_kill_ticks after
@@ -1816,6 +1823,7 @@ class Strategy {
         rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
         rock_idle = (float) params.getDouble("rock_idle", rock_idle);
         away_strike = params.getBoolean("away_strike", away_strike);
+        wedge_real_kills = params.getBoolean("wedge_real_kills", wedge_real_kills);
         gather_kill_zone = params.getBoolean("gather_kill_zone", gather_kill_zone);
         gather_kill_n = params.getInt("gather_kill_n", gather_kill_n);
         gather_kill_cells = params.getInt("gather_kill_cells", gather_kill_cells);
