@@ -5999,7 +5999,8 @@ final class Economy {
                 next.put(p, new int[]{p.getGridX(), p.getGridY()});
         int c = st.gather_kill_cells;
         for (Map.Entry<Unit, int[]> e : peon_cells.entrySet()) {
-            if (next.containsKey(e.getKey()) || !e.getKey().isDead())
+            // a real kill only: a peon that walked into a building is removed too (dead), but keeps its hit points
+            if (next.containsKey(e.getKey()) || !e.getKey().isDead() || e.getKey().getHitPoints() > 0)
                 continue;
             int x = e.getValue()[0];
             int y = e.getValue()[1];
