@@ -129,6 +129,17 @@ class Strategy {
      * test walks to a waypoint shepherd_detour_r or half that away whose walk is clear and that gets it nearer.
      */
     boolean shepherd_detour = false;
+    /**
+     * shepherd_gap_backoff: each further stuck, no-progress or no-spot release in a row for a copy doubles its gap,
+     * up to shepherd_gap_max_ticks; a shepherd of the copy reaching its spot, or a wave aimed at a shepherd, resets it.
+     */
+    boolean shepherd_gap_backoff = false;
+    float shepherd_gap_max_ticks = 48000f; // 16 min
+    /**
+     * shepherd_progress_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has not reached its spot and has not
+     * got 10 cells nearer it (the same spot, within 10 cells) for this long goes home, with the gap as a stuck one.
+     */
+    float shepherd_progress_ticks = 0f;
     int shepherd_detour_r = 16;
     /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
     float shepherd_fixes_ticks = 0f;
@@ -1786,6 +1797,9 @@ class Strategy {
         shepherd_gap_ready = params.getBoolean("shepherd_gap_ready", shepherd_gap_ready);
         shepherd_nospot_ticks = (float) params.getDouble("shepherd_nospot_ticks", shepherd_nospot_ticks);
         shepherd_detour = params.getBoolean("shepherd_detour", shepherd_detour);
+        shepherd_gap_backoff = params.getBoolean("shepherd_gap_backoff", shepherd_gap_backoff);
+        shepherd_gap_max_ticks = (float) params.getDouble("shepherd_gap_max_ticks", shepherd_gap_max_ticks);
+        shepherd_progress_ticks = (float) params.getDouble("shepherd_progress_ticks", shepherd_progress_ticks);
         shepherd_detour_r = params.getInt("shepherd_detour_r", shepherd_detour_r);
         shepherd_need = (float) params.getDouble("shepherd_need", shepherd_need);
         shepherd_fixes_ticks = (float) params.getDouble("shepherd_fixes_ticks", shepherd_fixes_ticks);

@@ -160,6 +160,15 @@ final class Shepherd {
         int stuck_spot_d = -1;
         float gap_until = -1f;
         /**
+         * shepherd_gap_backoff: stuck, no-progress and no-spot releases in a row; shepherd_progress_ticks: since when
+         * the shepherd has been no nearer its spot (-1 before), its walk to the spot then and that spot.
+         */
+        int fails;
+        float prog_since = -1f;
+        int prog_d;
+        int prog_x;
+        int prog_y;
+        /**
          * shepherd_need: the copy's last launch (-1 before), its idle warriors at the last tend, and since when it has
          * needed no shepherd (-1 while it does).
          */
@@ -554,8 +563,10 @@ final class Shepherd {
                     ai.log("wave of " + name(
                             f) + " goes to " + tx + "," + ty + (decoy ? " (our decoy)" : base ? " (our base)" : "") + " (spot " + f.spot_x + "," + f.spot_y + ")");
                 }
-                if (nearShepherd(tx, ty, 6))
+                if (nearShepherd(tx, ty, 6)) {
                     ai.aiLog().count("wave_to_shepherd");
+                    f.fails = 0;
+                }
                 if (ai.logging())
                     logLaunch(f, tx, ty);
                 // raid_evac: an armory of ours the wave goes for may empty before it arrives.
@@ -732,6 +743,7 @@ final class Shepherd {
             f.recruited = ai.now();
             f.nospot_since = -1f;
             f.stuck_since = -1f;
+            f.prog_since = -1f;
             ai.aiLog().count("shepherd_recruit");
             if (loaded(candidate))
                 ai.aiLog().count("shepherd_recruit_loaded");
@@ -770,9 +782,17 @@ final class Shepherd {
                         f) + " released: stood within " + STUCK_BOX + " cells of " + f.stuck_x + "," + f.stuck_y + " for " + (int) GauntletAI.seconds(
                                 ai.now() - f.stuck_since) + " s (spot " + f.spot_x + "," + f.spot_y + ", recruited " + (int) GauntletAI.seconds(
                                         ai.now() - f.recruited) + " s ago)");
-            f.lost_at = ai.now();
-            f.gap_until = ai.now() + strategy.shepherd_stuck_gap_ticks;
-            releaseKeepingLeader(f);
+            lateRelease(f);
+            return;
+        }
+        if (strategy.shepherd_progress_ticks > 0f && ai.now() >= strategy.shepherd_fixes_ticks && !f.arrived
+                && noProgress(f, s)) {
+            ai.aiLog().count("shepherd_progress_release");
+            if (ai.logging())
+                ai.log("shepherd of " + name(
+                        f) + " released: no nearer its spot " + f.prog_x + "," + f.prog_y + " than " + f.prog_d + " cells for " + (int) GauntletAI.seconds(
+                                ai.now() - f.prog_since) + " s, at " + s.getGridX() + "," + s.getGridY());
+            lateRelease(f);
             return;
         }
         int moved = Math.abs(s.getGridX() - f.last_x) + Math.abs(s.getGridY() - f.last_y);
@@ -827,9 +847,7 @@ final class Shepherd {
                         if (ai.logging())
                             ai.log("shepherd of " + name(f) + " released: no spot for " + (int) GauntletAI.seconds(
                                     ai.now() - f.nospot_since) + " s at " + s.getGridX() + "," + s.getGridY());
-                        f.lost_at = ai.now();
-                        f.gap_until = ai.now() + strategy.shepherd_stuck_gap_ticks;
-                        releaseKeepingLeader(f);
+                        lateRelease(f);
                     }
             return;
         }
@@ -856,6 +874,7 @@ final class Shepherd {
         f.spot_y = spot[1];
         if (!f.arrived && MapAnalysis.dist2(s.getGridX(), s.getGridY(), spot[0], spot[1]) <= 3 * 3) {
             f.arrived = true;
+            f.fails = 0;
             ai.aiLog().count("shepherd_at_spot");
             if (ai.logging())
                 ai.log("shepherd of " + name(
@@ -949,6 +968,41 @@ final class Shepherd {
         }
         float limit = stuckLimit(f);
         return limit > 0f && ai.now() - f.stuck_since >= limit;
+    }
+
+    /**
+     * A stuck, no-progress or no-spot release: the shepherd goes home (f.leader kept), and its copy gets no new one for
+     * shepherd_stuck_gap_ticks, doubled for each such release in a row up to shepherd_gap_max_ticks with
+     * shepherd_gap_backoff.
+     */
+    private void lateRelease(@NonNull Flock f) {
+        Strategy st = ai.strategy();
+        f.fails++;
+        float gap = st.shepherd_stuck_gap_ticks;
+        if (st.shepherd_gap_backoff)
+            gap = Math.min(st.shepherd_gap_max_ticks, gap * (1 << Math.min(10, f.fails - 1)));
+        f.lost_at = ai.now();
+        f.gap_until = ai.now() + gap;
+        releaseKeepingLeader(f);
+    }
+
+    /**
+     * shepherd_progress_ticks: whether shepherd s of f has been no 10 cells nearer its spot for shepherd_progress_ticks
+     * (a spot that moved more than 10 cells starts the count again; with no spot nothing counts).
+     */
+    private boolean noProgress(@NonNull Flock f, @NonNull Unit s) {
+        if (f.spot_x < 0)
+            return false;
+        int d = (int) Math.sqrt(MapAnalysis.dist2(s.getGridX(), s.getGridY(), f.spot_x, f.spot_y));
+        if (f.prog_since < 0f || d <= f.prog_d - 10 || Math.max(Math.abs(f.spot_x - f.prog_x), Math.abs(
+                f.spot_y - f.prog_y)) > 10) {
+            f.prog_since = ai.now();
+            f.prog_d = d;
+            f.prog_x = f.spot_x;
+            f.prog_y = f.spot_y;
+            return false;
+        }
+        return ai.now() - f.prog_since >= ai.strategy().shepherd_progress_ticks;
     }
 
     /**
