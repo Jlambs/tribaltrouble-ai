@@ -123,6 +123,12 @@ final class Shepherd {
         @Nullable
         Unit leader;
         float last_order = -5000f;
+        /**
+         * shepherd_detour: the waypoint of the last walk order when it went around, -1 when the last walk went straight
+         * to the spot, or the shepherd fled or was let go since (watch view only; no decision reads it).
+         */
+        int detour_x = -1;
+        int detour_y = -1;
         float nospot_since = -1f;
         /** shepherd_sticky: since when enemies have blocked the current spot, -1 while it is clear. */
         float blocked_since = -1f;
@@ -414,6 +420,7 @@ final class Shepherd {
         if (threat_peons > 0 && threat_warriors == 0 && threat_hunters == 0 && threat_coming == 0)
             ai.aiLog().count("shepherd_flee_peon");
         f.flee_ordered = true;
+        f.detour_x = -1;
         if (ai.logging()) {
             f.flee_x = away[0];
             f.flee_y = away[1];
@@ -443,6 +450,7 @@ final class Shepherd {
         f.shepherd = null;
         f.spot_x = -1;
         f.leader = null;
+        f.detour_x = -1;
     }
 
     /**
@@ -466,6 +474,7 @@ final class Shepherd {
                 f.shepherd = null;
                 f.spot_x = -1;
                 f.leader = null;
+                f.detour_x = -1;
                 f.lost_at = ai.now();
                 ai.aiLog().count("shepherd_given_up");
                 return true;
@@ -925,6 +934,8 @@ final class Shepherd {
             ai.landscapeOrder(Selectable.newArray(s), to[0], to[1], Action.MOVE, false);
             f.last_order = ai.now();
             f.flee_ordered = false;
+            f.detour_x = to != spot ? to[0] : -1;
+            f.detour_y = to != spot ? to[1] : -1;
         }
     }
 
