@@ -2056,6 +2056,7 @@ methods of the modules that hold the state (colours, layer names and label helpe
 | threat | the strongest threatening group: a circle of 15 cells (the group updateThreat sums) at threat_x/y, amber at level 1, red at 2 | Military: threat_level/strength/x/y, base_threat_strength, engage_state |
 | economy | every building project at its site: type#id, why (first, by the scout, expansion, relocation, wood lock), state (placer walking, placed and % built; before that why manageProjects last held it back, Project.held: held by a threat with veto_resite's re-site clock (red), a razed tower near it, waiting for the army's escort, a site slot, a safe sniper site or a free placer; else planned); primary armory; expansion armory; evacuations | Economy: projects, expansion, evacuating; Intel.armory() |
 | shepherds | per copy: the spot, the shepherd (state walk/at/flee/nospot) with a line to the spot, the copy's leader with idle warriors against the wave size, orange when a launch is imminent (from the copy's launches, which a home flock reads from its partner); a walking wave as a line to its target | Shepherd: flocks |
+| aim | the 0.707 rule, per enemy with an idle warrior: what its next wave would take if it launched now (AdvancedAI.findTarget): its oldest idle warrior (the wave's leader, a grey-teal pin), the circle of 0.707 x d around it and the line to the nearest building at d, and the pick with a line to it, lavender for a unit inside the circle, pink for the building; halfway along, the copy, the pick and its distance as a share of d ("s16:hard next wave -> the shepherd of s23:hard at 0.28 of 74", "s11:hard launching -> our tower at 35 (nearest unit at 0.71)"; launching: its whole wave idle) | Shepherd.paintAim: Player.findNearestEnemyBuilding and findNearestEnemy from oldestIdleWarrior, as findTarget calls them; flocks (launches, shepherds) |
 | freeze | each strike: the copy's start with phase and squad, the squad's centre and where it heads, the stage point in path (c); frozen copies' armory sites | Freeze: strikes, frozen, frozen_sites |
 | chief | the chieftain (hp, spell ready), a line to where he walks (his WalkController's target), the stun's reach (17 cells) while charged, the enemies his last stun was cast at until it is judged; or the quarters training him | Chieftain, Intel.chieftain |
 
@@ -2063,21 +2064,22 @@ Status lines, in order, each at most 100 characters with its key so the AI panel
 it): summary (the STAT line's essentials in its words: mode, atk and army with strength, threat; peons, W), army,
 target, threat, peons (how many, each gatherer kind against the economy's want), other peons (the other states),
 armory (where, workers/want, stock), weapons (axes, cycles), buildings (Q/A/T with sites, projects placed and held),
-shepherds (flocks, shepherds), waves (copies about to launch, waves walking, seen, at our base), freeze, chief (hp,
-where, spell and last cast; a viking's stun catch rate once checkCatch judged a stun, Chieftain.stuns_judged).
-`describe` (at most 86 characters, as the inspector shows "AI: " + text whole up to 90): shepherd of sN (spot, state),
-freeze squad (target, phase), lure, sapper, the chieftain (spell; hp and cell are the inspector's), a peon's state
-with its site or supply and armory, a warrior's role (home army / attack on X / reinforcing / raid / hunt / to a
-tower), whom it hunts (in place of the attack's target) and its state; buildings: project while it goes up, primary
-or expansion armory, forward or sniper tower, evacuation, the tower's gunner on the way and what it aims at,
-chieftain training.
+shepherds (flocks, shepherds), waves (copies about to launch, waves walking, seen, at our base), aim (waves pending,
+launching, and what they would take: shepherds, other units, buildings), freeze, chief (hp, where, spell and last cast;
+a viking's stun catch rate once checkCatch judged a stun, Chieftain.stuns_judged). `describe` (at most 86 characters, as
+the inspector shows "AI: " + text whole up to 90): shepherd of sN (spot, state), freeze squad (target, phase), lure,
+sapper, the chieftain (spell; hp and cell are the inspector's), a peon's state with its site or supply and armory, a
+warrior's role (home army / attack on X / reinforcing / raid / hunt / to a tower), whom it hunts (in place of the
+attack's target) and its state; buildings: project while it goes up, primary or expansion armory, forward or sniper
+tower, evacuation, the tower's gunner on the way and what it aims at, chieftain training.
 
 Read-only by construction: fields only; the maps and sets are walked with `==` (no get or contains, so no unit's
 identity hash is drawn); none of Intel.enemyIndex, computeField, creepTowerCount (its removeIf), trainingQuarters
 (asserts on a quarters that died since the last update), log, count; every asserting getter after an isDead check;
 a module that throws is skipped with a "paint error" status. Two values are worked out rather than read, both from
 the same lists the AI reads: a copy's imminent launch (Flock.imminent is only set with shepherd_hold, off by default)
-and a wave (tend's own launch test, a walk of more than 20 cells).
+and a wave (tend's own launch test, a walk of more than 20 cells). The aim layer calls the engine's own scans,
+Player.findNearestEnemy and findNearestEnemyBuilding, which only walk the players and their unit sets.
 
 Proof, `lab/gauntlet/PaintCheck.java` on the painter build (snapshot edbecbbc4f), paint and describe on every tick:
 
@@ -2162,3 +2164,20 @@ site". A warrior chief_refresh lent to cull our chieftain says so (it shared Ret
 With shepherd_detour (from 40 min) the shepherd's line goes through its detour waypoint ("detour of sN"), which
 Flock.detour_x/detour_y keep since 7070410f (watch view only), and its describe says "detour via X,Y to spot X,Y". Proof: PaintCheck on cur16-flat-vs24-9501 s9902-0 (the N=24 record, 216:52, every
 tick): 433 of 433 census, end checksum and counters the same; watch VERIFIED to the end on it.
+
+The 0.707 rule on the map (2026-10-03, the user asked to see it): layer aim (Shepherd.paintAim, row in the table above)
+shows for every enemy with an idle warrior what its next wave would take if it launched now. It calls the engine's own
+scans as AdvancedAI.findTarget does (Player.findNearestEnemyBuilding and findNearestEnemy from oldestIdleWarrior; the
+unit wins when its squared distance is below half the building's, integer division as there), so it counts what the
+engine counts: every player on another team than the copy's, placed sites, no unit inside a building or a tower (it has
+left its player's units), nothing dead. Status line aim: waves pending, launching, and at shepherds, other units or
+buildings. On cur16-flat-vs24-9501 s9902-0 (the N=24 record) all 16 pending waves go to shepherds at 10:00, 12 of 15 at
+20:00 (three copies on the shepherd of s23), 10 of 11 at 1:00:00, where parked copies by our base aim at our towers now
+and then. At 20:20 it shows "s15:hard launching -> the shepherd of s17:hard at 0.37 of 153" from 355,239; the log's
+launch at 20:21 goes from 355,239 to that shepherd at 309,271 (309,272 at 20:20), our building 153 cells off. Cost:
+paint 208 us a call against 130 without it (PaintCheck to 45:00, every 10 world ticks). Proof: javap -c -p of every
+gauntlet class equals the base's (gauntlet-watch 2b3f2800; constant pool indices aside) but GauntletAI.paint with its
+renumbered paint lambdas and Shepherd's new painter methods (paintAim, shepherdFlock, aimKind, whole, share; no gauntlet
+method shares a name with them); PaintCheck on s9902-0 over the whole game, every 10 world ticks: 433 of 433 census, end
+checksum 2133253886 same, counters same, 0 differences (longest aim status 86, label 69); the watch selftest VERIFIED to
+1:00:00 with the layer shown alone and with all, at 20:00 and 1:00:00, in the view and on the map.

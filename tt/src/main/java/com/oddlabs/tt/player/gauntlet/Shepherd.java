@@ -2226,6 +2226,128 @@ final class Shepherd {
     }
 
     /**
+     * Layer "aim", the 0.707 rule that the shepherds play on, as each copy's next wave would apply it now. A copy aims
+     * a wave from its oldest idle warrior, the wave's leader (AdvancedAI.nodeAttackWithWarriorsAndChieftain's
+     * warriors[0], oldestIdleWarrior here), at the nearest building of its enemies at d cells, unless its nearest enemy
+     * of any kind is nearer than 0.707 x d (findTarget: squared distances in whole cells, the unit's below half the
+     * building's), then at that one. For every enemy with an idle warrior (in the gauntlet's games each one is a Hard
+     * copy) it paints that leader, the circle of 0.707 x d around it, the line to the building, the target the wave
+     * would take now with a line to it (lavender for a unit inside the circle, pink for the building), and halfway
+     * along that line a label: the copy, its target, and how far the target is as a share of d. The targets come from
+     * the engine's own scans (Player.findNearestEnemyBuilding and findNearestEnemy, as findTarget calls them), so they
+     * count what it counts: the living objects among the units of every player on another team than the copy's, ours
+     * and our allies', with placed sites; not a unit inside a building or mounted in a tower, which has left its
+     * player's units. "launching" when the copy has its whole wave idle (its flock's launches give the wave size, as on
+     * the shepherds layer). Status line aim.
+     */
+    void paintAim(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        String layer = WatchView.AIM;
+        Player us = ai.owner();
+        int pending = 0;
+        int launching = 0;
+        int at_shepherds = 0;
+        int at_units = 0;
+        int at_buildings = 0;
+        for (Player copy : us.getWorld().getPlayers()) {
+            if (!us.isEnemy(copy))
+                continue;
+            Unit leader = oldestIdleWarrior(copy);
+            if (leader == null)
+                continue;
+            int lx = leader.getGridX();
+            int ly = leader.getGridY();
+            Selectable<?> building = copy.findNearestEnemyBuilding(lx, ly);
+            Selectable<?> nearest = copy.findNearestEnemy(lx, ly);
+            if (nearest == null)
+                continue; // nothing left to attack: findTarget gives no target, and no wave leaves
+            int nearest2 = MapAnalysis.dist2(lx, ly, nearest.getGridX(), nearest.getGridY());
+            int building2 = building == null ? -1 : MapAnalysis.dist2(lx, ly, building.getGridX(),
+                    building.getGridY());
+            // findTarget: the nearest of all only without a building or nearer than half its squared distance (ints)
+            boolean to_building = building != null && nearest2 >= building2 / 2;
+            Selectable<?> target = to_building ? building : nearest;
+            Flock f = flockOf(copy); // the copy's own flock, made before a home flock
+            boolean full = false;
+            if (f != null) {
+                int wave_size = Math.min(40, 10 + 5 * copyLaunches(f));
+                full = idleWarriors(copy) >= wave_size && (wave_size < 20 || copy.hasActiveChieftain());
+            }
+            pending++;
+            if (full)
+                launching++;
+            Flock drawn_by = shepherdFlock(target);
+            if (to_building)
+                at_buildings++;
+            else if (drawn_by != null)
+                at_shepherds++;
+            else
+                at_units++;
+            String whom;
+            if (drawn_by == null)
+                whom = aimKind(target);
+            else if (drawn_by.copy != copy)
+                whom = "the shepherd of " + name(drawn_by);
+            else
+                whom = drawn_by.home ? "its home shepherd" : "its shepherd";
+            String head = WatchView.name(copy) + (full ? " launching -> " : " next wave -> ") + whom + " at ";
+            int rgb = to_building ? WatchView.AIM_BUILDING : WatchView.AIM_UNIT;
+            int tx = target.getGridX();
+            int ty = target.getGridY();
+            canvas.mark(layer, lx, ly, WatchView.AIM_RING, "");
+            canvas.line(layer, lx, ly, tx, ty, rgb);
+            canvas.mark(layer, tx, ty, rgb, "");
+            String at;
+            if (building == null) {
+                at = whole(nearest2) + " (no building)"; // no circle: the wave goes for the nearest of all
+            } else {
+                float r = (float) Math.sqrt(building2 / 2);
+                if (r > 0f)
+                    canvas.circle(layer, lx, ly, r, WatchView.AIM_RING);
+                if (!to_building) {
+                    canvas.line(layer, lx, ly, building.getGridX(), building.getGridY(), WatchView.AIM_RING);
+                    at = share(nearest2, building2) + " of " + whole(building2);
+                } else {
+                    at = whole(building2) + (nearest == building ? " (no unit nearer)" : " (nearest unit at " + share(
+                            nearest2, building2) + ")");
+                }
+            }
+            // halfway along the wave's way, where no other layer has a label (the leader and the shepherd have)
+            canvas.mark(layer, (lx + tx) / 2, (ly + ty) / 2, rgb, head + at);
+        }
+        if (pending == 0) {
+            canvas.status("aim", "no wave pending (no enemy has an idle warrior)");
+            return;
+        }
+        String picks = at_shepherds + " at shepherds, " + at_units + " at other units, " + at_buildings + " at buildings";
+        String waves = pending == 1 ? "1 wave pending, " : pending + " waves pending, ";
+        canvas.status("aim", waves + launching + " launching: " + picks);
+    }
+
+    /** The flock whose shepherd {@code s} is, or null (a walk by identity: nothing is hashed). */
+    private @Nullable Flock shepherdFlock(@NonNull Selectable<?> s) {
+        for (Flock f : flocks)
+            if (f.shepherd == s)
+                return f;
+        return null;
+    }
+
+    /** A wave's target for the aim layer's labels: our peon, our decoy site, s1:hard tower (an ally's). */
+    private @NonNull String aimKind(@NonNull Selectable<?> target) {
+        String kind = target instanceof Building b && ai.decoys().isDecoy(b) ? "decoy site" : WatchView.kind(target);
+        return (target.getOwner() == ai.owner() ? "our " : WatchView.name(target.getOwner()) + " ") + kind;
+    }
+
+    /** Whole cells of a squared distance, rounded. */
+    private static int whole(int dist2) {
+        return Math.round((float) Math.sqrt(dist2));
+    }
+
+    /** The distance of squared {@code part2} as a share of squared {@code whole2}, two decimals (0.62). */
+    private static @NonNull String share(int part2, int whole2) {
+        return whole2 <= 0 ? "-" : String.format(Locale.ROOT, "%.2f", Math.sqrt((double) part2 / whole2));
+    }
+
+    /**
      * The launches of a flock's copy: the copy's own flock counts them (tend), so a home flock (shepherd_home_pair)
      * reads its partner's.
      */
