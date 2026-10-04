@@ -186,7 +186,8 @@ class TextPanel extends HudPanel {
     static final int PADDING = 4;
     /** The room after an icon, and between a label and its value. */
     static final int ICON_GAP = 3;
-    private static final int LABEL_GAP = 10;
+    /** The room between the label column and the values. */
+    static final int LABEL_GAP = 10;
 
     private final @NonNull Font font;
     private final List<Line> lines = new ArrayList<>();

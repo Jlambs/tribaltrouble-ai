@@ -214,7 +214,9 @@ final class WatchHud implements WatchControls {
         inspector.setWidths(INSPECTOR_MIN, Math.max(INSPECTOR_MIN,
                 width - MARGIN - (status_x + status.getWidth()) - GAP));
         inspector.setPos(width - MARGIN - inspector.getWidth(), height - MARGIN - inspector.getHeight());
-        help.setPos((width - help.getWidth()) / 2, Math.max(MARGIN, (height - help.getHeight()) / 2));
+        // the help in the middle, but under the jump box, which the delegate draws over the HUD, where there is room
+        int help_top = Math.min((height + help.getHeight()) / 2, jump_box.getY() - GAP);
+        help.setPos((width - help.getWidth()) / 2, Math.max(MARGIN, help_top - help.getHeight()));
 
         // the bottom: the timeline, all along but for the compass's corner
         boolean compass = Settings.getSettings().show_compass;

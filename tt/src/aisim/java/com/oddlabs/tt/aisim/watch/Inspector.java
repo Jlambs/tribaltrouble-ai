@@ -96,8 +96,6 @@ final class Inspector {
     private static final DeployType[] DEPLOY_TYPES = DeployType.values();
     /** Every label the inspector uses (the AI's line among them): the panel's label column is as wide as the widest. */
     private static final String[] LABELS = {"hit points", "built", "gunner", "inside", "next peon", "chieftain", "stock", "weapons", "deploying", "magic", "carries", "order", "doing", "behaviour", "AI"};
-    /** TextPanel's room between its label column and the values. */
-    private static final int LABEL_GAP = 10;
     /** Bars of progress (construction, training, production): blue, apart from the hit points' green to red. */
     private static final Vector4fc PROGRESS = Color.argb4v(0xFF_6C_B4_FF);
     /** A bar of progress that is held up (an armory without workers or the resources a weapon costs): grey. */
@@ -201,7 +199,7 @@ final class Inspector {
         Font font = Skin.getSkin().getEditFont();
         int labels = 0;
         for (String label : LABELS) {
-            labels = Math.max(labels, font.getWidth(label) + LABEL_GAP);
+            labels = Math.max(labels, font.getWidth(label) + TextPanel.LABEL_GAP);
         }
         return width - 2 * TextPanel.PADDING - labels;
     }

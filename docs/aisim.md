@@ -746,7 +746,7 @@ copies does; the stock AI and AIs frozen before AiView existed show nothing (the
   (each cut to 120 characters; a value wider than the panel goes on in a second row, the rest cut with `...`), how
   many shapes it painted and how long its paint and the drawing take per frame; in red behind a warning sign, how
   often its paint failed and when last, then why (a failed paint shows nothing until the next one).
-- The inspector adds the AI's line on the picked object (`AI: ...`), for any player whose AI has one.
+- The inspector adds the AI's line on the picked object (labelled `AI`), for any player whose AI has one.
 - Painting must only read. The viewer keeps checking the game against the recording, so an overlay that changes the
   game shows as `DIVERGED`. The test AI `chaos` exercises the overlay: `chaos:paint=draw` paints a line, a circle
   and a labelled mark on every unit, `paint=throw` does that and fails every other second, `paint=heavy` paints more

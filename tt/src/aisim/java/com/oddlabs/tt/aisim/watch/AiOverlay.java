@@ -46,8 +46,6 @@ final class AiOverlay {
     private static final int MAX_LINE = 90;
     /** The rows a status value or a failure takes at most in the AI panel; a longer one ends in "...". */
     private static final int MAX_STATUS_ROWS = 2;
-    /** The room TextPanel leaves between its label column and the values (its LABEL_GAP, which is private). */
-    private static final int LABEL_GAP = 10;
     /** The colour of the AI's own line in the inspector. */
     private static final Vector4fc AI_TEXT = Color.argb4v(0xFF_9F_DF_FF);
 
@@ -160,7 +158,8 @@ final class AiOverlay {
     private void failed(@NonNull String what, @NonNull Throwable e, @NonNull AiView view, int tick) {
         failures++;
         failure_tick = tick;
-        failure = OverlayPaint.clip(what + " failed: " + explain(e, view), MAX_LINE);
+        // the message is cut in explain, so where it was thrown always shows; the AI panel gives it two rows
+        failure = OverlayPaint.clip(what + " failed: " + explain(e, view), MAX_STATUS_ROWS * MAX_LINE);
         if (failures == 1) {
             // once: a painter that fails every tick must not flood the log or the status line
             logger.log(Level.WARNING, game.playerName(game.followedSlot()) + ": " + what + " failed at t" + tick, e);
@@ -175,7 +174,7 @@ final class AiOverlay {
     private static @NonNull String explain(@NonNull Throwable e, @NonNull AiView view) {
         StringBuilder text = new StringBuilder(e.getClass().getSimpleName());
         if (e.getMessage() != null) {
-            text.append(": ").append(e.getMessage());
+            text.append(": ").append(OverlayPaint.clip(e.getMessage(), MAX_LINE));
         }
         StackTraceElement[] trace = e.getStackTrace();
         String own = view.getClass().getPackageName() + ".";
@@ -338,7 +337,7 @@ final class AiOverlay {
             for (String key : paint.status().keySet()) {
                 label_width = Math.max(label_width, font.getWidth(key));
             }
-            int value_width = column - 2 * TextPanel.PADDING - label_width - LABEL_GAP;
+            int value_width = column - 2 * TextPanel.PADDING - label_width - TextPanel.LABEL_GAP;
             for (Map.Entry<String, String> status : paint.status().entrySet()) {
                 String label = status.getKey();
                 for (String row : AiLogPanel.wrap(font, status.getValue(), value_width, MAX_STATUS_ROWS)) {
