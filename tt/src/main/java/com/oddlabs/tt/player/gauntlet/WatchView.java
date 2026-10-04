@@ -28,8 +28,9 @@ final class WatchView {
     /** Each copy's flock: the spot, the shepherd, the copy's leader and its waves. */
     static final String SHEPHERDS = "shepherds";
     /**
-     * The 0.707 rule: each copy's next wave as it would aim now, its leader, the circle of 0.707 of our nearest
-     * building's distance around it, and the target it picks (Shepherd.paintAim).
+     * The 0.707 rule: each Hard copy's next wave as it would aim now, its leader, the circle of 0.707 of our nearest
+     * building's distance around it (whole while few waves are pending or for a ready wave, else its arc toward the
+     * target), and the target it picks (Shepherd.paintAim).
      */
     static final String AIM = "aim";
     /** The freeze opening: strikes, stage points, frozen copies. */
@@ -57,8 +58,8 @@ final class WatchView {
     static final int SHEPHERD = 0xEEFF41;
     static final int LEADER = 0xFFAB40;
     static final int WAVE = 0xFF5252;
-    // The aim layer: the rule's circle and its measure (the leader, the line to the nearest building) in teal; the
-    // wave's pick in lavender when a unit inside the circle draws it, in pink when it goes for the building.
+    // The aim layer: the rule's circle and its measure (the leader, the line to the nearest building, the label) in
+    // teal; the wave's pick in lavender when a unit inside the circle draws it, in pink when it goes for the building.
     static final int AIM_RING = 0x80CBC4;
     static final int AIM_UNIT = 0xB388FF;
     static final int AIM_BUILDING = 0xFF4081;

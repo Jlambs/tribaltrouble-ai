@@ -2056,7 +2056,7 @@ methods of the modules that hold the state (colours, layer names and label helpe
 | threat | the strongest threatening group: a circle of 15 cells (the group updateThreat sums) at threat_x/y, amber at level 1, red at 2 | Military: threat_level/strength/x/y, base_threat_strength, engage_state |
 | economy | every building project at its site: type#id, why (first, by the scout, expansion, relocation, wood lock), state (placer walking, placed and % built; before that why manageProjects last held it back, Project.held: held by a threat with veto_resite's re-site clock (red), a razed tower near it, waiting for the army's escort, a site slot, a safe sniper site or a free placer; else planned); primary armory; expansion armory; evacuations | Economy: projects, expansion, evacuating; Intel.armory() |
 | shepherds | per copy: the spot, the shepherd (state walk/at/flee/nospot) with a line to the spot, the copy's leader with idle warriors against the wave size, orange when a launch is imminent (from the copy's launches, which a home flock reads from its partner); a walking wave as a line to its target | Shepherd: flocks |
-| aim | the 0.707 rule, per enemy with an idle warrior: what its next wave would take if it launched now (AdvancedAI.findTarget): its oldest idle warrior (the wave's leader, a grey-teal pin), the circle of 0.707 x d around it and the line to the nearest building at d, and the pick with a line to it, lavender for a unit inside the circle, pink for the building; halfway along, the copy, the pick and its distance as a share of d ("s16:hard next wave -> the shepherd of s23:hard at 0.28 of 74", "s11:hard launching -> our tower at 35 (nearest unit at 0.71)"; launching: its whole wave idle) | Shepherd.paintAim: Player.findNearestEnemyBuilding and findNearestEnemy from oldestIdleWarrior, as findTarget calls them; flocks (launches, shepherds) |
+| aim | the 0.707 rule, per Hard copy with an idle warrior: what its next wave would take if it left now (AdvancedAI.findTarget): the wave's leader (its first idle warrior that the same think does not send into a tower with room, nodeGuardTowers; a grey-teal pin), the line to the nearest building at d, and the pick with a line to it, lavender for a unit inside the circle of 0.707 x d, pink for the building; the circle whole for a ready wave, while at most 4 waves are pending or when it is at most 12 cells, else only its arc toward the pick (20 degrees either side) and a crossbar where it cuts the line to the building; halfway along the pick's line a teal label with the test in cells against the bound the engine uses (the root of the building's squared distance halved as an int; decimals only where the two would round alike; d to a tenth): "s16:hard next wave -> shepherd of s23:hard: 21 < 53 (0.707 x 74.3 to our tower)", "s13:hard next wave -> our tower, not shepherd of s8:hard: 14 >= 13 (0.707 x 17.9)", "s8:hard next wave -> our tower at 18, nothing nearer". "wave ready": its whole wave idle, so it leaves at the copy's next think, every 5 to 7 s of the real-time animation clock, 20 to 28 game seconds at ludicrous, and the pick can change before then. Not mirrored: nodeDefendBase, which comes first in a think and can send idle warriors home | Shepherd.paintAim: Player.findNearestEnemyBuilding and findNearestEnemy from waveLeader, as findTarget calls them; towerSends; flocks (launches, shepherds); Player.getAI and AdvancedAI.getDifficulty only to pick the Hard copies |
 | freeze | each strike: the copy's start with phase and squad, the squad's centre and where it heads, the stage point in path (c); frozen copies' armory sites | Freeze: strikes, frozen, frozen_sites |
 | chief | the chieftain (hp, spell ready), a line to where he walks (his WalkController's target), the stun's reach (17 cells) while charged, the enemies his last stun was cast at until it is judged; or the quarters training him | Chieftain, Intel.chieftain |
 
@@ -2065,7 +2065,7 @@ it): summary (the STAT line's essentials in its words: mode, atk and army with s
 target, threat, peons (how many, each gatherer kind against the economy's want), other peons (the other states),
 armory (where, workers/want, stock), weapons (axes, cycles), buildings (Q/A/T with sites, projects placed and held),
 shepherds (flocks, shepherds), waves (copies about to launch, waves walking, seen, at our base), aim (waves pending,
-launching, and what they would take: shepherds, other units, buildings), freeze, chief (hp, where, spell and last cast;
+ready, and what they would take: shepherds, other units, buildings), freeze, chief (hp, where, spell and last cast;
 a viking's stun catch rate once checkCatch judged a stun, Chieftain.stuns_judged). `describe` (at most 86 characters, as
 the inspector shows "AI: " + text whole up to 90): shepherd of sN (spot, state), freeze squad (target, phase), lure,
 sapper, the chieftain (spell; hp and cell are the inspector's), a peon's state with its site or supply and armory, a
@@ -2181,3 +2181,31 @@ renumbered paint lambdas and Shepherd's new painter methods (paintAim, shepherdF
 method shares a name with them); PaintCheck on s9902-0 over the whole game, every 10 world ticks: 433 of 433 census, end
 checksum 2133253886 same, counters same, 0 differences (longest aim status 86, label 69); the watch selftest VERIFIED to
 1:00:00 with the layer shown alone and with all, at 20:00 and 1:00:00, in the view and on the map.
+
+The aim layer after its review (2026-10-03): every pending copy's whole circle (often 100 to 190 cells across, 7 to 16
+at once) buried the default all-layers view, the labels did not state the test ("at 0.28 of 74"), and "launching"
+promised a wave that leaves only at the copy's next think. Now the circle is whole only for a ready wave, while at most
+4 waves are pending, or at most 12 cells; else its arc toward the pick (20 degrees either side, 4 lines, none off the
+map) and a crossbar on the line to the building where the circle cuts it. The label, now in the circle's teal (only the
+pick's pin has the pick's colour), gives findTarget's comparison in cells against the bound it really uses, the root of
+the building's squared distance halved as an int (decimals only where the two round alike, so the sign agrees with the
+pick, up to "18 >= 18" when the unit's squared distance equals the halved one and the building wins): "s16:hard next
+wave -> shepherd of s23:hard: 21 < 53 (0.707 x 74.3 to our tower)". "wave ready" replaces "launching": a Hard copy
+thinks every 5 to 7 s of the real-time animation clock, which World.tick feeds the nominal tick while game time runs 4x
+at ludicrous, so 20 to 28 game seconds, and the pick can change before the wave leaves. Only Hard AdvancedAIs are
+painted (Player.getAI, getDifficulty; others size and send waves otherwise). The leader mirrors nodeGuardTowers, which
+runs before the attack in a think: with over 90 units (120: two towers) and that many towers finished, idle warrior i
+goes into tower i when tower i has room, so the leader is the first idle warrior not sent (Shepherd.towerSends,
+waveLeader; a lab probe over s9902-0 at every PaintCheck paint: of 390,384 copy-paints 159,728 guard towers, 10,622 have
+a tower with room, and the leader moves in 980). nodeDefendBase, which comes first and can send idle warriors home, is
+not mirrored. On s9902-0: 15 pending (5 ready), all at shepherds at 10:00; 15 (2 ready), 12 at shepherds, at 20:00; 11
+(3 ready), 10 at shepherds, at 1:00:00. Segments drawn at 20:00, aim alone and all layers: 4,408 and 7,467 (6,475 and
+9,532 before); at 1:00:00 2,997 and 5,902 (4,328 and 7,233). Proof: javap -c -p of every gauntlet class equals the
+base's (2b3f2800, constant pool indices aside) but GauntletAI.paint and its renumbered paint lambdas, and Shepherd's
+painter methods (paintAim, towerSends, waveLeader, paintArc, paintCrossbar, onMap, shepherdFlock, aimName, aimKind,
+whole, aimTest) and its new constants; against the first aim commit (17abcb14) only paintAim changed, share is gone and
+the rest are new. PaintCheck on s9902-0, the whole game every 10 world ticks: 433 of 433 census, end checksum 2133253886
+the same, counters the same, RESULT OK; paint 139 us a call over the whole game (215 to 45:00, against 208 for the first
+aim commit and 130 without the layer); longest aim status 83, label 96 (the label drops the building's name, then the
+shepherd's, past 100). The watch selftest VERIFIED to 1:00:00 with the layer alone and all, at 20:00 and 1:00:00, in the
+view and on the map, overlay:check 0 failed paints.
