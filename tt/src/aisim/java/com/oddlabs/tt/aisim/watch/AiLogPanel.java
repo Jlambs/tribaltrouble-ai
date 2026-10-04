@@ -11,17 +11,21 @@ import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * The AI log panel: the last lines (25 rows under a title; fewer when the window has less room) that the followed
  * player's AI wrote at or before the moment on view. They come from the AI log book, which keeps each tick's lines of
- * the first pass, so a rewind shows them again exactly as they were written. Each line shows its time in the label
- * column, its topic as a tag (statistics dim, errors red) and its text; a line too long for the panel goes on in
- * indented rows under its text, {@value #MAX_ROWS} rows at most. {@code flee of} lines (most of the gauntlet AI's log:
- * one per fleeing peon) are hidden until Shift+L shows them; the wheel over the panel goes back to older lines. A
- * stock AI writes no log, and the panel says so instead.
+ * the first pass, so a rewind shows them again exactly as they were written. Each line shows its time, its topic as a
+ * tag and its text, in three columns that stay put as lines come and go. The tag says what kind of line it is: errors
+ * red, the lines of the last {@value #RECENT_TICKS} ticks yellow, statistics and the topic most lines have grey, other
+ * topics tan. A line too long for the panel goes on in indented rows under its text, {@value #MAX_ROWS} rows at most
+ * (statistics and parameter dumps one). {@code flee of} lines (most of the gauntlet AI's log: one per fleeing peon)
+ * are hidden until Shift+L shows them; the wheel over the panel goes back to older lines. A stock AI writes no log,
+ * and the panel says so instead.
  */
 final class AiLogPanel extends TextPanel {
     /** The most rows: the title and 25 rows of the log. */
@@ -30,21 +34,21 @@ final class AiLogPanel extends TextPanel {
     static final int MIN_LINES = 4;
     /** The rows one log line takes at most: a longer line ends its last row in "...". */
     static final int MAX_ROWS = 3;
-    /** The room TextPanel leaves between its label column and the values (its own constant is private). */
-    static final int LABEL_SPACE = 10;
     /** Lines the wheel moves per notch. */
     private static final int WHEEL_LINES = 3;
     private static final String FLEE = "flee of ";
     /** Lines this many ticks old or newer stand out: a real second of play at 1x. */
     private static final int RECENT_TICKS = 50;
+    /** The tag column is at least as wide as this topic: AiLog pads topics to five letters. */
+    private static final String TAG_FLOOR = "SWARM";
     /**
-     * The room between the tag column and the text (and between the title's player and team), and between the title's
-     * parts.
+     * The room after the time column and after the tag column (and between the title's player and team), and between
+     * the title's parts.
      */
-    private static final int TAG_SPACE = 8;
+    private static final int COLUMN_SPACE = 8;
     private static final int TITLE_SPACE = 16;
-    /** The tag of a statistics line (darker than its dim text), and of every topic but statistics and errors. */
-    private static final Vector4fc STAT_TAG = Color.argb4v(0xFF_88_88_88);
+    /** The tag of statistics and of the topic most lines have (grey), and of the other topics (a quiet tan). */
+    private static final Vector4fc QUIET_TAG = Color.argb4v(0xFF_88_88_88);
     private static final Vector4fc TAG = Color.argb4v(0xFF_C8_B8_98);
     private static final String ELLIPSIS = "...";
 
@@ -53,6 +57,11 @@ final class AiLogPanel extends TextPanel {
     /** How many shown log lines the view is scrolled back from the newest; 0 follows the game. */
     private int scroll;
     private int scroll_slot = -1;
+    /**
+     * The tag column's width: the widest topic the followed player's shown lines had so far. It only grows (until
+     * another player is followed), so the text column does not move when a rare topic comes into view or leaves it.
+     */
+    private int tag_width;
     private int max_lines = MAX_LINES;
 
     AiLogPanel(@NonNull WatchGame game) {
@@ -84,8 +93,19 @@ final class AiLogPanel extends TextPanel {
         setLines(lines());
     }
 
-    /** A log line to show: its tick, its time as the label column shows it, and its parts. */
+    /** A log line to show: its tick, its time as the time column shows it, and its parts. */
     private record Entry(int tick, @NonNull String time, @NonNull Parsed parsed) {
+    }
+
+    /**
+     * The columns of this refresh: the times' width (they are right-aligned in it), the tags' width, the text's room,
+     * and the topic most of the lines have.
+     */
+    private record Columns(int time, int tag, int text, @NonNull String common) {
+        /** Where a line's text starts: the indent of its further rows. */
+        int textX() {
+            return time + COLUMN_SPACE + tag + COLUMN_SPACE;
+        }
     }
 
     private @NonNull List<Line> lines() {
@@ -93,6 +113,7 @@ final class AiLogPanel extends TextPanel {
         if (slot != scroll_slot) {
             scroll = 0;
             scroll_slot = slot;
+            tag_width = 0;
         }
         AiLogBook book = game.aiLog();
         int tick = game.clock().tick();
@@ -100,7 +121,7 @@ final class AiLogPanel extends TextPanel {
         Font font = Skin.getSkin().getEditFont();
         List<Line> lines = new ArrayList<>();
         Builder title = line().heading().swatch(game.world().getPlayers()[slot].getColor()).text("AI log").gap(
-                WatchHud.HINT_GAP).text(game.playerName(slot)).gap(TAG_SPACE).text(
+                WatchHud.HINT_GAP).text(game.playerName(slot)).gap(COLUMN_SPACE).text(
                         "team " + (char) ('A' + game.job().team(slot)), TextPanel.DIM);
         if (book.count(slot) == 0) {
             lines.add(title.build());
@@ -119,28 +140,28 @@ final class AiLogPanel extends TextPanel {
         int room = max_lines - 1 - notes.size(); // rows under the title
         // the newest lines first, as many as the scroll skips and the room shows (a row each at least)
         List<Entry> newest = new ArrayList<>();
-        int time_width = 0;
-        int tag_width = 0;
+        Map<String, Integer> topics = new LinkedHashMap<>();
+        tag_width = Math.max(tag_width, font.getWidth(TAG_FLOOR));
         for (int index = book.countUpTo(slot, tick) - 1; index >= 0 && newest.size() < scroll + room; index--) {
             Parsed parsed = parse(book.line(slot, index));
             if (!show_flee && parsed.text().startsWith(FLEE)) {
                 continue;
             }
             int line_tick = book.tick(slot, index);
-            Entry entry = new Entry(line_tick, game.times().hundredths(line_tick), parsed);
-            newest.add(entry);
-            time_width = Math.max(time_width, font.getWidth(entry.time()));
+            newest.add(new Entry(line_tick, game.times().hundredths(line_tick), parsed));
             tag_width = Math.max(tag_width, font.getWidth(parsed.topic()));
+            topics.merge(parsed.topic(), 1, Integer::sum);
         }
-        tag_width += TAG_SPACE;
-        // the text's room: right of the label column (the times) and the tags
-        int text_width = getWidth() - 2 * PADDING - time_width - LABEL_SPACE - tag_width;
+        // the times are no longer than the moment on view's; the text has the room right of the times and the tags
+        int time_width = timeWidth(font, game.times().hundredths(tick));
+        Columns columns = new Columns(time_width, tag_width,
+                getWidth() - 2 * PADDING - time_width - 2 * COLUMN_SPACE - tag_width, common(topics));
         if (newest.size() < scroll + room) {
             // the oldest line is in reach: never further back than a full panel of the oldest lines (one at least)
             int rows = 0;
             int oldest = newest.size();
             while (oldest > 0) {
-                int more = rowCount(font, newest.get(oldest - 1), text_width);
+                int more = rowCount(font, newest.get(oldest - 1), columns.text());
                 if (rows + more > room) {
                     break;
                 }
@@ -153,7 +174,7 @@ final class AiLogPanel extends TextPanel {
         List<List<Line>> shown = new ArrayList<>();
         int left = room;
         for (int i = scroll; i < newest.size() && left > 0; i++) {
-            List<Line> rows = rows(font, newest.get(i), text_width, tag_width, Math.min(MAX_ROWS, left), tick);
+            List<Line> rows = rows(font, newest.get(i), columns, Math.min(MAX_ROWS, left), tick);
             shown.add(rows);
             left -= rows.size();
         }
@@ -175,27 +196,55 @@ final class AiLogPanel extends TextPanel {
         return lines;
     }
 
+    /**
+     * The width of the time column for times as long as {@code time}: each digit counted as the widest, so the column
+     * does not move as the times change (only when they get a digit more).
+     */
+    private static int timeWidth(@NonNull Font font, @NonNull String time) {
+        char widest = '0';
+        for (char digit = '1'; digit <= '9'; digit++) {
+            if (font.getWidth(String.valueOf(digit)) > font.getWidth(String.valueOf(widest))) {
+                widest = digit;
+            }
+        }
+        return font.getWidth(time.replaceAll("[0-9]", String.valueOf(widest)));
+    }
+
+    /** The topic most of {@code topics} (counts by topic, the newest line's first) have; the newest wins a tie. */
+    private static @NonNull String common(@NonNull Map<String, Integer> topics) {
+        String common = "";
+        int most = 0;
+        for (Map.Entry<String, Integer> topic : topics.entrySet()) {
+            if (topic.getValue() > most) {
+                most = topic.getValue();
+                common = topic.getKey();
+            }
+        }
+        return common;
+    }
+
     /** How many rows {@code entry} takes, its text being {@code text_width} wide. */
     private static int rowCount(@NonNull Font font, @NonNull Entry entry, int text_width) {
-        return wrap(font, entry.parsed().text(), text_width, MAX_ROWS).size();
+        return wrap(font, entry.parsed().text(), text_width, rowsOf(entry.parsed())).size();
     }
 
     /**
-     * {@code entry}'s rows, at most {@code max_rows}: the first with its time (in the label column), its tag and its
-     * text, the others with the rest of its text under the first's.
+     * {@code entry}'s rows, at most {@code max_rows}: the first with its time (right-aligned in the time column), its
+     * tag and its text, the others with the rest of its text under the first's.
      */
-    private static @NonNull List<Line> rows(@NonNull Font font, @NonNull Entry entry, int text_width, int tag_width,
+    private static @NonNull List<Line> rows(@NonNull Font font, @NonNull Entry entry, @NonNull Columns columns,
             int max_rows, int now) {
         Parsed parsed = entry.parsed();
-        Vector4fc color = colorOf(parsed, entry.tick(), now);
+        Vector4fc color = colorOf(parsed);
         List<Line> rows = new ArrayList<>();
-        for (String row : wrap(font, parsed.text(), text_width, max_rows)) {
+        for (String row : wrap(font, parsed.text(), columns.text(), Math.min(max_rows, rowsOf(parsed)))) {
             Builder line = line();
             if (rows.isEmpty()) {
-                line.label(entry.time()).text(parsed.topic(), tagColorOf(parsed)).gap(tag_width - font.getWidth(
-                        parsed.topic()));
+                line.gap(columns.time() - font.getWidth(entry.time())).text(entry.time(), TextPanel.LABEL).gap(
+                        COLUMN_SPACE).text(parsed.topic(), tagColorOf(parsed, entry.tick(), now, columns.common())).gap(
+                                columns.tag() - font.getWidth(parsed.topic()) + COLUMN_SPACE);
             } else {
-                line.label("").gap(tag_width); // an empty label: the row starts at the values, as the first
+                line.gap(columns.textX());
             }
             rows.add(line.text(row, color).build());
         }
@@ -282,24 +331,37 @@ final class AiLogPanel extends TextPanel {
         return topic.startsWith("ERR") || topic.equals("FAIL");
     }
 
-    private static boolean isStatistics(@NonNull Parsed parsed) {
-        return parsed.topic().equalsIgnoreCase("STAT");
+    /** Whether the line is a dump of statistics or of the AI's parameters: long, and seldom what one reads for. */
+    private static boolean isDump(@NonNull Parsed parsed) {
+        return parsed.topic().equalsIgnoreCase("STAT") || parsed.topic().equalsIgnoreCase("PARAM");
     }
 
-    /** A line's text: errors red, recent lines (of the last {@value #RECENT_TICKS} ticks) yellow, statistics dim. */
-    private static @NonNull Vector4fc colorOf(@NonNull Parsed parsed, int line_tick, int now) {
+    /** The rows a line may take: a dump one, others {@value #MAX_ROWS}. */
+    private static int rowsOf(@NonNull Parsed parsed) {
+        return isDump(parsed) ? 1 : MAX_ROWS;
+    }
+
+    /** A line's text: errors red, dumps dim, the others white. */
+    private static @NonNull Vector4fc colorOf(@NonNull Parsed parsed) {
+        if (isError(parsed)) {
+            return TextPanel.BAD;
+        }
+        return isDump(parsed) ? TextPanel.DIM : Color.WHITE;
+    }
+
+    /**
+     * A line's tag: errors red, recent lines (of the last {@value #RECENT_TICKS} ticks) yellow, dumps and the topic
+     * most lines have ({@code common}) grey, other topics tan.
+     */
+    private static @NonNull Vector4fc tagColorOf(@NonNull Parsed parsed, int line_tick, int now,
+            @NonNull String common) {
         if (isError(parsed)) {
             return TextPanel.BAD;
         }
         if (line_tick > now - RECENT_TICKS) {
             return TextPanel.WARN;
         }
-        return isStatistics(parsed) ? TextPanel.DIM : Color.WHITE;
-    }
-
-    /** A line's tag: errors red, statistics dim, other topics in one quiet colour. */
-    private static @NonNull Vector4fc tagColorOf(@NonNull Parsed parsed) {
-        return isError(parsed) ? TextPanel.BAD : isStatistics(parsed) ? STAT_TAG : TAG;
+        return isDump(parsed) || parsed.topic().equals(common) ? QUIET_TAG : TAG;
     }
 
     /** The wheel: up goes back to older lines, down towards the newest. */

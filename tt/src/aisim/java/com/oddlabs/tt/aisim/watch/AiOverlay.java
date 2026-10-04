@@ -46,6 +46,8 @@ final class AiOverlay {
     private static final int MAX_LINE = 90;
     /** The rows a status value or a failure takes at most in the AI panel; a longer one ends in "...". */
     private static final int MAX_STATUS_ROWS = 2;
+    /** The room TextPanel leaves between its label column and the values (its LABEL_GAP, which is private). */
+    private static final int LABEL_GAP = 10;
     /** The colour of the AI's own line in the inspector. */
     private static final Vector4fc AI_TEXT = Color.argb4v(0xFF_9F_DF_FF);
 
@@ -293,10 +295,17 @@ final class AiOverlay {
 
     // ---------------------------------------------------------------- panels
 
-    /** The status panel's line on the overlay: which layers show, and the key that changes it. */
+    /**
+     * The status panel's line on the overlay: which layers show, and the key that changes it; none for an AI that
+     * shows nothing.
+     */
     TextPanel.@NonNull Line statusLine() {
-        return TextPanel.line().label("overlay").text(layersText(), TextPanel.DIM).gap(WatchHud.HINT_GAP).text("A",
-                TextPanel.WARN).text("cycles", TextPanel.DIM).build();
+        TextPanel.Builder line = TextPanel.line().label("overlay");
+        if (followedView() == null) {
+            return line.text("none (no AiView)", TextPanel.DIM).build();
+        }
+        return line.text(layersText(), TextPanel.DIM).gap(WatchHud.HINT_GAP).text("A", TextPanel.WARN).text("cycles",
+                TextPanel.DIM).build();
     }
 
     /**
@@ -329,7 +338,7 @@ final class AiOverlay {
             for (String key : paint.status().keySet()) {
                 label_width = Math.max(label_width, font.getWidth(key));
             }
-            int value_width = column - 2 * TextPanel.PADDING - label_width - AiLogPanel.LABEL_SPACE;
+            int value_width = column - 2 * TextPanel.PADDING - label_width - LABEL_GAP;
             for (Map.Entry<String, String> status : paint.status().entrySet()) {
                 String label = status.getKey();
                 for (String row : AiLogPanel.wrap(font, status.getValue(), value_width, MAX_STATUS_ROWS)) {

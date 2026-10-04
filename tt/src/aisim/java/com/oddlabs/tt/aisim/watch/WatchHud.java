@@ -278,11 +278,13 @@ final class WatchHud implements WatchControls {
         }
         time.gap(PART_GAP).text("at " + times.speedName(), TextPanel.DIM).gap(STATE_GAP).text(clock.stateText(),
                 stateColor(clock));
-        boolean running = clock.state() == Clock.State.PLAYING || clock.state() == Clock.State.SEEKING;
+        boolean playing = clock.state() == Clock.State.PLAYING;
         double speed = clock.state() == Clock.State.SEEKING ? Double.POSITIVE_INFINITY : clock.speed();
-        if (running && !clock.menuPaused() && clock.effectiveSpeed() < speed * .9) {
+        if ((playing || clock.state() == Clock.State.SEEKING) && !clock.menuPaused()
+                && clock.effectiveSpeed() < speed * .9) {
+            // slower than asked is a warning when playing; a seek has no speed to keep up with, only its pace
             time.gap(PART_GAP).text(String.format(Locale.ROOT, "(runs x%.1f)", clock.effectiveSpeed()),
-                    TextPanel.WARN);
+                    playing ? TextPanel.WARN : stateColor(clock));
         }
         lines.add(time.build());
         Job job = game.job();
@@ -302,7 +304,7 @@ final class WatchHud implements WatchControls {
         lines.add(game.aiOverlay().statusLine());
         String message = clock.message();
         if (message != null) {
-            lines.add(new TextPanel.Line(message, TextPanel.WARN));
+            lines.add(TextPanel.line().label("note").text(message).build());
         }
         lines.add(KEY_HINT);
         return lines;
@@ -337,7 +339,8 @@ final class WatchHud implements WatchControls {
         if (verification.diverged() || mismatch < 0) {
             return line.text(status, TextPanel.BAD).build();
         }
-        return line.text(status.substring(0, mismatch), checked).text(status.substring(mismatch),
+        // split after the comma: the first part's end (the font's border) is the space after it
+        return line.text(status.substring(0, mismatch + 1), checked).text(status.substring(mismatch + 2),
                 TextPanel.BAD).build();
     }
 
