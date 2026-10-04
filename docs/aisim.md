@@ -551,10 +551,17 @@ AI changed in between:
   towers (`+2`: building sites), whether it has a chieftain, and the units inside its buildings (quarters and
   armories, and tower gunners). The numbers are a live census of the world by the recorder's own definitions,
   taken four times a second. The row of the player you follow is lit; click a row to follow that player.
-- **Inspector** (top right): the unit or building you clicked, of any player: owner, kind, cell, hit points, build
-  progress, the units inside (and a tower's gunner), what an armory stores and makes, a quarters' next peon and
-  chieftain; for a unit what it carries, its order and what it does now (with the target's owner, kind and cell),
-  its behaviour.
+- **Inspector** (top right): the unit or building you clicked, of any player. Under its owner (colour, slot, spec,
+  team), its kind with the game's icon for it and its cell (`site`, `dead`, `in a tower`), then labelled lines. Hit
+  points are a bar, green, yellow, then red as they fall; progress is a blue bar: a building site's construction, a
+  quarters' next peon (or why none grows) and chieftain, each weapon an armory makes, a chieftain's two spells (green
+  when charged). Units, resources and weapons show as the game's icons with counts: the peons inside, a tower's
+  gunner, an armory's stock and weapons, what it makes (the infinity sign: endless; a warning sign: it lacks what
+  that weapon costs, which holds it up), and the units a building sends out (a peon with a resource: sent to gather
+  it; the carrying icon: to carry it). For a unit: what it carries, its order and what it does now as a verb with
+  its target (`walking to`, `attack-moving to`, `hunting`, `attacking`, `gathering wood for armory at 120,40`,
+  `building`, `repairing`; another player's object with its colour and slot), and its behaviour, dim (a detail for
+  debugging). Last, the line of the owner's AI on it, labelled `AI` ([AI overlays](#ai-overlays)).
 - **AI log** (bottom right): the last lines (up to 25; fewer when the window or the inspector leaves less room, 6 on
   the overview map) the followed player's AI wrote at or before the moment you watch, with their time (m:ss.hh, at
   the clock speed) and topic; the lines of the last 50 ticks are yellow. A stock AI writes no log, and the panel says so. `flee

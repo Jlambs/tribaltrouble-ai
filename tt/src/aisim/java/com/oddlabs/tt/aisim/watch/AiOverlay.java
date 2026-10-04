@@ -339,19 +339,21 @@ final class AiOverlay {
     }
 
     /**
-     * The inspector's line on {@code s}, from its owner's AI ({@link AiView#describe}), or null when it has nothing to
-     * say. Called from the frame task, between ticks, like paint.
+     * The inspector's line on {@code s}, from its owner's AI ({@link AiView#describe}), labelled "AI" like the
+     * inspector's own lines, or null when it has nothing to say. Called from the frame task, between ticks, like paint.
      */
     TextPanel.@Nullable Line describe(@NonNull Selectable<?> s) {
         if (s.isDead() || !(s.getOwnerNoCheck().getAI() instanceof AiView view)) {
             return null;
         }
+        int max = MAX_LINE - 4; // the AI's text, without the label: 86 characters
         try {
             String text = view.describe(s);
-            return text == null ? null : new TextPanel.Line(OverlayPaint.clip("AI: " + text, MAX_LINE), AI_TEXT);
+            return text == null ? null : TextPanel.line().label("AI").text(OverlayPaint.clip(text, max),
+                    AI_TEXT).build();
         } catch (RuntimeException | AssertionError | LinkageError | StackOverflowError e) {
-            return new TextPanel.Line(OverlayPaint.clip("AI: describe failed: " + explain(e, view), MAX_LINE),
-                    TextPanel.BAD);
+            return TextPanel.line().label("AI").text(OverlayPaint.clip("describe failed: " + explain(e, view), max),
+                    TextPanel.BAD).build();
         }
     }
 
