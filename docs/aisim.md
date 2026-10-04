@@ -562,18 +562,21 @@ AI changed in between:
   back to older lines.
 - **Timeline** (bottom, all along but for the compass): the whole recorded game, the part simulated so far (blue),
   the checkpoints (blue ticks under the bar), where you are (white, its time in a box under the bar) and where a seek
-  goes (yellow), a time scale under the bar, and marks for the recording's key events: players out (red for team A,
-  grey for the others), the last team out and the end (white), team A's buildings razed (orange; with the units lost
-  inside, in files that record them), team A's chieftains made and lost (green, violet), and death tolls (amber,
-  inside the bar: a player losing 20 units or more within 250 ticks, 20 s at ludicrous, team A 10). The line above
-  the bar names the colours of the marks the game has, and how far it is simulated. Hover a mark to read its event:
-  the line then shows the events there, the nearest three (and how many more), each with its time, its player's
-  colour and the game's icon of what happened (a figure for a player out, the building razed, faint for a site, the
-  chieftain, grey when lost, the army for a death toll, a warning sign for a team out, a full clock for the end);
-  elsewhere it shows the time under the mouse. Click or drag and let go to jump there; N and B jump to the next and
-  previous mark.
+  goes (yellow), a time scale under the bar (its steps faint lines through the bar), and marks for the recording's
+  key events: players out (red for team A, grey for the others), the last team out and the end (white), team A's
+  buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made and lost
+  (green, violet), and death tolls (amber, inside the bar: a player losing 20 units or more within 250 ticks, 20 s at
+  ludicrous, team A 10). The more a mark matters, the taller it is: team A out, a team out and the end tallest. The
+  line above the bar names the kinds of marks the game has, each by a chip of its colour and height, and how far it
+  is simulated. Hover a mark to read its event: the line then shows the events of the nearest marks there in time
+  order, up to three as far as the bar has room (and how many more), each with its mark's chip, its time, its
+  player's colour and the game's icon of what happened (a figure for a player out, the building razed, faint for a
+  site, the chieftain, grey when lost, the army for a death toll, a warning sign for a team out, a flag for the end);
+  the marks it shows are outlined. Elsewhere it shows the time under the mouse. Click or drag and let go to jump
+  there; N and B jump to the next and previous mark.
 
-**Keys and mouse.** F1 or H shows them all in the game, in the same groups, the keys as key caps.
+**Keys and mouse.** F1 or H shows them all in the game, in the same groups, the keys as key caps and what they do
+in white, its notes and examples dimmer.
 
 | Key | |
 |---|---|
@@ -589,7 +592,8 @@ AI changed in between:
 | ] / [ | next / previous player: the camera goes there (a little zoomed out) and the AI log follows |
 | C / Shift+C | the camera goes to the picked unit or building, keeping its zoom / keeps it in view as it moves (Shift+C again stops) |
 | Space | the overview map and back, as in a game |
-| **Panels** | |
+| arrow keys, screen edges, Home/End, Insert/Delete | move the camera, as in a game |
+| **Panels and the menu** | |
 | L / Shift+L | the AI log: show or hide / its `flee of` lines |
 | O, I | the scoreboard, the inspector: show or hide |
 | A, Shift+A | the followed AI's overlay: all layers, none, each layer alone ([AI overlays](#ai-overlays)) |
@@ -707,8 +711,9 @@ copies does; the stock AI and AIs frozen before AiView existed show nothing (the
   previous. The viewer asks it to paint between two ticks, at most once per frame, and only while the overlay shows.
 - Shapes are drawn over everything, last in the frame, so terrain, trees, units, the water and smoke never hide or
   tint them: lines and circles along the ground (on the water over the sea), a mark as a pin with its label at the
-  top, on a dark box edged in the mark's colour. In map mode (Space) they cover the whole map. Labels that would
-  overlap one nearer the camera are left out.
+  top like a flag: a dark box whose edge on the pin's side, in the mark's colour, goes on up from the pin (with a
+  light rim for a dark colour). In map mode (Space) they cover the whole map. Labels that would overlap one nearer
+  the camera are left out.
 - `A` cycles the layers: all, none, then each layer the followed AI painted so far, alone; `Shift+A` goes back. The
   status panel says which (`AI overlay: layer army (2 of 3)`). With none, the AI is not asked to paint at all. Each
   player's AI has its own layers: following one that never painted the layer shown alone shows all of its layers.

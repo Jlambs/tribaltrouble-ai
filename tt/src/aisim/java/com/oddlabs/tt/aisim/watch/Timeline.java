@@ -3,7 +3,9 @@ package com.oddlabs.tt.aisim.watch;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.font.TextLineRenderer;
+import com.oddlabs.tt.gui.GUIIcons;
 import com.oddlabs.tt.gui.IconQuad;
+import com.oddlabs.tt.gui.ModeIconQuads;
 import com.oddlabs.tt.gui.MouseButton;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.model.Race;
@@ -22,10 +24,11 @@ import java.util.List;
  * The timeline at the bottom of the watch view: the whole recorded game as a bar, with the part simulated so far,
  * the checkpoints a rewind restores, where the view is (and where a seek goes), and marks for the recording's key
  * events: players out, the end, team A's buildings razed, its chieftains made and lost, and big death tolls. Under the
- * bar a time scale, with the time the view is at; above it a legend of the marks' colours and how far the game is
- * simulated, or, under the mouse, the events of the marks there (each with its player's colour and the game's icon of
- * what happened) or the time there. Click or drag on it and let go to jump there. N and B jump to the next and
- * previous mark ({@link #next}, {@link #previous}).
+ * bar a time scale (its steps faint lines through the bar), with the time the view is at; above it a legend of the
+ * marks (a chip of each kind's colour and height) and how far the game is simulated, or, under the mouse, the events
+ * of the marks there in time order (each with its mark's chip, its player's colour and the game's icon of what
+ * happened) or the time there. Click or drag on it and let go to jump there. N and B jump to the next and previous
+ * mark ({@link #next}, {@link #previous}).
  */
 final class Timeline extends HudPanel {
     /** What a mark is about, which picks its icon. */
@@ -69,16 +72,19 @@ final class Timeline extends HudPanel {
         }
     }
 
-    /** A word of the legend: what the marks of one colour are. */
-    private record Legend(@NonNull String word, @NonNull Vector4fc color) {
+    /** A word of the legend: what the marks of one colour and kind are, and their height above the bar. */
+    private record Legend(@NonNull String word, @NonNull Vector4fc color, int height, @NonNull List<Kind> kinds) {
+        boolean has(@NonNull Mark mark) {
+            return mark.color() == color && kinds.contains(mark.kind());
+        }
     }
 
     /**
-     * One event of the line under the mouse: its time (empty when it is the time of the event before), its player's
-     * colour (null for none), its icon and tint (null: none), its text, and its width on the line.
+     * One event of the line under the mouse: its mark, its time (empty when it is the time of the event before), its
+     * player's colour (null for none), its icon and tint (null: none), its text, and its width on the line.
      */
-    private record Entry(@NonNull String time, @Nullable Vector4fc swatch, @Nullable IconQuad icon,
-                         @NonNull Vector4fc tint, @NonNull String text, int width) {
+    private record Entry(@NonNull Mark mark, @NonNull String time, @Nullable Vector4fc swatch,
+                         @Nullable IconQuad icon, @NonNull Vector4fc tint, @NonNull String text, int width) {
     }
 
     /** A window of deaths of one player is a mark from this many units (team A's from {@link #TEAM_A_DEATHS}). */
@@ -95,10 +101,12 @@ final class Timeline extends HudPanel {
     private static final int MEDIUM = 8;
     private static final int SHORT = 0;
     private static final int MARK_WIDTH = 2;
+    /** The width of a mark's chip in the legend and on the line under the mouse. */
+    private static final int CHIP_WIDTH = MARK_WIDTH + 2;
     /** How close (pixels) the mouse must be to a mark to show its event. */
     private static final int HOVER_PIXELS = 4;
     private static final int HOVER_SHOWN = 3;
-    /** The room between the events under the mouse, a thin divider in its middle. */
+    /** The room between the events under the mouse. */
     private static final int ENTRY_GAP = 22;
     /** The room between two words of the legend. */
     private static final int LEGEND_GAP = 16;
@@ -110,15 +118,15 @@ final class Timeline extends HudPanel {
     private static final Vector4fc TRACK = new Vector4f(.18f, .18f, .18f, .95f);
     private static final Vector4fc SIMULATED = new Vector4f(.22f, .36f, .58f, .95f);
     private static final Vector4fc CHECKPOINT = new Vector4f(.6f, .8f, 1f, .9f);
-    private static final Vector4fc SCALE_NOTCH = new Vector4f(.72f, .72f, .72f, .7f);
+    /** A step of the time scale, as a line through the bar. */
+    private static final Vector4fc SCALE_LINE = new Vector4f(1f, 1f, 1f, .2f);
     private static final Vector4fc NOW = Color.WHITE;
     /** The box behind the time the view is at, under the bar. */
     private static final Vector4fc NOW_BOX = new Vector4f(1f, 1f, 1f, .18f);
     private static final Vector4fc TARGET = TextPanel.WARN;
     private static final Vector4fc DRAG = Color.argb4v(0xFF_60_E0_FF);
-    /** The outline of the marks under the mouse. */
+    /** The outline of the marks whose events the line under the mouse shows. */
     private static final Vector4fc HOVERED = new Vector4f(1f, 1f, 1f, .85f);
-    private static final Vector4fc DIVIDER = new Vector4f(1f, 1f, 1f, .25f);
     private static final Vector4fc OUT_TEAM_A = TextPanel.BAD;
     private static final Vector4fc OUT_OTHER = Color.argb4v(0xFF_D8_D8_D8);
     private static final Vector4fc RAZED = Color.argb4v(0xFF_FF_90_30);
@@ -152,8 +160,9 @@ final class Timeline extends HudPanel {
     private String @NonNull [] scale_texts = {};
     private int @NonNull [] scale_widths = {};
 
-    // the time the view is at, as the scale shows it
+    // the time the view is at, as the scale shows it, and the clock speed it was written at
     private int now_tick = -1;
+    private int now_speed = -1;
     private @NonNull String now_text = "";
 
     // the line under the mouse, made again when the mouse moves or the scale changes
@@ -162,9 +171,10 @@ final class Timeline extends HudPanel {
     private int hover_made_end = -1;
     private int hover_made_speed = -1;
     private final @NonNull List<Entry> hover = new ArrayList<>();
-    /** The marks under the mouse, nearest first, the shown ones; and how many more there are. */
-    private final @NonNull List<Mark> hovered = new ArrayList<>();
-    private int hover_more;
+    /** How many more marks are under the mouse than the line shows, in its words ("+3 more"; empty for none). */
+    private @NonNull String hover_more_text = "";
+    /** The line's width: its entries, and the count of the others. */
+    private int hover_width;
     private @NonNull String hover_time = "";
 
     Timeline(@NonNull WatchGame game) {
@@ -233,14 +243,25 @@ final class Timeline extends HudPanel {
         return List.copyOf(marks);
     }
 
-    /** The legend of {@code marks}: a word for each colour they have, in a fixed order. */
+    /**
+     * The legend of {@code marks}: a word for each kind of mark they have, in a fixed order; a team out and the end,
+     * which look alike, share one.
+     */
     private static @NonNull List<Legend> legend(@NonNull List<Mark> marks) {
-        List<Legend> all = List.of(new Legend("team A out", OUT_TEAM_A), new Legend("out", OUT_OTHER), new Legend(
-                "razed", RAZED), new Legend("chieftain", CHIEF), new Legend("chieftain lost", CHIEF_DIED), new Legend(
-                        "death toll", DEATHS_COLOR), new Legend("end", Color.WHITE));
+        boolean team_out = marks.stream().anyMatch(mark -> mark.kind() == Kind.TEAM_OUT);
+        boolean end = marks.stream().anyMatch(mark -> mark.kind() == Kind.END);
+        String white = team_out && end ? "team out / end" : team_out ? "team out" : "end";
+        List<Legend> all = List.of(
+                new Legend("team A out", OUT_TEAM_A, TALL, List.of(Kind.OUT)),
+                new Legend("out", OUT_OTHER, MEDIUM, List.of(Kind.OUT)),
+                new Legend("razed", RAZED, MEDIUM, List.of(Kind.RAZED, Kind.SITE_RAZED)),
+                new Legend("chieftain", CHIEF, MEDIUM, List.of(Kind.CHIEF)),
+                new Legend("chieftain lost", CHIEF_DIED, MEDIUM, List.of(Kind.CHIEF_DIED)),
+                new Legend("death toll", DEATHS_COLOR, SHORT, List.of(Kind.DEATHS)),
+                new Legend(white, Color.WHITE, TALL, List.of(Kind.TEAM_OUT, Kind.END)));
         List<Legend> legend = new ArrayList<>();
         for (Legend word : all) {
-            if (marks.stream().anyMatch(mark -> mark.color() == word.color())) {
+            if (marks.stream().anyMatch(word::has)) {
                 legend.add(word);
             }
         }
@@ -369,14 +390,15 @@ final class Timeline extends HudPanel {
         renderer.drawColoredQuad(left, track_y, xOf(clock.frontier()) - left, TRACK_HEIGHT, SIMULATED);
         rescale();
         for (int tick : scale_ticks) {
-            renderer.drawColoredQuad(xOf(tick), checkpointY(), 1, CHECKPOINT_HEIGHT, SCALE_NOTCH);
+            renderer.drawColoredQuad(xOf(tick), track_y, 1, TRACK_HEIGHT, SCALE_LINE);
         }
         for (int checkpoint : checkpoints) {
             renderer.drawColoredQuad(xOf(checkpoint), checkpointY(), 1, CHECKPOINT_HEIGHT, CHECKPOINT);
         }
         if (hover_x >= 0 && !dragging) {
             makeHover();
-            for (Mark mark : hovered) {
+            for (Entry entry : hover) {
+                Mark mark = entry.mark();
                 renderer.drawColoredQuad(xOf(mark.tick()) - 1, track_y + 1, MARK_WIDTH + 2,
                         TRACK_HEIGHT + mark.height(), HOVERED);
             }
@@ -454,9 +476,11 @@ final class Timeline extends HudPanel {
      * the scale's times between where they leave room.
      */
     private void drawScale(@NonNull GUIRenderer renderer, int tick, int now_x) {
-        if (tick != now_tick) {
+        Times times = game.times();
+        if (tick != now_tick || times.speed() != now_speed) {
             now_tick = tick;
-            now_text = game.times().clock(tick);
+            now_speed = times.speed();
+            now_text = times.clock(tick);
         }
         int y = PADDING;
         int left = barLeft();
@@ -493,43 +517,51 @@ final class Timeline extends HudPanel {
         TextLineRenderer.render(renderer, font, text, x, textY(), 0, barRight(), color);
     }
 
-    /** The line above the bar when the mouse is elsewhere: the marks' colours on the left, how far it is simulated. */
+    /**
+     * A chip standing for marks of {@code color} that reach {@code height} above the bar, on the line of text at
+     * {@code y}: as high as a player's swatch for the tallest marks, the others as much lower as they are on the bar.
+     */
+    private void drawChip(@NonNull GUIRenderer renderer, int x, int y, @NonNull Vector4fc color, int height) {
+        int chip = Math.round(swatchSide() * (TRACK_HEIGHT - 2 + height) / (float) (TRACK_HEIGHT - 2 + TALL));
+        renderer.drawColoredQuad(x, y + 2, CHIP_WIDTH, chip, color);
+    }
+
+    /** The line above the bar when the mouse is elsewhere: the marks' legend on the left, how far it is simulated. */
     private void drawLegend(@NonNull GUIRenderer renderer) {
         int y = textY();
         int status_width = font.getWidth(simulated_text);
         int status_x = Math.max(barLeft(), barRight() - status_width);
         TextLineRenderer.render(renderer, font, simulated_text, status_x, y, 0, barRight(), TextPanel.DIM);
         int x = barLeft();
-        int chip = font.getHeight() - 8;
         for (Legend word : legend) {
-            int width = MARK_WIDTH + 2 + TextPanel.ICON_GAP + font.getWidth(word.word());
+            int width = CHIP_WIDTH + TextPanel.ICON_GAP + font.getWidth(word.word());
             if (x + width > status_x - LEGEND_GAP) {
                 break;
             }
-            renderer.drawColoredQuad(x, y + 4, MARK_WIDTH + 2, chip, word.color());
-            TextLineRenderer.render(renderer, font, word.word(), x + MARK_WIDTH + 2 + TextPanel.ICON_GAP, y, 0,
+            drawChip(renderer, x, y, word.color(), word.height());
+            TextLineRenderer.render(renderer, font, word.word(), x + CHIP_WIDTH + TextPanel.ICON_GAP, y, 0,
                     barRight(), TextPanel.DIM);
             x += width + LEGEND_GAP;
         }
     }
 
     /**
-     * Finds the marks near the mouse and makes their entries, when the mouse moved or the scale changed since:
-     * drawing every frame only reads them.
+     * Finds the marks near the mouse and makes the entries of the nearest, in time order, when the mouse moved or
+     * the scale changed since: drawing every frame only reads them. It shows {@link #HOVER_SHOWN} at most, and fewer
+     * where they would not fit along the bar with the count of the others.
      */
     private void makeHover() {
+        Times times = game.times();
         int end = scaleEnd();
-        int speed = game.times().speed();
         if (hover_x == hover_made_x && getWidth() == hover_made_width && end == hover_made_end
-                && speed == hover_made_speed) {
+                && times.speed() == hover_made_speed) {
             return;
         }
         hover_made_x = hover_x;
         hover_made_width = getWidth();
         hover_made_end = end;
-        hover_made_speed = speed;
+        hover_made_speed = times.speed();
         hover.clear();
-        hovered.clear();
         List<Mark> near = new ArrayList<>();
         for (Mark mark : marks) {
             if (Math.abs(xOf(mark.tick()) - hover_x) <= HOVER_PIXELS) {
@@ -537,39 +569,68 @@ final class Timeline extends HudPanel {
             }
         }
         near.sort((a, b) -> Integer.compare(Math.abs(xOf(a.tick()) - hover_x), Math.abs(xOf(b.tick()) - hover_x)));
-        hover_more = Math.max(0, near.size() - HOVER_SHOWN);
-        hover_time = near.isEmpty() ? game.times().clock(tickAt(hover_x)) : "";
+        hover_time = near.isEmpty() ? times.clock(tickAt(hover_x)) : "";
+        List<Mark> shown = new ArrayList<>();
+        int width = 0;
+        for (Mark mark : near) {
+            if (shown.size() == HOVER_SHOWN) {
+                break;
+            }
+            int wider = width + (shown.isEmpty() ? 0 : ENTRY_GAP) + entry(mark, true).width();
+            int rest = near.size() - shown.size() - 1; // the others, if this one shows
+            int more = rest > 0 ? ENTRY_GAP + font.getWidth(moreText(rest)) : 0;
+            if (!shown.isEmpty() && wider + more > barRight() - barLeft()) {
+                break; // the nearest one shows even where it is cut
+            }
+            shown.add(mark);
+            width = wider;
+        }
+        int others = near.size() - shown.size();
+        hover_more_text = others > 0 ? moreText(others) : "";
+        shown.sort((a, b) -> Integer.compare(a.tick(), b.tick()));
+        String previous = "";
+        // the entries ENTRY_GAP apart, and the count of the others after them as far again
+        hover_width = others > 0 ? font.getWidth(hover_more_text) : -ENTRY_GAP;
+        for (Mark mark : shown) {
+            String time = times.clock(mark.tick());
+            Entry entry = entry(mark, !time.equals(previous)); // the time once for the events of one time
+            previous = time;
+            hover.add(entry);
+            hover_width += ENTRY_GAP + entry.width();
+        }
+    }
+
+    private static @NonNull String moreText(int more) {
+        return "+" + more + " more";
+    }
+
+    /** The entry of {@code mark} on the line under the mouse, its time shown or not. */
+    private @NonNull Entry entry(@NonNull Mark mark, boolean with_time) {
         Times times = game.times();
         Player[] players = game.world().getPlayers();
-        String previous = "";
-        for (Mark mark : near.subList(0, Math.min(near.size(), HOVER_SHOWN))) {
-            hovered.add(mark);
-            Player player = mark.slot() >= 0 && mark.slot() < players.length ? players[mark.slot()] : null;
-            Vector4fc swatch = player == null ? null : player.getColor();
-            IconQuad icon = icon(mark, player == null ? null : player.getRace());
-            String time = times.clock(mark.tick());
-            String shown = time.equals(previous) ? "" : time; // once for the events of one time
-            previous = time;
-            String text = mark.describe(times);
-            int width = font.getWidth(text);
-            if (!shown.isEmpty()) {
-                width += font.getWidth(shown) + 2 * TextPanel.ICON_GAP;
-            }
-            if (swatch != null) {
-                width += swatchSide() + TextPanel.ICON_GAP;
-            }
-            if (icon != null) {
-                width += iconSide() + TextPanel.ICON_GAP;
-            }
-            hover.add(new Entry(shown, swatch, icon, tint(mark), text, width));
+        Player player = mark.slot() >= 0 && mark.slot() < players.length ? players[mark.slot()] : null;
+        Vector4fc swatch = player == null ? null : player.getColor();
+        IconQuad icon = icon(mark, player == null ? null : player.getRace());
+        String time = with_time ? times.clock(mark.tick()) : "";
+        String text = mark.describe(times);
+        int width = CHIP_WIDTH + TextPanel.ICON_GAP + font.getWidth(text);
+        if (!time.isEmpty()) {
+            width += font.getWidth(time) + 2 * TextPanel.ICON_GAP;
         }
+        if (swatch != null) {
+            width += swatchSide() + TextPanel.ICON_GAP;
+        }
+        if (icon != null) {
+            width += iconSide() + TextPanel.ICON_GAP;
+        }
+        return new Entry(mark, time, swatch, icon, tint(mark), text, width);
     }
 
     /** The game's icon of what {@code mark} is about, in {@code race}'s look (null: the player's is not known). */
     private static @Nullable IconQuad icon(@NonNull Mark mark, @Nullable Race race) {
         return switch (mark.kind()) {
             case TEAM_OUT -> HudIcons.warning();
-            case END -> HudIcons.progress(1f);
+            case END -> GUIIcons.getIcons().getVikingIcons().rallyPointIcon().quad(ModeIconQuads.Mode.NORMAL); // a flag
             case OUT -> race == null ? null : HudIcons.units(race);
             case RAZED, SITE_RAZED -> race == null || mark.building() < 0 ? null : HudIcons.building(race,
                     mark.building());
@@ -592,47 +653,39 @@ final class Timeline extends HudPanel {
         return font.getHeight() - 2;
     }
 
+    /** A player's swatch, as high as TextPanel's. */
     private int swatchSide() {
-        return font.getHeight() - 8;
+        return font.getHeight() - 4;
     }
 
     /**
-     * The line above the bar under the mouse: the events of the marks there, nearest first, each its time, its
-     * player's colour, its icon and what happened, joined to its mark by a line in its colour; or the time there.
+     * The line above the bar under the mouse: the events of the nearest marks there, in time order, each its mark's
+     * chip, its time, its player's colour, its icon and what happened, and how many more marks there are; or the
+     * time there.
      */
     private void drawHover(@NonNull GUIRenderer renderer) {
         if (hover.isEmpty()) {
             drawCentred(renderer, hover_time, hover_x, Color.WHITE);
             return;
         }
-        String more = hover_more > 0 ? "+" + hover_more + " more" : "";
-        int width = (hover.size() - 1) * ENTRY_GAP;
-        for (Entry entry : hover) {
-            width += entry.width();
-        }
-        int more_width = more.isEmpty() ? 0 : ENTRY_GAP + font.getWidth(more);
-        width += more_width;
-        int x = Math.clamp(hover_x - width / 2, barLeft(), Math.max(barLeft(), barRight() - width));
+        int x = Math.clamp(hover_x - hover_width / 2, barLeft(), Math.max(barLeft(), barRight() - hover_width));
         int y = textY();
-        // the nearest mark's line up to its event
-        Mark nearest = hovered.getFirst();
-        int mark_top = trackY() + TRACK_HEIGHT + nearest.height();
-        renderer.drawColoredQuad(xOf(nearest.tick()), mark_top, 1, y - mark_top, nearest.color());
         int right = barRight();
         for (int i = 0; i < hover.size(); i++) {
             Entry entry = hover.get(i);
             if (i > 0) {
-                renderer.drawColoredQuad(x + ENTRY_GAP / 2f, y + 3, 1, font.getHeight() - 6, DIVIDER);
                 x += ENTRY_GAP;
             }
             int start = x;
+            drawChip(renderer, x, y, entry.mark().color(), entry.mark().height());
+            x += CHIP_WIDTH + TextPanel.ICON_GAP;
             if (!entry.time().isEmpty()) {
                 x = (int) TextLineRenderer.render(renderer, font, entry.time(), x, y, 0, right, TextPanel.DIM);
                 x += 2 * TextPanel.ICON_GAP;
             }
             Vector4fc swatch = entry.swatch();
             if (swatch != null && x + swatchSide() <= right) {
-                renderer.drawColoredQuad(x, y + 4, swatchSide(), swatchSide(), swatch);
+                renderer.drawColoredQuad(x, y + 2, swatchSide(), swatchSide(), swatch);
                 x += swatchSide() + TextPanel.ICON_GAP;
             }
             IconQuad icon = entry.icon();
@@ -644,8 +697,8 @@ final class Timeline extends HudPanel {
             TextLineRenderer.render(renderer, font, entry.text(), x, y, 0, right, Color.WHITE);
             x = start + entry.width();
         }
-        if (!more.isEmpty()) {
-            TextLineRenderer.render(renderer, font, more, x + ENTRY_GAP, y, 0, right, TextPanel.DIM);
+        if (!hover_more_text.isEmpty()) {
+            TextLineRenderer.render(renderer, font, hover_more_text, x + ENTRY_GAP, y, 0, right, TextPanel.DIM);
         }
     }
 

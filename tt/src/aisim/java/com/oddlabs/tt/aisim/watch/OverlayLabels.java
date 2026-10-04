@@ -17,22 +17,23 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * The labels of an AI's marks, as text on screen next to the top of each mark's pin, projected from the world every
+ * The labels of an AI's marks, as text on screen at the top of each mark's pin, projected from the world every
  * frame (as SpectatorCursor places the watched player's pointer). It covers the whole view, takes no focus (clicks go
  * through to the 3D view) and sits below the HUD's panels. Labels that would overlap one drawn already are left out,
- * nearest the camera first, so a crowd of marks stays readable. A label is its mark's text on a dark box with an edge
- * in the mark's own colour on its left, the pin's side, so a label whose text had to be lightened still shows its
- * mark's colour.
+ * nearest the camera first, so a crowd of marks stays readable. A label is a flag on its pin: its mark's text on a dark
+ * box over the pin's top, whose left edge, in the mark's own colour, goes on up from the pin. A label whose text had
+ * to be lightened so still shows its mark's colour, and the edge of such a dark colour has a light rim, which keeps it
+ * visible on the dark box.
  */
 final class OverlayLabels extends GUIObject {
     /** Labels drawn per frame at most. */
     private static final int MAX_LABELS = 160;
     private static final int PADDING = 3;
-    /** The coloured edge on a label's left (pixels). */
+    /** The coloured edge on a label's left, over the pin's top (pixels). */
     private static final int EDGE = 2;
-    /** The gap between the pin's top and its label (pixels). */
-    private static final int GAP = 4;
     private static final Vector4fc BACKGROUND = new Vector4f(0f, 0f, 0f, .7f);
+    /** The rim around the edge of a dark colour. */
+    private static final Vector4fc EDGE_RIM = new Vector4f(1f, 1f, 1f, .45f);
     /** A label's colour is its mark's, lightened to at least this luminance so it reads on the dark box. */
     private static final float MIN_LUMINANCE = .55f;
 
@@ -101,8 +102,8 @@ final class OverlayLabels extends GUIObject {
             String text = shape.label();
             float width = EDGE + font.getWidth(text) + 2 * PADDING;
             float height = font.getHeight();
-            float left = Math.round(screen_x[n] + GAP);
-            float bottom = Math.round(screen_y[n] - height * .5f);
+            float left = Math.round(screen_x[n] - EDGE * .5f);
+            float bottom = Math.round(screen_y[n]);
             if (overlaps(drawn, left, bottom, width, height)) {
                 continue;
             }
@@ -113,8 +114,12 @@ final class OverlayLabels extends GUIObject {
             drawn++;
             renderer.drawColoredQuad(left, bottom, width, height, BACKGROUND);
             int rgb = shape.rgb();
-            renderer.drawColoredQuad(left, bottom, EDGE, height, edge.set((rgb >> 16 & 0xFF) / 255f,
-                    (rgb >> 8 & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f));
+            boolean dark = luminance(rgb) < MIN_LUMINANCE;
+            if (dark) {
+                renderer.drawColoredQuad(left - 1, bottom, EDGE + 2, height, EDGE_RIM);
+            }
+            renderer.drawColoredQuad(left, bottom + (dark ? 1 : 0), EDGE, height - (dark ? 2 : 0), edge.set(
+                    (rgb >> 16 & 0xFF) / 255f, (rgb >> 8 & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f));
             TextLineRenderer.render(renderer, font, text, left + EDGE + PADDING, bottom, Float.NEGATIVE_INFINITY,
                     Float.POSITIVE_INFINITY, readable(rgb));
         }
@@ -137,7 +142,7 @@ final class OverlayLabels extends GUIObject {
         float r = (rgb >> 16 & 0xFF) / 255f;
         float g = (rgb >> 8 & 0xFF) / 255f;
         float b = (rgb & 0xFF) / 255f;
-        float luminance = .2126f * r + .7152f * g + .0722f * b;
+        float luminance = luminance(rgb);
         if (luminance < MIN_LUMINANCE) {
             float k = (MIN_LUMINANCE - luminance) / (1f - luminance);
             r += (1f - r) * k;
@@ -145,5 +150,10 @@ final class OverlayLabels extends GUIObject {
             b += (1f - b) * k;
         }
         return color.set(r, g, b, 1f);
+    }
+
+    /** The luminance of {@code rgb} (0xRRGGBB), 0 to 1. */
+    private static float luminance(int rgb) {
+        return .2126f * (rgb >> 16 & 0xFF) / 255f + .7152f * (rgb >> 8 & 0xFF) / 255f + .0722f * (rgb & 0xFF) / 255f;
     }
 }
