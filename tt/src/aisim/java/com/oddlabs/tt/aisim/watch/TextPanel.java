@@ -6,6 +6,7 @@ import com.oddlabs.tt.gui.IconQuad;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.render.GUIRenderer;
 import com.oddlabs.util.Color;
+import com.oddlabs.util.Quad;
 import org.joml.Vector4f;
 import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
@@ -19,18 +20,33 @@ import java.util.List;
  * the building block of the watch HUD. Its owner sets the lines (at most a few times a second) and places it; they are
  * drawn every frame.
  *
- * <p>A line is a row of parts drawn left to right: text, the game's own icons ({@link HudIcons}), bars and gaps. It
- * may have a label, which goes in the panel's label column, dim, so that the values of labelled lines start in one
- * column; a colour swatch in front (a player's colour); a band behind it (a heading); and twice the height (a heading
- * with a big icon). {@link #line()} builds one.
+ * <p>The HUD must not wiggle as text changes: a panel that the layout places by its edges is given one width (the
+ * least and the widest alike) and, where its lines come and go, a least height ({@link #setMinHeight}); text after a
+ * number that changes stays put when the number is in a slot ({@link Builder#slot}).
+ *
+ * <p>A line is a row of parts drawn left to right: text (in slots of a fixed width, too), the game's own icons
+ * ({@link HudIcons}), bars and gaps. It may have a label, which goes in the panel's label column, dim, so that the
+ * values of labelled lines start in one column; a colour swatch in front (a player's colour); a band behind it (a
+ * heading); and twice the height (a heading with a big icon). {@link #line()} builds one.
  */
 class TextPanel extends HudPanel {
     /** A piece of a line. */
     sealed interface Part permits Text, Icon, Bar, Gap {
     }
 
-    /** Text in a colour. */
-    record Text(@NonNull String text, @NonNull Vector4fc color) implements Part {
+    /**
+     * Text in a colour. With a {@code sample}, in a slot as wide as the sample (or the text, if wider), each digit
+     * counted as wide as the font's widest ({@link #steadyWidth(String)}), the text left-aligned in it, or
+     * right-aligned when
+     * {@code right}: a number that changes, such as a time, so the parts after it (right-aligned, its own right end
+     * too) stay put while its digits change. The edit font's digits are not all one width.
+     */
+    record Text(@NonNull String text, @NonNull Vector4fc color, @Nullable String sample,
+                boolean right) implements Part {
+        /** Plain text: as wide as it is. */
+        Text(@NonNull String text, @NonNull Vector4fc color) {
+            this(text, color, null, false);
+        }
     }
 
     /** An icon, as high as the line, tinted ({@link Color#WHITE}: as it is). */
@@ -87,6 +103,23 @@ class TextPanel extends HudPanel {
             if (!text.isEmpty()) {
                 parts.add(new Text(text, color));
             }
+            return this;
+        }
+
+        /**
+         * Text in a slot as wide as {@code sample} with the font's widest digits ({@link Text}), left-aligned: a
+         * time or a count that changes, such as {@code slot(times.precise(tick), WHITE, times.hundredths(end))}.
+         */
+        @NonNull
+        Builder slot(@NonNull String text, @NonNull Vector4fc color, @NonNull String sample) {
+            parts.add(new Text(text, color, sample, false));
+            return this;
+        }
+
+        /** As {@link #slot}, the text right-aligned in it: a count in a column of counts. */
+        @NonNull
+        Builder slotRight(@NonNull String text, @NonNull Vector4fc color, @NonNull String sample) {
+            parts.add(new Text(text, color, sample, true));
             return this;
         }
 
@@ -174,9 +207,13 @@ class TextPanel extends HudPanel {
     static final int LABEL_GAP = 10;
 
     private final @NonNull Font font;
+    /** The font's widest digit, which every digit of a slot ({@link Builder#slot}) is counted as. */
+    private final char widest_digit;
     private final List<Line> lines = new ArrayList<>();
     private int min_width;
     private int max_width;
+    /** The least height while the panel has lines ({@link #setMinHeight}); 0: as high as its lines. */
+    private int min_height;
     private int label_width;
     private @NonNull Vector4fc background = BACKGROUND;
 
@@ -186,6 +223,7 @@ class TextPanel extends HudPanel {
 
     TextPanel(int min_width, int max_width) {
         this.font = Skin.getSkin().getEditFont();
+        this.widest_digit = widestDigit(font);
         this.min_width = min_width;
         this.max_width = max_width;
         setDim(min_width, 0);
@@ -212,6 +250,17 @@ class TextPanel extends HudPanel {
         setWidths(min_width, max);
     }
 
+    /**
+     * Keeps the panel at least {@code height} high while it has lines, the room under them blank (0: as high as its
+     * lines): a panel whose lines come and go holds its tallest height, so the panels placed against it stay put.
+     */
+    void setMinHeight(int height) {
+        if (height != min_height) {
+            min_height = height;
+            resize();
+        }
+    }
+
     private void resize() {
         label_width = 0;
         for (Line line : lines) {
@@ -226,7 +275,8 @@ class TextPanel extends HudPanel {
             width = Math.max(width, valueX(line) + partsWidth(line) + PADDING);
             height += lineHeight(line);
         }
-        setDim(Math.min(width, Math.max(max_width, min_width)), lines.isEmpty() ? 0 : height + 2 * PADDING);
+        setDim(Math.min(width, Math.max(max_width, min_width)), lines.isEmpty() ? 0 : Math.max(min_height,
+                height + 2 * PADDING));
     }
 
     /** A darker box for a panel of many lines that the 3D view behind would make hard to read. */
@@ -237,6 +287,67 @@ class TextPanel extends HudPanel {
     /** How wide {@code line} is in this panel, padding included: wider than the panel's widest, it is cut. */
     int lineWidth(@NonNull Line line) {
         return valueX(line) + partsWidth(line) + PADDING;
+    }
+
+    /**
+     * How wide {@code text} is with each of its digits as wide as the font's widest (as Font.getWidth measures): the
+     * room a number needs for all values of its length, which a slot ({@link Builder#slot}) keeps.
+     */
+    int steadyWidth(@NonNull String text) {
+        return steadyWidth(font, widest_digit, text);
+    }
+
+    /**
+     * {@link #steadyWidth(String)} in {@code font}, for what draws text of its own (the timeline's legend, the AI log's
+     * time column): a column or a right-aligned text as wide as this stays put while its digits change.
+     */
+    static int steadyWidth(@NonNull Font font, @NonNull String text) {
+        return steadyWidth(font, widestDigit(font), text);
+    }
+
+    private static int steadyWidth(@NonNull Font font, char widest_digit, @NonNull String text) {
+        if (text.isEmpty()) {
+            return 0;
+        }
+        int width = font.getXBorder();
+        for (int i = 0; i < text.length();) {
+            int codepoint = text.codePointAt(i);
+            Quad quad = font.getQuad(codepoint >= '0' && codepoint <= '9' ? widest_digit : codepoint);
+            width += quad == null ? 0 : quad.getWidth() - font.getXBorder();
+            i += Character.charCount(codepoint);
+        }
+        return width;
+    }
+
+    /** The widest of {@code font}'s digits (the edit font's are 14 and 15 units wide). */
+    private static char widestDigit(@NonNull Font font) {
+        char widest = '0';
+        for (char digit = '1'; digit <= '9'; digit++) {
+            if (font.getWidth(String.valueOf(digit)) > font.getWidth(String.valueOf(widest))) {
+                widest = digit;
+            }
+        }
+        return widest;
+    }
+
+    /**
+     * The room for the value of a line labelled {@code label} in this panel at {@code width}, its other lines being
+     * {@code lines}: right of the label column they make together, inside the padding (what a value wraps to).
+     */
+    int valueRoom(int width, @NonNull String label, @NonNull List<Line> lines) {
+        int labels = font.getWidth(label) + LABEL_GAP;
+        for (Line line : lines) {
+            String other = line.label();
+            if (other != null) {
+                labels = Math.max(labels, font.getWidth(other) + LABEL_GAP);
+            }
+        }
+        return width - 2 * PADDING - labels;
+    }
+
+    /** The room an icon takes in a plain line, the gap after it included: the indent of text under a line's icon. */
+    int iconWidth() {
+        return iconSize(font.getHeight()) + ICON_GAP;
     }
 
     /** The height of a plain line. */
@@ -271,7 +382,11 @@ class TextPanel extends HudPanel {
 
     private int partWidth(@NonNull Part part, int line_height) {
         return switch (part) {
-            case Text text -> font.getWidth(text.text());
+            case Text text -> {
+                String sample = text.sample();
+                yield sample == null ? font.getWidth(text.text()) : Math.max(steadyWidth(sample), steadyWidth(
+                        text.text()));
+            }
             case Icon icon -> iconSize(line_height) + ICON_GAP;
             case Bar bar -> bar.width() + ICON_GAP;
             case Gap gap -> gap.width();
@@ -316,8 +431,11 @@ class TextPanel extends HudPanel {
                     break;
                 }
                 switch (part) {
-                    case Text text -> TextLineRenderer.render(renderer, font, text.text(), x, text_y, 0, right,
-                            text.color());
+                    case Text text -> {
+                        // right-aligned in its slot, or where the slot starts
+                        float text_x = text.right() ? x + partWidth(part, height) - font.getWidth(text.text()) : x;
+                        TextLineRenderer.render(renderer, font, text.text(), text_x, text_y, 0, right, text.color());
+                    }
                     case Icon icon -> {
                         int side = iconSize(height);
                         if (x + side <= right) {

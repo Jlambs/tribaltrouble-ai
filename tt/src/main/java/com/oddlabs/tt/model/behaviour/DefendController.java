@@ -13,6 +13,10 @@ public final class DefendController extends Controller {
         this.target = t;
     }
 
+    public Target getTarget() {
+        return target;
+    }
+
     @Override
     public void decide() {
         if (shouldGiveUp(0))

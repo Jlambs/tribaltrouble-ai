@@ -4,6 +4,7 @@ import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.SupplyFinder;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.pathfinder.FinderTrackerAlgorithm;
+import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 public final class HarvestController<S extends Supply> extends Controller {
@@ -18,6 +19,10 @@ public final class HarvestController<S extends Supply> extends Controller {
         this.unit = unit;
         this.supply = supply;
         this.supply_class = supply_class;
+    }
+
+    public @NonNull Class<S> getSupplyType() {
+        return supply_class;
     }
 
     private void gather() {

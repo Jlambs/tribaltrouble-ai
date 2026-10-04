@@ -156,7 +156,9 @@ final class AiLogPanel extends TextPanel {
             topics.merge(parsed.topic(), 1, Integer::sum);
         }
         // the times are no longer than the moment on view's; the text has the room right of the times and the tags
-        int time_width = timeWidth(font, game.times().hundredths(tick));
+        // each digit counted as the widest, so the column does not move as the times change (only when they get a
+        // digit more)
+        int time_width = TextPanel.steadyWidth(font, game.times().hundredths(tick));
         Columns columns = new Columns(time_width, tag_width,
                 getWidth() - 2 * PADDING - time_width - 2 * COLUMN_SPACE - tag_width, common(topics));
         if (newest.size() < scroll + room) {
@@ -197,20 +199,6 @@ final class AiLogPanel extends TextPanel {
         }
         lines.addAll(notes);
         return lines;
-    }
-
-    /**
-     * The width of the time column for times as long as {@code time}: each digit counted as the widest, so the column
-     * does not move as the times change (only when they get a digit more).
-     */
-    private static int timeWidth(@NonNull Font font, @NonNull String time) {
-        char widest = '0';
-        for (char digit = '1'; digit <= '9'; digit++) {
-            if (font.getWidth(String.valueOf(digit)) > font.getWidth(String.valueOf(widest))) {
-                widest = digit;
-            }
-        }
-        return font.getWidth(time.replaceAll("[0-9]", String.valueOf(widest)));
     }
 
     /** The topic most of {@code topics} (counts by topic, the newest line's first) have; the newest wins a tie. */
