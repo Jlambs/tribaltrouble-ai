@@ -150,6 +150,11 @@ final class Timeline extends HudPanel {
 
     // what refresh writes, and the drawing reads every frame
     private @NonNull String simulated_text = "";
+    /**
+     * The room of how far it is simulated, at the right end of the line above the bar: as wide as its longest text
+     * with the end's time and the widest digits, so it stays put as the frontier's time changes.
+     */
+    private int simulated_width;
     private @NonNull String end_text = "";
 
     // the time scale, made again when the bar's width, its end or the clock speed changes
@@ -305,6 +310,10 @@ final class Timeline extends HudPanel {
         } else {
             simulated_text = simulated + (clock.presimulating() ? "  (E stops)" : "  (E: simulate it all)");
         }
+        // the frontier is at the end at most (a long game's while the end is unknown); the longest of the texts
+        String longest = "simulated to " + times.clock(
+                end > 0 ? end : 888_888) + (end > 0 ? "  (E: simulate it all)" : " (end unknown)");
+        simulated_width = Math.max(TextPanel.steadyWidth(font, longest), font.getWidth(simulated_text));
     }
 
     /** The first mark after {@code tick}, or null. */
@@ -529,8 +538,8 @@ final class Timeline extends HudPanel {
     /** The line above the bar when the mouse is elsewhere: the marks' legend on the left, how far it is simulated. */
     private void drawLegend(@NonNull GUIRenderer renderer) {
         int y = textY();
-        int status_width = font.getWidth(simulated_text);
-        int status_x = Math.max(barLeft(), barRight() - status_width);
+        // where its room starts, which only the end, the clock speed and the bar's width move
+        int status_x = Math.max(barLeft(), barRight() - simulated_width);
         TextLineRenderer.render(renderer, font, simulated_text, status_x, y, 0, barRight(), TextPanel.DIM);
         int x = barLeft();
         for (Legend word : legend) {

@@ -36,7 +36,8 @@ class TextPanel extends HudPanel {
 
     /**
      * Text in a colour. With a {@code sample}, in a slot as wide as the sample (or the text, if wider), each digit
-     * counted as wide as the font's widest ({@link #steadyWidth}), the text left-aligned in it, or right-aligned when
+     * counted as wide as the font's widest ({@link #steadyWidth(String)}), the text left-aligned in it, or
+     * right-aligned when
      * {@code right}: a number that changes, such as a time, so the parts after it (right-aligned, its own right end
      * too) stay put while its digits change. The edit font's digits are not all one width.
      */
@@ -222,13 +223,7 @@ class TextPanel extends HudPanel {
 
     TextPanel(int min_width, int max_width) {
         this.font = Skin.getSkin().getEditFont();
-        char widest = '0';
-        for (char digit = '1'; digit <= '9'; digit++) {
-            if (font.getWidth(String.valueOf(digit)) > font.getWidth(String.valueOf(widest))) {
-                widest = digit;
-            }
-        }
-        this.widest_digit = widest;
+        this.widest_digit = widestDigit(font);
         this.min_width = min_width;
         this.max_width = max_width;
         setDim(min_width, 0);
@@ -299,6 +294,18 @@ class TextPanel extends HudPanel {
      * room a number needs for all values of its length, which a slot ({@link Builder#slot}) keeps.
      */
     int steadyWidth(@NonNull String text) {
+        return steadyWidth(font, widest_digit, text);
+    }
+
+    /**
+     * {@link #steadyWidth(String)} in {@code font}, for what draws text of its own (the timeline's legend, the AI log's
+     * time column): a column or a right-aligned text as wide as this stays put while its digits change.
+     */
+    static int steadyWidth(@NonNull Font font, @NonNull String text) {
+        return steadyWidth(font, widestDigit(font), text);
+    }
+
+    private static int steadyWidth(@NonNull Font font, char widest_digit, @NonNull String text) {
         if (text.isEmpty()) {
             return 0;
         }
@@ -310,6 +317,17 @@ class TextPanel extends HudPanel {
             i += Character.charCount(codepoint);
         }
         return width;
+    }
+
+    /** The widest of {@code font}'s digits (the edit font's are 14 and 15 units wide). */
+    private static char widestDigit(@NonNull Font font) {
+        char widest = '0';
+        for (char digit = '1'; digit <= '9'; digit++) {
+            if (font.getWidth(String.valueOf(digit)) > font.getWidth(String.valueOf(widest))) {
+                widest = digit;
+            }
+        }
+        return widest;
     }
 
     /**

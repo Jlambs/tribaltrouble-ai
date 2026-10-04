@@ -73,8 +73,9 @@ import java.util.Set;
  * {@code status}, {@code timeline} or {@code flee} {@code =on}/{@code off}, {@code inspect=none} or a kind,
  * {@code message=TEXT} (the status panel's message contains TEXT), {@code camera=picked} (the camera looks at the
  * picked object, within {@value #CAMERA_METERS} meters; else {@code elsewhere}), {@code tracking=on}/{@code off}
- * (Shift+C) and {@code steady=PANELS} (each of the comma-separated panels, or {@code all}, was on the screen all
- * through the last {@code layout} step and kept its x and width).</li>
+ * (Shift+C), {@code steady=PANELS} (each of the comma-separated panels, or {@code all}, was on the screen all
+ * through the last {@code layout} step and kept its x and width) and {@code still=PANELS} (the same, and each kept
+ * its y and height too).</li>
  * </ul>
  * Each report line says how many ticks the world played during the step and how fast (not the distance the view
  * moved: a seek may restore a later checkpoint and play only from there), and the checkpoint it restored, if any.
@@ -104,7 +105,8 @@ final class Selftest {
     private @Nullable String step_message;
     /**
      * layout: per panel, in the order first seen, its least and greatest x, width, y and height over the frames
-     * sampled so far, then the frames it was seen in; {@code expect:steady} checks the last layout step's.
+     * sampled so far, then the frames it was seen in; {@code expect:steady} and {@code expect:still} check the last
+     * layout step's.
      */
     private final @NonNull Map<String, int[]> layout_ranges = new LinkedHashMap<>();
     private int layout_frames;
@@ -444,29 +446,41 @@ final class Selftest {
     }
 
     /**
-     * {@code expect:steady=PANELS}: {@code wanted} when each of its panels (comma-separated, or {@code all} the
-     * panels it saw) was on the screen all through the last layout step and kept its x and width; else those that
-     * did not.
+     * {@code expect:steady=PANELS}, and {@code expect:still=PANELS} when {@code still}: {@code wanted} when each of
+     * its panels (comma-separated, or {@code all} the panels it saw) was on the screen all through the last layout step
+     * and kept its x and width, and when {@code still} its y and height too; else those that did not.
      */
-    private @NonNull String steady(@NonNull String wanted) {
+    private @NonNull String steady(@NonNull String wanted, boolean still) {
         if (layout_frames == 0) {
             throw new IllegalStateException("no layout step sampled anything yet");
         }
         List<String> panels = wanted.equalsIgnoreCase("all") ? List.copyOf(layout_ranges.keySet()) : List.of(
                 wanted.split(","));
-        List<String> unsteady = new ArrayList<>();
+        String[] names = {"x", "width", "y", "height"};
+        List<String> moving = new ArrayList<>();
         for (String panel : panels) {
             String name = panel.trim();
             int[] range = layout_ranges.get(name);
             if (range == null) {
-                unsteady.add(name + " not shown");
-            } else if (range[range.length - 1] < layout_frames) {
-                unsteady.add(name + " shown in " + range[range.length - 1] + " of " + layout_frames + " frames");
-            } else if (range[0] != range[1] || range[2] != range[3]) {
-                unsteady.add(name + " x " + range[0] + ".." + range[1] + " width " + range[2] + ".." + range[3]);
+                moving.add(name + " not shown");
+                continue;
+            }
+            if (range[range.length - 1] < layout_frames) {
+                moving.add(name + " shown in " + range[range.length - 1] + " of " + layout_frames + " frames");
+                continue;
+            }
+            StringBuilder ranges = new StringBuilder();
+            for (int i = 0; i < (still ? names.length : 2); i++) {
+                if (range[2 * i] != range[2 * i + 1]) {
+                    ranges.append(' ').append(names[i]).append(' ').append(range[2 * i]).append("..").append(
+                            range[2 * i + 1]);
+                }
+            }
+            if (!ranges.isEmpty()) {
+                moving.add(name + ranges);
             }
         }
-        return unsteady.isEmpty() ? wanted : "moving: " + String.join(", ", unsteady);
+        return moving.isEmpty() ? wanted : "moving: " + String.join(", ", moving);
     }
 
     private void select(@NonNull String argument) {
@@ -625,7 +639,7 @@ final class Selftest {
             case "flee" -> actual = hud.aiLog().fleeShown() ? "on" : "off";
             case "camera" -> actual = game.looksAtPicked(CAMERA_METERS) ? "picked" : "elsewhere";
             case "tracking" -> actual = game.tracking() ? "on" : "off";
-            case "steady" -> actual = steady(wanted);
+            case "steady", "still" -> actual = steady(wanted, what.equals("still"));
             case "inspect" -> {
                 Selectable<?> inspected = game.inspected();
                 String kind = inspected == null ? "none" : Inspector.kindOf(inspected);

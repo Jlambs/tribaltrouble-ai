@@ -348,8 +348,15 @@ final class AiOverlay {
                     label = ""; // a second row: under the value
                 }
             }
-            lines.add(new TextPanel.Line(String.format(Locale.ROOT, "%d shapes; paint %.2f ms, draw %.2f ms",
-                    paint.shapes().size(), paint_millis, renderer.drawMillis()), TextPanel.DIM));
+            // the numbers in slots as wide as their widest digits: the words after them stay put as they change
+            String paint_ms = String.format(Locale.ROOT, "%.2f", paint_millis);
+            String draw_ms = String.format(Locale.ROOT, "%.2f", renderer.drawMillis());
+            TextPanel.Builder timing = TextPanel.line();
+            timing.slotRight(String.valueOf(paint.shapes().size()), TextPanel.DIM, "8888").text("shapes;",
+                    TextPanel.DIM);
+            timing.text("paint", TextPanel.DIM).slotRight(paint_ms, TextPanel.DIM, "88.88").text("ms,", TextPanel.DIM);
+            timing.text("draw", TextPanel.DIM).slotRight(draw_ms, TextPanel.DIM, "88.88").text("ms", TextPanel.DIM);
+            lines.add(timing.build());
             int left_out = paint.overLimit() + paint.invalid();
             if (left_out > 0) {
                 String limits = OverlayPaint.MAX_SHAPES + " shapes, " + OverlayPaint.MAX_STATUS + " lines";
