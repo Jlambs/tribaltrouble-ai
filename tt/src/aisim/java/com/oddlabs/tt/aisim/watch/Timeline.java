@@ -3,8 +3,13 @@ package com.oddlabs.tt.aisim.watch;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.font.TextLineRenderer;
+import com.oddlabs.tt.gui.GUIIcons;
+import com.oddlabs.tt.gui.IconQuad;
+import com.oddlabs.tt.gui.ModeIconQuads;
 import com.oddlabs.tt.gui.MouseButton;
 import com.oddlabs.tt.gui.Skin;
+import com.oddlabs.tt.model.Race;
+import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.render.GUIRenderer;
 import com.oddlabs.util.Color;
 import org.joml.Vector4f;
@@ -18,25 +23,48 @@ import java.util.List;
 /**
  * The timeline at the bottom of the watch view: the whole recorded game as a bar, with the part simulated so far,
  * the checkpoints a rewind restores, where the view is (and where a seek goes), and marks for the recording's key
- * events: players out, the end, team A's buildings razed, its chieftains made and lost, and big death tolls. Click or
- * drag on it and let go to jump there; hover a mark to read its event. N and B jump to the next and previous mark
- * ({@link #next}, {@link #previous}).
+ * events: players out, the end, team A's buildings razed, its chieftains made and lost, and big death tolls. Under the
+ * bar a time scale (its steps faint lines through the bar), with the time the view is at; above it a legend of the
+ * marks (a chip of each kind's colour and height) and how far the game is simulated, or, under the mouse, the events
+ * of the marks there in time order (each with its mark's chip, its player's colour and the game's icon of what
+ * happened) or the time there. Click or drag on it and let go to jump there. N and B jump to the next and previous
+ * mark ({@link #next}, {@link #previous}).
  */
 final class Timeline extends HudPanel {
-    /**
-     * One mark: when, its colour and height above the bar, and what happened.
-     *
-     * @param tick   the event's tick
-     * @param color  its colour
-     * @param height how far it reaches above the bar (taller is more important)
-     * @param text   the event, such as {@code s3 hard out}
-     * @param span   for a window of deaths, its length in ticks (which {@link #describe} quotes); 0 for none
-     */
-    record Mark(int tick, @NonNull Vector4fc color, int height, @NonNull String text, int span) {
-        Mark(int tick, @NonNull Vector4fc color, int height, @NonNull String text) {
-            this(tick, color, height, text, 0);
-        }
+    /** What a mark is about, which picks its icon. */
+    enum Kind {
+        /** A player out. */
+        OUT,
+        /** The last player of a team out. */
+        TEAM_OUT,
+        /** The end of the recording. */
+        END,
+        /** A finished building of team A razed. */
+        RAZED,
+        /** A building site of team A razed. */
+        SITE_RAZED,
+        /** A team A player got a chieftain. */
+        CHIEF,
+        /** A team A player lost its chieftain. */
+        CHIEF_DIED,
+        /** A window of many deaths of one player. */
+        DEATHS
+    }
 
+    /**
+     * One mark: when, what about whom, its colour and height above the bar, and what happened.
+     *
+     * @param tick     the event's tick
+     * @param kind     what happened
+     * @param slot     the player it is about, or -1 (a team out, the end)
+     * @param building for a razed building, its kind (Race.BUILDING_*); else -1
+     * @param color    its colour
+     * @param height   how far it reaches above the bar (taller is more important)
+     * @param text     the event, such as {@code s3 hard out}
+     * @param span     for a window of deaths, its length in ticks (which {@link #describe} quotes); 0 for none
+     */
+    record Mark(int tick, @NonNull Kind kind, int slot, int building, @NonNull Vector4fc color, int height,
+                @NonNull String text, int span) {
         /** The event as the view writes it, a window's length quoted by {@code times}. */
         @NonNull
         String describe(@NonNull Times times) {
@@ -44,48 +72,117 @@ final class Timeline extends HudPanel {
         }
     }
 
+    /** A word of the legend: what the marks of one colour and kind are, and their height above the bar. */
+    private record Legend(@NonNull String word, @NonNull Vector4fc color, int height, @NonNull List<Kind> kinds) {
+        boolean has(@NonNull Mark mark) {
+            return mark.color() == color && kinds.contains(mark.kind());
+        }
+    }
+
+    /**
+     * One event of the line under the mouse: its mark, its time (empty when it is the time of the event before), its
+     * player's colour (null for none), its icon and tint (null: none), its text, and its width on the line.
+     */
+    private record Entry(@NonNull Mark mark, @NonNull String time, @Nullable Vector4fc swatch,
+                         @Nullable IconQuad icon, @NonNull Vector4fc tint, @NonNull String text, int width) {
+    }
+
     /** A window of deaths of one player is a mark from this many units (team A's from {@link #TEAM_A_DEATHS}). */
     private static final int DEATHS = 20;
     private static final int TEAM_A_DEATHS = 10;
     /** B jumps to the mark before this one when the view is less than this many ticks past a mark (a second at 1x). */
     private static final int PREVIOUS_GRACE = 50;
+    /** The game file's names of building kinds, by Race.BUILDING_* (as GameRecorder writes them). */
+    private static final List<String> BUILDINGS = List.of("quarters", "armory", "tower", "ship");
     private static final int PADDING = TextPanel.PADDING;
-    private static final int TRACK_HEIGHT = 8;
+    private static final int TRACK_HEIGHT = 10;
     private static final int CHECKPOINT_HEIGHT = 4;
-    private static final int TALL = 14;
-    private static final int MEDIUM = 7;
+    private static final int TALL = 16;
+    private static final int MEDIUM = 8;
     private static final int SHORT = 0;
+    private static final int MARK_WIDTH = 2;
+    /** The width of a mark's chip in the legend and on the line under the mouse. */
+    private static final int CHIP_WIDTH = MARK_WIDTH + 2;
     /** How close (pixels) the mouse must be to a mark to show its event. */
     private static final int HOVER_PIXELS = 4;
     private static final int HOVER_SHOWN = 3;
+    /** The room between the events under the mouse. */
+    private static final int ENTRY_GAP = 22;
+    /** The room between two words of the legend. */
+    private static final int LEGEND_GAP = 16;
+    /** The least room between two labels of the time scale (pixels). */
+    private static final int SCALE_ROOM = 36;
+    /** The time scale's steps in game seconds at the clock speed: it takes the shortest whose labels fit. */
+    private static final int[] SCALE_SECONDS = {10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600};
 
     private static final Vector4fc TRACK = new Vector4f(.18f, .18f, .18f, .95f);
     private static final Vector4fc SIMULATED = new Vector4f(.22f, .36f, .58f, .95f);
     private static final Vector4fc CHECKPOINT = new Vector4f(.6f, .8f, 1f, .9f);
+    /** A step of the time scale, as a line through the bar. */
+    private static final Vector4fc SCALE_LINE = new Vector4f(1f, 1f, 1f, .2f);
     private static final Vector4fc NOW = Color.WHITE;
+    /** The box behind the time the view is at, under the bar. */
+    private static final Vector4fc NOW_BOX = new Vector4f(1f, 1f, 1f, .18f);
     private static final Vector4fc TARGET = TextPanel.WARN;
     private static final Vector4fc DRAG = Color.argb4v(0xFF_60_E0_FF);
+    /** The outline of the marks whose events the line under the mouse shows. */
+    private static final Vector4fc HOVERED = new Vector4f(1f, 1f, 1f, .85f);
     private static final Vector4fc OUT_TEAM_A = TextPanel.BAD;
     private static final Vector4fc OUT_OTHER = Color.argb4v(0xFF_D8_D8_D8);
     private static final Vector4fc RAZED = Color.argb4v(0xFF_FF_90_30);
     private static final Vector4fc CHIEF = TextPanel.GOOD;
     private static final Vector4fc CHIEF_DIED = Color.argb4v(0xFF_E0_60_FF);
     private static final Vector4fc DEATHS_COLOR = Color.argb4v(0xFF_B8_9A_40);
+    /** The tint of an icon of something lost (a chieftain): grey. */
+    private static final Vector4fc LOST = new Vector4f(.5f, .5f, .5f, 1f);
+    /** The tint of a building site's icon: faint. */
+    private static final Vector4fc SITE = new Vector4f(1f, 1f, 1f, .5f);
 
     private final @NonNull WatchGame game;
     private final @NonNull Font font;
     private final @NonNull List<Mark> marks;
+    private final @NonNull List<Legend> legend;
     private int @NonNull [] checkpoints = {0};
     private boolean dragging;
     private int drag_x;
     /** The mouse's x over the panel, or -1 when it is elsewhere. */
     private int hover_x = -1;
 
+    // what refresh writes, and the drawing reads every frame
+    private @NonNull String simulated_text = "";
+    private @NonNull String end_text = "";
+
+    // the time scale, made again when the bar's width, its end or the clock speed changes
+    private int scale_width = -1;
+    private int scale_end = -1;
+    private int scale_speed = -1;
+    private int @NonNull [] scale_ticks = {};
+    private String @NonNull [] scale_texts = {};
+    private int @NonNull [] scale_widths = {};
+
+    // the time the view is at, as the scale shows it, and the clock speed it was written at
+    private int now_tick = -1;
+    private int now_speed = -1;
+    private @NonNull String now_text = "";
+
+    // the line under the mouse, made again when the mouse moves or the scale changes
+    private int hover_made_x = -1;
+    private int hover_made_width = -1;
+    private int hover_made_end = -1;
+    private int hover_made_speed = -1;
+    private final @NonNull List<Entry> hover = new ArrayList<>();
+    /** How many more marks are under the mouse than the line shows, in its words ("+3 more"; empty for none). */
+    private @NonNull String hover_more_text = "";
+    /** The line's width: its entries, and the count of the others. */
+    private int hover_width;
+    private @NonNull String hover_time = "";
+
     Timeline(@NonNull WatchGame game) {
         this.game = game;
         this.font = Skin.getSkin().getEditFont();
         Recording recording = game.recording();
         this.marks = recording == null ? List.of() : marks(recording, game.job());
+        this.legend = legend(marks);
         setDim(400, preferredHeight());
     }
 
@@ -97,43 +194,45 @@ final class Timeline extends HudPanel {
             boolean valid = slot >= 0 && slot < job.slots();
             boolean team_a = valid && job.team(slot) == 0;
             String who = valid ? "s" + slot + " " + job.spec(slot) : "";
+            int tick = event.tick();
             switch (event.ev()) {
                 case "out" -> {
                     if (valid) {
-                        marks.add(new Mark(event.tick(), team_a ? OUT_TEAM_A : OUT_OTHER, team_a ? TALL : MEDIUM,
-                                who + " out"));
+                        marks.add(new Mark(tick, Kind.OUT, slot, -1, team_a ? OUT_TEAM_A : OUT_OTHER,
+                                team_a ? TALL : MEDIUM, who + " out", 0));
                     }
                 }
-                case "team_out" -> marks.add(new Mark(event.tick(), Color.WHITE, TALL,
-                        "team " + teamLetter(event.event().get("team")) + " out"));
-                case "end" -> marks.add(new Mark(event.tick(), Color.WHITE, TALL,
+                case "team_out" -> marks.add(new Mark(tick, Kind.TEAM_OUT, -1, -1, Color.WHITE, TALL,
+                        "team " + teamLetter(event.event().get("team")) + " out", 0));
+                case "end" -> marks.add(new Mark(tick, Kind.END, -1, -1, Color.WHITE, TALL,
                         "the end (" + event.event().get("end") + "), team " + teamLetter(event.event().get(
-                                "winnerTeam")) + " first"));
+                                "winnerTeam")) + " first", 0));
                 case "razed" -> {
                     if (team_a) {
-                        Object site = event.event().get("site");
-                        marks.add(new Mark(event.tick(), RAZED, MEDIUM,
-                                who + " lost its " + event.event().get(
-                                        "b") + (site != null ? " site" : "") + " at " + (int) num(event,
-                                                "x") + "," + (int) num(event, "y") + Recording.insideText(
-                                                        event.event())));
+                        String building = String.valueOf(event.event().get("b"));
+                        boolean site = event.event().get("site") != null;
+                        String where = (int) num(event, "x") + "," + (int) num(event, "y");
+                        String text = who + " lost its " + building + (site ? " site" : "") + " at " + where;
+                        marks.add(new Mark(tick, site ? Kind.SITE_RAZED : Kind.RAZED, slot, BUILDINGS.indexOf(
+                                building), RAZED, MEDIUM, text + Recording.insideText(event.event()), 0));
                     }
                 }
                 case "chief" -> {
                     if (team_a) {
-                        marks.add(new Mark(event.tick(), CHIEF, MEDIUM, who + " has a chieftain"));
+                        marks.add(new Mark(tick, Kind.CHIEF, slot, -1, CHIEF, MEDIUM, who + " has a chieftain", 0));
                     }
                 }
                 case "chief_died" -> {
                     if (team_a) {
-                        marks.add(new Mark(event.tick(), CHIEF_DIED, MEDIUM, who + " lost its chieftain"));
+                        marks.add(new Mark(tick, Kind.CHIEF_DIED, slot, -1, CHIEF_DIED, MEDIUM,
+                                who + " lost its chieftain", 0));
                     }
                 }
                 case "deaths" -> {
                     int units = (int) num(event, "n");
                     if (valid && units >= (team_a ? TEAM_A_DEATHS : DEATHS)) {
-                        marks.add(new Mark(event.tick(), DEATHS_COLOR, SHORT, who + " lost " + units + " units",
-                                Recording.DEATH_WINDOW_TICKS));
+                        marks.add(new Mark(tick, Kind.DEATHS, slot, -1, DEATHS_COLOR, SHORT,
+                                who + " lost " + units + " units", Recording.DEATH_WINDOW_TICKS));
                     }
                 }
                 default -> {
@@ -142,6 +241,31 @@ final class Timeline extends HudPanel {
         }
         marks.sort((a, b) -> Integer.compare(a.tick(), b.tick()));
         return List.copyOf(marks);
+    }
+
+    /**
+     * The legend of {@code marks}: a word for each kind of mark they have, in a fixed order; a team out and the end,
+     * which look alike, share one.
+     */
+    private static @NonNull List<Legend> legend(@NonNull List<Mark> marks) {
+        boolean team_out = marks.stream().anyMatch(mark -> mark.kind() == Kind.TEAM_OUT);
+        boolean end = marks.stream().anyMatch(mark -> mark.kind() == Kind.END);
+        String white = team_out && end ? "team out / end" : team_out ? "team out" : "end";
+        List<Legend> all = List.of(
+                new Legend("team A out", OUT_TEAM_A, TALL, List.of(Kind.OUT)),
+                new Legend("out", OUT_OTHER, MEDIUM, List.of(Kind.OUT)),
+                new Legend("razed", RAZED, MEDIUM, List.of(Kind.RAZED, Kind.SITE_RAZED)),
+                new Legend("chieftain", CHIEF, MEDIUM, List.of(Kind.CHIEF)),
+                new Legend("chieftain lost", CHIEF_DIED, MEDIUM, List.of(Kind.CHIEF_DIED)),
+                new Legend("death toll", DEATHS_COLOR, SHORT, List.of(Kind.DEATHS)),
+                new Legend(white, Color.WHITE, TALL, List.of(Kind.TEAM_OUT, Kind.END)));
+        List<Legend> legend = new ArrayList<>();
+        for (Legend word : all) {
+            if (marks.stream().anyMatch(word::has)) {
+                legend.add(word);
+            }
+        }
+        return List.copyOf(legend);
     }
 
     /** A team number of the game file as the view names teams: A, B, ...; "?" for none. */
@@ -153,9 +277,9 @@ final class Timeline extends HudPanel {
         return event.event().get(key) instanceof Number n ? n.doubleValue() : 0;
     }
 
-    /** The panel's height: a line of text over the bar, its marks and checkpoint ticks. */
+    /** The panel's height: a line of text over the bar and its marks, the checkpoint ticks, and the time scale. */
     int preferredHeight() {
-        return 2 * PADDING + CHECKPOINT_HEIGHT + TRACK_HEIGHT + TALL + font.getHeight();
+        return 2 * PADDING + 2 * font.getHeight() + CHECKPOINT_HEIGHT + TRACK_HEIGHT + TALL;
     }
 
     @NonNull
@@ -163,9 +287,24 @@ final class Timeline extends HudPanel {
         return marks;
     }
 
-    /** Takes the checkpoint ticks again (they change as the game first plays, and when the store thins them). */
+    /**
+     * Takes the checkpoint ticks again (they change as the game first plays, and when the store thins them), and the
+     * texts of how far the game is simulated and where it ends.
+     */
     void refresh() {
         checkpoints = game.rewinder().ticks();
+        Clock clock = game.clock();
+        Times times = game.times();
+        int end = game.endTick();
+        end_text = end > 0 ? times.clock(end) : "end unknown";
+        String simulated = "simulated to " + times.clock(clock.frontier());
+        if (end <= 0) {
+            simulated_text = simulated + " (end unknown)";
+        } else if (clock.frontier() >= end) {
+            simulated_text = "simulated to the end";
+        } else {
+            simulated_text = simulated + (clock.presimulating() ? "  (E stops)" : "  (E: simulate it all)");
+        }
     }
 
     /** The first mark after {@code tick}, or null. */
@@ -220,13 +359,23 @@ final class Timeline extends HudPanel {
         return (int) Math.round(fraction * scaleEnd());
     }
 
+    /** The bottom of the checkpoint ticks, over the time scale. */
+    private int checkpointY() {
+        return PADDING + font.getHeight();
+    }
+
     private int trackY() {
-        return PADDING + CHECKPOINT_HEIGHT;
+        return checkpointY() + CHECKPOINT_HEIGHT;
     }
 
     /** The panel-local y of the middle of the bar (for scripted clicks). */
     int barMiddleY() {
         return trackY() + TRACK_HEIGHT / 2;
+    }
+
+    /** The bottom of the line of text above the bar. */
+    private int textY() {
+        return getHeight() - PADDING - font.getHeight();
     }
 
     // ---------------------------------------------------------------- drawing
@@ -239,90 +388,318 @@ final class Timeline extends HudPanel {
         int left = barLeft();
         renderer.drawColoredQuad(left, track_y, barRight() - left, TRACK_HEIGHT, TRACK);
         renderer.drawColoredQuad(left, track_y, xOf(clock.frontier()) - left, TRACK_HEIGHT, SIMULATED);
+        rescale();
+        for (int tick : scale_ticks) {
+            renderer.drawColoredQuad(xOf(tick), track_y, 1, TRACK_HEIGHT, SCALE_LINE);
+        }
         for (int checkpoint : checkpoints) {
-            renderer.drawColoredQuad(xOf(checkpoint), PADDING, 1, CHECKPOINT_HEIGHT, CHECKPOINT);
+            renderer.drawColoredQuad(xOf(checkpoint), checkpointY(), 1, CHECKPOINT_HEIGHT, CHECKPOINT);
+        }
+        if (hover_x >= 0 && !dragging) {
+            makeHover();
+            for (Entry entry : hover) {
+                Mark mark = entry.mark();
+                renderer.drawColoredQuad(xOf(mark.tick()) - 1, track_y + 1, MARK_WIDTH + 2,
+                        TRACK_HEIGHT + mark.height(), HOVERED);
+            }
         }
         // the short marks (death tolls) first, so the taller ones stay visible where they crowd
         for (int pass = 0; pass < 2; pass++) {
             for (Mark mark : marks) {
                 if ((mark.height() == SHORT) == (pass == 0)) {
-                    renderer.drawColoredQuad(xOf(mark.tick()), track_y + 2, 2, TRACK_HEIGHT - 2 + mark.height(),
-                            mark.color());
+                    renderer.drawColoredQuad(xOf(mark.tick()), track_y + 2, MARK_WIDTH,
+                            TRACK_HEIGHT - 2 + mark.height(), mark.color());
                 }
             }
         }
+        int line_bottom = checkpointY();
+        int line_height = CHECKPOINT_HEIGHT + TRACK_HEIGHT + TALL;
         int target = clock.seekTarget();
         if (target >= 0) {
-            renderer.drawColoredQuad(xOf(target) - 1, PADDING, 3, CHECKPOINT_HEIGHT + TRACK_HEIGHT + TALL, TARGET);
+            renderer.drawColoredQuad(xOf(target) - 1, line_bottom, 3, line_height, TARGET);
         }
         int now_x = xOf(clock.tick());
-        renderer.drawColoredQuad(now_x - 1, PADDING, 3, CHECKPOINT_HEIGHT + TRACK_HEIGHT + TALL, NOW);
+        renderer.drawColoredQuad(now_x - 1, line_bottom, 3, line_height, NOW);
         renderer.drawColoredQuad(now_x - 4, track_y - 1, 9, TRACK_HEIGHT + 2, NOW);
         if (dragging) {
-            renderer.drawColoredQuad(drag_x - 1, PADDING, 3, CHECKPOINT_HEIGHT + TRACK_HEIGHT + TALL, DRAG);
+            renderer.drawColoredQuad(drag_x - 1, line_bottom, 3, line_height, DRAG);
         }
-        drawText(renderer);
-    }
-
-    /** The line above the bar: the start and end at its ends, and what is under the mouse (or being dragged to). */
-    private void drawText(@NonNull GUIRenderer renderer) {
-        int y = getHeight() - PADDING - font.getHeight();
-        String start = "0:00";
-        int end = game.endTick();
-        String end_text = end > 0 ? game.times().clock(end) : "end unknown";
-        TextLineRenderer.render(renderer, font, start, barLeft(), y, 0, getWidth(), TextPanel.DIM);
-        int end_width = font.getWidth(end_text);
-        TextLineRenderer.render(renderer, font, end_text, barRight() - end_width, y, 0, getWidth(), TextPanel.DIM);
-        String middle;
-        Vector4fc color = Color.WHITE;
-        int at_x;
+        drawScale(renderer, clock.tick(), now_x);
         if (dragging) {
-            middle = "jump to " + game.times().clock(tickAt(drag_x)) + " (let go)";
-            color = DRAG;
-            at_x = drag_x;
+            String text = "jump to " + game.times().clock(tickAt(drag_x)) + " (let go)";
+            drawCentred(renderer, text, drag_x, DRAG);
         } else if (hover_x >= 0) {
-            middle = hoverText(hover_x);
-            at_x = hover_x;
+            drawHover(renderer);
         } else {
-            Clock clock = game.clock();
-            if (end <= 0) {
-                middle = "simulated to " + game.times().clock(clock.frontier()) + " (end unknown)";
-            } else {
-                middle = clock.frontier() >= end ? "simulated to the end" : "simulated to " + game.times().clock(
-                        clock.frontier()) + "  (E: simulate it all)";
-            }
-            color = TextPanel.DIM;
-            at_x = getWidth() / 2;
+            drawLegend(renderer);
         }
-        int width = font.getWidth(middle);
-        int min_x = barLeft() + font.getWidth(start) + 12;
-        int max_x = barRight() - end_width - 12 - width;
-        int x = max_x < min_x ? min_x : Math.clamp(at_x - width / 2, min_x, max_x);
-        TextLineRenderer.render(renderer, font, middle, x, y, 0, barRight() - end_width - 6, color);
     }
 
-    /** The events of the marks near {@code x}, or the time there when there is none. */
-    private @NonNull String hoverText(int x) {
+    /** Makes the time scale again if the bar's width, its end or the clock speed changed. */
+    private void rescale() {
+        Times times = game.times();
+        int end = scaleEnd();
+        if (getWidth() == scale_width && end == scale_end && times.speed() == scale_speed) {
+            return;
+        }
+        scale_width = getWidth();
+        scale_end = end;
+        scale_speed = times.speed();
+        double pixels_per_tick = (barRight() - barLeft()) / (double) end;
+        int room = font.getWidth(times.clock(end)) + SCALE_ROOM;
+        int step = SCALE_SECONDS[SCALE_SECONDS.length - 1];
+        for (int seconds : SCALE_SECONDS) {
+            if (seconds * 1000.0 / times.millisPerTick() * pixels_per_tick >= room) {
+                step = seconds;
+                break;
+            }
+        }
+        List<Integer> ticks = new ArrayList<>();
+        for (long millis = step * 1000L;; millis += step * 1000L) {
+            int tick = (int) Math.ceilDiv(millis, times.millisPerTick()); // the first tick of that time
+            if (tick >= end) {
+                break;
+            }
+            ticks.add(tick);
+        }
+        scale_ticks = ticks.stream().mapToInt(Integer::intValue).toArray();
+        scale_texts = new String[scale_ticks.length];
+        scale_widths = new int[scale_ticks.length];
+        for (int i = 0; i < scale_ticks.length; i++) {
+            scale_texts[i] = times.clock(scale_ticks[i]);
+            scale_widths[i] = font.getWidth(scale_texts[i]);
+        }
+    }
+
+    /**
+     * The time scale under the bar: 0:00 and the end at its ends, the time the view is at in a box under it, and
+     * the scale's times between where they leave room.
+     */
+    private void drawScale(@NonNull GUIRenderer renderer, int tick, int now_x) {
+        Times times = game.times();
+        if (tick != now_tick || times.speed() != now_speed) {
+            now_tick = tick;
+            now_speed = times.speed();
+            now_text = times.clock(tick);
+        }
+        int y = PADDING;
+        int left = barLeft();
+        int right = barRight();
+        int start_width = font.getWidth("0:00");
+        int end_width = font.getWidth(end_text);
+        int now_width = font.getWidth(now_text) + 2 * PADDING;
+        int now_left = Math.clamp(now_x - now_width / 2, left, Math.max(left, right - now_width));
+        int now_right = now_left + now_width;
+        int gap = PADDING * 3;
+        if (now_left > left + start_width + gap) {
+            TextLineRenderer.render(renderer, font, "0:00", left, y, 0, getWidth(), TextPanel.DIM);
+        }
+        if (now_right < right - end_width - gap) {
+            TextLineRenderer.render(renderer, font, end_text, right - end_width, y, 0, getWidth(), TextPanel.DIM);
+        }
+        for (int i = 0; i < scale_ticks.length; i++) {
+            int x = xOf(scale_ticks[i]) - scale_widths[i] / 2;
+            int x_right = x + scale_widths[i];
+            if (x > left + start_width + gap && x_right < right - end_width - gap && (x_right < now_left - gap
+                    || x > now_right + gap)) {
+                TextLineRenderer.render(renderer, font, scale_texts[i], x, y, 0, getWidth(), TextPanel.DIM);
+            }
+        }
+        renderer.drawColoredQuad(now_left, y, now_width, font.getHeight(), NOW_BOX);
+        TextLineRenderer.render(renderer, font, now_text, now_left + PADDING, y, 0, getWidth(), NOW);
+    }
+
+    /** {@code text} on the line above the bar, centred on {@code at_x} as far as the bar leaves room. */
+    private void drawCentred(@NonNull GUIRenderer renderer, @NonNull String text, int at_x,
+            @NonNull Vector4fc color) {
+        int width = font.getWidth(text);
+        int x = Math.clamp(at_x - width / 2, barLeft(), Math.max(barLeft(), barRight() - width));
+        TextLineRenderer.render(renderer, font, text, x, textY(), 0, barRight(), color);
+    }
+
+    /**
+     * A chip standing for marks of {@code color} that reach {@code height} above the bar, on the line of text at
+     * {@code y}: as high as a player's swatch for the tallest marks, the others as much lower as they are on the bar.
+     */
+    private void drawChip(@NonNull GUIRenderer renderer, int x, int y, @NonNull Vector4fc color, int height) {
+        int chip = Math.round(swatchSide() * (TRACK_HEIGHT - 2 + height) / (float) (TRACK_HEIGHT - 2 + TALL));
+        renderer.drawColoredQuad(x, y + 2, CHIP_WIDTH, chip, color);
+    }
+
+    /** The line above the bar when the mouse is elsewhere: the marks' legend on the left, how far it is simulated. */
+    private void drawLegend(@NonNull GUIRenderer renderer) {
+        int y = textY();
+        int status_width = font.getWidth(simulated_text);
+        int status_x = Math.max(barLeft(), barRight() - status_width);
+        TextLineRenderer.render(renderer, font, simulated_text, status_x, y, 0, barRight(), TextPanel.DIM);
+        int x = barLeft();
+        for (Legend word : legend) {
+            int width = CHIP_WIDTH + TextPanel.ICON_GAP + font.getWidth(word.word());
+            if (x + width > status_x - LEGEND_GAP) {
+                break;
+            }
+            drawChip(renderer, x, y, word.color(), word.height());
+            TextLineRenderer.render(renderer, font, word.word(), x + CHIP_WIDTH + TextPanel.ICON_GAP, y, 0,
+                    barRight(), TextPanel.DIM);
+            x += width + LEGEND_GAP;
+        }
+    }
+
+    /**
+     * Finds the marks near the mouse and makes the entries of the nearest, in time order, when the mouse moved or
+     * the scale changed since: drawing every frame only reads them. It shows {@link #HOVER_SHOWN} at most, and fewer
+     * where they would not fit along the bar with the count of the others.
+     */
+    private void makeHover() {
+        Times times = game.times();
+        int end = scaleEnd();
+        if (hover_x == hover_made_x && getWidth() == hover_made_width && end == hover_made_end
+                && times.speed() == hover_made_speed) {
+            return;
+        }
+        hover_made_x = hover_x;
+        hover_made_width = getWidth();
+        hover_made_end = end;
+        hover_made_speed = times.speed();
+        hover.clear();
         List<Mark> near = new ArrayList<>();
         for (Mark mark : marks) {
-            if (Math.abs(xOf(mark.tick()) - x) <= HOVER_PIXELS) {
+            if (Math.abs(xOf(mark.tick()) - hover_x) <= HOVER_PIXELS) {
                 near.add(mark);
             }
         }
-        if (near.isEmpty()) {
-            return game.times().clock(tickAt(x));
+        near.sort((a, b) -> Integer.compare(Math.abs(xOf(a.tick()) - hover_x), Math.abs(xOf(b.tick()) - hover_x)));
+        hover_time = near.isEmpty() ? times.clock(tickAt(hover_x)) : "";
+        List<Mark> shown = new ArrayList<>();
+        int width = 0;
+        for (Mark mark : near) {
+            if (shown.size() == HOVER_SHOWN) {
+                break;
+            }
+            int wider = width + (shown.isEmpty() ? 0 : ENTRY_GAP) + entry(mark, true).width();
+            int rest = near.size() - shown.size() - 1; // the others, if this one shows
+            int more = rest > 0 ? ENTRY_GAP + font.getWidth(moreText(rest)) : 0;
+            if (!shown.isEmpty() && wider + more > barRight() - barLeft()) {
+                break; // the nearest one shows even where it is cut
+            }
+            shown.add(mark);
+            width = wider;
         }
-        near.sort((a, b) -> Integer.compare(Math.abs(xOf(a.tick()) - x), Math.abs(xOf(b.tick()) - x)));
-        StringBuilder text = new StringBuilder();
-        for (int i = 0; i < Math.min(near.size(), HOVER_SHOWN); i++) {
-            Mark mark = near.get(i);
-            text.append(i == 0 ? "" : "  |  ").append(game.times().clock(mark.tick())).append(' ').append(
-                    mark.describe(game.times()));
+        int others = near.size() - shown.size();
+        hover_more_text = others > 0 ? moreText(others) : "";
+        shown.sort((a, b) -> Integer.compare(a.tick(), b.tick()));
+        String previous = "";
+        // the entries ENTRY_GAP apart, and the count of the others after them as far again
+        hover_width = others > 0 ? font.getWidth(hover_more_text) : -ENTRY_GAP;
+        for (Mark mark : shown) {
+            String time = times.clock(mark.tick());
+            Entry entry = entry(mark, !time.equals(previous)); // the time once for the events of one time
+            previous = time;
+            hover.add(entry);
+            hover_width += ENTRY_GAP + entry.width();
         }
-        if (near.size() > HOVER_SHOWN) {
-            text.append("  (+").append(near.size() - HOVER_SHOWN).append(')');
+    }
+
+    private static @NonNull String moreText(int more) {
+        return "+" + more + " more";
+    }
+
+    /** The entry of {@code mark} on the line under the mouse, its time shown or not. */
+    private @NonNull Entry entry(@NonNull Mark mark, boolean with_time) {
+        Times times = game.times();
+        Player[] players = game.world().getPlayers();
+        Player player = mark.slot() >= 0 && mark.slot() < players.length ? players[mark.slot()] : null;
+        Vector4fc swatch = player == null ? null : player.getColor();
+        IconQuad icon = icon(mark, player == null ? null : player.getRace());
+        String time = with_time ? times.clock(mark.tick()) : "";
+        String text = mark.describe(times);
+        int width = CHIP_WIDTH + TextPanel.ICON_GAP + font.getWidth(text);
+        if (!time.isEmpty()) {
+            width += font.getWidth(time) + 2 * TextPanel.ICON_GAP;
         }
-        return text.toString();
+        if (swatch != null) {
+            width += swatchSide() + TextPanel.ICON_GAP;
+        }
+        if (icon != null) {
+            width += iconSide() + TextPanel.ICON_GAP;
+        }
+        return new Entry(mark, time, swatch, icon, tint(mark), text, width);
+    }
+
+    /** The game's icon of what {@code mark} is about, in {@code race}'s look (null: the player's is not known). */
+    private static @Nullable IconQuad icon(@NonNull Mark mark, @Nullable Race race) {
+        return switch (mark.kind()) {
+            case TEAM_OUT -> HudIcons.warning();
+            case END -> GUIIcons.getIcons().getVikingIcons().rallyPointIcon().quad(ModeIconQuads.Mode.NORMAL); // a flag
+            case OUT -> race == null ? null : HudIcons.units(race);
+            case RAZED, SITE_RAZED -> race == null || mark.building() < 0 ? null : HudIcons.building(race,
+                    mark.building());
+            case CHIEF, CHIEF_DIED -> race == null ? null : HudIcons.unit(race, Race.UNIT_CHIEFTAIN);
+            case DEATHS -> race == null ? null : HudIcons.army(race);
+        };
+    }
+
+    /** How {@code mark}'s icon is tinted: a player out in its mark's colour, what was lost grey, a site faint. */
+    private static @NonNull Vector4fc tint(@NonNull Mark mark) {
+        return switch (mark.kind()) {
+            case OUT -> mark.color();
+            case CHIEF_DIED -> LOST;
+            case SITE_RAZED -> SITE;
+            default -> Color.WHITE;
+        };
+    }
+
+    private int iconSide() {
+        return font.getHeight() - 2;
+    }
+
+    /** A player's swatch, as high as TextPanel's. */
+    private int swatchSide() {
+        return font.getHeight() - 4;
+    }
+
+    /**
+     * The line above the bar under the mouse: the events of the nearest marks there, in time order, each its mark's
+     * chip, its time, its player's colour, its icon and what happened, and how many more marks there are; or the
+     * time there.
+     */
+    private void drawHover(@NonNull GUIRenderer renderer) {
+        if (hover.isEmpty()) {
+            drawCentred(renderer, hover_time, hover_x, Color.WHITE);
+            return;
+        }
+        int x = Math.clamp(hover_x - hover_width / 2, barLeft(), Math.max(barLeft(), barRight() - hover_width));
+        int y = textY();
+        int right = barRight();
+        for (int i = 0; i < hover.size(); i++) {
+            Entry entry = hover.get(i);
+            if (i > 0) {
+                x += ENTRY_GAP;
+            }
+            int start = x;
+            drawChip(renderer, x, y, entry.mark().color(), entry.mark().height());
+            x += CHIP_WIDTH + TextPanel.ICON_GAP;
+            if (!entry.time().isEmpty()) {
+                x = (int) TextLineRenderer.render(renderer, font, entry.time(), x, y, 0, right, TextPanel.DIM);
+                x += 2 * TextPanel.ICON_GAP;
+            }
+            Vector4fc swatch = entry.swatch();
+            if (swatch != null && x + swatchSide() <= right) {
+                renderer.drawColoredQuad(x, y + 2, swatchSide(), swatchSide(), swatch);
+                x += swatchSide() + TextPanel.ICON_GAP;
+            }
+            IconQuad icon = entry.icon();
+            if (icon != null && x + iconSide() <= right) {
+                renderer.drawTexture(icon.getTexture(), x, y + 1, iconSide(), iconSide(), icon.getU1(),
+                        icon.getV1(), icon.getU2(), icon.getV2(), entry.tint());
+                x += iconSide() + TextPanel.ICON_GAP;
+            }
+            TextLineRenderer.render(renderer, font, entry.text(), x, y, 0, right, Color.WHITE);
+            x = start + entry.width();
+        }
+        if (!hover_more_text.isEmpty()) {
+            TextLineRenderer.render(renderer, font, hover_more_text, x + ENTRY_GAP, y, 0, right, TextPanel.DIM);
+        }
     }
 
     // ---------------------------------------------------------------- the mouse

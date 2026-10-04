@@ -11,6 +11,7 @@ import com.oddlabs.tt.audio.AudioParameters;
 import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.camera.GameCamera;
 import com.oddlabs.tt.camera.SpectatorGameCamera;
+import com.oddlabs.tt.camera.WatchCamera;
 import com.oddlabs.tt.delegate.GameStatsDelegate;
 import com.oddlabs.tt.delegate.InGameMainMenu;
 import com.oddlabs.tt.delegate.SelectionDelegate;
@@ -295,7 +296,7 @@ public final class WorldViewer implements Animated, AutoCloseable {
         renderer.drawWatchOverlay(watch_controls);
         this.gui_root = gui_root;
         this.peerhub = new PeerHub(animation_manager_local, local_player, notification_manager);
-        this.camera = new GameCamera(this, camera_state);
+        this.camera = new WatchCamera(this, camera_state);
         this.panel = new ActionButtonPanel(this, camera);
         this.delegate = new SelectionDelegate(this, camera);
         camera.reset(local_player.getStartX(), local_player.getStartY());

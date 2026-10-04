@@ -63,12 +63,16 @@ import java.util.Set;
  * <li>{@code expect:WHAT=VALUE} fails unless the view is so: {@code tick=TIME}, {@code follow=SLOT},
  * {@code state=PAUSED} (PLAYING, SEEKING, ENDED), {@code help}, {@code log}, {@code scoreboard}, {@code inspector},
  * {@code timeline} or {@code flee} {@code =on}/{@code off}, {@code inspect=none} or a kind, {@code message=TEXT}
- * (the status panel's message contains TEXT).</li>
+ * (the status panel's message contains TEXT), {@code camera=picked} (the camera looks at the picked object, within
+ * {@value #CAMERA_METERS} meters; else {@code elsewhere}) and {@code tracking=on}/{@code off} (Shift+C).</li>
  * </ul>
  * Each report line says how many ticks the world played during the step and how fast (not the distance the view
  * moved: a seek may restore a later checkpoint and play only from there), and the checkpoint it restored, if any.
  */
 final class Selftest {
+    /** How near the spot the camera looks at must be to the picked object for {@code expect:camera=picked}. */
+    private static final float CAMERA_METERS = 6f;
+
     private final @NonNull WatchGame game;
     private final @NonNull List<String> steps = new ArrayList<>();
     private final @NonNull Path out_dir;
@@ -364,7 +368,7 @@ final class Selftest {
             String kind = Inspector.kindOf(s);
             if (kind.contains(type) || s.getTemplate().getName().toLowerCase(Locale.ROOT).contains(type)) {
                 game.inspect(s);
-                game.lookAt(s.getPositionX(), s.getPositionY());
+                game.centreOnPicked();
                 log("     picked s" + slot + " " + kind + " at " + s.getGridX() + "," + s.getGridY());
                 return;
             }
@@ -505,6 +509,8 @@ final class Selftest {
             case "state" -> actual = clock.state().name();
             case "help", "log", "scoreboard", "inspector", "timeline" -> actual = hud.isShown(what) ? "on" : "off";
             case "flee" -> actual = hud.aiLog().fleeShown() ? "on" : "off";
+            case "camera" -> actual = game.looksAtPicked(CAMERA_METERS) ? "picked" : "elsewhere";
+            case "tracking" -> actual = game.tracking() ? "on" : "off";
             case "inspect" -> {
                 Selectable<?> inspected = game.inspected();
                 String kind = inspected == null ? "none" : Inspector.kindOf(inspected);

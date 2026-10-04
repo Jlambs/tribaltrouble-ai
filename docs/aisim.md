@@ -541,61 +541,101 @@ AI changed in between:
 
 **What the screen shows.** Over the game view:
 
-- **Status panel** (top middle): the time and tick, the recorded end and the clock speed the times are at (below),
-  what the clock does (`PLAYING x16`, `PAUSED`, `SEEKING 45% to 12:00`, `PRESIM 45% to 1:42:41, back to 10:00`, with
-  `, then plays` when it plays once there, `ENDED`, `MENU (paused)`, and `runs x3.2` when the machine cannot keep up
-  with the speed), a warning when the game was played at another speed than the clock's, the verification (below), the rewind's checkpoints and memory (or why rewind is off),
-  the last message (an error, the event N jumped to, the player followed). The jump box is under it.
-- **Scoreboard** (top left), one row per player: its colour, slot and spec, team, `alive` or `out 12:34` (the time
-  the recording has it out, once the game you watch got there), warriors, peons, finished quarters / armories /
-  towers (`+2`: building sites), whether it has a chieftain, and the units inside its buildings (quarters and
-  armories, and tower gunners). The numbers are a live census of the world by the recorder's own definitions,
-  taken four times a second. The row of the player you follow is lit; click a row to follow that player.
-- **Inspector** (top right): the unit or building you clicked, of any player: owner, kind, cell, hit points, build
-  progress, the units inside (and a tower's gunner), what an armory stores and makes, a quarters' next peon and
-  chieftain; for a unit what it carries, its order and what it does now (with the target's owner, kind and cell),
-  its behaviour.
-- **AI log** (bottom right): the last lines (up to 25; fewer when the window or the inspector leaves less room, 6 on
-  the overview map) the followed player's AI wrote at or before the moment you watch, with their time (m:ss.hh, at
-  the clock speed) and topic; the lines of the last 50 ticks are yellow. A stock AI writes no log, and the panel says so. `flee
-  of` lines (most of a gauntlet log: one per fleeing peon) are hidden until Shift+L; the wheel over the panel goes
-  back to older lines.
+- **Status panel** (top middle): a clock face filled red to green as far as the recorded game got (the infinity
+  sign when its end is unknown) and the time; dim after it the tick, the recorded end and the clock speed the times
+  are at (below); then what the clock does, in colour: `PLAYING x16` green, `PAUSED` and `MENU (paused)` yellow,
+  `SEEKING 45% to 12:00` and `PRESIM 45% to 1:42:41, back to 10:00` blue (with `, then plays` when it plays once
+  there, and how fast it goes, `runs x103.6`), `ENDED` white, and `runs x3.2` in yellow when the machine cannot keep
+  up with the speed. Under it a warning when the game was played at another speed than the clock's; `check`, the
+  verification (below: green, or red behind a warning sign); `rewind`, the checkpoints and their memory (yellow when
+  rewind is off or stopped, with why); `overlay`, the AI overlay's layers (`none` for an AI that shows nothing);
+  `note`, the last message (an error, the event N jumped to, the player followed); and the main keys, in yellow. The
+  jump box is under it.
+- **Scoreboard** (top left), one row per player in slot order, the columns headed by the game's icons (in the look of
+  the first player's race; they do not change as you follow others; the mouse over an icon names its column): the
+  player's colour, slot and spec; its team, a letter on a chip of a muted colour per team (a line parts the rows where
+  the team changes; when every team has one player, as in a free-for-all, or more than six teams play, the chips are
+  grey and there are no lines); its warriors, with a bar in its colour (lightened if dark) scaled to the most warriors
+  of any player; its peons; its finished quarters, armories and towers, each with its building sites (`+2`, dim); its
+  chieftain's icon while it has one; and the units inside its buildings (quarters and armories, and tower gunners; the
+  units icon with `in`). A player that is out is dim, with `out 12:34` in place of its bar (the time the recording has
+  it out, once the game you watch got there) and its zeros and sites left blank. The numbers are a live census of the
+  world by the recorder's own definitions, taken four times a second. The row of the player you follow is lit and
+  framed, with a white bar at the left edge; click a row to follow that player.
+- **Inspector** (top right): the unit or building you clicked, of any player. Under its owner (colour, slot, spec,
+  team), its kind with the game's icon for it and its cell (`site`, `dead`, `in a tower`), then labelled lines. Hit
+  points are a bar, green, yellow, then red as they fall (none for warriors and peons: they have one); progress is a
+  blue bar: a building site's construction (`damaged` when it lost hit points), a quarters' next peon (or why none
+  grows) and chieftain, a chieftain's two spells (green when charged). Units, resources and weapons show as the
+  game's icons with counts: the peons inside, a tower's gunner, an armory's stock, and its weapons, a line each: how
+  many are in stock, then, while the armory makes it, `+` how many more (the infinity sign: endless) and how far the
+  next one got. That bar is grey while production is held up: by an armory with no workers (`inside` then says
+  `makes nothing`), or by one that lacks what the weapon costs, which a warning sign and the icons of the missing
+  resources follow. Under them, in the stock's columns, the units a building sends out (a peon with a resource: sent
+  to gather it; the carrying icon: to carry it). For a unit: what it carries, its order and what it does now as a
+  verb with its target (`walking to`, `attack-moving to`, `hunting`, `attacking`, `gathering wood at 118,42 for
+  armory at 120,40`, `building`, `repairing`; another player's object with its colour and slot first), and its
+  behaviour, dim (a detail for debugging). Last, the line of the owner's AI on it, labelled `AI` ([AI
+  overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value.
+- **AI log** (bottom right): the last lines the followed player's AI wrote at or before the moment you watch, in up
+  to 25 rows (fewer when the window or the inspector leaves less room, 6 on the overview map), in three columns that
+  stay put: each line's time (m:ss.hh, at the clock speed), its topic as a tag and its text. The tag is red for
+  errors, yellow for the lines of the last 50 ticks, grey for `STAT` and for the topic most lines have (the
+  gauntlet's `AI`), and tan for rarer topics. A line longer than the panel is wide goes on in indented rows under its
+  text (3 rows at most, the last ending in `...`); statistics and parameter dumps (`STAT`, `PARAM`) take one row, dim.
+  A stock AI writes no log, and the panel says so. `flee of` lines (most of a gauntlet log: one per fleeing peon) are
+  hidden until Shift+L; the wheel over the panel goes back to older lines.
 - **Timeline** (bottom, all along but for the compass): the whole recorded game, the part simulated so far (blue),
-  the checkpoints (ticks under the bar), where you are (white) and where a seek goes (yellow), and marks for the
-  recording's key events: players out (red for team A, grey for the others), the last team out and the end (white),
-  team A's buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made
-  and lost (green, violet), and death tolls (amber, inside the bar: a player losing 20 units or more within 250
-  ticks, 20 s at ludicrous, team A 10). Hover a mark to read its event; click or drag and let go to jump there; N and
-  B jump to the next and previous mark.
+  the checkpoints (blue ticks under the bar), where you are (white, its time in a box under the bar) and where a seek
+  goes (yellow), a time scale under the bar (its steps faint lines through the bar), and marks for the recording's
+  key events: players out (red for team A, grey for the others), the last team out and the end (white), team A's
+  buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made and lost
+  (green, violet), and death tolls (amber, inside the bar: a player losing 20 units or more within 250 ticks, 20 s at
+  ludicrous, team A 10). The more a mark matters, the taller it is: team A out, a team out and the end tallest. The
+  line above the bar names the kinds of marks the game has, each by a chip of its colour and height, and how far it
+  is simulated. Hover a mark to read its event: the line then shows the events of the nearest marks there in time
+  order, up to three as far as the bar has room (and how many more), each with its mark's chip, its time, its
+  player's colour and the game's icon of what happened (a figure for a player out, the building razed, faint for a
+  site, the chieftain, grey when lost, the army for a death toll, a warning sign for a team out, a flag for the end);
+  the marks it shows are outlined. Elsewhere it shows the time under the mouse. Click or drag and let go to jump
+  there; N and B jump to the next and previous mark.
 
-**Keys and mouse.** F1 or H shows them all in the game.
+**Keys and mouse.** F1 or H shows them all in the game, in the same groups, the keys as key caps and what they do
+in white, its notes and examples dimmer.
 
 | Key | |
 |---|---|
+| **Time** | |
 | P | play / pause |
 | + / - (the game's speed keys) | faster / slower: 1/8x, 1/4x, 1/2x, 1x, 2x ... 128x and MAX, as fast as the machine simulates |
 | . / , | one tick forward / back; with Shift 50 ticks, with Ctrl 500 |
 | J | the jump box: `mm:ss`, `h:mm:ss`, `123s` (at the clock speed), `t123` (a tick), `+30` / `-10` (seconds from now), `+t500` / `-t500` (ticks from now), `0`, `end`; Enter jumps, Esc leaves it |
 | T / Shift+T | the clock speed: the game speed every time is shown and typed at (ludicrous first, then normal, fast, slow) |
 | N / B | next / previous event of the timeline |
-| ] / [ | next / previous player: the camera goes there and the AI log follows |
 | E | simulate the rest of the game now, then come back to where you are (E again stops); afterwards every jump is quick |
+| **Camera and players** | |
+| ] / [ | next / previous player: the camera goes there (a little zoomed out) and the AI log follows |
+| C / Shift+C | the camera goes to the picked unit or building, keeping its zoom / keeps it in view as it moves (Shift+C again stops) |
+| Space | the overview map and back, as in a game |
+| arrow keys, screen edges, Home/End, Insert/Delete | move the camera, as in a game |
+| **Panels and the menu** | |
 | L / Shift+L | the AI log: show or hide / its `flee of` lines |
 | O, I | the scoreboard, the inspector: show or hide |
-| F1 or H | the help; Esc closes it too |
 | A, Shift+A | the followed AI's overlay: all layers, none, each layer alone ([AI overlays](#ai-overlays)) |
+| F1 or H | the help; Esc closes it too |
 | Ctrl+H | hide the whole HUD (a clean view for screenshots) |
-| Space, Esc | the overview map, the menu, as in a game |
+| Esc | the menu, as in a game |
 
 | Mouse | |
 |---|---|
 | left click in the view | inspect that unit or building (any player's), with a ring on it |
-| click a scoreboard row | follow that player |
+| click a scoreboard row | follow that player (the camera goes there, a little zoomed out) |
 | timeline | click or drag, let go to jump; hover a mark to read its event |
-| wheel | zoom, as in the game; over the AI log, older lines |
+| wheel | zoom, three times as far out as in a game; over the AI log, older lines |
 
-The camera moves as in a game (arrow keys, screen edges, Home/End, Insert/Delete, the overview map); the view gives
-no orders. Speed 1x is 50 world ticks a second: the game at its recorded speed (`--speed` in
+The camera moves as in a game (arrow keys, screen edges, Home/End, Insert/Delete, the overview map), but zooms out
+three times as high (as the cinematic camera does), and glides when it goes somewhere, keeping its zoom; the view
+gives no orders. Speed 1x is 50 world ticks a second: the game at its recorded speed (`--speed` in
 [Commands](#commands); at ludicrous units move 4 times as fast as at normal speed). Faster speeds play more ticks per
 frame. They never change the game's own speed setting, which would make it another game.
 
@@ -626,11 +666,11 @@ reference that captures copied state (the AI, its units; a comparator such as `C
 also inside a `PriorityQueue` or `TreeMap` field), JDK classes it has no rule for (`StringBuilder`, `IdentityHashMap`,
 `WeakHashMap`, `ConcurrentHashMap`, `Thread`, `ThreadLocal`, ...), and subclasses of the hash collections (a `HashMap`
 made with double-brace initialisation). When the first checkpoint, at 0:00, cannot be taken, rewind is off for the
-whole game: the game still plays forward, the status panel says `rewind: off (...)` with the reason (the copier
-names the field path from the world to the object; the game's log has all of it), and every jump back, and E, says it
-cannot. When a later checkpoint fails, the earlier ones stay and no more are taken; the status panel then says
-`no checkpoints after 12:00 (tick 9000): ...`. `./aisim.sh rewindcheck RUN KEY --classes` lists what the copier copied and shared,
-by class. The AI guide says what to keep out of an AI's fields.
+whole game: the game still plays forward, the status panel's `rewind` line says `off (...)` with the reason (the
+copier names the field path from the world to the object; the game's log has all of it), and every jump back, and
+E, says it cannot. When a later checkpoint fails, the earlier ones stay and no more are taken; the `rewind` line then
+says `no checkpoints after 12:00 (tick 9000): ...`. `./aisim.sh rewindcheck RUN KEY --classes` lists what the copier
+copied and shared, by class. The AI guide says what to keep out of an AI's fields.
 
 **For scripts and agents**, `--selftest SCRIPT` runs steps instead of waiting for input, then quits with exit code 0
 when every step passed, else 1. It writes its report to `aisim/watch/<run>-<key>/selftest.txt` (and stdout), the
@@ -657,7 +697,8 @@ is done:
 - checks: `verify` fails on a divergence or a rewind mismatch, or when no census was compared yet;
   `expect:WHAT=VALUE` fails unless `tick` (a time as the jump box reads it), `follow` (a slot), `state` (`PLAYING`, `PAUSED`, `SEEKING`,
   `ENDED`), `help`, `log`, `scoreboard`, `inspector`, `timeline` or `flee` (`on`/`off`), `inspect` (`none` or a
-  kind) or `message` (a text the status panel's message contains) is so;
+  kind), `message` (a text the status panel's message contains), `camera` (`picked`: it looks at the picked object,
+  within 6 m; else `elsewhere`) or `tracking` (`on`/`off`, Shift+C) is so;
 - `overlay:MODE` sets the AI overlay's layers ([AI overlays](#ai-overlays));
 - `quit` ends the script (so does its end).
 
@@ -695,13 +736,16 @@ copies does; the stock AI and AIs frozen before AiView existed show nothing (the
   previous. The viewer asks it to paint between two ticks, at most once per frame, and only while the overlay shows.
 - Shapes are drawn over everything, last in the frame, so terrain, trees, units, the water and smoke never hide or
   tint them: lines and circles along the ground (on the water over the sea), a mark as a pin with its label at the
-  top. In map mode (Space) they cover the whole map. Labels that would overlap one nearer the camera are left out.
+  top like a flag: a dark box whose edge on the pin's side, in the mark's colour, goes on up from the pin (with a
+  light rim for a dark colour). In map mode (Space) they cover the whole map. Labels that would overlap one nearer
+  the camera are left out.
 - `A` cycles the layers: all, none, then each layer the followed AI painted so far, alone; `Shift+A` goes back. The
-  status panel says which (`AI overlay: layer army (2 of 3)`). With none, the AI is not asked to paint at all. Each
+  status panel's `overlay` line says which (`layer army (2 of 3)`). With none, the AI is not asked to paint at all. Each
   player's AI has its own layers: following one that never painted the layer shown alone shows all of its layers.
-- The AI panel, at the right above the AI log, shows the AI's status lines (each cut to 120 characters, and to the
-  panel's width), how many shapes it painted and how long its paint and the drawing take per frame; in red, when its
-  paint last failed and how often (a failed paint shows nothing until the next one).
+- The AI panel, at the right above the AI log, shows the AI's status lines, keys in a column and values beside them
+  (each cut to 120 characters; a value wider than the panel goes on in a second row, the rest cut with `...`), how
+  many shapes it painted and how long its paint and the drawing take per frame; in red behind a warning sign, how
+  often its paint failed and when last, then why (a failed paint shows nothing until the next one).
 - The inspector adds the AI's line on the picked object (`AI: ...`), for any player whose AI has one.
 - Painting must only read. The viewer keeps checking the game against the recording, so an overlay that changes the
   game shows as `DIVERGED`. The test AI `chaos` exercises the overlay: `chaos:paint=draw` paints a line, a circle
