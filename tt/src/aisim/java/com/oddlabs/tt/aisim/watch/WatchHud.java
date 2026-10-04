@@ -16,6 +16,8 @@ import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.render.GUIRenderer;
 import com.oddlabs.tt.render.MatrixStack;
 import com.oddlabs.tt.viewer.WatchControls;
+import com.oddlabs.util.Color;
+import org.joml.Vector4fc;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -63,6 +65,16 @@ final class WatchHud implements WatchControls {
     private static final int STEP_TICK = 1;
     private static final int STEP_SHIFT = 50;
     private static final int STEP_CTRL = 500;
+    /**
+     * The status panel's room between the parts of the clock's line, before its state, and between two keys of a key
+     * hint (the AI panel's and the AI log's too). A text part ends in its font's border, as wide as a narrow space, so
+     * a key and what it does need no more room between them. The colour of SEEKING (and PRESIM).
+     */
+    private static final int PART_GAP = 4;
+    private static final int STATE_GAP = 16;
+    static final int HINT_GAP = 12;
+    private static final Vector4fc SEEKING = Color.argb4v(0xFF_80_C8_FF);
+    private static final TextPanel.Line KEY_HINT = keyHint();
 
     private final @NonNull WatchGame game;
     /** Full-screen, never focused: its panels draw over the 3D view and take the mouse only where they are. */
@@ -246,44 +258,103 @@ final class WatchHud implements WatchControls {
         }
     }
 
+    /**
+     * The status panel: the clock's line (how far the game got as a clock face, the time, then the tick, the end and
+     * the clock speed dim, then the state in its colour), the speed warning, the verification, the rewind, the AI
+     * overlay, the last message and the key hint.
+     */
     private @NonNull List<TextPanel.Line> statusLines() {
         Clock clock = game.clock();
-        List<TextPanel.Line> lines = new ArrayList<>();
-        StringBuilder time = new StringBuilder();
-        time.append(game.times().precise(clock.tick())).append("  (t").append(clock.tick()).append(')');
-        if (clock.endTick() >= 0) {
-            time.append("  of ").append(game.times().clock(clock.endTick()));
-        }
-        time.append("  at ").append(game.times().speedName());
-        time.append("    ").append(clock.stateText());
-        boolean running = clock.state() == Clock.State.PLAYING || clock.state() == Clock.State.SEEKING;
-        double speed = clock.state() == Clock.State.SEEKING ? Double.POSITIVE_INFINITY : clock.speed();
-        if (running && !clock.menuPaused() && clock.effectiveSpeed() < speed * .9) {
-            time.append(String.format(Locale.ROOT, "  (runs x%.1f)", clock.effectiveSpeed()));
-        }
-        lines.add(new TextPanel.Line(time.toString()));
-        Job job = game.job();
         Times times = game.times();
+        List<TextPanel.Line> lines = new ArrayList<>();
+        int end = clock.endTick();
+        // a game file without its end line plays on: no end to measure against
+        TextPanel.Builder time = TextPanel.line().heading().icon(
+                end > 0 ? HudIcons.progress(clock.tick() / (float) end) : HudIcons.endless());
+        time.text(times.precise(clock.tick())).gap(PART_GAP).text("t" + clock.tick(), TextPanel.DIM);
+        if (end >= 0) {
+            time.gap(PART_GAP).text("of " + times.clock(end), TextPanel.DIM);
+        }
+        time.gap(PART_GAP).text("at " + times.speedName(), TextPanel.DIM).gap(STATE_GAP).text(clock.stateText(),
+                stateColor(clock));
+        boolean playing = clock.state() == Clock.State.PLAYING;
+        double speed = clock.state() == Clock.State.SEEKING ? Double.POSITIVE_INFINITY : clock.speed();
+        if ((playing || clock.state() == Clock.State.SEEKING) && !clock.menuPaused()
+                && clock.effectiveSpeed() < speed * .9) {
+            // slower than asked is a warning when playing; a seek has no speed to keep up with, only its pace
+            time.gap(PART_GAP).text(String.format(Locale.ROOT, "(runs x%.1f)", clock.effectiveSpeed()),
+                    playing ? TextPanel.WARN : stateColor(clock));
+        }
+        lines.add(time.build());
+        Job job = game.job();
         String played = Times.SPEEDS.get(Times.speedIndex(job.speed()));
         if (!played.equals(times.speedName())) {
             // the clock quotes the ticks at its own speed, not at the speed that made them
-            lines.add(new TextPanel.Line(
+            lines.add(TextPanel.line().icon(HudIcons.warning()).text(
                     "times at " + times.speedName() + " speed; the game was played at " + played + " (T: clock speed)",
-                    TextPanel.WARN));
+                    TextPanel.WARN).build());
         }
-        Verification verification = game.verification();
-        lines.add(new TextPanel.Line(verification.status(), verification.diverged()
-                || verification.rewindMismatch() ? TextPanel.BAD : verification.compared() > 0 ? TextPanel.GOOD : TextPanel.DIM));
-        lines.add(new TextPanel.Line("rewind: " + game.rewinder().describe(game.times()), TextPanel.DIM));
+        lines.add(verificationLine(game.verification()));
+        Rewinder rewinder = game.rewinder();
+        boolean rewind_limited = rewinder instanceof NoRewind || (rewinder instanceof Checkpoints checkpoints
+                && checkpoints.failure() != null);
+        lines.add(TextPanel.line().label("rewind").icon(rewind_limited ? HudIcons.warning() : null).text(
+                rewinder.describe(times), rewind_limited ? TextPanel.WARN : TextPanel.DIM).build());
+        lines.add(game.aiOverlay().statusLine());
         String message = clock.message();
         if (message != null) {
-            lines.add(new TextPanel.Line(message, TextPanel.WARN));
+            lines.add(TextPanel.line().label("note").text(message).build());
         }
-        lines.add(game.aiOverlay().statusLine());
-        lines.add(new TextPanel.Line(
-                "F1 help  P pause  +/- speed  , . step  J jump  N B events  [ ] players  C camera  T clock",
-                TextPanel.DIM));
+        lines.add(KEY_HINT);
         return lines;
+    }
+
+    /** The clock's state: playing green, paused (and the Esc menu) yellow, seeking blue, ended white. */
+    private static @NonNull Vector4fc stateColor(@NonNull Clock clock) {
+        if (clock.menuPaused()) {
+            return TextPanel.WARN;
+        }
+        return switch (clock.state()) {
+            case PLAYING -> TextPanel.GOOD;
+            case PAUSED -> TextPanel.WARN;
+            case SEEKING -> SEEKING;
+            case ENDED -> Color.WHITE;
+        };
+    }
+
+    /**
+     * The verification: VERIFIED green, a game not (yet) checked dim, DIVERGED and a REWIND MISMATCH red behind a
+     * warning sign (the part of the status before a mismatch keeps its colour).
+     */
+    private static TextPanel.@NonNull Line verificationLine(@NonNull Verification verification) {
+        String status = verification.status();
+        Vector4fc checked = verification.compared() > 0 ? TextPanel.GOOD : TextPanel.DIM;
+        TextPanel.Builder line = TextPanel.line().label("check");
+        if (!verification.diverged() && !verification.rewindMismatch()) {
+            return line.text(status, checked).build();
+        }
+        line.icon(HudIcons.warning());
+        int mismatch = status.indexOf(", REWIND MISMATCH");
+        if (verification.diverged() || mismatch < 0) {
+            return line.text(status, TextPanel.BAD).build();
+        }
+        // split after the comma: the first part's end (the font's border) is the space after it
+        return line.text(status.substring(0, mismatch + 1), checked).text(status.substring(mismatch + 2),
+                TextPanel.BAD).build();
+    }
+
+    /** The key hint under the status panel: each key yellow, what it does dim. */
+    private static TextPanel.@NonNull Line keyHint() {
+        TextPanel.Builder line = TextPanel.line();
+        int gap = 0;
+        for (String hint : List.of("F1 help", "P pause", "+/- speed", ", . step", "J jump", "N B events",
+                "[ ] players", "C camera", "T clock")) {
+            int space = hint.lastIndexOf(' ');
+            line.gap(gap).text(hint.substring(0, space), TextPanel.WARN).text(hint.substring(space + 1),
+                    TextPanel.DIM);
+            gap = HINT_GAP;
+        }
+        return line.build();
     }
 
     // ---------------------------------------------------------------- what the selftest and the session ask
