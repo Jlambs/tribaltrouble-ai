@@ -20,15 +20,19 @@ import java.util.function.Predicate;
  * The labels of an AI's marks, as text on screen next to the top of each mark's pin, projected from the world every
  * frame (as SpectatorCursor places the watched player's pointer). It covers the whole view, takes no focus (clicks go
  * through to the 3D view) and sits below the HUD's panels. Labels that would overlap one drawn already are left out,
- * nearest the camera first, so a crowd of marks stays readable.
+ * nearest the camera first, so a crowd of marks stays readable. A label is its mark's text on a dark box with an edge
+ * in the mark's own colour on its left, the pin's side, so a label whose text had to be lightened still shows its
+ * mark's colour.
  */
 final class OverlayLabels extends GUIObject {
     /** Labels drawn per frame at most. */
     private static final int MAX_LABELS = 160;
-    private static final int PADDING = 2;
+    private static final int PADDING = 3;
+    /** The coloured edge on a label's left (pixels). */
+    private static final int EDGE = 2;
     /** The gap between the pin's top and its label (pixels). */
     private static final int GAP = 4;
-    private static final Vector4fc BACKGROUND = new Vector4f(0f, 0f, 0f, .6f);
+    private static final Vector4fc BACKGROUND = new Vector4f(0f, 0f, 0f, .7f);
     /** A label's colour is its mark's, lightened to at least this luminance so it reads on the dark box. */
     private static final float MIN_LUMINANCE = .55f;
 
@@ -37,6 +41,7 @@ final class OverlayLabels extends GUIObject {
     private final @NonNull Font font;
     private final @NonNull Vector4f point = new Vector4f();
     private final @NonNull Vector4f color = new Vector4f();
+    private final @NonNull Vector4f edge = new Vector4f();
     // the boxes of the labels drawn this frame: x, y, width, height
     private final float[] boxes = new float[MAX_LABELS * 4];
     // the labels in view this frame: index into the paint's shapes, and screen position
@@ -94,7 +99,7 @@ final class OverlayLabels extends GUIObject {
             int n = (int) by_depth[k];
             OverlayPaint.Shape shape = shapes.get(shape_index[n]);
             String text = shape.label();
-            float width = font.getWidth(text) + 2 * PADDING;
+            float width = EDGE + font.getWidth(text) + 2 * PADDING;
             float height = font.getHeight();
             float left = Math.round(screen_x[n] + GAP);
             float bottom = Math.round(screen_y[n] - height * .5f);
@@ -107,8 +112,11 @@ final class OverlayLabels extends GUIObject {
             boxes[drawn * 4 + 3] = height;
             drawn++;
             renderer.drawColoredQuad(left, bottom, width, height, BACKGROUND);
-            TextLineRenderer.render(renderer, font, text, left + PADDING, bottom, Float.NEGATIVE_INFINITY,
-                    Float.POSITIVE_INFINITY, readable(shape.rgb()));
+            int rgb = shape.rgb();
+            renderer.drawColoredQuad(left, bottom, EDGE, height, edge.set((rgb >> 16 & 0xFF) / 255f,
+                    (rgb >> 8 & 0xFF) / 255f, (rgb & 0xFF) / 255f, 1f));
+            TextLineRenderer.render(renderer, font, text, left + EDGE + PADDING, bottom, Float.NEGATIVE_INFINITY,
+                    Float.POSITIVE_INFINITY, readable(rgb));
         }
     }
 
