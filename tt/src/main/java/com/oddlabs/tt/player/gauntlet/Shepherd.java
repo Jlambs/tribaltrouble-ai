@@ -2127,15 +2127,15 @@ final class Shepherd {
 
     /**
      * Layer "shepherds", for each copy's flock: the spot its next wave should be drawn to, the shepherd with a line to
-     * the spot (none while it is held after a flee, shepherd_safe_walk and shepherd_hunted), the copy's leader (its
-     * oldest idle warrior) with its idle warriors against the wave size, with shepherd_predict the origin tend
-     * predicted
-     * the next wave from (where the copy's first warrior walks), and while the copy's last wave walks a line from that
-     * wave's leader to where it goes. A copy about to launch (as many idle warriors as its wave size, as tend's
-     * shepherd_hold test counts them,
-     * worked out here whether or not shepherd_hold is on, from the copy's launches: a home flock's are its partner's)
-     * has its spot and the leader's line to it in orange. Status lines shepherds (flocks and their shepherds) and
-     * waves (copies about to launch, waves walking, waves seen).
+     * the spot (through its detour waypoint when shepherd_detour sent it around; none while it is held after a flee,
+     * shepherd_safe_walk and shepherd_hunted), the copy's leader (its oldest idle warrior) with its idle warriors
+     * against the wave size, with shepherd_predict the origin tend predicted the next wave from (where the copy's first
+     * warrior walks), and while the copy's last wave walks a line from that wave's leader to where it goes. A copy
+     * about to launch (as many idle warriors as its wave size, as tend's shepherd_hold test counts them, worked out
+     * here whether or not shepherd_hold is on, from the copy's launches: a home flock's are its partner's) has its spot
+     * and the leader's line to it in orange. Status lines shepherds (flocks and their shepherds) and waves (copies
+     * about
+     * to launch, waves walking, waves seen).
      */
     void paint(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
         String layer = WatchView.SHEPHERDS;
@@ -2182,8 +2182,15 @@ final class Shepherd {
                     fleeing++;
                 String label = "shepherd " + name + " (" + (held ? "held" : f.last_state) + ")";
                 canvas.mark(layer, s.getGridX(), s.getGridY(), WatchView.SHEPHERD, label);
-                if (spot && !there && !held)
-                    canvas.line(layer, s.getGridX(), s.getGridY(), f.spot_x, f.spot_y, WatchView.SHEPHERD);
+                if (spot && !there && !held) {
+                    if (f.detour_x >= 0) { // shepherd_detour: its walk goes around through this waypoint
+                        canvas.line(layer, s.getGridX(), s.getGridY(), f.detour_x, f.detour_y, WatchView.SHEPHERD);
+                        canvas.mark(layer, f.detour_x, f.detour_y, WatchView.SHEPHERD, "detour of " + name);
+                        canvas.line(layer, f.detour_x, f.detour_y, f.spot_x, f.spot_y, WatchView.SHEPHERD);
+                    } else {
+                        canvas.line(layer, s.getGridX(), s.getGridY(), f.spot_x, f.spot_y, WatchView.SHEPHERD);
+                    }
+                }
             }
             Unit leader = f.leader;
             if (leader != null && !leader.isDead() && !f.home) {
@@ -2262,8 +2269,10 @@ final class Shepherd {
                 case "at" -> "at spot " + WatchView.at(f.spot_x, f.spot_y) + origin;
                 case "flee" -> "fleeing";
                 case "nospot" -> "no spot draws the wave";
-                default -> heldAfterFlee(f) ? "held after a flee" : f.spot_x >= 0 ? "walking to spot " + WatchView.at(
-                        f.spot_x, f.spot_y) + origin : "walking";
+                default -> heldAfterFlee(
+                        f) ? "held after a flee" : f.spot_x < 0 ? "walking" : f.detour_x >= 0 ? "detour via " + WatchView.at(
+                                f.detour_x, f.detour_y) + " to spot " + WatchView.at(f.spot_x,
+                                        f.spot_y) : "walking to spot " + WatchView.at(f.spot_x, f.spot_y) + origin;
             };
             int ago = WatchView.seconds(ai.now() - f.recruited);
             return "shepherd of " + name(f) + " for " + ago + " s: " + doing + "; " + copyLaunches(f) + " waves seen";
