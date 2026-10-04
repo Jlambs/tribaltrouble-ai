@@ -3,7 +3,9 @@ package com.oddlabs.tt.aisim.watch;
 import com.oddlabs.tt.aikit.AiView;
 import com.oddlabs.tt.camera.CameraState;
 import com.oddlabs.tt.delegate.SelectionDelegate;
+import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.global.Globals;
+import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.landscape.HeightMap;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.player.AI;
@@ -42,6 +44,8 @@ final class AiOverlay {
     private static final int PANEL_WIDTH = 220;
     /** Describe lines and failure texts are cut to this many characters: the panels must stay small. */
     private static final int MAX_LINE = 90;
+    /** The rows a status value or a failure takes at most in the AI panel; a longer one ends in "...". */
+    private static final int MAX_STATUS_ROWS = 2;
     /** The colour of the AI's own line in the inspector. */
     private static final Vector4fc AI_TEXT = Color.argb4v(0xFF_9F_DF_FF);
 
@@ -289,51 +293,72 @@ final class AiOverlay {
 
     // ---------------------------------------------------------------- panels
 
-    /** The status panel's line on the overlay. */
+    /** The status panel's line on the overlay: which layers show, and the key that changes it. */
     TextPanel.@NonNull Line statusLine() {
-        return new TextPanel.Line("A  AI overlay: " + layersText(), TextPanel.DIM);
+        return TextPanel.line().label("overlay").text(layersText(), TextPanel.DIM).gap(WatchHud.HINT_GAP).text("A",
+                TextPanel.WARN).text("cycles", TextPanel.DIM).build();
     }
 
-    /** The AI panel's lines: whose AI, its status lines, what it drew, and its last failure. */
+    /**
+     * The AI panel's lines: whose AI (a heading), its status lines (each key in the label column, a value too long for
+     * the AI column going on in a second row under it), what it drew, and its failures (how many, then the last).
+     */
     @NonNull
     List<TextPanel.Line> panelLines() {
         List<TextPanel.Line> lines = new ArrayList<>();
         int slot = game.followedSlot();
         Player player = game.world().getPlayers()[slot];
-        String name = "AI " + game.playerName(slot);
+        TextPanel.Builder heading = TextPanel.line().heading().swatch(player.getColor()).text(
+                "AI " + game.playerName(slot));
         if (followedView() == null) {
-            lines.add(new TextPanel.Line(name + ": shows nothing (no AiView)", TextPanel.DIM, player.getColor()));
+            lines.add(heading.gap(WatchHud.HINT_GAP).text("shows nothing (no AiView)", TextPanel.DIM).build());
             return lines;
         }
         if (off) {
-            lines.add(new TextPanel.Line(name + ": overlay off (A)", TextPanel.DIM, player.getColor()));
+            lines.add(heading.gap(WatchHud.HINT_GAP).text("overlay off", TextPanel.DIM).gap(WatchHud.HINT_GAP).text(
+                    "A", TextPanel.WARN).text("shows it", TextPanel.DIM).build());
             return lines;
         }
-        lines.add(new TextPanel.Line(name, Color.WHITE, player.getColor()));
+        lines.add(heading.build());
         OverlayPaint paint = shown;
+        // the panel is as wide as the AI column at most, as wide as the layout makes the AI log
+        int column = game.hud().aiLog().getWidth();
+        Font font = Skin.getSkin().getEditFont();
         if (paint != null) {
+            int label_width = 0;
+            for (String key : paint.status().keySet()) {
+                label_width = Math.max(label_width, font.getWidth(key));
+            }
+            int value_width = column - 2 * TextPanel.PADDING - label_width - AiLogPanel.LABEL_SPACE;
             for (Map.Entry<String, String> status : paint.status().entrySet()) {
-                lines.add(TextPanel.line().label(status.getKey()).text(status.getValue()).build());
+                String label = status.getKey();
+                for (String row : AiLogPanel.wrap(font, status.getValue(), value_width, MAX_STATUS_ROWS)) {
+                    lines.add(TextPanel.line().label(label).text(row).build());
+                    label = ""; // a second row: under the value
+                }
             }
             lines.add(new TextPanel.Line(String.format(Locale.ROOT, "%d shapes; paint %.2f ms, draw %.2f ms",
                     paint.shapes().size(), paint_millis, renderer.drawMillis()), TextPanel.DIM));
             int left_out = paint.overLimit() + paint.invalid();
             if (left_out > 0) {
                 String limits = OverlayPaint.MAX_SHAPES + " shapes, " + OverlayPaint.MAX_STATUS + " lines";
-                lines.add(new TextPanel.Line(left_out + " left out (over " + limits + ", or a bad radius)",
-                        TextPanel.WARN));
+                lines.add(TextPanel.line().icon(HudIcons.warning()).text(
+                        left_out + " left out (over " + limits + ", or a bad radius)", TextPanel.WARN).build());
             }
             int skipped = renderer.skipped();
             if (skipped > 0) {
-                lines.add(new TextPanel.Line(skipped + " shapes not drawn: over the frame's budget", TextPanel.WARN));
+                lines.add(TextPanel.line().icon(HudIcons.warning()).text(
+                        skipped + " shapes not drawn: over the frame's budget", TextPanel.WARN).build());
             }
         }
         String last = failure;
         if (last != null) {
-            lines.add(new TextPanel.Line(last, TextPanel.BAD));
-            lines.add(new TextPanel.Line(
+            lines.add(TextPanel.line().icon(HudIcons.warning()).text(
                     failures + (failures == 1 ? " failure" : " failures") + ", the last at " + game.times().precise(
-                            failure_tick), TextPanel.BAD));
+                            failure_tick), TextPanel.BAD).build());
+            for (String row : AiLogPanel.wrap(font, last, column - 2 * TextPanel.PADDING, MAX_STATUS_ROWS)) {
+                lines.add(new TextPanel.Line(row, TextPanel.BAD));
+            }
         }
         return lines;
     }
