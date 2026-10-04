@@ -43,6 +43,10 @@ public final class WalkBehaviour implements Behaviour {
         this(unit, new TargetTrackerAlgorithm(unit.getUnitGrid(), range, t), scan_attack);
     }
 
+    public @NonNull TrackerAlgorithm getTrackerAlgorithm() {
+        return tracker_algorithm;
+    }
+
     @Override
     public boolean isBlocking() {
         return state == PathTracker.State.BLOCKED;

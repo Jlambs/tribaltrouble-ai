@@ -572,10 +572,17 @@ AI changed in between:
   next one got. That bar is grey while production is held up: by an armory with no workers (`inside` then says
   `makes nothing`), or by one that lacks what the weapon costs, which a warning sign and the icons of the missing
   resources follow. Under them, in the stock's columns, the units a building sends out (a peon with a resource: sent
-  to gather it; the carrying icon: to carry it). For a unit: what it carries, its order and what it does now as a
-  verb with its target (`walking to`, `attack-moving to`, `hunting`, `attacking`, `gathering wood at 118,42 for
-  armory at 120,40`, `building`, `repairing`; another player's object with its colour and slot first), and its
-  behaviour, dim (a detail for debugging). Last, the line of the owner's AI on it, labelled `AI` ([AI
+  to gather it; the carrying icon: to carry it). For a unit: what it carries, its `order` (the task it was given:
+  `gathering wood for the armory at 120,40`, `building the tower site at 64,162`, `attack-moving to 263,443`,
+  `hunting`, `defending 58,86`) and what it is `doing` now, the step of that task, read from the engine's live state
+  (the unit's controllers and behaviour, what it carries, where it walks): `walking to the tree at 118,42`, `chopping
+  wood at 118,42` (`breaking rock`, `mining iron`, `hitting the chicken`), `carrying 4 wood to the armory at
+  120,40`, `walking to the nearest rock` (its search names the very one once the unit gets near), `building the armory site at 61,156
+  (45% built)`, `walking to the armory site`, `going into the tower at 51,85`, `chasing` or `attacking` another
+  player's unit (its colour and slot first; `(dead)` once it died), `casting stun`, `stunned`, `finishing a throw` (a
+  throw, a spell and a stun go on under a new order until they end), `idle`. A walk that waits says what blocks its
+  next cell, in yellow (`blocked by s2 peon`), or `finds no way`. The order is left out when the step says the same
+  (a walk, an idle unit, a builder at work). Last, the line of the owner's AI on it, labelled `AI` ([AI
   overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value. When the object dies, the
   inspector empties.
 - **AI log** (bottom right): the last lines the followed player's AI wrote at or before the moment you watch, in up
@@ -684,8 +691,9 @@ is done:
   them), `presim` (to the end and back to 0:00), `follow:SLOT`, `map` (the overview map; `follow` or `select` flies
   back down);
 - `select:SLOT:TYPE` inspects the first object of player SLOT whose kind contains TYPE (`quarters`, `armory`,
-  `tower`, `peon`, `warrior`, `chieftain`) and moves the camera to it; `select` and `follow` end once the camera
-  is there (it glides, or flies down from the overview map; 4 s at most);
+  `tower`, `peon`, `warrior`, `chieftain`) and moves the camera to it (`select:SLOT:TYPE:N`: the Nth, from 1, in
+  the order the player made them); `select` and `follow` end once the camera is there (it glides, or flies down
+  from the overview map; 4 s at most);
 - `shot:NAME` saves the next frame as `NAME.png` (the window's size: Options sets it);
 - input as a user gives it, through the client's own input handling (focus, picking, the panels, the view; only the
   window system's event delivery is left out), each waiting until the clock is idle again: `key:KEY` (a key name

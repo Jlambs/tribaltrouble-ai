@@ -30,6 +30,7 @@ import com.oddlabs.tt.model.SupplyContainer;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.UnitContainer;
 import com.oddlabs.tt.model.UnitSupplyContainer;
+import com.oddlabs.tt.model.behaviour.AttackBehaviour;
 import com.oddlabs.tt.model.behaviour.AttackController;
 import com.oddlabs.tt.model.behaviour.Behaviour;
 import com.oddlabs.tt.model.behaviour.Controller;
@@ -37,22 +38,30 @@ import com.oddlabs.tt.model.behaviour.DefendController;
 import com.oddlabs.tt.model.behaviour.DieController;
 import com.oddlabs.tt.model.behaviour.EnterController;
 import com.oddlabs.tt.model.behaviour.GatherController;
+import com.oddlabs.tt.model.behaviour.HarvestBehaviour;
 import com.oddlabs.tt.model.behaviour.HarvestController;
 import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.model.behaviour.IdleController;
+import com.oddlabs.tt.model.behaviour.MagicBehaviour;
 import com.oddlabs.tt.model.behaviour.MagicController;
 import com.oddlabs.tt.model.behaviour.NullController;
 import com.oddlabs.tt.model.behaviour.PlaceBuildingController;
+import com.oddlabs.tt.model.behaviour.RepairBehaviour;
 import com.oddlabs.tt.model.behaviour.RepairController;
 import com.oddlabs.tt.model.behaviour.SailController;
 import com.oddlabs.tt.model.behaviour.ShipAttackController;
 import com.oddlabs.tt.model.behaviour.SittingController;
+import com.oddlabs.tt.model.behaviour.StunBehaviour;
 import com.oddlabs.tt.model.behaviour.StunController;
 import com.oddlabs.tt.model.behaviour.TransferUnitController;
+import com.oddlabs.tt.model.behaviour.WalkBehaviour;
 import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.model.weapon.IronAxeWeapon;
 import com.oddlabs.tt.model.weapon.RockAxeWeapon;
 import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
+import com.oddlabs.tt.pathfinder.FinderTrackerAlgorithm;
+import com.oddlabs.tt.pathfinder.Occupant;
+import com.oddlabs.tt.pathfinder.TargetTrackerAlgorithm;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.util.Target;
 import com.oddlabs.util.Color;
@@ -71,9 +80,12 @@ import java.util.function.Supplier;
 /**
  * What the watch HUD shows about one unit or building of any player: a heading with its owner, its kind with the
  * kind's icon, then labelled lines whose values start in one column. Hit points and progress are bars; stock, weapons
- * and units the game's icons with counts, in columns that stay put; orders verbs with their target ({@code attacking
- * s3 [armory] armory at 120,40}). A value too long for the room the panel has wraps onto lines under it, an item at a
- * time, rather than be cut.
+ * and units the game's icons with counts, in columns that stay put. A unit's order (the task it was given) and what it
+ * does now (the step of the task it takes, read from its controllers, its behaviour, what it carries and where it
+ * walks) are verbs with their targets: {@code gathering wood for the [armory] armory at 120,40}, then {@code chopping
+ * wood at 118,42}, {@code carrying 4 wood to the [armory] armory at 120,40}; {@code attack-moving to 263,443}, then
+ * {@code chasing s3 [peon] peon at 250,440, blocked by s0 [peon] peon}. A value too long for the room the panel has
+ * wraps onto lines under it, an item at a time, rather than be cut.
  *
  * <p>It only reads, through public getters: never anything that changes the world or draws from its random
  * generator, and no identity hashes (no toString or hashCode of engine objects). The engine's getters assert on
@@ -87,13 +99,16 @@ final class Inspector {
     /** Resources by {@link HudIcons#WOOD} and the others. */
     private static final Class<?>[] RESOURCES = {TreeSupply.class, RockSupply.class, IronSupply.class, RubberSupply.class};
     private static final String[] RESOURCE_NAMES = {"wood", "rock", "iron", "chicken"};
+    /** What a unit walks to, or is blocked by, of each resource; what harvesting it is called. */
+    private static final String[] RESOURCE_NOUNS = {"tree", "rock", "iron", "chicken"};
+    private static final String[] HARVESTING = {"chopping ", "breaking ", "mining ", "hitting the "};
     /** Weapons by Race.UNIT_WARRIOR_*. */
     private static final Class<?>[] WEAPONS = {RockAxeWeapon.class, IronAxeWeapon.class, RubberAxeWeapon.class};
     /** What an armory pays for each weapon, by Race.UNIT_WARRIOR_*: what one that cannot make it lacks. */
     private static final Cost[] WEAPON_COSTS = {LandBuilding.COST_ROCK_WEAPON, LandBuilding.COST_IRON_WEAPON, LandBuilding.COST_RUBBER_WEAPON};
     private static final DeployType[] DEPLOY_TYPES = DeployType.values();
     /** Every label the inspector uses (the AI's line among them): the panel's label column is as wide as the widest. */
-    private static final String[] LABELS = {"hit points", "built", "gunner", "inside", "next peon", "chieftain", "stock", "weapons", "deploying", "magic", "carries", "order", "doing", "behaviour", "AI"};
+    private static final String[] LABELS = {"hit points", "built", "gunner", "inside", "next peon", "chieftain", "stock", "weapons", "deploying", "magic", "carries", "order", "doing", "AI"};
     /** Bars of progress (construction, training, production): blue, apart from the hit points' green to red. */
     private static final Vector4fc PROGRESS = Color.argb4v(0xFF_6C_B4_FF);
     /** A bar of progress that is held up (an armory without workers or the resources a weapon costs): grey. */
@@ -453,30 +468,35 @@ final class Inspector {
                 }
             });
         }
-        // a target that wraps goes under the verb, past its icon
-        add("order", row -> controller(row.indent(Row.iconWidth(font)), unit.getPrimaryController(), unit));
-        add("doing", row -> {
-            Controller current = unit.getCurrentController();
-            if (current == unit.getPrimaryController()) {
-                row.gap(Row.iconWidth(font)).text("the order", TextPanel.DIM);
-            } else {
-                controller(row.indent(Row.iconWidth(font)), current, unit);
+        // the task (the order the unit was given: its primary controller) and the step of it the unit takes now (its
+        // current controller and behaviour); the order only when it says more than the step's gist, as it does not
+        // for a walk, an idle unit or a builder at work (the step's details: how far it got, what blocks its walk). A
+        // target that wraps goes under the verb.
+        int verb = Row.iconWidth(font);
+        Row step = value("doing", row -> step(row.indent(verb), unit.getCurrentController(), unit));
+        if (step != null) {
+            try {
+                blocked(step, unit);
+            } catch (RuntimeException | AssertionError e) {
+                // no blocker shown
             }
-        });
-        add("behaviour", row -> {
-            Behaviour behaviour = unit.getCurrentBehaviour();
-            row.gap(Row.iconWidth(font)).text(behaviour == null ? "none" : behaviour.getClass().getSimpleName().replace(
-                    "Behaviour", "").toLowerCase(Locale.ROOT), TextPanel.DIM);
-        });
+        }
+        Row order = value("order", row -> controller(row.indent(verb), unit.getPrimaryController(), unit));
+        if (order == null || step == null || !order.says().equals(step.gist())) {
+            lines.addAll(order == null ? failed("order") : order.lines());
+        }
+        lines.addAll(step == null ? failed("doing") : step.lines());
     }
 
     /**
-     * What a controller makes {@code unit} do, as a verb with its target: walking to, attacking, gathering... Each
-     * verb starts with the game's icon for it, or room for one, so verbs on lines one above another line up.
+     * What a controller makes {@code unit} do as its order, a verb with its target: walking to, attacking, gathering...
+     * Each verb starts with the game's icon for it, or room for one, so verbs on lines one above another line up.
      */
     private void controller(@NonNull Row row, @NonNull Controller controller, @NonNull Unit unit) {
         Race race = unit.getOwnerNoCheck().getRace();
         RaceIcons icons = race.getIcons();
+        // where it walks, while this controller is the one it walks for
+        Target to = controller == unit.getCurrentController() ? destination(unit.getCurrentBehaviour()) : null;
         switch (controller) {
             case WalkController walk -> {
                 verb(row, HudIcons.normal(icons.moveIcon()), walk.isAgressive() ? "attack-moving to " : "walking to ");
@@ -518,11 +538,22 @@ final class Inspector {
                 verb(row, HudIcons.normal(icons.gatherRepairIcon()), "going to build ");
                 target(row, place.getBuilding(), unit);
             }
+            case DefendController defend -> {
+                verb(row, HudIcons.normal(icons.attackIcon()), "defending ");
+                target(row, defend.getTarget(), unit);
+            }
+            case EnterController _ when to != null -> {
+                verb(row, HudIcons.normal(icons.moveIcon()), "going into ");
+                target(row, to, unit);
+            }
+            case EnterController _ -> verb(row, HudIcons.normal(icons.moveIcon()), "going into a building");
+            case TransferUnitController _ when to != null -> {
+                verb(row, HudIcons.normal(icons.moveIcon()), "going into ");
+                target(row, to, unit);
+            }
+            case TransferUnitController _ -> verb(row, HudIcons.normal(icons.moveIcon()), "going into an armory");
+            case MagicController _ -> casting(row, unit);
             case HarvestController<?> _ -> verb(row, HudIcons.normal(icons.gatherRepairIcon()), "harvesting");
-            case EnterController _ -> verb(row, null, "going into a building");
-            case TransferUnitController _ -> verb(row, HudIcons.normal(icons.armoryIcon()), "going into an armory");
-            case DefendController _ -> verb(row, null, "defending");
-            case MagicController _ -> verb(row, null, "casting magic");
             case SittingController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP), "on a ship");
             case SailController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP), "sailing");
             case ShipAttackController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP),
@@ -531,9 +562,210 @@ final class Inspector {
             case StunController _ -> verb(row, null, "stunned", TextPanel.WARN);
             case DieController _ -> verb(row, null, "dying", TextPanel.BAD);
             case NullController _ -> verb(row, null, "nothing", TextPanel.DIM);
-            default -> verb(row, null, controller.getClass().getSimpleName().replace("Controller", "").toLowerCase(
-                    Locale.ROOT));
+            default -> verb(row, null, words(controller.getClass().getSimpleName().replace("Controller", "")));
         }
+    }
+
+    /**
+     * What {@code unit} does right now, the step of its order that {@code controller} (its current one) takes, as a
+     * verb with its target: walking to a tree, chopping wood at it, carrying the wood to an armory; building a site,
+     * fetching wood for it; chasing an enemy, attacking it. Read from the controller, the behaviour it set (where the
+     * unit walks, what it harvests) and what the unit carries. A step that cannot be broken off (a throw, a spell, a
+     * stun) goes on under a new order until it ends; a controller that takes no steps of its own, or one that has not
+     * decided yet, gives its order's verb.
+     */
+    private void step(@NonNull Row row, @NonNull Controller controller, @NonNull Unit unit) {
+        RaceIcons icons = unit.getOwnerNoCheck().getRace().getIcons();
+        Behaviour behaviour = unit.getCurrentBehaviour();
+        boolean walking = behaviour instanceof WalkBehaviour;
+        Target to = destination(behaviour);
+        UnitSupplyContainer carried = unit.getSupplyContainer();
+        if (behaviour instanceof MagicBehaviour) {
+            casting(row, unit);
+            return;
+        }
+        if (behaviour instanceof StunBehaviour) {
+            verb(row, null, "stunned", TextPanel.WARN);
+            return;
+        }
+        if (behaviour instanceof AttackBehaviour && !(controller instanceof HuntController)
+                && !(controller instanceof AttackController)) {
+            verb(row, HudIcons.normal(icons.attackIcon()), "finishing a throw");
+            return;
+        }
+        switch (controller) {
+            case GatherController<?> gather when walking -> {
+                // with a load of what it gathers it takes it to an armory, else it goes to get more
+                if (carried != null && carried.getNumSupplies() > 0
+                        && carried.getSupplyType() == gather.getSupplyType()) {
+                    carrying(row, unit, carried, to);
+                } else {
+                    walkingTo(row, unit, to != null ? to : gather.getSupply(), gathered(unit));
+                }
+            }
+            case HarvestController<?> _ when behaviour instanceof HarvestBehaviour harvest -> {
+                Supply supply = harvest.getSupply();
+                int resource = resourceOf(supply.getClass());
+                verb(row, HudIcons.normal(icons.gatherRepairIcon()),
+                        resource < 0 ? "harvesting " : HARVESTING[resource]);
+                if (resource >= 0) {
+                    row.icon(HudIcons.resource(resource)).text(RESOURCE_NAMES[resource]);
+                }
+                row.wrap().text(" at " + supply.getGridX() + "," + supply.getGridY(), TextPanel.DIM).wrap();
+            }
+            // it looks for the nearest of what it gathers: a builder fetches wood
+            case HarvestController<?> _ when walking -> walkingTo(row, unit, to, gathered(unit));
+            case RepairController repair when behaviour instanceof RepairBehaviour -> {
+                Building building = repair.getBuilding();
+                boolean site = !building.isComplete();
+                verb(row, HudIcons.normal(icons.gatherRepairIcon()), site ? "building " : "repairing ");
+                target(row, building, unit);
+                // how far: a site as the built line has it, a building by its hit points
+                int max = building.getTemplate().getMaxHitPoints();
+                String done = building.getHitPoints() + "/" + max + " hit points";
+                if (site && building instanceof LandBuilding land) {
+                    done = percent(land.getBuildPoints() / (float) Math.max(max, 1)) + " built";
+                }
+                row.details().text(" (" + done + ")", TextPanel.DIM).wrap();
+            }
+            // a builder walks with the wood it builds with
+            case RepairController repair when walking && carried != null && carried.getNumSupplies() > 0 ->
+                carrying(row, unit, carried, repair.getBuilding());
+            case PlaceBuildingController place when walking -> {
+                verb(row, HudIcons.normal(icons.moveIcon()), "walking to ");
+                target(row, place.getBuilding(), unit);
+            }
+            case HuntController hunt when walking -> {
+                // a building does not run away
+                verb(row, HudIcons.normal(icons.attackIcon()),
+                        hunt.getTarget() instanceof Building ? "walking to attack " : "chasing ");
+                target(row, hunt.getTarget(), unit);
+            }
+            case HuntController hunt when behaviour instanceof AttackBehaviour -> {
+                verb(row, HudIcons.normal(icons.attackIcon()), "attacking ");
+                target(row, hunt.getTarget(), unit);
+            }
+            case DefendController defend when walking -> {
+                verb(row, HudIcons.normal(icons.moveIcon()), "attack-moving to ");
+                target(row, defend.getTarget(), unit);
+            }
+            // its search finds the very armory once the unit got near: till then, the nearest it knows
+            case TransferUnitController _ when walking && to == null -> verb(row, HudIcons.normal(icons.moveIcon()),
+                    "going into the nearest armory");
+            default -> controller(row, controller, unit);
+        }
+    }
+
+    /**
+     * Carrying a load to where it goes ({@code to}: an armory, a building site; null while it heads for the nearest
+     * armory, before its search named one).
+     */
+    private void carrying(@NonNull Row row, @NonNull Unit unit, @NonNull UnitSupplyContainer carried,
+            @Nullable Target to) {
+        verb(row, HudIcons.normal(unit.getOwnerNoCheck().getRace().getIcons().transportIcon()), "carrying ");
+        int resource = resourceOf(carried.getSupplyType());
+        if (resource >= 0) {
+            row.icon(HudIcons.resource(resource));
+        }
+        row.text(carried.getNumSupplies() + (resource < 0 ? "" : " " + RESOURCE_NAMES[resource])).wrap();
+        if (to == null) {
+            row.text(" to the nearest armory").wrap();
+        } else {
+            row.text(" to ");
+            target(row, to, unit);
+        }
+    }
+
+    /**
+     * Walking to a resource to gather it ({@code to}; a chicken runs: chasing it), or to the nearest of
+     * {@code resource} (a {@link HudIcons#WOOD}..., or -1) while {@code to} is null: a search for the nearest names
+     * the very one only once the unit got to its part of the map.
+     */
+    private void walkingTo(@NonNull Row row, @NonNull Unit unit, @Nullable Target to, int resource) {
+        RaceIcons icons = unit.getOwnerNoCheck().getRace().getIcons();
+        if (to == null) {
+            verb(row, HudIcons.normal(icons.moveIcon()), "walking to the nearest ");
+            if (resource < 0) {
+                row.text("resource");
+            } else {
+                row.icon(HudIcons.resource(resource)).text(RESOURCE_NOUNS[resource]);
+            }
+            return;
+        }
+        boolean chicken = resourceOf(to.getClass()) == HudIcons.CHICKEN;
+        verb(row, HudIcons.normal(icons.moveIcon()), chicken ? "chasing " : "walking to ");
+        target(row, to, unit);
+    }
+
+    /** What {@code unit}'s order has it gather (a builder: wood), as a resource index, or -1. */
+    private static int gathered(@NonNull Unit unit) {
+        return switch (unit.getPrimaryController()) {
+            case GatherController<?> gather -> resourceOf(gather.getSupplyType());
+            case RepairController _ -> HudIcons.WOOD;
+            default -> -1;
+        };
+    }
+
+    /** A chieftain's spell: the button's icon and the spell's name. */
+    private void casting(@NonNull Row row, @NonNull Unit unit) {
+        int index = unit.getLastMagicIndex(); // the one being cast, since casting it set it
+        if (index != 0 && index != 1) {
+            verb(row, null, "casting a spell");
+            return;
+        }
+        Race race = unit.getOwnerNoCheck().getRace();
+        verb(row, HudIcons.normal(index == 0 ? race.getIcons().magic1Icon() : race.getIcons().magic2Icon()),
+                "casting " + words(race.getMagicFactory(index).getClass().getSimpleName().replace("Factory", "")));
+    }
+
+    /**
+     * The details of a walk that waits: what stands in the unit's next cell (a unit by its owner's colour and slot,
+     * also the unit's own player's, a building, a tree), or, with nothing there, that it found no way; in yellow.
+     */
+    private void blocked(@NonNull Row row, @NonNull Unit unit) {
+        if (!(unit.getCurrentBehaviour() instanceof WalkBehaviour walk)) {
+            return;
+        }
+        Occupant blocker = unit.getTracker().getBlocker();
+        if (blocker == null && !walk.isBlocking()) {
+            return;
+        }
+        // read before anything is written: a failed read leaves the step as it was
+        Vector4fc chip = null;
+        String slot = "";
+        IconQuad icon = null;
+        String what = "";
+        if (blocker instanceof Selectable<?> s) {
+            Player owner = s.getOwnerNoCheck();
+            chip = owner.getColor();
+            slot = "s" + slotOf(world, owner) + " ";
+            icon = HudIcons.of(s);
+            what = kindOf(s);
+        } else if (blocker != null && resourceOf(blocker.getClass()) >= 0) {
+            int resource = resourceOf(blocker.getClass());
+            icon = HudIcons.resource(resource);
+            what = RESOURCE_NOUNS[resource];
+        }
+        row.details().text(",").wrap().icon(HudIcons.warning()).text(what.isEmpty() ? "finds no way" : "blocked by ",
+                TextPanel.WARN).wrap();
+        if (!what.isEmpty()) {
+            if (chip != null) {
+                row.bar(1f, width(CHIP), chip);
+            }
+            row.text(slot, TextPanel.WARN).icon(icon).text(what, TextPanel.WARN).wrap();
+        }
+    }
+
+    /** Where a walking unit goes: its walk's target, or what its search found (null until it found one). */
+    private static @Nullable Target destination(@Nullable Behaviour behaviour) {
+        if (!(behaviour instanceof WalkBehaviour walk)) {
+            return null;
+        }
+        return switch (walk.getTrackerAlgorithm()) {
+            case TargetTrackerAlgorithm tracker -> tracker.getTarget();
+            case FinderTrackerAlgorithm<?> finder -> finder.getOccupant();
+            default -> null;
+        };
     }
 
     private static void verb(@NonNull Row row, @Nullable IconQuad icon, @NonNull String verb) {
@@ -552,8 +784,10 @@ final class Inspector {
     }
 
     /**
-     * A target: an object by its owner's colour and slot (not for {@code unit}'s own), its kind's icon and kind; a
-     * resource by its icon; a spot by its cell. The cell of an object or a resource may wrap.
+     * A target: an object by its owner's colour and slot ({@code unit}'s own by "the"), its kind's icon and kind
+     * ("site" while a building is not complete; "(dead)" once it died, as an attacker ends the throw it began); a
+     * resource by "the", its icon and what it is (tree, rock, iron, chicken); a spot by its cell. The cell of an
+     * object or a resource may wrap.
      */
     private void target(@NonNull Row row, @NonNull Target target, @NonNull Unit unit) {
         String where = target.getGridX() + "," + target.getGridY();
@@ -562,19 +796,27 @@ final class Inspector {
             if (owner != unit.getOwnerNoCheck()) {
                 // a chip of the owner's colour, as high as a bar
                 row.bar(1f, width(CHIP), owner.getColor()).text("s" + slotOf(world, owner) + " ");
+            } else {
+                row.text("the ");
             }
-            row.icon(HudIcons.of(s)).text(kindOf(s)).text(s.isDead() ? " dead" : "", TextPanel.BAD).wrap().text(
-                    " at " + where, TextPanel.DIM).wrap();
+            boolean site = s instanceof Building building && !s.isDead() && !test(building::isComplete, true);
+            row.icon(HudIcons.of(s)).text(kindOf(s) + (site ? " site" : "")).text(s.isDead() ? " (dead)" : "",
+                    TextPanel.BAD).wrap().text(" at " + where, TextPanel.DIM).wrap();
             return;
         }
         int resource = resourceOf(target.getClass());
         if (resource >= 0) {
-            row.icon(HudIcons.resource(resource)).text(RESOURCE_NAMES[resource]).wrap().text(" at " + where,
-                    TextPanel.DIM).wrap();
+            row.text("the ").icon(HudIcons.resource(resource)).text(RESOURCE_NOUNS[resource]).wrap().text(
+                    " at " + where, TextPanel.DIM).wrap();
             return;
         }
         String type = target.getClass().getSimpleName();
         row.text(type.equals("LandscapeTarget") || type.equals("GridTarget") ? where : type + " at " + where).wrap();
+    }
+
+    /** A class name's words, lower case: PoisonFog, poison fog. */
+    private static @NonNull String words(@NonNull String name) {
+        return name.replaceAll("(?<=[a-z])(?=[A-Z])", " ").toLowerCase(Locale.ROOT);
     }
 
     // ---------------------------------------------------------------- parts
@@ -608,13 +850,24 @@ final class Inspector {
 
     /** Adds the lines of a labelled value that {@code value} fills; a failed read makes the value "?". */
     private void add(@NonNull String label, @NonNull Consumer<Row> value) {
+        Row row = value(label, value);
+        lines.addAll(row == null ? failed(label) : row.lines());
+    }
+
+    /** A labelled value that {@code value} filled, or null when a read failed. */
+    private @Nullable Row value(@NonNull String label, @NonNull Consumer<Row> value) {
         Row row = new Row(label, room);
         try {
             value.accept(row);
-            lines.addAll(row.lines());
+            return row;
         } catch (RuntimeException | AssertionError e) {
-            lines.add(TextPanel.line().label(label).text("?", TextPanel.DIM).build());
+            return null;
         }
+    }
+
+    /** The line of a value whose read failed: "?". */
+    private static @NonNull List<TextPanel.Line> failed(@NonNull String label) {
+        return List.of(TextPanel.line().label(label).text("?", TextPanel.DIM).build());
     }
 
     private static @NonNull String read(@NonNull Supplier<String> value) {
@@ -658,6 +911,8 @@ final class Inspector {
         /** The parts of the item being built. */
         private final List<TextPanel.Part> item = new ArrayList<>();
         private int indent;
+        /** What the value said when its details began, or null. */
+        private @Nullable String gist;
 
         Row(@NonNull String label, int room) {
             this.label = label;
@@ -741,6 +996,44 @@ final class Inspector {
             item.clear();
             items++;
             return this;
+        }
+
+        /**
+         * Marks what the value says so far as its gist: what follows are details (how far a step got, what blocks
+         * it). The first mark counts.
+         */
+        @NonNull
+        Row details() {
+            if (gist == null) {
+                gist = says();
+            }
+            return this;
+        }
+
+        /** What the value says without its details ({@link #details}), as {@link #says} gives it. */
+        @NonNull
+        String gist() {
+            return gist == null ? says() : gist;
+        }
+
+        /** What the value says so far: its text, without the spaces (which wrapping takes), icons, bars and gaps. */
+        @NonNull
+        String says() {
+            StringBuilder says = new StringBuilder();
+            for (TextPanel.Line done : lines) {
+                says(says, done.parts());
+            }
+            says(says, line);
+            says(says, item);
+            return says.toString().replace(" ", "");
+        }
+
+        private static void says(@NonNull StringBuilder says, @NonNull List<TextPanel.Part> parts) {
+            for (TextPanel.Part part : parts) {
+                if (part instanceof TextPanel.Text text) {
+                    says.append(text.text());
+                }
+            }
         }
 
         /** The value's lines: at least one, the first labelled. */

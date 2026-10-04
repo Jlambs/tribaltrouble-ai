@@ -20,6 +20,10 @@ public final class HarvestBehaviour implements Behaviour {
         restartAnimation();
     }
 
+    public @NonNull Supply getSupply() {
+        return supply;
+    }
+
     @Override
     public boolean isBlocking() {
         return true;
