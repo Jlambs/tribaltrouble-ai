@@ -498,13 +498,13 @@ public final class GauntletAI extends AI implements AiView {
     // Watch view (AiView): what a person watching the game sees of our thinking
 
     /**
-     * Paints the plan of each module by layer (WatchView): army, threat, economy, shepherds, freeze, chief, and the
-     * status lines under a one-line summary. Called between ticks while the game is watched, never in harness games.
-     * It only reads fields: no orders, no log lines or counters, no random draws, no Intel.enemyIndex or distance
-     * fields (they fill caches), nothing added to or removed from any collection (lab/gauntlet/PaintCheck.java plays
-     * recorded games with it called on every tick and checks they stay the same). Before the first think the modules
-     * do not exist yet; a module whose paint throws (an engine getter asserting on a unit that just died) is skipped
-     * with a status line, and the others still paint.
+     * Paints the plan of each module by layer (WatchView): army, threat, economy, shepherds, aim (the 0.707 rule of
+     * the copies' next waves), freeze, chief, and the status lines under a one-line summary. Called between ticks
+     * while the game is watched, never in harness games. It only reads fields: no orders, no log lines or counters, no
+     * random draws, no Intel.enemyIndex or distance fields (they fill caches), nothing added to or removed from any
+     * collection (lab/gauntlet/PaintCheck.java plays recorded games with it called on every tick and checks they stay
+     * the same). Before the first think the modules do not exist yet; a module whose paint throws (an engine getter
+     * asserting on a unit that just died) is skipped with a status line, and the others still paint.
      */
     @Override
     public void paint(@NonNull Canvas canvas) {
@@ -521,6 +521,7 @@ public final class GauntletAI extends AI implements AiView {
         paintPart(canvas, "military", () -> m.paint(canvas));
         paintPart(canvas, "economy", () -> e.paint(canvas));
         paintPart(canvas, "shepherd", () -> s.paint(canvas));
+        paintPart(canvas, "aim", () -> s.paintAim(canvas));
         paintPart(canvas, "freeze", () -> f.paint(canvas));
         paintPart(canvas, "chieftain", () -> c.paint(canvas));
     }

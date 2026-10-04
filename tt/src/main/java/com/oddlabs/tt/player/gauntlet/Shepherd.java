@@ -7,13 +7,16 @@ import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.UnitContainer;
 import com.oddlabs.tt.model.behaviour.AttackController;
 import com.oddlabs.tt.model.behaviour.Controller;
 import com.oddlabs.tt.model.behaviour.DefendController;
 import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.model.behaviour.IdleController;
+import com.oddlabs.tt.model.behaviour.NullController;
 import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.pathfinder.UnitGrid;
+import com.oddlabs.tt.player.AdvancedAI;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.gauntlet.Intel.PeonState;
 import org.jspecify.annotations.NonNull;
@@ -71,6 +74,18 @@ final class Shepherd {
     private static final float PICK_KEEP = 6f;
     /** shepherd_predict: a launch is checked against a prediction this recent (60 s). */
     private static final float PREDICT_CHECK_TICKS = 3000f;
+    /** Watch view, layer aim: whole circles for every pending wave while at most this many are pending. */
+    private static final int AIM_WHOLE_CIRCLES = 4;
+    /** Watch view, layer aim: else a circle this small (cells) is drawn whole, a larger one as an arc of it. */
+    private static final float AIM_ARC_MIN_R = 12f;
+    /** Watch view, layer aim: the arc reaches this far either side of the bearing to the target, in so many lines. */
+    private static final int AIM_ARC_DEGREES = 20;
+    private static final int AIM_ARC_CHORDS = 4;
+    /** Watch view: the longest label the viewer shows whole (PaintCheck MAX_LINE). */
+    private static final int MAX_LABEL = 100;
+    /** Watch view, layer aim: a Hard copy mans one tower above this many units, two above the next (AdvancedAI). */
+    private static final int HARD_UNITS_PER_TOWER1 = 90;
+    private static final int HARD_UNITS_PER_TOWER2 = 120;
 
     private final @NonNull GauntletAI ai;
     private final List<@NonNull Flock> flocks = new ArrayList<>();
@@ -2223,6 +2238,301 @@ final class Shepherd {
         canvas.status("shepherds", flocks.size() + " flocks, " + posts);
         String launch = imminent + " copies about to launch, " + walking + " walking";
         canvas.status("waves", launch + "; " + waves + " seen, " + base_waves + " at our base");
+    }
+
+    /**
+     * Layer "aim", the 0.707 rule that the shepherds play on, as each Hard copy's next wave would apply it now. A copy
+     * aims a wave from the first of its idle warriors, the wave's leader (AdvancedAI's warriors[0] in
+     * nodeAttackWithWarriorsAndChieftain, waveLeader here), at the nearest building of its enemies at d cells, unless
+     * its nearest enemy of any kind is nearer than 0.707 x d (findTarget: squared distances in whole cells, the unit's
+     * below half the building's, halved as an int), then at that one. For every Hard copy with an idle warrior it
+     * paints that leader, the line to the building, the target the wave would take now with a line to it (lavender for
+     * a unit inside the circle, pink for the building), and the circle of 0.707 x d around the leader: whole for a copy
+     * whose wave is ready, while at most AIM_WHOLE_CIRCLES waves are pending, or when it is small; else only its arc
+     * toward the target and a crossbar where it cuts the line to the building, which still shows the target inside or
+     * outside it without burying the map in circles. Halfway along the target's line a label in the circle's colour
+     * gives the test in cells, against the bound the engine compares with ("s16:hard next wave -> shepherd of s23:hard:
+     * 21 < 53 (0.707 x 74.5 to our tower)", "s13:hard next wave -> our tower, not shepherd of s8:hard: 14 >= 13 (0.707
+     * x 18.4)").
+     *
+     * <p>The targets come from the engine's own scans (Player.findNearestEnemyBuilding and findNearestEnemy, as
+     * findTarget calls them), so they count what it counts: the living objects among the units of every player on
+     * another team than the copy's, ours and our allies', with placed sites; not a unit inside a building or mounted in
+     * a tower, which has left its player's units. "wave ready" when the copy has its whole wave idle (its flock's
+     * launches give the wave size, as on the shepherds layer): it leaves at the copy's next think, and a Hard copy
+     * thinks every 5 to 7 seconds of the real-time animation clock, 20 to 28 game seconds at ludicrous, so the target
+     * shown can change before it leaves. Not mirrored: nodeDefendBase, which comes first in a think and sends idle
+     * warriors to defend when enemies stand by the copy's quarters or armory. Status line aim.
+     */
+    void paintAim(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas) {
+        String layer = WatchView.AIM;
+        Player us = ai.owner();
+        Player[] players = us.getWorld().getPlayers();
+        // the Hard copies' wave leaders first, so the circles can be whole while few waves are pending
+        Unit[] leaders = new Unit[players.length];
+        boolean[] ready = new boolean[players.length];
+        int found = 0;
+        for (int i = 0; i < players.length; i++) {
+            Player copy = players[i];
+            if (!us.isEnemy(copy) || !(copy.getAI() instanceof AdvancedAI hard)
+                    || hard.getDifficulty() != AdvancedAI.DIFFICULTY_HARD)
+                continue; // another AI or a human: its waves follow other rules
+            long sends = towerSends(copy);
+            Unit leader = waveLeader(copy, sends);
+            if (leader == null)
+                continue;
+            leaders[i] = leader;
+            found++;
+            Flock f = flockOf(copy); // the copy's own flock, made before a home flock
+            if (f != null) {
+                int idle = idleWarriors(copy);
+                int left = idle - Long.bitCount(idle >= 64 ? sends : sends & ((1L << idle) - 1));
+                int wave_size = Math.min(40, 10 + 5 * copyLaunches(f));
+                ready[i] = left >= wave_size && (wave_size < 20 || copy.hasActiveChieftain());
+            }
+        }
+        boolean few = found <= AIM_WHOLE_CIRCLES;
+        int grid = us.getWorld().getUnitGrid().getGridSize();
+        int pending = 0;
+        int readies = 0;
+        int at_shepherds = 0;
+        int at_units = 0;
+        int at_buildings = 0;
+        for (int i = 0; i < players.length; i++) {
+            Unit leader = leaders[i];
+            if (leader == null)
+                continue;
+            Player copy = players[i];
+            int lx = leader.getGridX();
+            int ly = leader.getGridY();
+            Selectable<?> building = copy.findNearestEnemyBuilding(lx, ly);
+            Selectable<?> nearest = copy.findNearestEnemy(lx, ly);
+            if (nearest == null)
+                continue; // nothing left to attack: findTarget gives no target, and no wave leaves
+            int nearest2 = MapAnalysis.dist2(lx, ly, nearest.getGridX(), nearest.getGridY());
+            int building2 = building == null ? -1 : MapAnalysis.dist2(lx, ly, building.getGridX(),
+                    building.getGridY());
+            // findTarget: the nearest of all only without a building or nearer than half its squared distance (ints)
+            int half2 = building2 / 2;
+            boolean to_building = building != null && nearest2 >= half2;
+            Selectable<?> target = to_building ? building : nearest;
+            pending++;
+            if (ready[i])
+                readies++;
+            if (to_building)
+                at_buildings++;
+            else if (shepherdFlock(target) != null)
+                at_shepherds++;
+            else
+                at_units++;
+            int rgb = to_building ? WatchView.AIM_BUILDING : WatchView.AIM_UNIT;
+            int tx = target.getGridX();
+            int ty = target.getGridY();
+            canvas.mark(layer, lx, ly, WatchView.AIM_RING, "");
+            canvas.line(layer, lx, ly, tx, ty, rgb);
+            canvas.mark(layer, tx, ty, rgb, "");
+            String head = WatchView.name(copy) + (ready[i] ? " wave ready -> " : " next wave -> ");
+            String label;
+            if (building == null) {
+                label = head + aimName(copy, target) + " at " + whole(nearest2) + ": no building left";
+            } else {
+                int bx = building.getGridX();
+                int by = building.getGridY();
+                float r = (float) Math.sqrt(half2);
+                if (!to_building)
+                    canvas.line(layer, lx, ly, bx, by, WatchView.AIM_RING);
+                if (r > 0f && (ready[i] || few || r <= AIM_ARC_MIN_R)) {
+                    canvas.circle(layer, lx, ly, r, WatchView.AIM_RING);
+                } else if (r > 0f) {
+                    // the arc toward the target, or toward the building when the target stands on the leader's cell
+                    boolean on_leader = tx == lx && ty == ly;
+                    paintArc(canvas, layer, lx, ly, r, on_leader ? bx : tx, on_leader ? by : ty, grid);
+                    if (!to_building)
+                        paintCrossbar(canvas, layer, lx, ly, r, bx, by, grid);
+                }
+                String test = aimTest(nearest2, half2);
+                String d = WatchView.decimal((float) Math.sqrt(building2)); // 0.707 x d then rounds as the bound
+                if (!to_building) {
+                    label = head + aimName(copy, target) + ": " + test + " (0.707 x " + d + " to " + aimKind(
+                            building) + ")";
+                    if (label.length() > MAX_LABEL)
+                        label = head + aimName(copy, target) + ": " + test + " (0.707 x " + d + ")";
+                } else if (nearest == building) {
+                    label = head + aimKind(building) + " at " + whole(building2) + ", nothing nearer";
+                } else {
+                    // the nearest unit outside the circle: the building, not that unit (d shows in the bound)
+                    String not = head + aimKind(building) + ", not ";
+                    String bound = ": " + test + " (0.707 x " + d + ")";
+                    label = not + aimName(copy, nearest) + bound;
+                    if (label.length() > MAX_LABEL)
+                        label = not + aimKind(nearest) + bound;
+                }
+            }
+            // halfway along the wave's way, where no other layer has a label (the leader and the shepherd have), in
+            // the circle's colour: only the target's own pin has the target's
+            canvas.mark(layer, (lx + tx) / 2, (ly + ty) / 2, WatchView.AIM_RING,
+                    label.length() > MAX_LABEL ? label.substring(0, MAX_LABEL) : label);
+        }
+        if (pending == 0) {
+            canvas.status("aim", "no wave pending (no Hard copy has an idle warrior)");
+            return;
+        }
+        String picks = at_shepherds + " at shepherds, " + at_units + " at other units, " + at_buildings + " at buildings";
+        String waves = pending == 1 ? "1 wave pending (" : pending + " waves pending (";
+        canvas.status("aim", waves + readies + " ready): " + picks);
+    }
+
+    /**
+     * The idle warriors that a Hard copy's next think sends into its towers before its wave leaves, as bits by their
+     * index among its idle warriors: AdvancedAI.nodeGuardTowers, with over 90 units (over 120: two towers) and that
+     * many towers finished, sends idle warrior i into tower i (both in unit order) when tower i has room; with fewer
+     * towers it builds one instead. 0 when it sends none.
+     */
+    private static long towerSends(@NonNull Player copy) {
+        int units = copy.getUnitCountContainer().getNumSupplies();
+        int manned = units > HARD_UNITS_PER_TOWER2 ? 2 : units > HARD_UNITS_PER_TOWER1 ? 1 : 0;
+        if (manned == 0)
+            return 0L;
+        long sends = 0L;
+        int towers = 0;
+        for (Selectable<?> sel : copy.getUnits().getSet()) {
+            // AI.classifyIndex's towers: buildings that attack (a building gets its abilities when finished)
+            if (!(sel instanceof Building b) || b.isDead() || !(b.getPrimaryController() instanceof NullController))
+                continue;
+            Abilities abilities = b.getAbilities();
+            if (!abilities.hasAbilities(Abilities.ATTACK) || abilities.hasAbilities(Abilities.BUILD_ARMIES)
+                    || abilities.hasAbilities(Abilities.REPRODUCE))
+                continue;
+            UnitContainer inside = b.getUnitContainer();
+            if (towers < 64 && inside != null && !inside.isSupplyFull())
+                sends |= 1L << towers;
+            towers++;
+        }
+        return towers < manned ? 0L : sends;
+    }
+
+    /**
+     * The leader of a Hard copy's next wave: its first idle warrior in unit order (getIdleWarriors()[0], as
+     * oldestIdleWarrior counts them) that the same think does not send into a tower ({@code sends}, towerSends).
+     */
+    private static @Nullable Unit waveLeader(@NonNull Player copy, long sends) {
+        int index = 0;
+        for (Selectable<?> sel : copy.getUnits().getSet()) {
+            if (!(sel instanceof Unit u) || u.isDead() || u.isMounted())
+                continue;
+            if (!(u.getPrimaryController() instanceof IdleController))
+                continue;
+            if (u.getAbilities().hasAbilities(Abilities.BUILD) || u.getAbilities().hasAbilities(Abilities.MAGIC)
+                    || !u.getAbilities().hasAbilities(Abilities.ATTACK))
+                continue;
+            if (index >= 64 || (sends & 1L << index) == 0)
+                return u;
+            index++;
+        }
+        return null;
+    }
+
+    /**
+     * The aim layer's arc of the circle of radius {@code r} around (cx, cy): AIM_ARC_DEGREES either side of the
+     * bearing to (px, py), as AIM_ARC_CHORDS lines, leaving out a line that leaves the map ({@code grid} cells a side).
+     */
+    private static void paintArc(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas, @NonNull String layer, int cx,
+            int cy, float r, int px, int py, int grid) {
+        double step = Math.toRadians(2.0 * AIM_ARC_DEGREES / AIM_ARC_CHORDS);
+        double a = Math.atan2(py - cy, px - cx) - Math.toRadians(AIM_ARC_DEGREES);
+        long x0 = Math.round(cx + r * Math.cos(a));
+        long y0 = Math.round(cy + r * Math.sin(a));
+        for (int k = 0; k < AIM_ARC_CHORDS; k++) {
+            a += step;
+            long x1 = Math.round(cx + r * Math.cos(a));
+            long y1 = Math.round(cy + r * Math.sin(a));
+            if (onMap(x0, grid) && onMap(y0, grid) && onMap(x1, grid) && onMap(y1, grid))
+                canvas.line(layer, (int) x0, (int) y0, (int) x1, (int) y1, WatchView.AIM_RING);
+            x0 = x1;
+            y0 = y1;
+        }
+    }
+
+    /**
+     * The aim layer's crossbar on the line from (cx, cy) to the building at (bx, by), where the circle of radius
+     * {@code r} around (cx, cy) cuts it: a target nearer than the bar draws the wave. Left out where it leaves the map.
+     */
+    private static void paintCrossbar(com.oddlabs.tt.aikit.AiView.@NonNull Canvas canvas, @NonNull String layer,
+            int cx, int cy, float r, int bx, int by, int grid) {
+        double dx = bx - cx;
+        double dy = by - cy;
+        double length = Math.sqrt(dx * dx + dy * dy);
+        if (length <= 0.0)
+            return;
+        double ux = dx / length;
+        double uy = dy / length;
+        double half = Math.clamp(r * 0.1, 2.0, 5.0);
+        double mx = cx + ux * r;
+        double my = cy + uy * r;
+        long x0 = Math.round(mx - uy * half);
+        long y0 = Math.round(my + ux * half);
+        long x1 = Math.round(mx + uy * half);
+        long y1 = Math.round(my - ux * half);
+        if (onMap(x0, grid) && onMap(y0, grid) && onMap(x1, grid) && onMap(y1, grid))
+            canvas.line(layer, (int) x0, (int) y0, (int) x1, (int) y1, WatchView.AIM_RING);
+    }
+
+    /** Whether a painted coordinate is a cell of a map of {@code grid} cells a side. */
+    private static boolean onMap(long v, int grid) {
+        return v >= 0 && v < grid;
+    }
+
+    /** The flock whose shepherd {@code s} is, or null (a walk by identity: nothing is hashed). */
+    private @Nullable Flock shepherdFlock(@NonNull Selectable<?> s) {
+        for (Flock f : flocks)
+            if (f.shepherd == s)
+                return f;
+        return null;
+    }
+
+    /**
+     * A target or nearest unit of {@code copy}'s wave for the aim layer's labels: a shepherd by its flock (its
+     * shepherd, shepherd of s23:hard), else aimKind.
+     */
+    private @NonNull String aimName(@NonNull Player copy, @NonNull Selectable<?> s) {
+        Flock drawn_by = shepherdFlock(s);
+        if (drawn_by == null)
+            return aimKind(s);
+        if (drawn_by.copy != copy)
+            return "shepherd of " + name(drawn_by);
+        return drawn_by.home ? "its home shepherd" : "its shepherd";
+    }
+
+    /** A wave's target for the aim layer's labels: our peon, our decoy site, s1:hard tower (an ally's). */
+    private @NonNull String aimKind(@NonNull Selectable<?> target) {
+        String kind = target instanceof Building b && ai.decoys().isDecoy(b) ? "decoy site" : WatchView.kind(target);
+        return (target.getOwner() == ai.owner() ? "our " : WatchView.name(target.getOwner()) + " ") + kind;
+    }
+
+    /** Whole cells of a squared distance, rounded. */
+    private static int whole(int dist2) {
+        return Math.round((float) Math.sqrt(dist2));
+    }
+
+    /**
+     * findTarget's test in cells for the aim layer: the nearest unit's distance (squared {@code nearest2}) against the
+     * bound, the root of the building's squared distance halved as an int ({@code half2}). Whole cells, or as many
+     * decimals as it takes for the two to differ (at most 3), so the sign shown always agrees with the pick: "21 < 52",
+     * "17.8 >= 17.7".
+     */
+    private static @NonNull String aimTest(int nearest2, int half2) {
+        String sign = nearest2 < half2 ? " < " : " >= ";
+        double n = Math.sqrt(nearest2);
+        double bound = Math.sqrt(half2);
+        String a = "";
+        String b = "";
+        for (int decimals = 0; decimals <= 3; decimals++) {
+            a = String.format(Locale.ROOT, "%." + decimals + "f", n);
+            b = String.format(Locale.ROOT, "%." + decimals + "f", bound);
+            if (!a.equals(b) || nearest2 == half2)
+                break;
+        }
+        return a + sign + b;
     }
 
     /**
