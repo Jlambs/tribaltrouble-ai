@@ -49,6 +49,10 @@ public final class AttackBehaviour implements Behaviour {
         unit.switchAnimation(1f / SECONDS_PER_ATTACK, Unit.Animation.THROWING);
     }
 
+    public @NonNull Selectable<?> getTarget() {
+        return target;
+    }
+
     @Override
     public boolean isBlocking() {
         return true;

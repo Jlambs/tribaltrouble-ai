@@ -24,6 +24,7 @@ import com.oddlabs.tt.model.ReproduceUnitContainer;
 import com.oddlabs.tt.model.RockSupply;
 import com.oddlabs.tt.model.RubberSupply;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.SceneryModel;
 import com.oddlabs.tt.model.Ship;
 import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.SupplyContainer;
@@ -61,6 +62,7 @@ import com.oddlabs.tt.model.weapon.RockAxeWeapon;
 import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
 import com.oddlabs.tt.pathfinder.FinderTrackerAlgorithm;
 import com.oddlabs.tt.pathfinder.Occupant;
+import com.oddlabs.tt.pathfinder.StaticOccupant;
 import com.oddlabs.tt.pathfinder.TargetTrackerAlgorithm;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.util.Target;
@@ -124,6 +126,13 @@ final class Inspector {
     private static final float SPACING = .7f;
     private static final float CHIP = .45f;
 
+    /**
+     * The object described last and the most lines of text its description took since it was picked (or died): see
+     * {@link #describe(Selectable, World, Job, int)}. Only the HUD describes, on the game's thread.
+     */
+    private static @Nullable Selectable<?> described;
+    private static int tallest;
+
     private final @NonNull World world;
     private final @NonNull Job job;
     private final @NonNull Font font = Skin.getSkin().getEditFont();
@@ -169,13 +178,28 @@ final class Inspector {
 
     /**
      * The lines about {@code s}; {@code job} names the players, and {@code width} is the widest the panel gets, which
-     * long values wrap to.
+     * long values wrap to. While {@code s} stays picked and alive they never get fewer: empty lines make up for what
+     * it took before (a step whose target wrapped, a walk that waited), so the panels under the inspector keep their
+     * place.
      */
     static @NonNull List<TextPanel.Line> describe(@NonNull Selectable<?> s, @NonNull World world, @NonNull Job job,
             int width) {
         Inspector inspector = new Inspector(world, job, width);
         inspector.describe(s);
-        return inspector.lines;
+        List<TextPanel.Line> lines = inspector.lines;
+        if (s != described || test(s::isDead, true)) {
+            described = s;
+            tallest = 0;
+        }
+        int height = 0;
+        for (TextPanel.Line line : lines) {
+            height += line.size();
+        }
+        for (; height < tallest; height++) {
+            lines.add(TextPanel.line().build());
+        }
+        tallest = height;
+        return lines;
     }
 
     /**
@@ -469,9 +493,9 @@ final class Inspector {
             });
         }
         // the task (the order the unit was given: its primary controller) and the step of it the unit takes now (its
-        // current controller and behaviour); the order only when it says more than the step's gist, as it does not
-        // for a walk, an idle unit or a builder at work (the step's details: how far it got, what blocks its walk). A
-        // target that wraps goes under the verb.
+        // current controller and behaviour). An order that says no more than the step's gist (a walk, an idle unit, a
+        // builder at work; the step's details are how far it got, what blocks its walk) is faded, not left out: the
+        // lines under it keep their place as the step changes. A target that wraps goes under the verb.
         int verb = Row.iconWidth(font);
         Row step = value("doing", row -> step(row.indent(verb), unit.getCurrentController(), unit));
         if (step != null) {
@@ -482,8 +506,11 @@ final class Inspector {
             }
         }
         Row order = value("order", row -> controller(row.indent(verb), unit.getPrimaryController(), unit));
-        if (order == null || step == null || !order.says().equals(step.gist())) {
-            lines.addAll(order == null ? failed("order") : order.lines());
+        if (order == null) {
+            lines.addAll(failed("order"));
+        } else {
+            boolean same = step != null && order.says().equals(step.gist());
+            lines.addAll(same ? faded(order.lines()) : order.lines());
         }
         lines.addAll(step == null ? failed("doing") : step.lines());
     }
@@ -553,7 +580,13 @@ final class Inspector {
             }
             case TransferUnitController _ -> verb(row, HudIcons.normal(icons.moveIcon()), "going into an armory");
             case MagicController _ -> casting(row, unit);
-            case HarvestController<?> _ -> verb(row, HudIcons.normal(icons.gatherRepairIcon()), "harvesting");
+            case HarvestController<?> harvest -> {
+                verb(row, HudIcons.normal(icons.gatherRepairIcon()), "harvesting ");
+                int resource = resourceOf(harvest.getSupplyType());
+                if (resource >= 0) {
+                    row.icon(HudIcons.resource(resource)).text(RESOURCE_NAMES[resource]);
+                }
+            }
             case SittingController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP), "on a ship");
             case SailController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP), "sailing");
             case ShipAttackController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP),
@@ -571,8 +604,9 @@ final class Inspector {
      * verb with its target: walking to a tree, chopping wood at it, carrying the wood to an armory; building a site,
      * fetching wood for it; chasing an enemy, attacking it. Read from the controller, the behaviour it set (where the
      * unit walks, what it harvests) and what the unit carries. A step that cannot be broken off (a throw, a spell, a
-     * stun) goes on under a new order until it ends; a controller that takes no steps of its own, or one that has not
-     * decided yet, gives its order's verb.
+     * stun) goes on under a new order until it ends, a throw at what it was aimed at: "attacking" only while that is
+     * the order's living target, else "finishing a throw at" it. A controller that takes no steps of its own, or one
+     * that has not decided yet, gives its order's verb.
      */
     private void step(@NonNull Row row, @NonNull Controller controller, @NonNull Unit unit) {
         RaceIcons icons = unit.getOwnerNoCheck().getRace().getIcons();
@@ -588,9 +622,19 @@ final class Inspector {
             verb(row, null, "stunned", TextPanel.WARN);
             return;
         }
-        if (behaviour instanceof AttackBehaviour && !(controller instanceof HuntController)
-                && !(controller instanceof AttackController)) {
-            verb(row, HudIcons.normal(icons.attackIcon()), "finishing a throw");
+        if (behaviour instanceof AttackBehaviour attack) {
+            // a throw goes on to its end at what it was aimed at: the order's target (a building by its base), or
+            // what it was before a new order, or one that died meanwhile
+            Selectable<?> aimed = attack.getTarget();
+            Selectable<?> ordered = switch (controller) {
+                case HuntController hunt -> hunt.getTarget();
+                case AttackController order -> order.getTarget();
+                default -> null;
+            };
+            boolean at_order = ordered != null && !aimed.isDead() && (aimed == ordered
+                    || (ordered instanceof Building building && aimed == building.getBase()));
+            verb(row, HudIcons.normal(icons.attackIcon()), at_order ? "attacking " : "finishing a throw at ");
+            target(row, at_order ? ordered : aimed, unit);
             return;
         }
         switch (controller) {
@@ -600,7 +644,7 @@ final class Inspector {
                         && carried.getSupplyType() == gather.getSupplyType()) {
                     carrying(row, unit, carried, to);
                 } else {
-                    walkingTo(row, unit, to != null ? to : gather.getSupply(), gathered(unit));
+                    walkingTo(row, unit, to != null ? to : gather.getSupply(), resourceOf(gather.getSupplyType()));
                 }
             }
             case HarvestController<?> _ when behaviour instanceof HarvestBehaviour harvest -> {
@@ -614,7 +658,8 @@ final class Inspector {
                 row.wrap().text(" at " + supply.getGridX() + "," + supply.getGridY(), TextPanel.DIM).wrap();
             }
             // it looks for the nearest of what it gathers: a builder fetches wood
-            case HarvestController<?> _ when walking -> walkingTo(row, unit, to, gathered(unit));
+            case HarvestController<?> harvest when walking -> walkingTo(row, unit, to,
+                    resourceOf(harvest.getSupplyType()));
             case RepairController repair when behaviour instanceof RepairBehaviour -> {
                 Building building = repair.getBuilding();
                 boolean site = !building.isComplete();
@@ -639,10 +684,6 @@ final class Inspector {
                 // a building does not run away
                 verb(row, HudIcons.normal(icons.attackIcon()),
                         hunt.getTarget() instanceof Building ? "walking to attack " : "chasing ");
-                target(row, hunt.getTarget(), unit);
-            }
-            case HuntController hunt when behaviour instanceof AttackBehaviour -> {
-                verb(row, HudIcons.normal(icons.attackIcon()), "attacking ");
                 target(row, hunt.getTarget(), unit);
             }
             case DefendController defend when walking -> {
@@ -697,15 +738,6 @@ final class Inspector {
         target(row, to, unit);
     }
 
-    /** What {@code unit}'s order has it gather (a builder: wood), as a resource index, or -1. */
-    private static int gathered(@NonNull Unit unit) {
-        return switch (unit.getPrimaryController()) {
-            case GatherController<?> gather -> resourceOf(gather.getSupplyType());
-            case RepairController _ -> HudIcons.WOOD;
-            default -> -1;
-        };
-    }
-
     /** A chieftain's spell: the button's icon and the spell's name. */
     private void casting(@NonNull Row row, @NonNull Unit unit) {
         int index = unit.getLastMagicIndex(); // the one being cast, since casting it set it
@@ -720,7 +752,8 @@ final class Inspector {
 
     /**
      * The details of a walk that waits: what stands in the unit's next cell (a unit by its owner's colour and slot,
-     * also the unit's own player's, a building, a tree), or, with nothing there, that it found no way; in yellow.
+     * also the unit's own player's, a building, a tree, scenery, ground no unit can walk), or, with no path at all,
+     * that it finds no way; in yellow.
      */
     private void blocked(@NonNull Row row, @NonNull Unit unit) {
         if (!(unit.getCurrentBehaviour() instanceof WalkBehaviour walk)) {
@@ -745,9 +778,13 @@ final class Inspector {
             int resource = resourceOf(blocker.getClass());
             icon = HudIcons.resource(resource);
             what = RESOURCE_NOUNS[resource];
+        } else if (blocker instanceof StaticOccupant) {
+            what = "impassable ground"; // the cells the map has no way over: its getters throw, none is called
+        } else if (blocker instanceof SceneryModel) {
+            what = "scenery";
         }
-        row.details().text(",").wrap().icon(HudIcons.warning()).text(what.isEmpty() ? "finds no way" : "blocked by ",
-                TextPanel.WARN).wrap();
+        String note = blocker == null ? "finds no way" : what.isEmpty() ? "blocked" : "blocked by ";
+        row.details().text(",").wrap().icon(HudIcons.warning()).text(note, TextPanel.WARN).wrap();
         if (!what.isEmpty()) {
             if (chip != null) {
                 row.bar(1f, width(CHIP), chip);
@@ -826,6 +863,30 @@ final class Inspector {
         float health = points / (float) Math.max(max, 1);
         Vector4fc color = health > .6f ? TextPanel.GOOD : health > .3f ? TextPanel.WARN : TextPanel.BAD;
         row.bar(health, width(BAR), color).text(String.valueOf(points)).text("/" + max, TextPanel.DIM);
+    }
+
+    /** {@code lines} faded: their text, icons and bars darker, the gaps between them as they were. */
+    private static @NonNull List<TextPanel.Line> faded(@NonNull List<TextPanel.Line> lines) {
+        List<TextPanel.Line> faded = new ArrayList<>();
+        for (TextPanel.Line line : lines) {
+            List<TextPanel.Part> parts = new ArrayList<>();
+            for (TextPanel.Part part : line.parts()) {
+                parts.add(switch (part) {
+                    case TextPanel.Text text -> new TextPanel.Text(text.text(), faded(text.color()));
+                    case TextPanel.Icon icon -> new TextPanel.Icon(icon.icon(), faded(icon.tint()));
+                    case TextPanel.Bar bar -> new TextPanel.Bar(bar.fraction(), bar.width(), faded(bar.color()));
+                    case TextPanel.Gap gap -> gap;
+                });
+            }
+            faded.add(new TextPanel.Line(parts, line.label(), line.swatch(), line.heading(), line.size()));
+        }
+        return faded;
+    }
+
+    /** {@code color} darker, as much as {@link #FADED} is darker than white. */
+    private static @NonNull Vector4fc faded(@NonNull Vector4fc color) {
+        return new Vector4f(color.x() * FADED.x(), color.y() * FADED.y(), color.z() * FADED.z(),
+                color.w() * FADED.w());
     }
 
     /** The index of a supply class among the resources ({@link HudIcons#WOOD}...), or -1. */

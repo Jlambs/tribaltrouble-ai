@@ -579,12 +579,14 @@ AI changed in between:
   wood at 118,42` (`breaking rock`, `mining iron`, `hitting the chicken`), `carrying 4 wood to the armory at
   120,40`, `walking to the nearest rock` (its search names the very one once the unit gets near), `building the armory site at 61,156
   (45% built)`, `walking to the armory site`, `going into the tower at 51,85`, `chasing` or `attacking` another
-  player's unit (its colour and slot first; `(dead)` once it died), `casting stun`, `stunned`, `finishing a throw` (a
-  throw, a spell and a stun go on under a new order until they end), `idle`. A walk that waits says what blocks its
-  next cell, in yellow (`blocked by s2 peon`), or `finds no way`. The order is left out when the step says the same
-  (a walk, an idle unit, a builder at work). Last, the line of the owner's AI on it, labelled `AI` ([AI
-  overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value. When the object dies, the
-  inspector empties.
+  player's unit (its colour and slot first), `casting stun`, `stunned`, `finishing a throw at` a unit (a throw, a
+  spell and a stun go on under a new order until they end: a throw at a unit the order no longer names, or one that
+  died meanwhile, `(dead)`), `idle`. A walk that waits says what blocks its next cell, in yellow (`blocked by s2
+  peon`, `by scenery`, `by impassable ground`), or, with no path at all, `finds no way`. An order that says no more
+  than the step (a walk, an idle unit, a builder at work) is faded. Last, the line of the owner's AI on it, labelled
+  `AI` ([AI overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value.
+  While the same object stays picked its lines never get fewer (empty lines above the AI's line take the place of
+  lines it had), so the panels under the inspector stay put. When the object dies, the inspector empties.
 - **AI log** (bottom right): the last lines the followed player's AI wrote at or before the moment you watch, in up
   to 25 rows (fewer when the window or the inspector leaves less room, 6 on the overview map), in three columns that
   stay put: each line's time (m:ss.hh, at the clock speed), its topic as a tag and its text. The tag is red for
