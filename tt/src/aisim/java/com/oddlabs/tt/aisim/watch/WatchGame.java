@@ -56,8 +56,6 @@ final class WatchGame implements Clock.Listener {
     private static final float FOLLOW_DISTANCE = 120f;
     /** Centring on the picked object (C) keeps the zoom, but looks from this far at least. */
     private static final float CENTRE_DISTANCE = 30f;
-    /** The camera that keeps the picked object in view (Shift+C) lets go of a move this long in a frame (meters). */
-    private static final float TRACK_JUMP = 40f;
 
     private final @NonNull WatchFile file;
     private final @NonNull Job job;
@@ -79,7 +77,10 @@ final class WatchGame implements Clock.Listener {
 
     private @Nullable Selectable<?> inspected;
     private int followed_slot;
-    /** Whether the camera keeps the picked object in view (Shift+C), and where it saw it last. */
+    /**
+     * Whether the camera keeps the picked object in view (Shift+C); that object and where the camera last saw it
+     * (null: the camera goes to the picked object first, as when tracking starts or a seek found the pick again).
+     */
     private boolean tracking;
     private @Nullable Selectable<?> tracked;
     private float tracked_x;
@@ -271,12 +272,15 @@ final class WatchGame implements Clock.Listener {
         // with is, unless the user picks another meanwhile
         inspect(null);
         remembered = presim_pick;
+        tracked = null; // tracking goes on with the pick found at the end
     }
 
     @Override
     public void restored(int tick) {
-        // the view's references point into the old state now: drop them, and show the restored heights
+        // the view's references point into the old state now: drop them, and show the restored heights; tracking
+        // goes on with the pick the seek finds again
         inspected = null;
+        tracked = null;
         viewer.forgetWorldObjects();
         world.getHeightMap().reloadHeightTexture();
         Clock.resetRenderContext();
@@ -383,6 +387,11 @@ final class WatchGame implements Clock.Listener {
         return times;
     }
 
+    /** How the view names team {@code team}: A to Z, then T26, T27... as the harness's analyses name them. */
+    static @NonNull String teamName(int team) {
+        return team >= 0 && team < 26 ? String.valueOf((char) ('A' + team)) : "T" + team;
+    }
+
     /** How the view names slot {@code slot}: {@code s3 hard}. */
     @NonNull
     String playerName(int slot) {
@@ -432,6 +441,9 @@ final class WatchGame implements Clock.Listener {
     /** Follows {@code slot} and moves the camera to it: its warriors' centre, else chieftain, building, start. */
     void follow(int slot) {
         followed_slot = slot;
+        if (tracking) {
+            stopTracking(null); // the camera goes to the player instead
+        }
         Player player = world.getPlayers()[slot];
         float[] spot = spotOf(player);
         lookAt(spot[0], spot[1], FOLLOW_DISTANCE);
@@ -501,18 +513,22 @@ final class WatchGame implements Clock.Listener {
         return true;
     }
 
-    /** Shift+C: the camera keeps the picked object in view (on), or stops (off); false if nothing is picked. */
+    /**
+     * Shift+C: the camera keeps the picked object in view, or stops when it does so already; false if nothing is
+     * picked and the camera keeps nothing in view.
+     */
     boolean toggleTracking() {
-        if (tracking) {
-            tracking = false;
-            tracked = null;
+        Selectable<?> picked = inspected;
+        if (tracking && (picked == null || picked == tracked)) {
+            stopTracking(null);
             return true;
         }
-        if (!centreOnPicked()) {
+        if (picked == null || picked.isDead()) {
             return false;
         }
         tracking = true;
-        tracked = null; // keepPickedInView() takes the object's place on the next frame
+        tracked = null; // keepPickedInView goes to it on the next frame
+        hud.refreshSoon();
         return true;
     }
 
@@ -521,29 +537,62 @@ final class WatchGame implements Clock.Listener {
         return tracking;
     }
 
+    /** Whether a seek will pick the picked object again once it is done (a rewind dropped it meanwhile). */
+    boolean pickPending() {
+        return inspected == null && (remembered != null || (presim_pick != null && clock.presimulating()));
+    }
+
+    private void stopTracking(@Nullable String why) {
+        tracking = false;
+        tracked = null;
+        if (why != null) {
+            clock.say(why);
+        }
+        hud.refreshSoon();
+    }
+
     /**
-     * Once a frame, while tracking: moves the camera as the picked object moved since the last frame, so the keys and
-     * the wheel still move it too. A newly picked object (another pick, or the one a rewind found again) is taken
-     * where it is; on the overview map the camera stays.
+     * Once a frame, while tracking: moves the camera as the picked object moved since the last frame, however far
+     * (at MAX speed or in a seek a frame plays hundreds of ticks), so the keys and the wheel still move it too. A pick
+     * a seek found again is gone to first; on the overview map the camera waits, and catches up once back. Tracking
+     * stops when its object is gone (dead, or not found again after a seek), when another object is picked, and when
+     * the camera goes to a player (] [, a scoreboard row).
      */
     private void keepPickedInView() {
+        if (!tracking || viewer.getDelegate().isInMapMode()) {
+            return;
+        }
         Selectable<?> picked = inspected;
-        if (!tracking || picked == null || picked.isDead()) {
-            tracked = null;
+        if (picked == null || picked.isDead()) {
+            if (remembered != null || clock.busy()) {
+                tracked = null; // a seek is on: the pick it finds again is the one to keep in view
+            } else {
+                stopTracking("the camera stays: its object is gone (dead, or not found again after a rewind)");
+            }
+            return;
+        }
+        if (tracked != null && picked != tracked) {
+            stopTracking("the camera stays (Shift+C keeps the new pick in view)");
             return;
         }
         float x = picked.getPositionX();
         float y = picked.getPositionY();
         float z = world.getHeightMap().getNearestHeight(x, y);
-        boolean moved_far = Math.abs(x - tracked_x) > TRACK_JUMP || Math.abs(y - tracked_y) > TRACK_JUMP;
-        if (picked == tracked && !moved_far && !viewer.getDelegate().isInMapMode()
-                && viewer.getCamera() instanceof WatchCamera camera) {
+        if (tracked == null) {
+            lookAt(x, y, CENTRE_DISTANCE);
+        } else if (viewer.getCamera() instanceof WatchCamera camera) {
             camera.shift(x - tracked_x, y - tracked_y, z - tracked_z);
         }
         tracked = picked;
         tracked_x = x;
         tracked_y = y;
         tracked_z = z;
+    }
+
+    /** Whether the camera is where it was sent: done gliding, and not on the overview map or flying to or from it. */
+    boolean cameraSettled() {
+        return !viewer.getDelegate().isInMapMode() && viewer.getCamera() instanceof WatchCamera camera
+                && camera.settled();
     }
 
     /** Whether the camera looks at the picked object, within {@code meters} (the selftest's camera check). */

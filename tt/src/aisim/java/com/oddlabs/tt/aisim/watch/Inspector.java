@@ -3,9 +3,7 @@ package com.oddlabs.tt.aisim.watch;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aisim.play.Job;
 import com.oddlabs.tt.font.Font;
-import com.oddlabs.tt.gui.GUIIcons;
 import com.oddlabs.tt.gui.IconQuad;
-import com.oddlabs.tt.gui.ModeIconQuads;
 import com.oddlabs.tt.gui.RaceIcons;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.landscape.TreeSupply;
@@ -96,8 +94,6 @@ final class Inspector {
     private static final DeployType[] DEPLOY_TYPES = DeployType.values();
     /** Every label the inspector uses (the AI's line among them): the panel's label column is as wide as the widest. */
     private static final String[] LABELS = {"hit points", "built", "gunner", "inside", "next peon", "chieftain", "stock", "weapons", "deploying", "magic", "carries", "order", "doing", "behaviour", "AI"};
-    /** TextPanel's room between its label column and the values. */
-    private static final int LABEL_GAP = 10;
     /** Bars of progress (construction, training, production): blue, apart from the hit points' green to red. */
     private static final Vector4fc PROGRESS = Color.argb4v(0xFF_6C_B4_FF);
     /** A bar of progress that is held up (an armory without workers or the resources a weapon costs): grey. */
@@ -201,7 +197,7 @@ final class Inspector {
         Font font = Skin.getSkin().getEditFont();
         int labels = 0;
         for (String label : LABELS) {
-            labels = Math.max(labels, font.getWidth(label) + LABEL_GAP);
+            labels = Math.max(labels, font.getWidth(label) + TextPanel.LABEL_GAP);
         }
         return width - 2 * TextPanel.PADDING - labels;
     }
@@ -209,7 +205,7 @@ final class Inspector {
     private void describe(@NonNull Selectable<?> s) {
         Player owner = s.getOwnerNoCheck();
         int owner_slot = slotOf(world, owner);
-        String team = String.valueOf((char) ('A' + job.team(owner_slot)));
+        String team = WatchGame.teamName(job.team(owner_slot));
         // white text: some player colours (navy, maroon) do not read on the dark panel; the swatch shows the colour
         lines.add(TextPanel.line().swatch(owner.getColor()).text("s" + owner_slot + " " + job.spec(owner_slot)).gap(
                 width(
@@ -297,7 +293,7 @@ final class Inspector {
             add("stock", row -> {
                 for (int i = 0; i < RESOURCES.length; i++) {
                     SupplyContainer container = building.getSupplyContainer(RESOURCES[i]);
-                    row.icon(resource(i)).text(container == null ? "-" : String.valueOf(
+                    row.icon(HudIcons.resource(i)).text(container == null ? "-" : String.valueOf(
                             container.getNumSupplies())).pad(slot).wrap();
                 }
             });
@@ -350,7 +346,7 @@ final class Inspector {
      */
     private void weapon(@NonNull Row row, @NonNull Building building, @NonNull Race race, int kind, boolean idle) {
         SupplyContainer stock = building.getSupplyContainer(WEAPONS[kind]);
-        row.icon(weapon(race, kind)).text(stock == null ? "-" : String.valueOf(stock.getNumSupplies())).pad(
+        row.icon(HudIcons.weapon(race, kind)).text(stock == null ? "-" : String.valueOf(stock.getNumSupplies())).pad(
                 slot).wrap();
         BuildSupplyContainer made = building.getBuildSupplyContainer(WEAPONS[kind]);
         if (made == null || made.getNumSupplies() == 0) {
@@ -376,7 +372,7 @@ final class Inspector {
                 SupplyContainer container = building.getSupplyContainer(cost.getSupplyTypes()[i]);
                 int resource = resourceOf(cost.getSupplyTypes()[i]);
                 if (resource >= 0 && (container == null || container.getNumSupplies() < cost.getSupplyAmounts()[i])) {
-                    row.icon(resource(resource));
+                    row.icon(HudIcons.resource(resource));
                 }
             }
         }
@@ -394,13 +390,14 @@ final class Inspector {
                 case ROCK_WARRIOR -> HudIcons.unit(race, Race.UNIT_WARRIOR_ROCK);
                 case IRON_WARRIOR -> HudIcons.unit(race, Race.UNIT_WARRIOR_IRON);
                 case RUBBER_WARRIOR -> HudIcons.unit(race, Race.UNIT_WARRIOR_RUBBER);
-                case PEON_TRANSPORT_TREE, PEON_TRANSPORT_ROCK, PEON_TRANSPORT_IRON, PEON_TRANSPORT_RUBBER -> normal(
-                        race.getIcons().transportIcon());
+                case PEON_TRANSPORT_TREE, PEON_TRANSPORT_ROCK, PEON_TRANSPORT_IRON, PEON_TRANSPORT_RUBBER ->
+                    HudIcons.normal(
+                            race.getIcons().transportIcon());
                 default -> HudIcons.unit(race, Race.UNIT_PEON);
             };
             int resource = deployedResource(type);
             // in the stock's columns, as far as the entry fits one
-            row.icon(unit).icon(resource < 0 ? null : resource(resource)).text(String.valueOf(
+            row.icon(unit).icon(resource < 0 ? null : HudIcons.resource(resource)).text(String.valueOf(
                     container.getNumSupplies())).gap(width(SPACING)).pad(slot).wrap();
             any = true;
         }
@@ -433,7 +430,7 @@ final class Inspector {
             add("magic", row -> {
                 RaceIcons icons = race.getIcons();
                 for (int i = 0; i < 2; i++) {
-                    IconQuad icon = normal(i == 0 ? icons.magic1Icon() : icons.magic2Icon());
+                    IconQuad icon = HudIcons.normal(i == 0 ? icons.magic1Icon() : icons.magic2Icon());
                     float charged = unit.getMagicProgress(i);
                     row.icon(icon).bar(charged, width(SHORT_BAR), charged >= 1f ? TextPanel.GOOD : PROGRESS).gap(
                             width(SPACING)).wrap();
@@ -451,7 +448,8 @@ final class Inspector {
                 if (resource < 0) {
                     row.text(carried.getNumSupplies() + " ?");
                 } else {
-                    row.icon(resource(resource)).text(carried.getNumSupplies() + " " + RESOURCE_NAMES[resource]);
+                    row.icon(HudIcons.resource(resource)).text(
+                            carried.getNumSupplies() + " " + RESOURCE_NAMES[resource]);
                 }
             });
         }
@@ -481,24 +479,24 @@ final class Inspector {
         RaceIcons icons = race.getIcons();
         switch (controller) {
             case WalkController walk -> {
-                verb(row, normal(icons.moveIcon()), walk.isAgressive() ? "attack-moving to " : "walking to ");
+                verb(row, HudIcons.normal(icons.moveIcon()), walk.isAgressive() ? "attack-moving to " : "walking to ");
                 target(row, walk.getTarget(), unit);
             }
             case AttackController attack -> {
-                verb(row, normal(icons.attackIcon()), "attacking ");
+                verb(row, HudIcons.normal(icons.attackIcon()), "attacking ");
                 target(row, attack.getTarget(), unit);
             }
             case HuntController hunt -> {
-                verb(row, normal(icons.attackIcon()), "hunting ");
+                verb(row, HudIcons.normal(icons.attackIcon()), "hunting ");
                 target(row, hunt.getTarget(), unit);
             }
             case GatherController<?> gather -> {
-                verb(row, normal(icons.gatherRepairIcon()), "gathering ");
+                verb(row, HudIcons.normal(icons.gatherRepairIcon()), "gathering ");
                 int resource = resourceOf(gather.getSupplyType());
                 if (resource < 0) {
                     row.text(gather.getSupplyType().getSimpleName());
                 } else {
-                    row.icon(resource(resource)).text(RESOURCE_NAMES[resource]);
+                    row.icon(HudIcons.resource(resource)).text(RESOURCE_NAMES[resource]);
                 }
                 Supply supply = gather.getSupply(); // null while it looks for one
                 if (supply != null) {
@@ -512,16 +510,17 @@ final class Inspector {
             }
             case RepairController repair -> {
                 Building building = repair.getBuilding();
-                verb(row, normal(icons.gatherRepairIcon()), building.isComplete() ? "repairing " : "building ");
+                verb(row, HudIcons.normal(icons.gatherRepairIcon()),
+                        building.isComplete() ? "repairing " : "building ");
                 target(row, building, unit);
             }
             case PlaceBuildingController place -> {
-                verb(row, normal(icons.gatherRepairIcon()), "going to build ");
+                verb(row, HudIcons.normal(icons.gatherRepairIcon()), "going to build ");
                 target(row, place.getBuilding(), unit);
             }
-            case HarvestController<?> _ -> verb(row, normal(icons.gatherRepairIcon()), "harvesting");
+            case HarvestController<?> _ -> verb(row, HudIcons.normal(icons.gatherRepairIcon()), "harvesting");
             case EnterController _ -> verb(row, null, "going into a building");
-            case TransferUnitController _ -> verb(row, normal(icons.armoryIcon()), "going into an armory");
+            case TransferUnitController _ -> verb(row, HudIcons.normal(icons.armoryIcon()), "going into an armory");
             case DefendController _ -> verb(row, null, "defending");
             case MagicController _ -> verb(row, null, "casting magic");
             case SittingController _ -> verb(row, HudIcons.building(race, Race.BUILDING_SHIP), "on a ship");
@@ -570,7 +569,7 @@ final class Inspector {
         }
         int resource = resourceOf(target.getClass());
         if (resource >= 0) {
-            row.icon(resource(resource)).text(RESOURCE_NAMES[resource]).wrap().text(" at " + where,
+            row.icon(HudIcons.resource(resource)).text(RESOURCE_NAMES[resource]).wrap().text(" at " + where,
                     TextPanel.DIM).wrap();
             return;
         }
@@ -595,35 +594,6 @@ final class Inspector {
             }
         }
         return -1;
-    }
-
-    /**
-     * A resource's icon as the game's buttons show it: drawn as small as a line, rock (light) and iron (dark) tell
-     * apart better than in their small status icons, which {@link HudIcons#resource} gives.
-     */
-    private static @NonNull IconQuad resource(int resource) {
-        GUIIcons icons = GUIIcons.getIcons();
-        return normal(switch (resource) {
-            case HudIcons.WOOD -> icons.getTreeIcon();
-            case HudIcons.ROCK -> icons.getRockIcon();
-            case HudIcons.IRON -> icons.getIronIcon();
-            default -> icons.getRubberIcon();
-        });
-    }
-
-    /** A weapon kind's icon as the armory's buttons show it: its rock, iron (blue) and chicken heads tell apart. */
-    private static @NonNull IconQuad weapon(@NonNull Race race, int kind) {
-        RaceIcons icons = race.getIcons();
-        return normal(switch (kind) {
-            case Race.UNIT_WARRIOR_ROCK -> icons.buildWeaponRockIcon();
-            case Race.UNIT_WARRIOR_IRON -> icons.buildWeaponIronIcon();
-            default -> icons.buildWeaponRubberIcon();
-        });
-    }
-
-    /** An icon of the game's buttons, as it shows when enabled. */
-    private static @NonNull IconQuad normal(@NonNull ModeIconQuads quads) {
-        return quads.quad(ModeIconQuads.Mode.NORMAL);
     }
 
     /** {@code lines} of text high, in pixels: bars and gaps grow with the font. */

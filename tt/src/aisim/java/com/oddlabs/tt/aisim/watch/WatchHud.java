@@ -74,7 +74,12 @@ final class WatchHud implements WatchControls {
     private static final int STATE_GAP = 16;
     static final int HINT_GAP = 12;
     private static final Vector4fc SEEKING = Color.argb4v(0xFF_80_C8_FF);
-    private static final TextPanel.Line KEY_HINT = keyHint();
+    private static final List<String> HINTS = List.of("F1 help", "P pause", "+/- speed", ", . step", "J jump",
+            "N B events", "[ ] players", "C camera", "T clock");
+    /** The key hint in one line, and in two for a status panel too narrow for one (after the 5th key). */
+    private static final TextPanel.Line KEY_HINT = keyHint(HINTS);
+    private static final List<TextPanel.Line> KEY_HINT_ROWS = List.of(keyHint(HINTS.subList(0, 5)), keyHint(
+            HINTS.subList(5, HINTS.size())));
 
     private final @NonNull WatchGame game;
     /** Full-screen, never focused: its panels draw over the 3D view and take the mouse only where they are. */
@@ -95,6 +100,8 @@ final class WatchHud implements WatchControls {
     private long last_refresh_nanos;
     private boolean refresh_now = true;
     private boolean shown;
+    /** The widest the layout lets the status panel be (-1 before the first layout). */
+    private int status_room = -1;
     private int laid_out_width = -1;
     private int laid_out_height = -1;
 
@@ -205,7 +212,8 @@ final class WatchHud implements WatchControls {
         int top = height - MARGIN - (map_mode ? Skin.getSkin().getHeadlineFont().getHeight() : 0);
         int status_left = scoreboard.isShown() ? MARGIN + scoreboard.getWidth() + GAP : MARGIN;
         int status_right = width - MARGIN - INSPECTOR_MIN - GAP;
-        status.setWidths(STATUS_MIN, Math.max(STATUS_MIN, status_right - status_left));
+        status_room = Math.max(STATUS_MIN, status_right - status_left);
+        status.setWidths(STATUS_MIN, status_room);
         int status_x = Math.clamp((width - status.getWidth()) / 2, status_left,
                 Math.max(status_left, status_right - status.getWidth()));
         status.setPos(status_x, top - status.getHeight());
@@ -214,7 +222,9 @@ final class WatchHud implements WatchControls {
         inspector.setWidths(INSPECTOR_MIN, Math.max(INSPECTOR_MIN,
                 width - MARGIN - (status_x + status.getWidth()) - GAP));
         inspector.setPos(width - MARGIN - inspector.getWidth(), height - MARGIN - inspector.getHeight());
-        help.setPos((width - help.getWidth()) / 2, Math.max(MARGIN, (height - help.getHeight()) / 2));
+        // the help in the middle, but under the jump box, which the delegate draws over the HUD, where there is room
+        int help_top = Math.min((height + help.getHeight()) / 2, jump_box.getY() - GAP);
+        help.setPos((width - help.getWidth()) / 2, Math.max(MARGIN, help_top - help.getHeight()));
 
         // the bottom: the timeline, all along but for the compass's corner
         boolean compass = Settings.getSettings().show_compass;
@@ -301,11 +311,22 @@ final class WatchHud implements WatchControls {
         lines.add(TextPanel.line().label("rewind").icon(rewind_limited ? HudIcons.warning() : null).text(
                 rewinder.describe(times), rewind_limited ? TextPanel.WARN : TextPanel.DIM).build());
         lines.add(game.aiOverlay().statusLine());
+        Selectable<?> tracked = game.tracking() ? game.inspected() : null;
+        if (tracked != null) {
+            lines.add(TextPanel.line().label("camera").icon(HudIcons.of(tracked)).text(
+                    "keeps s" + Inspector.slotOf(game.world(), tracked.getOwnerNoCheck()) + " " + Inspector.kindOf(
+                            tracked) + " in view").gap(HINT_GAP).text("Shift+C",
+                                    TextPanel.WARN).text("stops", TextPanel.DIM).build());
+        }
         String message = clock.message();
         if (message != null) {
             lines.add(TextPanel.line().label("note").text(message).build());
         }
-        lines.add(KEY_HINT);
+        if (status_room < 0 || status.lineWidth(KEY_HINT) <= status_room) {
+            lines.add(KEY_HINT);
+        } else {
+            lines.addAll(KEY_HINT_ROWS);
+        }
         return lines;
     }
 
@@ -343,12 +364,11 @@ final class WatchHud implements WatchControls {
                 TextPanel.BAD).build();
     }
 
-    /** The key hint under the status panel: each key yellow, what it does dim. */
-    private static TextPanel.@NonNull Line keyHint() {
+    /** A key hint line under the status panel: each key yellow, what it does dim. */
+    private static TextPanel.@NonNull Line keyHint(@NonNull List<String> hints) {
         TextPanel.Builder line = TextPanel.line();
         int gap = 0;
-        for (String hint : List.of("F1 help", "P pause", "+/- speed", ", . step", "J jump", "N B events",
-                "[ ] players", "C camera", "T clock")) {
+        for (String hint : hints) {
             int space = hint.lastIndexOf(' ');
             line.gap(gap).text(hint.substring(0, space), TextPanel.WARN).text(hint.substring(space + 1),
                     TextPanel.DIM);
@@ -478,7 +498,8 @@ final class WatchHud implements WatchControls {
     private void camera(boolean shift) {
         Clock clock = game.clock();
         if (!(shift ? game.toggleTracking() : game.centreOnPicked())) {
-            clock.say("nothing picked: click a unit or building first");
+            clock.say(
+                    game.pickPending() ? "the pick comes back when the seek is done" : "nothing picked: click a unit or building first");
         } else if (shift) {
             clock.say(
                     game.tracking() ? "the camera keeps the picked object in view (Shift+C stops)" : "the camera stays");

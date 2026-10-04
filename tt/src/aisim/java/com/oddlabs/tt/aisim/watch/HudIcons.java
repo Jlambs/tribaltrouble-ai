@@ -59,25 +59,31 @@ final class HudIcons {
         return race.getIcons().unitStatusIcon();
     }
 
-    /** A weapon kind (rock, iron, chicken: Race.UNIT_WARRIOR_*'s order) in {@code race}'s look, small. */
+    /**
+     * A weapon kind's icon (rock, iron, chicken: Race.UNIT_WARRIOR_*'s order) as the armory's buttons show it in
+     * {@code race}'s look: its rock, iron (blue) and chicken heads tell apart better than in the small status icons.
+     */
     static @NonNull IconQuad weapon(@NonNull Race race, int kind) {
         RaceIcons icons = race.getIcons();
-        return switch (kind) {
-            case Race.UNIT_WARRIOR_ROCK -> icons.weaponRockStatusIcon();
-            case Race.UNIT_WARRIOR_IRON -> icons.weaponIronStatusIcon();
-            default -> icons.weaponRubberStatusIcon();
-        };
+        return normal(switch (kind) {
+            case Race.UNIT_WARRIOR_ROCK -> icons.buildWeaponRockIcon();
+            case Race.UNIT_WARRIOR_IRON -> icons.buildWeaponIronIcon();
+            default -> icons.buildWeaponRubberIcon();
+        });
     }
 
-    /** A resource ({@link #WOOD}, {@link #ROCK}, {@link #IRON}, {@link #CHICKEN}), small. */
+    /**
+     * A resource's icon ({@link #WOOD}, {@link #ROCK}, {@link #IRON}, {@link #CHICKEN}) as the game's buttons show
+     * it: drawn as small as a line, rock (light) and iron (dark) tell apart better than in the small status icons.
+     */
     static @NonNull IconQuad resource(int resource) {
         GUIIcons icons = GUIIcons.getIcons();
-        return switch (resource) {
-            case WOOD -> icons.getTreeStatusIcon();
-            case ROCK -> icons.getRockStatusIcon();
-            case IRON -> icons.getIronStatusIcon();
-            default -> icons.getRubberStatusIcon();
-        };
+        return normal(switch (resource) {
+            case WOOD -> icons.getTreeIcon();
+            case ROCK -> icons.getRockIcon();
+            case IRON -> icons.getIronIcon();
+            default -> icons.getRubberIcon();
+        });
     }
 
     /** A warning triangle. */
@@ -115,7 +121,8 @@ final class HudIcons {
         }
     }
 
-    private static @NonNull IconQuad normal(@NonNull ModeIconQuads quads) {
+    /** An icon of the game's buttons, as it shows when enabled. */
+    static @NonNull IconQuad normal(@NonNull ModeIconQuads quads) {
         return quads.quad(ModeIconQuads.Mode.NORMAL);
     }
 }

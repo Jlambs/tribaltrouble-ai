@@ -56,28 +56,12 @@ class TextPanel extends HudPanel {
             size = Math.max(1, size);
         }
 
-        Line(@NonNull String text) {
-            this(text, Color.WHITE, null);
-        }
-
         Line(@NonNull String text, @NonNull Vector4fc color) {
             this(text, color, null);
         }
 
         Line(@NonNull String text, @NonNull Vector4fc color, @Nullable Vector4fc swatch) {
             this(List.of(new Text(text, color)), null, swatch, false, 1);
-        }
-
-        /** The line's text: its text parts, joined (what a check or a test reads). */
-        @NonNull
-        String text() {
-            StringBuilder text = new StringBuilder();
-            for (Part part : parts) {
-                if (part instanceof Text t) {
-                    text.append(t.text());
-                }
-            }
-            return text.toString();
         }
     }
 
@@ -184,9 +168,10 @@ class TextPanel extends HudPanel {
     /** A bar's empty part. */
     static final Vector4fc BAR_TRACK = new Vector4f(1f, 1f, 1f, .16f);
     static final int PADDING = 4;
-    /** The room after an icon, and between a label and its value. */
+    /** The room after an icon or a bar. */
     static final int ICON_GAP = 3;
-    private static final int LABEL_GAP = 10;
+    /** The room between the label column and the values. */
+    static final int LABEL_GAP = 10;
 
     private final @NonNull Font font;
     private final List<Line> lines = new ArrayList<>();
@@ -247,6 +232,11 @@ class TextPanel extends HudPanel {
     /** A darker box for a panel of many lines that the 3D view behind would make hard to read. */
     void setBackground(@NonNull Vector4fc color) {
         background = color;
+    }
+
+    /** How wide {@code line} is in this panel, padding included: wider than the panel's widest, it is cut. */
+    int lineWidth(@NonNull Line line) {
+        return valueX(line) + partsWidth(line) + PADDING;
     }
 
     /** The height of a plain line. */

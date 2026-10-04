@@ -36,6 +36,8 @@ final class AiLogPanel extends TextPanel {
     static final int MAX_ROWS = 3;
     /** Lines the wheel moves per notch. */
     private static final int WHEEL_LINES = 3;
+    /** The title cuts a longer spec (an arm's parameters), so the flee and scroll state after it stay in view. */
+    private static final int MAX_TITLE_SPEC = 24;
     private static final String FLEE = "flee of ";
     /** Lines this many ticks old or newer stand out: a real second of play at 1x. */
     private static final int RECENT_TICKS = 50;
@@ -121,8 +123,9 @@ final class AiLogPanel extends TextPanel {
         Font font = Skin.getSkin().getEditFont();
         List<Line> lines = new ArrayList<>();
         Builder title = line().heading().swatch(game.world().getPlayers()[slot].getColor()).text("AI log").gap(
-                WatchHud.HINT_GAP).text(game.playerName(slot)).gap(COLUMN_SPACE).text(
-                        "team " + (char) ('A' + game.job().team(slot)), TextPanel.DIM);
+                WatchHud.HINT_GAP).text("s" + slot + " " + (spec.length() > MAX_TITLE_SPEC ? spec.substring(0,
+                        MAX_TITLE_SPEC - 1) + "~" : spec)).gap(COLUMN_SPACE).text(
+                                "team " + WatchGame.teamName(game.job().team(slot)), TextPanel.DIM);
         if (book.count(slot) == 0) {
             lines.add(title.build());
             String why = AiSpec.isStock(AiSpec.nameOf(

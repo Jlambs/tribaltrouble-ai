@@ -15,6 +15,8 @@ public final class WatchCamera extends GameCamera {
     /** How far along its view a glide looks for the ground (meters), and in what steps. */
     private static final float RAY_LENGTH = 3000f;
     private static final float RAY_STEP = 2f;
+    /** A camera this close to where it is going (meters) is there: {@link #settled}. */
+    private static final float SETTLED = .05f;
     /** A camera that looks at no ground (pitched up to the horizon) glides to this distance. */
     private static final float NO_GROUND_DISTANCE = 80f;
 
@@ -59,6 +61,7 @@ public final class WatchCamera extends GameCamera {
      * least {@code min_distance} meters: a zoomed out camera stays zoomed out, and one closer than that backs off.
      */
     public void glideTo(float x, float y, float min_distance) {
+        stopAutoMotion(); // an orbit would swing it around the spot it turned around before
         CameraState state = getState();
         float distance = Math.max(lookDistance(), min_distance);
         float[] dir = direction(state);
@@ -78,6 +81,14 @@ public final class WatchCamera extends GameCamera {
         state.setTargetY(state.getTargetY() + dy);
         state.setTargetZ(Math.min(state.getTargetZ() + dz, getMaxZ()));
         checkPosition();
+    }
+
+    /** Whether the camera is where it is going: done gliding (or moving by the keys). */
+    public boolean settled() {
+        CameraState state = getState();
+        return Math.abs(state.getCurrentX() - state.getTargetX()) < SETTLED
+                && Math.abs(state.getCurrentY() - state.getTargetY()) < SETTLED
+                && Math.abs(state.getCurrentZ() - state.getTargetZ()) < SETTLED;
     }
 
     /** The unit vector the camera will look along once it stops moving. */

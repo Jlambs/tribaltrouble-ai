@@ -34,13 +34,14 @@ import java.util.Set;
  * <li>{@code step:+N}, {@code step:-N} plays N ticks on or back;</li>
  * <li>{@code shot:NAME} saves the next rendered frame to {@code outDir/NAME.png};</li>
  * <li>{@code select:SLOT:TYPE} picks the first object of slot SLOT whose kind or name contains TYPE (quarters, armory,
- * tower, peon, warrior, chieftain) and moves the camera to it;</li>
+ * tower, peon, warrior, chieftain) and moves the camera to it, and waits until the camera is there (4 s at most);</li>
  * <li>{@code verify} fails unless the game was verified against the recording at least once and nothing differed;</li>
  * <li>{@code presim} simulates the whole game (to the end and back to the start);</li>
  * <li>{@code wait:SEC} waits SEC real seconds, the clock as it is (a camera flight takes real time);</li>
  * <li>{@code map} flies up to the overview map (Space), where every player's objects are dots; {@code follow} or
  * {@code select} flies back down;</li>
- * <li>{@code follow:SLOT} moves the camera to player SLOT (as the {@code ]} key does);</li>
+ * <li>{@code follow:SLOT} moves the camera to player SLOT (as the {@code ]} key does), and waits as {@code select}
+ * does;</li>
  * <li>{@code overlay:MODE} shows the followed AI's overlay layers as the {@code A} key does: {@code all},
  * {@code none}, {@code next}, {@code prev} or a layer's name; {@code overlay:report} only reports, and
  * {@code overlay:check} fails when a paint failed or an AI that implements AiView was never painted. Each reports the
@@ -72,6 +73,8 @@ import java.util.Set;
 final class Selftest {
     /** How near the spot the camera looks at must be to the picked object for {@code expect:camera=picked}. */
     private static final float CAMERA_METERS = 6f;
+    /** How long {@code select} and {@code follow} wait for the camera to get there, at most. */
+    private static final long CAMERA_NANOS = 4_000_000_000L;
 
     private final @NonNull WatchGame game;
     private final @NonNull List<String> steps = new ArrayList<>();
@@ -168,7 +171,8 @@ final class Selftest {
             }
             case "follow" -> {
                 game.follow(Integer.parseInt(argument));
-                return true;
+                until_nanos = now + CAMERA_NANOS;
+                return false;
             }
             case "speed" -> {
                 clock.setSpeedIndex(speedIndex(argument));
@@ -197,7 +201,8 @@ final class Selftest {
             }
             case "select" -> {
                 select(argument);
-                return true;
+                until_nanos = now + CAMERA_NANOS;
+                return false;
             }
             case "verify" -> {
                 verify();
@@ -264,6 +269,9 @@ final class Selftest {
         Clock clock = game.clock();
         return switch (name) {
             case "play", "wait" -> now >= until_nanos;
+            // the camera glides (or flies down from the overview map) to the object or player; a tracking camera
+            // that keeps moving with its unit counts as there after a while
+            case "select", "follow" -> game.cameraSettled() || now >= until_nanos;
             case "seek", "key", "type", "click", "hover", "press", "drag", "release", "wheel" -> idle(clock);
             case "presim" -> {
                 if (!idle(clock)) {
