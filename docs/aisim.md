@@ -557,10 +557,21 @@ AI changed in between:
   it out, once the game you watch got there) and its zeros and sites left blank. The numbers are a live census of the
   world by the recorder's own definitions, taken four times a second. The row of the player you follow is lit and
   framed, with a white bar at the left edge; click a row to follow that player.
-- **Inspector** (top right): the unit or building you clicked, of any player: owner, kind, cell, hit points, build
-  progress, the units inside (and a tower's gunner), what an armory stores and makes, a quarters' next peon and
-  chieftain; for a unit what it carries, its order and what it does now (with the target's owner, kind and cell),
-  its behaviour.
+- **Inspector** (top right): the unit or building you clicked, of any player. Under its owner (colour, slot, spec,
+  team), its kind with the game's icon for it and its cell (`site`, `dead`, `in a tower`), then labelled lines. Hit
+  points are a bar, green, yellow, then red as they fall (none for warriors and peons: they have one); progress is a
+  blue bar: a building site's construction (`damaged` when it lost hit points), a quarters' next peon (or why none
+  grows) and chieftain, a chieftain's two spells (green when charged). Units, resources and weapons show as the
+  game's icons with counts: the peons inside, a tower's gunner, an armory's stock, and its weapons, a line each: how
+  many are in stock, then, while the armory makes it, `+` how many more (the infinity sign: endless) and how far the
+  next one got. That bar is grey while production is held up: by an armory with no workers (`inside` then says
+  `makes nothing`), or by one that lacks what the weapon costs, which a warning sign and the icons of the missing
+  resources follow. Under them, in the stock's columns, the units a building sends out (a peon with a resource: sent
+  to gather it; the carrying icon: to carry it). For a unit: what it carries, its order and what it does now as a
+  verb with its target (`walking to`, `attack-moving to`, `hunting`, `attacking`, `gathering wood at 118,42 for
+  armory at 120,40`, `building`, `repairing`; another player's object with its colour and slot first), and its
+  behaviour, dim (a detail for debugging). Last, the line of the owner's AI on it, labelled `AI` ([AI
+  overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value.
 - **AI log** (bottom right): the last lines (up to 25; fewer when the window or the inspector leaves less room, 6 on
   the overview map) the followed player's AI wrote at or before the moment you watch, with their time (m:ss.hh, at
   the clock speed) and topic; the lines of the last 50 ticks are yellow. A stock AI writes no log, and the panel says so. `flee
