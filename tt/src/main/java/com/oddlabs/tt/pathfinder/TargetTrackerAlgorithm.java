@@ -16,6 +16,10 @@ public final class TargetTrackerAlgorithm implements TrackerAlgorithm {
         this.target = target;
     }
 
+    public Target getTarget() {
+        return target;
+    }
+
     @Override
     public boolean isDone(int x, int y) {
         return target.isDead() || Selectable.isCloseEnough(unit_grid, max_dist, x, y, target);

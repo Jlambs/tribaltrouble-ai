@@ -38,7 +38,8 @@ import java.util.Set;
  * <li>{@code step:+N}, {@code step:-N} plays N ticks on or back;</li>
  * <li>{@code shot:NAME} saves the next rendered frame to {@code outDir/NAME.png};</li>
  * <li>{@code select:SLOT:TYPE} picks the first object of slot SLOT whose kind or name contains TYPE (quarters, armory,
- * tower, peon, warrior, chieftain) and moves the camera to it, and waits until the camera is there (4 s at most);</li>
+ * tower, peon, warrior, chieftain) and moves the camera to it, and waits until the camera is there (4 s at most);
+ * {@code select:SLOT:TYPE:N} picks the Nth such object (from 1, in the order the player made them);</li>
  * <li>{@code verify} fails unless the game was verified against the recording at least once and nothing differed;</li>
  * <li>{@code presim} simulates the whole game (to the end and back to the start);</li>
  * <li>{@code wait:SEC} waits SEC real seconds, the clock as it is (a camera flight takes real time);</li>
@@ -484,23 +485,27 @@ final class Selftest {
     }
 
     private void select(@NonNull String argument) {
-        String[] parts = argument.split(":", 2);
+        String[] parts = argument.split(":", 3);
         int slot = Integer.parseInt(parts[0].trim());
         String type = parts.length > 1 ? parts[1].trim().toLowerCase(Locale.ROOT) : "";
+        int nth = parts.length > 2 ? Integer.parseInt(parts[2].trim()) : 1;
         Player player = game.world().getPlayers()[slot];
+        int found = 0;
         for (Selectable<?> s : player.getUnits().getSet()) {
             if (s.isDead()) {
                 continue;
             }
             String kind = Inspector.kindOf(s);
-            if (kind.contains(type) || s.getTemplate().getName().toLowerCase(Locale.ROOT).contains(type)) {
+            if ((kind.contains(type) || s.getTemplate().getName().toLowerCase(Locale.ROOT).contains(type))
+                    && ++found == nth) {
                 game.inspect(s);
                 game.centreOnPicked();
                 log("     picked s" + slot + " " + kind + " at " + s.getGridX() + "," + s.getGridY());
                 return;
             }
         }
-        throw new IllegalStateException("slot " + slot + " has no " + type);
+        throw new IllegalStateException(
+                "slot " + slot + " has no " + type + (nth > 1 ? " number " + nth + " (" + found + " in all)" : ""));
     }
 
     /** Presses and lets go of a key, as the window would report it ({@code shift+ctrl+N}, {@code F1}, {@code .}). */
