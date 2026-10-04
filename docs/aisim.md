@@ -549,8 +549,9 @@ AI changed in between:
   up with the speed. Under it a warning when the game was played at another speed than the clock's; `check`, the
   verification (below: green, or red behind a warning sign); `rewind`, the checkpoints and their memory (yellow when
   rewind is off or stopped, with why); `overlay`, the AI overlay's layers (`none` for an AI that shows nothing);
-  `note`, the last message (an error, the event N jumped to, the player followed); and the main keys, in yellow. The
-  jump box is under it.
+  `note`, the last message (an error, the event N jumped to, the player followed; its row stays, empty, when there is
+  none); and the main keys, in yellow. The jump box is under it. S hides the panel and the jump box: J then opens the
+  jump box at the top, and a message shows in a note of its own at the top for as long as it is fresh (8 s).
 - **Scoreboard** (top left), one row per player in slot order, the columns headed by the game's icons (in the look of
   the first player's race; they do not change as you follow others; the mouse over an icon names its column): the
   player's colour, slot and spec; its team, a letter on a chip of a muted colour per team (a line parts the rows where
@@ -576,8 +577,9 @@ AI changed in between:
   verb with its target (`walking to`, `attack-moving to`, `hunting`, `attacking`, `gathering wood at 118,42 for
   armory at 120,40`, `building`, `repairing`; another player's object with its colour and slot first), and its
   behaviour, dim (a detail for debugging). Last, the line of the owner's AI on it, labelled `AI` ([AI
-  overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value. When the object dies, the
-  inspector empties.
+  overlays](#ai-overlays)). The inspector is 440 units wide, less where the status panel leaves less room, and a
+  longer line goes on under its value; it keeps its tallest height while one object stays picked. When the object
+  dies, the inspector empties.
 - **AI log** (bottom right): the last lines the followed player's AI wrote at or before the moment you watch, in up
   to 25 rows (fewer when the window or the inspector leaves less room, 6 on the overview map), in three columns that
   stay put: each line's time (m:ss.hh, at the clock speed), its topic as a tag and its text. The tag is red for
@@ -585,9 +587,10 @@ AI changed in between:
   gauntlet's `AI`), and tan for rarer topics. A line longer than the panel is wide goes on in indented rows under its
   text (3 rows at most, the last ending in `...`); statistics and parameter dumps (`STAT`, `PARAM`) take one row, dim.
   A stock AI writes no log, and the panel says so. `flee of` lines (most of a gauntlet log: one per fleeing peon) are
-  hidden until Shift+L; the wheel over the panel goes back to older lines.
-- **Timeline** (bottom, all along but for the compass): the whole recorded game, the part simulated so far (blue),
-  the checkpoints (blue ticks under the bar), where you are (white, its time in a box under the bar) and where a seek
+  hidden until Shift+L; the wheel over the panel goes back to older lines. The AI panel above it ([AI
+  overlays](#ai-overlays)) stays clear of the log's whole room while the log fills, so it does not move as lines come.
+- **Timeline** (bottom, all along but for the compass; R hides it): the whole recorded game, the part simulated so
+  far (blue), the checkpoints (blue ticks under the bar), where you are (white, its time in a box under the bar) and where a seek
   goes (yellow), a time scale under the bar (its steps faint lines through the bar), and marks for the recording's
   key events: players out (red for team A, grey for the others), the last team out and the end (white), team A's
   buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made and lost
@@ -600,6 +603,11 @@ AI changed in between:
   site, the chieftain, grey when lost, the army for a death toll, a warning sign for a team out, a flag for the end);
   the marks it shows are outlined. Elsewhere it shows the time under the mouse. Click or drag and let go to jump
   there; N and B jump to the next and previous mark.
+
+The panels stay where they are as the game plays and their text changes: the status panel, the inspector and the AI
+column each keep one width (made again only when the window's size or the clock speed changes, or a panel beside them
+is shown or hidden), the scoreboard has room for building sites from the start, and the clock's time and tick are in
+slots as wide as their widest digits (the font's digits are not all one width).
 
 **Keys and mouse.** F1 or H shows them all in the game, in the same groups, the keys as key caps and what they do
 in white, its notes and examples dimmer.
@@ -622,6 +630,8 @@ in white, its notes and examples dimmer.
 | **Panels and the menu** | |
 | L / Shift+L | the AI log: show or hide / its `flee of` lines |
 | O, I | the scoreboard, the inspector: show or hide |
+| S | the status panel and the jump box under it: show or hide; hidden, J still opens the jump box (at the top), and messages show at the top while fresh |
+| R | the timeline: show or hide |
 | A, Shift+A | the followed AI's overlay: all layers, none, each layer alone ([AI overlays](#ai-overlays)) |
 | F1 or H | the help; Esc closes it too |
 | Ctrl+H | hide the whole HUD (a clean view for screenshots) |
@@ -680,6 +690,10 @@ is done:
 
 - `play:SEC` plays SEC seconds of real time at the current speed; `wait:SEC` waits as the clock is (paused stays
   paused); `speed:X` sets the speed (`1/8` ... `128`, `max`);
+- `layout:SEC` waits as `wait` does (after a `play`, the game plays on) and samples where the HUD's panels are every
+  frame meanwhile; it reports the edit font's digit widths and, per panel on the screen (`status`, `note`, `jump`,
+  `scoreboard`, `inspector`, `ai` for the AI panel, `log`, `timeline`, `help`), its least and greatest x, width, y and
+  height, in GUI units from the bottom left (`x 601 (0)`: it kept one; `y 146..169 (23)`: it moved 23);
 - `seek:TIME` (as the jump box), `step:+N` / `step:-N` (ticks from where the view is heading, as `.` and `,` count
   them), `presim` (to the end and back to 0:00), `follow:SLOT`, `map` (the overview map; `follow` or `select` flies
   back down);
@@ -698,9 +712,11 @@ is done:
   it);
 - checks: `verify` fails on a divergence or a rewind mismatch, or when no census was compared yet;
   `expect:WHAT=VALUE` fails unless `tick` (a time as the jump box reads it), `follow` (a slot), `state` (`PLAYING`, `PAUSED`, `SEEKING`,
-  `ENDED`), `help`, `log`, `scoreboard`, `inspector`, `timeline` or `flee` (`on`/`off`), `inspect` (`none` or a
-  kind), `message` (a text the status panel's message contains), `camera` (`picked`: it looks at the picked object,
-  within 6 m; else `elsewhere`) or `tracking` (`on`/`off`, Shift+C) is so;
+  `ENDED`), `help`, `log`, `scoreboard`, `inspector`, `status`, `timeline` or `flee` (`on`/`off`), `inspect`
+  (`none` or a kind), `message` (a text the status panel's message contains), `camera` (`picked`: it looks at the
+  picked object, within 6 m; else `elsewhere`), `tracking` (`on`/`off`, Shift+C) or `steady` (comma-separated panels
+  as `layout` names them, or `all`: each was on the screen all through the last `layout` step and kept its x and
+  width) is so;
 - `overlay:MODE` sets the AI overlay's layers ([AI overlays](#ai-overlays));
 - `quit` ends the script (so does its end).
 
@@ -710,6 +726,7 @@ ticks the world played and how fast, the clock's state, the verification and any
 ```bash
 ./aisim.sh watch base s19-1 --selftest "play:3;shot:start;seek:10:00;select:0:quarters;shot:inspect;verify;quit"
 ./aisim.sh watch base s19-1 --selftest "seek:5:00;key:P;key:N;shot:event;click:row:1;expect:follow=1;key:F1;shot:help;quit"
+./aisim.sh watch base s19-1 --selftest "seek:5:00;select:0:peon;play:1;layout:10;expect:steady=status,inspector,ai,log;quit"
 ```
 
 `./aisim.sh rewindcheck RUN KEY | FILE.jsonl [--ai-from-run] [--at TIME,TIME] [--span TIME] [--gl]` checks the
@@ -744,8 +761,8 @@ copies does; the stock AI and AIs frozen before AiView existed show nothing (the
 - `A` cycles the layers: all, none, then each layer the followed AI painted so far, alone; `Shift+A` goes back. The
   status panel's `overlay` line says which (`layer army (2 of 3)`). With none, the AI is not asked to paint at all. Each
   player's AI has its own layers: following one that never painted the layer shown alone shows all of its layers.
-- The AI panel, at the right above the AI log, shows the AI's status lines, keys in a column and values beside them
-  (each cut to 120 characters; a value wider than the panel goes on in a second row, the rest cut with `...`), how
+- The AI panel, at the right above the AI log and as wide, shows the AI's status lines, keys in a column and values
+  beside them (each cut to 120 characters; a value wider than the panel goes on in a second row, the rest cut with `...`), how
   many shapes it painted and how long its paint and the drawing take per frame; in red behind a warning sign, how
   often its paint failed and when last, then why (a failed paint shows nothing until the next one).
 - The inspector adds the AI's line on the picked object (labelled `AI`), for any player whose AI has one.

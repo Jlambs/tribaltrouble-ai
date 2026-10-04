@@ -66,6 +66,8 @@ final class HelpPanel extends HudPanel {
             Shift+L | AI log: show / hide the 'flee of' lines
             O | scoreboard: show / hide
             I | inspector: show / hide
+            S | status panel and jump box: show / hide | (J still jumps; messages show at the top)
+            R | timeline: show / hide
             A  Shift+A | the followed AI's overlay: all layers, none, each layer alone
             F1  H | this help | (Esc closes it too)
             Ctrl+H | hide / show the whole HUD

@@ -1,8 +1,10 @@
 package com.oddlabs.tt.aisim.watch;
 
+import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.gui.LocalInput;
 import com.oddlabs.tt.gui.MouseButton;
+import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.input.Key;
 import com.oddlabs.tt.input.Modifier;
 import com.oddlabs.tt.model.Selectable;
@@ -17,8 +19,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -38,6 +42,9 @@ import java.util.Set;
  * <li>{@code verify} fails unless the game was verified against the recording at least once and nothing differed;</li>
  * <li>{@code presim} simulates the whole game (to the end and back to the start);</li>
  * <li>{@code wait:SEC} waits SEC real seconds, the clock as it is (a camera flight takes real time);</li>
+ * <li>{@code layout:SEC} waits SEC real seconds as {@code wait} does (after a {@code play}, the game plays on), and
+ * samples where the HUD's panels are every frame meanwhile: it reports each panel's least and greatest x, width, y
+ * and height (GUI units, y up) over those frames, and the edit font's digit widths;</li>
  * <li>{@code map} flies up to the overview map (Space), where every player's objects are dots; {@code follow} or
  * {@code select} flies back down;</li>
  * <li>{@code follow:SLOT} moves the camera to player SLOT (as the {@code ]} key does), and waits as {@code select}
@@ -63,9 +70,11 @@ import java.util.Set;
  * <li>{@code wheel:N} turns the mouse wheel N notches (up is positive) where the mouse is;</li>
  * <li>{@code expect:WHAT=VALUE} fails unless the view is so: {@code tick=TIME}, {@code follow=SLOT},
  * {@code state=PAUSED} (PLAYING, SEEKING, ENDED), {@code help}, {@code log}, {@code scoreboard}, {@code inspector},
- * {@code timeline} or {@code flee} {@code =on}/{@code off}, {@code inspect=none} or a kind, {@code message=TEXT}
- * (the status panel's message contains TEXT), {@code camera=picked} (the camera looks at the picked object, within
- * {@value #CAMERA_METERS} meters; else {@code elsewhere}) and {@code tracking=on}/{@code off} (Shift+C).</li>
+ * {@code status}, {@code timeline} or {@code flee} {@code =on}/{@code off}, {@code inspect=none} or a kind,
+ * {@code message=TEXT} (the status panel's message contains TEXT), {@code camera=picked} (the camera looks at the
+ * picked object, within {@value #CAMERA_METERS} meters; else {@code elsewhere}), {@code tracking=on}/{@code off}
+ * (Shift+C) and {@code steady=PANELS} (each of the comma-separated panels, or {@code all}, was on the screen all
+ * through the last {@code layout} step and kept its x and width).</li>
  * </ul>
  * Each report line says how many ticks the world played during the step and how fast (not the distance the view
  * moved: a seek may restore a later checkpoint and play only from there), and the checkpoint it restored, if any.
@@ -93,6 +102,12 @@ final class Selftest {
     /** step: the tick it must reach, and the clock's message before it. */
     private int step_target;
     private @Nullable String step_message;
+    /**
+     * layout: per panel, in the order first seen, its least and greatest x, width, y and height over the frames
+     * sampled so far, then the frames it was seen in; {@code expect:steady} checks the last layout step's.
+     */
+    private final @NonNull Map<String, int[]> layout_ranges = new LinkedHashMap<>();
+    private int layout_frames;
     private int failures;
     private boolean finished;
 
@@ -164,6 +179,12 @@ final class Selftest {
             case "wait" -> {
                 until_nanos = now + (long) (Double.parseDouble(argument) * 1e9);
                 return false;
+            }
+            case "layout" -> {
+                until_nanos = now + (long) (Double.parseDouble(argument) * 1e9);
+                layout_ranges.clear();
+                layout_frames = 0;
+                return false; // sampled from the next frame on, each frame's sample the layout the last one drew
             }
             case "map" -> {
                 game.viewer().getDelegate().enterMapMode(); // follow (or a select) flies back down
@@ -269,6 +290,14 @@ final class Selftest {
         Clock clock = game.clock();
         return switch (name) {
             case "play", "wait" -> now >= until_nanos;
+            case "layout" -> {
+                sampleLayout();
+                if (now < until_nanos) {
+                    yield false;
+                }
+                reportLayout();
+                yield true;
+            }
             // the camera glides (or flies down from the overview map) to the object or player; a tracking camera
             // that keeps moving with its unit counts as there after a while
             case "select", "follow" -> game.cameraSettled() || now >= until_nanos;
@@ -362,6 +391,82 @@ final class Selftest {
         }
         log(line.toString());
         step = null;
+    }
+
+    /** The layout step's sample of this frame: where each panel on the screen is. */
+    private void sampleLayout() {
+        layout_frames++;
+        for (WatchHud.Bounds bounds : game.hud().panelBounds()) {
+            int[] values = {bounds.x(), bounds.width(), bounds.y(), bounds.height()};
+            int[] range = layout_ranges.get(bounds.name());
+            if (range == null) {
+                range = new int[2 * values.length + 1];
+                for (int i = 0; i < values.length; i++) {
+                    range[2 * i] = Integer.MAX_VALUE;
+                    range[2 * i + 1] = Integer.MIN_VALUE;
+                }
+                layout_ranges.put(bounds.name(), range);
+            }
+            for (int i = 0; i < values.length; i++) {
+                range[2 * i] = Math.min(range[2 * i], values[i]);
+                range[2 * i + 1] = Math.max(range[2 * i + 1], values[i]);
+            }
+            range[2 * values.length]++;
+        }
+    }
+
+    /**
+     * The layout step's report: the edit font's digit widths, then a line per panel with its x, width, y and height
+     * over the frames, each as its least and greatest and how far apart they are ({@code 610 (0)}: it kept one).
+     */
+    private void reportLayout() {
+        Font font = Skin.getSkin().getEditFont();
+        StringBuilder digits = new StringBuilder();
+        for (char digit = '0'; digit <= '9'; digit++) {
+            digits.append(' ').append(font.getWidth(String.valueOf(digit)));
+        }
+        log("     layout over " + layout_frames + " frames; the edit font's digits 0-9 are" + digits + " px wide");
+        String[] names = {"x", "width", "y", "height"};
+        for (Map.Entry<String, int[]> panel : layout_ranges.entrySet()) {
+            int[] range = panel.getValue();
+            StringBuilder line = new StringBuilder(String.format(Locale.ROOT, "     %-10s", panel.getKey()));
+            for (int i = 0; i < names.length; i++) {
+                int least = range[2 * i];
+                int most = range[2 * i + 1];
+                String values = least == most ? String.valueOf(least) : least + ".." + most;
+                line.append(String.format(Locale.ROOT, "  %s %-14s", names[i], values + " (" + (most - least) + ")"));
+            }
+            if (range[2 * names.length] < layout_frames) {
+                line.append("  in ").append(range[2 * names.length]).append(" frames");
+            }
+            log(line.toString().stripTrailing());
+        }
+    }
+
+    /**
+     * {@code expect:steady=PANELS}: {@code wanted} when each of its panels (comma-separated, or {@code all} the
+     * panels it saw) was on the screen all through the last layout step and kept its x and width; else those that
+     * did not.
+     */
+    private @NonNull String steady(@NonNull String wanted) {
+        if (layout_frames == 0) {
+            throw new IllegalStateException("no layout step sampled anything yet");
+        }
+        List<String> panels = wanted.equalsIgnoreCase("all") ? List.copyOf(layout_ranges.keySet()) : List.of(
+                wanted.split(","));
+        List<String> unsteady = new ArrayList<>();
+        for (String panel : panels) {
+            String name = panel.trim();
+            int[] range = layout_ranges.get(name);
+            if (range == null) {
+                unsteady.add(name + " not shown");
+            } else if (range[range.length - 1] < layout_frames) {
+                unsteady.add(name + " shown in " + range[range.length - 1] + " of " + layout_frames + " frames");
+            } else if (range[0] != range[1] || range[2] != range[3]) {
+                unsteady.add(name + " x " + range[0] + ".." + range[1] + " width " + range[2] + ".." + range[3]);
+            }
+        }
+        return unsteady.isEmpty() ? wanted : "moving: " + String.join(", ", unsteady);
     }
 
     private void select(@NonNull String argument) {
@@ -515,10 +620,12 @@ final class Selftest {
             }
             case "follow" -> actual = String.valueOf(game.followedSlot());
             case "state" -> actual = clock.state().name();
-            case "help", "log", "scoreboard", "inspector", "timeline" -> actual = hud.isShown(what) ? "on" : "off";
+            case "help", "log", "scoreboard", "inspector", "status", "timeline" -> actual = hud.isShown(
+                    what) ? "on" : "off";
             case "flee" -> actual = hud.aiLog().fleeShown() ? "on" : "off";
             case "camera" -> actual = game.looksAtPicked(CAMERA_METERS) ? "picked" : "elsewhere";
             case "tracking" -> actual = game.tracking() ? "on" : "off";
+            case "steady" -> actual = steady(wanted);
             case "inspect" -> {
                 Selectable<?> inspected = game.inspected();
                 String kind = inspected == null ? "none" : Inspector.kindOf(inspected);

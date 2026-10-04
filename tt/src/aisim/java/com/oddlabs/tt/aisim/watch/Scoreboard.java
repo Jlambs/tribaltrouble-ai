@@ -51,8 +51,12 @@ final class Scoreboard extends HudPanel {
     private static final int CHIEF = NUMBERS;
     /** What each column is (by column, the chieftain's last), in the header while the mouse is over its icon. */
     private static final String[] COLUMN_NAMES = {"warriors (bar)", "peons", "quarters (+ sites)", "armories (+ sites)", "towers (+ sites)", "units inside buildings", "chieftain"};
-    /** The widest number each column is sized for at first, so the panel seldom grows as numbers grow. */
+    /**
+     * The widest number each column is sized for at first, and the widest sites, so the panel seldom grows as numbers
+     * grow (and the status panel right of it seldom moves).
+     */
     private static final String[] NUMBER_SAMPLES = {"888", "888", "88", "88", "88", "888"};
+    private static final String SITES_SAMPLE = "+8";
     private static final String NAME_SAMPLE = "s16 @cur8";
     private static final String NAME_HEADER = "player";
     private static final String TEAM_HEADER = "team";
@@ -166,7 +170,10 @@ final class Scoreboard extends HudPanel {
     private int team_width;
     private int status_width;
     private final int @NonNull [] number_widths = new int[NUMBERS];
-    /** The widest sites of quarters, armories and towers: 0 (no room kept) until a player has one. */
+    /**
+     * The widest sites of quarters, armories and towers: room for a few from the start, so a player's first moves
+     * nothing.
+     */
     private final int @NonNull [] sites_widths = new int[3];
     private int name_x;
     /** Where the specs start, after the widest slot: one column of specs. */
@@ -228,6 +235,7 @@ final class Scoreboard extends HudPanel {
         for (int column = 0; column < NUMBERS; column++) {
             number_widths[column] = Math.max(iconSide(), font.getWidth(NUMBER_SAMPLES[column]));
         }
+        Arrays.fill(sites_widths, font.getWidth(SITES_SAMPLE));
         resize();
     }
 
