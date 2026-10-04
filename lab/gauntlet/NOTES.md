@@ -2037,3 +2037,11 @@ are an accepted exploit: no engine or stock-AI change, no speed beyond ludicrous
   2 copies out by 16 min, then 24 copies with ~2,300 warriors outlasted a base that held to 57 min). Stop rule met
   (N=25 and N=26 both 0 in 5,000). **Final record: N=24 (cur16, s9902).** Per the user's wrap-up, the open research
   lines (giants, chief refresh, attack params) ended without a promising result, so the record stands.
+- **cur15 vs cur16 blends** (2026-10-04, user's question: cur15 looked slightly better in an external benchmark).
+  cur16 = cur15 + rock_idle from 20 min + shepherd fixes from 40 min + wedge_real_kills; at N>=23 the games differ
+  almost only through rock_idle. Frontier pairs: N=23 cur16 - cur15 +0.07 min (SE 0.04, 5,000), N=24 +0.05 (0.03,
+  3,298). s9902 (the N=24 win) under cur15, rock_idle from 30 min, rock_idle 0.5: losses at 41-44 min (diverge at
+  20.5 min); cur16 without the shepherd fixes: identical to 40.5 min, loss at 86.7. On the 106 N=24 seeds long (33+
+  min) under either version, blends rock25/30/40/half: no wins; rockhalf +6 min mean from two games (s9168 draw,
+  s7122 145 min). Unselected 6001..7000 (paired, 1,000 each): rockhalf - cur15 N=23 -0.01 (SE 0.04), N=24 +0.03
+  (0.03); rockhalf - cur16 -0.06 / -0.03; cur16 - cur15 +0.05 / +0.07. No blend gains; cur16 stays.
