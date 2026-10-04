@@ -164,11 +164,10 @@ final class WatchHud implements WatchControls {
         Selectable<?> picked = game.inspected();
         List<TextPanel.Line> inspected = new ArrayList<>();
         if (picked != null) {
-            inspected.addAll(Inspector.describe(picked, game.world(), game.job()));
-            TextPanel.Line ai_line = game.aiOverlay().describe(picked);
-            if (ai_line != null) {
-                inspected.add(ai_line);
-            }
+            // the widest the inspector gets (as layout gives it, right of the status panel): long lines wrap to it
+            int room = Math.max(INSPECTOR_MIN, laid_out_width - MARGIN - (status.getX() + status.getWidth()) - GAP);
+            inspected.addAll(Inspector.describe(picked, game.world(), game.job(), room));
+            inspected.addAll(Inspector.wrap(game.aiOverlay().describe(picked), room));
         }
         inspector.setLines(inspected);
         game.aiOverlay().panel().setLines(game.aiOverlay().panelLines());
