@@ -252,7 +252,7 @@ final class Timeline extends HudPanel {
         boolean end = marks.stream().anyMatch(mark -> mark.kind() == Kind.END);
         String white = team_out && end ? "team out / end" : team_out ? "team out" : "end";
         List<Legend> all = List.of(
-                new Legend("team A out", OUT_TEAM_A, TALL, List.of(Kind.OUT)),
+                new Legend("out (team A)", OUT_TEAM_A, TALL, List.of(Kind.OUT)),
                 new Legend("out", OUT_OTHER, MEDIUM, List.of(Kind.OUT)),
                 new Legend("razed", RAZED, MEDIUM, List.of(Kind.RAZED, Kind.SITE_RAZED)),
                 new Legend("chieftain", CHIEF, MEDIUM, List.of(Kind.CHIEF)),
@@ -270,7 +270,7 @@ final class Timeline extends HudPanel {
 
     /** A team number of the game file as the view names teams: A, B, ...; "?" for none. */
     private static @NonNull String teamLetter(@Nullable Object team) {
-        return team instanceof Number n && n.intValue() >= 0 ? String.valueOf((char) ('A' + n.intValue())) : "?";
+        return team instanceof Number n && n.intValue() >= 0 ? WatchGame.teamName(n.intValue()) : "?";
     }
 
     private static double num(Recording.@NonNull Event event, @NonNull String key) {

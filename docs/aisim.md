@@ -563,7 +563,7 @@ AI changed in between:
   world by the recorder's own definitions, taken four times a second. The row of the player you follow is lit and
   framed, with a white bar at the left edge; click a row to follow that player.
 - **Inspector** (top right): the unit or building you clicked, of any player. Under its owner (colour, slot, spec,
-  team), its kind with the game's icon for it and its cell (`site`, `dead`, `in a tower`), then labelled lines. Hit
+  team), its kind with the game's icon for it and its cell (`site`, `in a tower`), then labelled lines. Hit
   points are a bar, green, yellow, then red as they fall (none for warriors and peons: they have one); progress is a
   blue bar: a building site's construction (`damaged` when it lost hit points), a quarters' next peon (or why none
   grows) and chieftain, a chieftain's two spells (green when charged). Units, resources and weapons show as the
@@ -576,7 +576,8 @@ AI changed in between:
   verb with its target (`walking to`, `attack-moving to`, `hunting`, `attacking`, `gathering wood at 118,42 for
   armory at 120,40`, `building`, `repairing`; another player's object with its colour and slot first), and its
   behaviour, dim (a detail for debugging). Last, the line of the owner's AI on it, labelled `AI` ([AI
-  overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value.
+  overlays](#ai-overlays)). A line longer than the room right of the status panel goes on under its value. When the object dies, the
+  inspector empties.
 - **AI log** (bottom right): the last lines the followed player's AI wrote at or before the moment you watch, in up
   to 25 rows (fewer when the window or the inspector leaves less room, 6 on the overview map), in three columns that
   stay put: each line's time (m:ss.hh, at the clock speed), its topic as a tag and its text. The tag is red for
@@ -591,7 +592,7 @@ AI changed in between:
   key events: players out (red for team A, grey for the others), the last team out and the end (white), team A's
   buildings razed (orange; with the units lost inside, in files that record them), team A's chieftains made and lost
   (green, violet), and death tolls (amber, inside the bar: a player losing 20 units or more within 250 ticks, 20 s at
-  ludicrous, team A 10). The more a mark matters, the taller it is: team A out, a team out and the end tallest. The
+  ludicrous, team A 10). The more a mark matters, the taller it is: team A's players out, a team out and the end tallest. The
   line above the bar names the kinds of marks the game has, each by a chip of its colour and height, and how far it
   is simulated. Hover a mark to read its event: the line then shows the events of the nearest marks there in time
   order, up to three as far as the bar has room (and how many more), each with its mark's chip, its time, its
@@ -683,7 +684,8 @@ is done:
   them), `presim` (to the end and back to 0:00), `follow:SLOT`, `map` (the overview map; `follow` or `select` flies
   back down);
 - `select:SLOT:TYPE` inspects the first object of player SLOT whose kind contains TYPE (`quarters`, `armory`,
-  `tower`, `peon`, `warrior`, `chieftain`) and moves the camera to it;
+  `tower`, `peon`, `warrior`, `chieftain`) and moves the camera to it; `select` and `follow` end once the camera
+  is there (it glides, or flies down from the overview map; 4 s at most);
 - `shot:NAME` saves the next frame as `NAME.png` (the window's size: Options sets it);
 - input as a user gives it, through the client's own input handling (focus, picking, the panels, the view; only the
   window system's event delivery is left out), each waiting until the clock is idle again: `key:KEY` (a key name

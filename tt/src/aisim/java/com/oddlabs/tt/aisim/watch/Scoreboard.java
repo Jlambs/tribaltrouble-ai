@@ -50,7 +50,7 @@ final class Scoreboard extends HudPanel {
     /** The chieftain's column, a header like the number columns' but an icon in the rows. */
     private static final int CHIEF = NUMBERS;
     /** What each column is (by column, the chieftain's last), in the header while the mouse is over its icon. */
-    private static final String[] COLUMN_NAMES = {"warriors (bar: of the most)", "peons", "quarters (+ sites)", "armories (+ sites)", "towers (+ sites)", "units inside buildings", "chieftain"};
+    private static final String[] COLUMN_NAMES = {"warriors (bar)", "peons", "quarters (+ sites)", "armories (+ sites)", "towers (+ sites)", "units inside buildings", "chieftain"};
     /** The widest number each column is sized for at first, so the panel seldom grows as numbers grow. */
     private static final String[] NUMBER_SAMPLES = {"888", "888", "88", "88", "88", "888"};
     private static final String NAME_SAMPLE = "s16 @cur8";
@@ -138,7 +138,7 @@ final class Scoreboard extends HudPanel {
             String full = job.spec(slot);
             this.spec = full.length() > MAX_SPEC ? full.substring(0, MAX_SPEC - 1) + "~" : full;
             this.team = job.team(slot);
-            this.team_letter = team < 26 ? String.valueOf((char) ('A' + team)) : String.valueOf(team + 1);
+            this.team_letter = WatchGame.teamName(team);
             this.team_chip = teams_shown ? withAlpha(Color.argb4v(TEAM_CHIPS[team]), CHIP_ALPHA) : NEUTRAL_CHIP;
             this.team_starts = teams_shown && slot > 0 && job.team(slot - 1) != team;
             this.color = player.getColor();

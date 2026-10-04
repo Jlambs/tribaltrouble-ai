@@ -42,7 +42,10 @@ import java.util.logging.Logger;
 final class AiOverlay {
     private static final Logger logger = Logger.getLogger(AiOverlay.class.getName());
     private static final int PANEL_WIDTH = 220;
-    /** Describe lines and failure texts are cut to this many characters: the panels must stay small. */
+    /**
+     * The panels must stay small: an AI's describe text is cut to this many characters with its label (86 without),
+     * an exception's message to this many, and a failure text to two rows of this many.
+     */
     private static final int MAX_LINE = 90;
     /** The rows a status value or a failure takes at most in the AI panel; a longer one ends in "...". */
     private static final int MAX_STATUS_ROWS = 2;
@@ -385,8 +388,9 @@ final class AiOverlay {
             return text == null ? null : TextPanel.line().label("AI").text(OverlayPaint.clip(text, max),
                     AI_TEXT).build();
         } catch (RuntimeException | AssertionError | LinkageError | StackOverflowError e) {
-            return TextPanel.line().label("AI").text(OverlayPaint.clip("describe failed: " + explain(e, view), max),
-                    TextPanel.BAD).build();
+            // explain cut the message already, and the inspector wraps: cut no more, so where it was thrown shows
+            return TextPanel.line().label("AI").text(OverlayPaint.clip("describe failed: " + explain(e, view),
+                    MAX_STATUS_ROWS * MAX_LINE), TextPanel.BAD).build();
         }
     }
 

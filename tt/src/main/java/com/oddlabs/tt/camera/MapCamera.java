@@ -51,6 +51,8 @@ public final class MapCamera extends Camera {
 
     private final @NonNull SelectionDelegate delegate;
     private final @NonNull CameraState original_camera_state;
+    /** The highest a jump from the map lands: a game camera's limit, a watched game's camera's higher one. */
+    private final float landing_max_z;
     private final Label label = new Label(Utils.getBundleString(ResourceBundle.getBundle(MapCamera.class.getName()),
             "map_mode"), Skin.getSkin().getHeadlineFont());
 
@@ -59,6 +61,7 @@ public final class MapCamera extends Camera {
 
     public MapCamera(@NonNull SelectionDelegate delegate, @NonNull GameCamera old_camera) {
         original_camera_state = old_camera.getState();
+        landing_max_z = old_camera instanceof WatchCamera ? old_camera.getMaxZ() : GameCamera.MAX_Z;
         FogInfo radialFog = new RadialFogInfo(Color.WHITE, 0.25f);
         CameraState mapCameraState = new CameraState(radialFog);
         mapCameraState.set(old_camera.getState());
@@ -195,7 +198,7 @@ public final class MapCamera extends Camera {
             float minEyeZ = clickGroundZ + MIN_LANDING_DISTANCE * sinDown;
             float landingEyeZ = Math.min(
                     Math.max(minEyeZ, original_camera_state.getTargetZ()),
-                    GameCamera.MAX_Z);
+                    landing_max_z);
             float landing_distance = Math.max(MIN_LANDING_DISTANCE, (landingEyeZ - clickGroundZ) / sinDown);
             float radius = (float) Math.cos(LANDING_ANGLE);
             float old_dir_x = (float) Math.cos(getState().getHorizAngle()) * radius;
