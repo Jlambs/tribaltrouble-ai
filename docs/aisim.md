@@ -546,11 +546,15 @@ AI changed in between:
   `, then plays` when it plays once there, `ENDED`, `MENU (paused)`, and `runs x3.2` when the machine cannot keep up
   with the speed), a warning when the game was played at another speed than the clock's, the verification (below), the rewind's checkpoints and memory (or why rewind is off),
   the last message (an error, the event N jumped to, the player followed). The jump box is under it.
-- **Scoreboard** (top left), one row per player: its colour, slot and spec, team, `alive` or `out 12:34` (the time
-  the recording has it out, once the game you watch got there), warriors, peons, finished quarters / armories /
-  towers (`+2`: building sites), whether it has a chieftain, and the units inside its buildings (quarters and
-  armories, and tower gunners). The numbers are a live census of the world by the recorder's own definitions,
-  taken four times a second. The row of the player you follow is lit; click a row to follow that player.
+- **Scoreboard** (top left), one row per player in slot order, the number columns headed by the game's icons (in
+  the look of the viewpoint player's race): the player's colour, slot and spec; its team, a letter on a chip of the
+  team's colour (a line parts the rows where the team changes); its warriors, with a bar in its colour scaled to the
+  most warriors of any player; its peons; its finished quarters, armories and towers, each with its building sites
+  (`+2`, dim); its chieftain's icon while it has one; and the units inside its buildings (quarters and armories, and
+  tower gunners). A player that is out is dim, with `out 12:34` in place of its bar (the time the recording has it
+  out, once the game you watch got there) and its zeros left blank. The numbers are a live census of the world by
+  the recorder's own definitions, taken four times a second. The row of the player you follow is lit, with a bar of
+  its colour at the left edge; click a row to follow that player.
 - **Inspector** (top right): the unit or building you clicked, of any player: owner, kind, cell, hit points, build
   progress, the units inside (and a tower's gunner), what an armory stores and makes, a quarters' next peon and
   chieftain; for a unit what it carries, its order and what it does now (with the target's owner, kind and cell),
