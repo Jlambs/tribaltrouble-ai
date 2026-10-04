@@ -5,7 +5,9 @@ import com.oddlabs.tt.Main;
 import com.oddlabs.tt.aikit.AiLog;
 import com.oddlabs.tt.aisim.play.ClientWorld;
 import com.oddlabs.tt.aisim.play.Job;
+import com.oddlabs.tt.camera.GameCamera;
 import com.oddlabs.tt.camera.MapCamera;
+import com.oddlabs.tt.camera.WatchCamera;
 import com.oddlabs.tt.delegate.SelectionDelegate;
 import com.oddlabs.tt.gui.GUIRoot;
 import com.oddlabs.tt.landscape.LandscapeResources;
@@ -48,6 +50,14 @@ final class WatchGame implements Clock.Listener {
     private static final Logger logger = Logger.getLogger(WatchGame.class.getName());
     /** After a rewind, the picked object is found again among its owner's objects of its kind this close (cells). */
     private static final int RESELECT_CELLS = 6;
+    /**
+     * A jump to a player (] [, a scoreboard row) looks from this far at least (meters): back a little, to see around.
+     */
+    private static final float FOLLOW_DISTANCE = 120f;
+    /** Centring on the picked object (C) keeps the zoom, but looks from this far at least. */
+    private static final float CENTRE_DISTANCE = 30f;
+    /** The camera that keeps the picked object in view (Shift+C) lets go of a move this long in a frame (meters). */
+    private static final float TRACK_JUMP = 40f;
 
     private final @NonNull WatchFile file;
     private final @NonNull Job job;
@@ -69,6 +79,12 @@ final class WatchGame implements Clock.Listener {
 
     private @Nullable Selectable<?> inspected;
     private int followed_slot;
+    /** Whether the camera keeps the picked object in view (Shift+C), and where it saw it last. */
+    private boolean tracking;
+    private @Nullable Selectable<?> tracked;
+    private float tracked_x;
+    private float tracked_y;
+    private float tracked_z;
     /** What was picked when a restore began: found again once the seek after it is done. */
     private @Nullable Remembered remembered;
     /** What was picked when the last presimulation began: found again once it is back. */
@@ -171,6 +187,7 @@ final class WatchGame implements Clock.Listener {
             clock.frame(now);
             dropDeadHover();
             dropDeadPick();
+            keepPickedInView();
             overlay.frame();
             hud.frame(now);
         } catch (RuntimeException | Error e) {
@@ -417,7 +434,7 @@ final class WatchGame implements Clock.Listener {
         followed_slot = slot;
         Player player = world.getPlayers()[slot];
         float[] spot = spotOf(player);
-        lookAt(spot[0], spot[1]);
+        lookAt(spot[0], spot[1], FOLLOW_DISTANCE);
         clock.say("following " + playerName(slot) + (player.isAlive() ? "" : " (out)"));
         hud.refreshSoon();
     }
@@ -458,14 +475,87 @@ final class WatchGame implements Clock.Listener {
         return kind.endsWith("warrior");
     }
 
-    /** Moves the camera over {@code x, y} (meters), on the overview map too. */
-    void lookAt(float x, float y) {
+    /**
+     * Moves the camera over {@code x, y} (meters), on the overview map too (it flies down there). The camera glides
+     * there keeping its zoom, and backs off to {@code min_distance} meters from the spot if it is closer.
+     */
+    void lookAt(float x, float y, float min_distance) {
         SelectionDelegate delegate = viewer.getDelegate();
+        GameCamera camera = viewer.getCamera();
         if (delegate.isInMapMode() && delegate.getCamera() instanceof MapCamera map) {
             map.mapGoto(x, y, true);
+        } else if (camera instanceof WatchCamera watch_camera) {
+            watch_camera.glideTo(x, y, min_distance);
         } else {
-            viewer.getCamera().setPos(x, y);
+            camera.setPos(x, y);
         }
+    }
+
+    /** C: moves the camera to the picked object, keeping the zoom; false if nothing is picked. */
+    boolean centreOnPicked() {
+        Selectable<?> picked = inspected;
+        if (picked == null || picked.isDead()) {
+            return false;
+        }
+        lookAt(picked.getPositionX(), picked.getPositionY(), CENTRE_DISTANCE);
+        return true;
+    }
+
+    /** Shift+C: the camera keeps the picked object in view (on), or stops (off); false if nothing is picked. */
+    boolean toggleTracking() {
+        if (tracking) {
+            tracking = false;
+            tracked = null;
+            return true;
+        }
+        if (!centreOnPicked()) {
+            return false;
+        }
+        tracking = true;
+        tracked = null; // keepPickedInView() takes the object's place on the next frame
+        return true;
+    }
+
+    /** Whether the camera keeps the picked object in view (Shift+C). */
+    boolean tracking() {
+        return tracking;
+    }
+
+    /**
+     * Once a frame, while tracking: moves the camera as the picked object moved since the last frame, so the keys and
+     * the wheel still move it too. A newly picked object (another pick, or the one a rewind found again) is taken
+     * where it is; on the overview map the camera stays.
+     */
+    private void keepPickedInView() {
+        Selectable<?> picked = inspected;
+        if (!tracking || picked == null || picked.isDead()) {
+            tracked = null;
+            return;
+        }
+        float x = picked.getPositionX();
+        float y = picked.getPositionY();
+        float z = world.getHeightMap().getNearestHeight(x, y);
+        boolean moved_far = Math.abs(x - tracked_x) > TRACK_JUMP || Math.abs(y - tracked_y) > TRACK_JUMP;
+        if (picked == tracked && !moved_far && !viewer.getDelegate().isInMapMode()
+                && viewer.getCamera() instanceof WatchCamera camera) {
+            camera.shift(x - tracked_x, y - tracked_y, z - tracked_z);
+        }
+        tracked = picked;
+        tracked_x = x;
+        tracked_y = y;
+        tracked_z = z;
+    }
+
+    /** Whether the camera looks at the picked object, within {@code meters} (the selftest's camera check). */
+    boolean looksAtPicked(float meters) {
+        Selectable<?> picked = inspected;
+        if (picked == null || !(viewer.getCamera() instanceof WatchCamera camera)) {
+            return false;
+        }
+        float[] at = camera.lookPoint();
+        float dx = at[0] - picked.getPositionX();
+        float dy = at[1] - picked.getPositionY();
+        return dx * dx + dy * dy <= meters * meters;
     }
 
     /** Seeks to the time a jump box text names ({@link Times#parse}); null, or the error for the user. */

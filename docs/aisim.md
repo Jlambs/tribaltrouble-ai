@@ -578,7 +578,8 @@ AI changed in between:
 | J | the jump box: `mm:ss`, `h:mm:ss`, `123s` (at the clock speed), `t123` (a tick), `+30` / `-10` (seconds from now), `+t500` / `-t500` (ticks from now), `0`, `end`; Enter jumps, Esc leaves it |
 | T / Shift+T | the clock speed: the game speed every time is shown and typed at (ludicrous first, then normal, fast, slow) |
 | N / B | next / previous event of the timeline |
-| ] / [ | next / previous player: the camera goes there and the AI log follows |
+| ] / [ | next / previous player: the camera goes there (a little zoomed out) and the AI log follows |
+| C / Shift+C | the camera goes to the picked unit or building, keeping its zoom / keeps it in view as it moves (Shift+C again stops) |
 | E | simulate the rest of the game now, then come back to where you are (E again stops); afterwards every jump is quick |
 | L / Shift+L | the AI log: show or hide / its `flee of` lines |
 | O, I | the scoreboard, the inspector: show or hide |
@@ -590,12 +591,13 @@ AI changed in between:
 | Mouse | |
 |---|---|
 | left click in the view | inspect that unit or building (any player's), with a ring on it |
-| click a scoreboard row | follow that player |
+| click a scoreboard row | follow that player (the camera goes there, a little zoomed out) |
 | timeline | click or drag, let go to jump; hover a mark to read its event |
-| wheel | zoom, as in the game; over the AI log, older lines |
+| wheel | zoom, three times as far out as in a game; over the AI log, older lines |
 
-The camera moves as in a game (arrow keys, screen edges, Home/End, Insert/Delete, the overview map); the view gives
-no orders. Speed 1x is 50 world ticks a second: the game at its recorded speed (`--speed` in
+The camera moves as in a game (arrow keys, screen edges, Home/End, Insert/Delete, the overview map), but zooms out
+three times as high (as the cinematic camera does), and glides when it goes somewhere, keeping its zoom; the view
+gives no orders. Speed 1x is 50 world ticks a second: the game at its recorded speed (`--speed` in
 [Commands](#commands); at ludicrous units move 4 times as fast as at normal speed). Faster speeds play more ticks per
 frame. They never change the game's own speed setting, which would make it another game.
 
@@ -657,7 +659,8 @@ is done:
 - checks: `verify` fails on a divergence or a rewind mismatch, or when no census was compared yet;
   `expect:WHAT=VALUE` fails unless `tick` (a time as the jump box reads it), `follow` (a slot), `state` (`PLAYING`, `PAUSED`, `SEEKING`,
   `ENDED`), `help`, `log`, `scoreboard`, `inspector`, `timeline` or `flee` (`on`/`off`), `inspect` (`none` or a
-  kind) or `message` (a text the status panel's message contains) is so;
+  kind), `message` (a text the status panel's message contains), `camera` (`picked`: it looks at the picked object,
+  within 6 m; else `elsewhere`) or `tracking` (`on`/`off`, Shift+C) is so;
 - `overlay:MODE` sets the AI overlay's layers ([AI overlays](#ai-overlays));
 - `quit` ends the script (so does its end).
 

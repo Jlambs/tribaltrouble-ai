@@ -101,8 +101,8 @@ final class Inspector {
         lines.add(new TextPanel.Line("s" + slot + " " + job.spec(slot) + "  team " + team, Color.WHITE,
                 owner.getColor()));
         String kind = kindOf(s);
-        lines.add(new TextPanel.Line(kind + (s.isDead() ? "  (dead)" : "") + "  at " + read(
-                () -> s.getGridX() + "," + s.getGridY())));
+        lines.add(TextPanel.line().icon(HudIcons.of(s)).text(kind + (s.isDead() ? "  (dead)" : "")).text(
+                "  at " + read(() -> s.getGridX() + "," + s.getGridY()), TextPanel.DIM).size(2).build());
         if (s.isDead()) {
             return lines;
         }

@@ -282,7 +282,7 @@ final class WatchHud implements WatchControls {
         }
         lines.add(game.aiOverlay().statusLine());
         lines.add(new TextPanel.Line(
-                "F1 help  P pause  +/- speed  , . step  J jump  N B events  [ ] players  T clock",
+                "F1 help  P pause  +/- speed  , . step  J jump  N B events  [ ] players  C camera  T clock",
                 TextPanel.DIM));
         return lines;
     }
@@ -383,6 +383,7 @@ final class WatchHud implements WatchControls {
                 clock.say("times at " + times.speedName() + " speed: 50 ticks are " + times.span(50));
             }
             case J -> jump_box.setFocus();
+            case C -> camera(shift);
             case N -> jumpToEvent(true);
             case B -> jumpToEvent(false);
             case E -> presimulate();
@@ -401,6 +402,17 @@ final class WatchHud implements WatchControls {
             }
         }
         return true;
+    }
+
+    /** C: the camera goes to the picked object; Shift+C: it keeps it in view, or stops. */
+    private void camera(boolean shift) {
+        Clock clock = game.clock();
+        if (!(shift ? game.toggleTracking() : game.centreOnPicked())) {
+            clock.say("nothing picked: click a unit or building first");
+        } else if (shift) {
+            clock.say(
+                    game.tracking() ? "the camera keeps the picked object in view (Shift+C stops)" : "the camera stays");
+        }
     }
 
     /** N and B: seeks to the next or previous timeline mark from where the view is (or is going). */

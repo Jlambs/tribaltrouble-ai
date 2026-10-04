@@ -313,7 +313,7 @@ final class AiOverlay {
         OverlayPaint paint = shown;
         if (paint != null) {
             for (Map.Entry<String, String> status : paint.status().entrySet()) {
-                lines.add(new TextPanel.Line(status.getKey() + ": " + status.getValue()));
+                lines.add(TextPanel.line().label(status.getKey()).text(status.getValue()).build());
             }
             lines.add(new TextPanel.Line(String.format(Locale.ROOT, "%d shapes; paint %.2f ms, draw %.2f ms",
                     paint.shapes().size(), paint_millis, renderer.drawMillis()), TextPanel.DIM));

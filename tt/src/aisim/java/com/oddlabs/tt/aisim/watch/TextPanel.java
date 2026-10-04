@@ -2,6 +2,7 @@ package com.oddlabs.tt.aisim.watch;
 
 import com.oddlabs.tt.font.Font;
 import com.oddlabs.tt.font.TextLineRenderer;
+import com.oddlabs.tt.gui.IconQuad;
 import com.oddlabs.tt.gui.Skin;
 import com.oddlabs.tt.render.GUIRenderer;
 import com.oddlabs.util.Color;
@@ -14,15 +15,47 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Lines of text on a dark translucent box, sized to its lines (between a minimum and a maximum width, longer lines are
- * cut): the building block of the watch HUD. Its owner sets the lines (at most a few times a second) and places it;
- * the text is drawn every frame.
+ * Lines on a dark translucent box, sized to its lines (between a minimum and a maximum width, longer lines are cut):
+ * the building block of the watch HUD. Its owner sets the lines (at most a few times a second) and places it; they are
+ * drawn every frame.
+ *
+ * <p>A line is a row of parts drawn left to right: text, the game's own icons ({@link HudIcons}), bars and gaps. It
+ * may have a label, which goes in the panel's label column, dim, so that the values of labelled lines start in one
+ * column; a colour swatch in front (a player's colour); a band behind it (a heading); and twice the height (a heading
+ * with a big icon). {@link #line()} builds one.
  */
 class TextPanel extends HudPanel {
+    /** A piece of a line. */
+    sealed interface Part permits Text, Icon, Bar, Gap {
+    }
+
+    /** Text in a colour. */
+    record Text(@NonNull String text, @NonNull Vector4fc color) implements Part {
+    }
+
+    /** An icon, as high as the line, tinted ({@link Color#WHITE}: as it is). */
+    record Icon(@NonNull IconQuad icon, @NonNull Vector4fc tint) implements Part {
+    }
+
+    /** A bar {@code width} pixels long, filled to {@code fraction} (0 to 1) in {@code color} over a dark track. */
+    record Bar(float fraction, int width, @NonNull Vector4fc color) implements Part {
+    }
+
+    /** Empty room, {@code width} pixels. */
+    record Gap(int width) implements Part {
+    }
+
     /**
-     * One line: its text, its colour, and an optional colour swatch drawn in front of it (a player's colour).
+     * One line: its parts; its label (null: none), drawn dim in the label column; its colour swatch in front (null:
+     * none); whether a band marks it as a heading; and its height in lines of text (1, or 2 for a big icon).
      */
-    record Line(@NonNull String text, @NonNull Vector4fc color, @Nullable Vector4fc swatch) {
+    record Line(@NonNull List<Part> parts, @Nullable String label, @Nullable Vector4fc swatch, boolean heading,
+                int size) {
+        Line {
+            parts = List.copyOf(parts);
+            size = Math.max(1, size);
+        }
+
         Line(@NonNull String text) {
             this(text, Color.WHITE, null);
         }
@@ -30,19 +63,136 @@ class TextPanel extends HudPanel {
         Line(@NonNull String text, @NonNull Vector4fc color) {
             this(text, color, null);
         }
+
+        Line(@NonNull String text, @NonNull Vector4fc color, @Nullable Vector4fc swatch) {
+            this(List.of(new Text(text, color)), null, swatch, false, 1);
+        }
+
+        /** The line's text: its text parts, joined (what a check or a test reads). */
+        @NonNull
+        String text() {
+            StringBuilder text = new StringBuilder();
+            for (Part part : parts) {
+                if (part instanceof Text t) {
+                    text.append(t.text());
+                }
+            }
+            return text.toString();
+        }
+    }
+
+    /** Builds a {@link Line}, part by part. */
+    static final class Builder {
+        private final List<Part> parts = new ArrayList<>();
+        private @Nullable String label;
+        private @Nullable Vector4fc swatch;
+        private boolean heading;
+        private int size = 1;
+
+        private Builder() {
+        }
+
+        /** Text in white. */
+        @NonNull
+        Builder text(@NonNull String text) {
+            return text(text, Color.WHITE);
+        }
+
+        @NonNull
+        Builder text(@NonNull String text, @NonNull Vector4fc color) {
+            if (!text.isEmpty()) {
+                parts.add(new Text(text, color));
+            }
+            return this;
+        }
+
+        /** An icon as it is; null adds nothing (an icon the game has not loaded). */
+        @NonNull
+        Builder icon(@Nullable IconQuad icon) {
+            return icon(icon, Color.WHITE);
+        }
+
+        @NonNull
+        Builder icon(@Nullable IconQuad icon, @NonNull Vector4fc tint) {
+            if (icon != null) {
+                parts.add(new Icon(icon, tint));
+            }
+            return this;
+        }
+
+        /** A bar {@code width} pixels long, filled to {@code fraction} (clamped to 0..1). */
+        @NonNull
+        Builder bar(float fraction, int width, @NonNull Vector4fc color) {
+            parts.add(new Bar(Float.isNaN(fraction) ? 0f : Math.clamp(fraction, 0f, 1f), width, color));
+            return this;
+        }
+
+        @NonNull
+        Builder gap(int width) {
+            parts.add(new Gap(width));
+            return this;
+        }
+
+        /** The label, drawn dim in the panel's label column. */
+        @NonNull
+        Builder label(@NonNull String text) {
+            label = text;
+            return this;
+        }
+
+        /** A colour swatch in front of the line (a player's colour). */
+        @NonNull
+        Builder swatch(@Nullable Vector4fc color) {
+            swatch = color;
+            return this;
+        }
+
+        /** A band behind the line: a heading. */
+        @NonNull
+        Builder heading() {
+            heading = true;
+            return this;
+        }
+
+        /** The line's height in lines of text: 2 makes its icons twice as big. */
+        @NonNull
+        Builder size(int lines) {
+            size = lines;
+            return this;
+        }
+
+        @NonNull
+        Line build() {
+            return new Line(parts, label, swatch, heading, size);
+        }
+    }
+
+    /** A new line, part by part: {@code TextPanel.line().label("hit points").bar(...).text(" 90 / 200").build()}. */
+    static @NonNull Builder line() {
+        return new Builder();
     }
 
     static final Vector4fc DIM = Color.argb4v(0xFF_B8_B8_B8);
     static final Vector4fc GOOD = Color.argb4v(0xFF_7C_F0_7C);
     static final Vector4fc BAD = Color.argb4v(0xFF_FF_60_60);
     static final Vector4fc WARN = Color.argb4v(0xFF_FF_D0_40);
+    /** Labels: dim, a little blue, so values stand out from them. */
+    static final Vector4fc LABEL = Color.argb4v(0xFF_9C_B0_C4);
     static final Vector4fc BACKGROUND = new Vector4f(0f, 0f, 0f, .62f);
+    /** The band behind a heading line. */
+    static final Vector4fc HEADING_BAND = new Vector4f(1f, 1f, 1f, .09f);
+    /** A bar's empty part. */
+    static final Vector4fc BAR_TRACK = new Vector4f(1f, 1f, 1f, .16f);
     static final int PADDING = 4;
+    /** The room after an icon, and between a label and its value. */
+    static final int ICON_GAP = 3;
+    private static final int LABEL_GAP = 10;
 
     private final @NonNull Font font;
     private final List<Line> lines = new ArrayList<>();
     private int min_width;
     private int max_width;
+    private int label_width;
     private @NonNull Vector4fc background = BACKGROUND;
 
     TextPanel(int min_width) {
@@ -78,12 +228,20 @@ class TextPanel extends HudPanel {
     }
 
     private void resize() {
-        int width = min_width;
+        label_width = 0;
         for (Line line : lines) {
-            width = Math.max(width, textX(line) + font.getWidth(line.text()) + PADDING);
+            String label = line.label();
+            if (label != null) {
+                label_width = Math.max(label_width, font.getWidth(label) + LABEL_GAP);
+            }
         }
-        setDim(Math.min(width, Math.max(max_width, min_width)),
-                lines.isEmpty() ? 0 : lines.size() * font.getHeight() + 2 * PADDING);
+        int width = min_width;
+        int height = 0;
+        for (Line line : lines) {
+            width = Math.max(width, valueX(line) + partsWidth(line) + PADDING);
+            height += lineHeight(line);
+        }
+        setDim(Math.min(width, Math.max(max_width, min_width)), lines.isEmpty() ? 0 : height + 2 * PADDING);
     }
 
     /** A darker box for a panel of many lines that the 3D view behind would make hard to read. */
@@ -91,12 +249,50 @@ class TextPanel extends HudPanel {
         background = color;
     }
 
+    /** The height of a plain line. */
     int lineHeight() {
         return font.getHeight();
     }
 
-    private int textX(@NonNull Line line) {
+    private int lineHeight(@NonNull Line line) {
+        return font.getHeight() * line.size();
+    }
+
+    /** Where the line's swatch, then its label, then its parts start. */
+    private int swatchX() {
+        return PADDING;
+    }
+
+    private int labelX(@NonNull Line line) {
         return line.swatch() == null ? PADDING : PADDING + font.getHeight() + PADDING;
+    }
+
+    private int valueX(@NonNull Line line) {
+        return labelX(line) + (line.label() == null ? 0 : label_width);
+    }
+
+    private int partsWidth(@NonNull Line line) {
+        int width = 0;
+        for (Part part : line.parts()) {
+            width += partWidth(part, lineHeight(line));
+        }
+        return width;
+    }
+
+    private int partWidth(@NonNull Part part, int line_height) {
+        return switch (part) {
+            case Text text -> font.getWidth(text.text());
+            case Icon icon -> iconSize(line_height) + ICON_GAP;
+            case Bar bar -> bar.width() + ICON_GAP;
+            case Gap gap -> gap.width();
+        };
+    }
+
+    /**
+     * An icon's side in a line {@code line_height} high: a little smaller, so icons of lines one above another part.
+     */
+    private static int iconSize(int line_height) {
+        return line_height - 2;
     }
 
     @Override
@@ -105,16 +301,54 @@ class TextPanel extends HudPanel {
             return;
         }
         renderer.drawColoredQuad(0, 0, getWidth(), getHeight(), background);
-        int height = font.getHeight();
-        int y = getHeight() - PADDING - height;
+        float right = getWidth() - PADDING;
+        int top = getHeight() - PADDING;
         for (Line line : lines) {
+            int height = lineHeight(line);
+            int y = top - height;
+            top = y;
+            if (line.heading()) {
+                renderer.drawColoredQuad(PADDING / 2f, y, getWidth() - PADDING, height, HEADING_BAND);
+            }
+            int text_y = y + (height - font.getHeight()) / 2;
             Vector4fc swatch = line.swatch();
             if (swatch != null) {
-                renderer.drawColoredQuad(PADDING, y + 2, height - 4, height - 4, swatch);
+                int side = font.getHeight() - 4;
+                renderer.drawColoredQuad(swatchX(), text_y + 2, side, side, swatch);
             }
-            TextLineRenderer.render(renderer, font, line.text(), textX(line), y, 0, getWidth() - PADDING,
-                    line.color());
-            y -= height;
+            String label = line.label();
+            if (label != null) {
+                TextLineRenderer.render(renderer, font, label, labelX(line), text_y, 0, right, LABEL);
+            }
+            float x = valueX(line);
+            for (Part part : line.parts()) {
+                if (x >= right) {
+                    break;
+                }
+                switch (part) {
+                    case Text text -> TextLineRenderer.render(renderer, font, text.text(), x, text_y, 0, right,
+                            text.color());
+                    case Icon icon -> {
+                        int side = iconSize(height);
+                        if (x + side <= right) {
+                            renderer.drawTexture(icon.icon().getTexture(), x, y + (height - side) / 2f, side, side,
+                                    icon.icon().getU1(), icon.icon().getV1(), icon.icon().getU2(), icon.icon().getV2(),
+                                    icon.tint());
+                        }
+                    }
+                    case Bar bar -> {
+                        float bar_height = Math.max(4, font.getHeight() * .45f);
+                        float bar_y = y + (height - bar_height) / 2f;
+                        float width = Math.min(bar.width(), right - x);
+                        renderer.drawColoredQuad(x, bar_y, width, bar_height, BAR_TRACK);
+                        renderer.drawColoredQuad(x, bar_y, Math.min(width, bar.width() * bar.fraction()), bar_height,
+                                bar.color());
+                    }
+                    case Gap gap -> {
+                    }
+                }
+                x += partWidth(part, height);
+            }
         }
     }
 }

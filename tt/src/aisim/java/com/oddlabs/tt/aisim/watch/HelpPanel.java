@@ -29,7 +29,8 @@ final class HelpPanel extends HudPanel {
             J | jump box: 12:30, 1:02:03, 90s, t4500, +30, -10, +t500, end (Enter jumps, Esc leaves it)
             T  Shift+T | clock speed: the speed times are shown and typed at (ludicrous, normal, fast, slow)
             N  B | next / previous event of the timeline
-            ]  [ | next / previous player: the camera goes there, the AI log follows
+            ]  [ | next / previous player: the camera goes there (a little zoomed out), the AI log follows
+            C  Shift+C | camera to the picked unit or building / keep it in view as it moves (Shift+C stops)
             E | simulate to the recorded end, then come back here (E again stops)
             L | AI log panel: show / hide
             Shift+L | AI log: show / hide the 'flee of' lines
@@ -44,7 +45,7 @@ final class HelpPanel extends HudPanel {
             left click | inspect a unit or building of any player (and ring it)
             scoreboard row | follow that player (camera and AI log)
             timeline | click or drag, let go to jump there; hover a mark to read its event
-            wheel | zoom; over the AI log: older lines
+            wheel | zoom (three times as far out as in a game); over the AI log: older lines
             camera | as in the game: arrow keys, screen edges, Home/End, Insert/Delete
             """;
     private static final List<Row> ROWS = TABLE.lines().map(line -> {
