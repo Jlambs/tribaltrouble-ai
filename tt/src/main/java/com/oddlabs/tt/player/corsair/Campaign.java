@@ -49,8 +49,15 @@ final class Campaign {
         int by;
         final List<@NonNull Ship> ships = new ArrayList<>();
         final Map<@NonNull Unit, @NonNull Ship> boarding = new LinkedHashMap<>();
+        /** The ship the chieftain boards, and the warriors that board it once he sits in his seat. */
+        @Nullable
+        Ship chief_ship;
+        final List<@NonNull Unit> after_chief = new ArrayList<>();
         int since;
         int carried;
+        int started;
+        int kills0;
+        int lost0;
         @Nullable
         Ship prey;
 
@@ -87,6 +94,9 @@ final class Campaign {
             Op op = it.next();
             step(in, op, second);
             if (op.state == State.DONE) {
+                int k = me.getUnitsKilled() - op.kills0, l = me.getUnitsLost() - op.lost0;
+                ai.log.log("CAMP",
+                        () -> "op " + op.id + " " + op.kind + " isle " + op.island + " over after " + (second - op.started) + " s: carried " + op.carried + ", kills +" + k + ", lost +" + l);
                 release(op);
                 it.remove();
             }
@@ -102,8 +112,11 @@ final class Campaign {
                 ai.fleet.duty(s).op = null;
         for (Unit u : op.boarding.keySet())
             ai.release(u);
+        for (Unit u : op.after_chief)
+            ai.release(u);
         op.ships.clear();
         op.boarding.clear();
+        op.after_chief.clear();
     }
 
     // --- launching -------------------------------------------------------------------------------------------------
@@ -148,11 +161,25 @@ final class Campaign {
                 target_def = def;
             }
         }
+        int tx = target == null ? 0 : target.getGridX(), ty = target == null ? 0 : target.getGridY();
+        int tisl = target == null ? 0 : target.getIslandId();
+        if (target == null) {
+            // mop-up: no enemy building on another island, but enemy units on one
+            int[] cl = unitCluster(in, c.island);
+            if (cl != null) {
+                tisl = cl[0];
+                tx = cl[1];
+                ty = cl[2];
+                target_def = defence(in, tisl, tx, ty);
+            }
+        }
         int pop = in.units();
         boolean capped = pop >= me.getWorld().getMaxUnitCount() - 6;
-        if (target != null) {
+        if (tisl != 0) {
             int need = Math.max(ai.params.expedition_size, (int) Math.ceil(ai.params.attack_ratio * target_def + 6));
-            int room = 26 * ships.size();
+            int room = 0;
+            for (Ship s : ships)
+                room += Math.max(0, 26 - Fleet.warriorsAboard(s));
             int all_ships = ai.fleet.duties.size();
             // the whole force at once: enough ships at home for it, or every ship we have
             boolean enough_ships = room >= need || ships.size() >= all_ships;
@@ -160,16 +187,46 @@ final class Campaign {
                     && free.size() >= target_def));
             if (go) {
                 int take = Math.min(free.size(), room);
-                assault(in, target, ships, free.subList(0, take), second);
+                assault(in, tisl, tx, ty, ships, free.subList(0, take), second);
                 return;
             }
         }
-        // no land target worth it: hunt enemy ships when no enemy building is left on other islands
-        if (target == null && !in.enemy_ships.isEmpty() && free.size() >= 12) {
-            Ship prey = nearestEnemyShip(in);
-            if (prey != null)
+        // hunt enemy ships: when no enemy building is left on other islands, or one comes near our dock
+        Ship prey = nearestEnemyShip(in);
+        if (prey != null && free.size() >= 12) {
+            int[] dock = ai.fleet.homeDock();
+            boolean near = Geo.dist2(prey.getGridX(), prey.getGridY(), dock[0], dock[1]) < 90 * 90;
+            if (target == null || near)
                 hunt(in, ships.getFirst(), prey, free.subList(0, Math.min(26, free.size())), second);
         }
+    }
+
+    /**
+     * The biggest gathering of enemy units on an island other than {@code skip} (within 25 cells of its first unit),
+     * as {island, x, y}, or null.
+     */
+    int @Nullable [] unitCluster(@NonNull Intel in, int skip) {
+        int[] best = null;
+        int best_n = 0;
+        for (Unit u : in.enemy_units) {
+            int isl = u.getIslandId();
+            if (isl == 0 || isl == skip)
+                continue;
+            int n = 0;
+            long sx = 0, sy = 0;
+            for (Unit v : in.enemy_units)
+                if (v.getIslandId() == isl && Geo.dist2(u.getGridX(), u.getGridY(), v.getGridX(),
+                        v.getGridY()) <= 25 * 25) {
+                            n++;
+                            sx += v.getGridX();
+                            sy += v.getGridY();
+                        }
+            if (n > best_n) {
+                best_n = n;
+                best = new int[]{isl, (int) (sx / n), (int) (sy / n)};
+            }
+        }
+        return best;
     }
 
     /**
@@ -179,8 +236,28 @@ final class Campaign {
     private boolean landAssault(@NonNull Intel in, @NonNull List<@NonNull Unit> free, int second) {
         Colony c = ai.colony;
         Building target = Army.nearestBuilding(in.enemy_buildings, c.island, c.ax, c.ay);
-        if (target == null)
-            return false;
+        int tx, ty;
+        if (target != null) {
+            tx = target.getGridX();
+            ty = target.getGridY();
+        } else {
+            // enemy units on our island away from the base (the defence takes those near it)
+            Unit far = null;
+            long bd = Long.MAX_VALUE;
+            for (Unit u : in.enemy_units) {
+                if (u.getIslandId() != c.island)
+                    continue;
+                long d = Geo.dist2(u.getGridX(), u.getGridY(), c.ax, c.ay);
+                if (d < bd) {
+                    bd = d;
+                    far = u;
+                }
+            }
+            if (far == null)
+                return false;
+            tx = far.getGridX();
+            ty = far.getGridY();
+        }
         Army.Group g = null;
         for (Army.Group x : ai.army.groups)
             if (x.island == c.island)
@@ -192,15 +269,15 @@ final class Campaign {
             }
             return true;
         }
-        float def = defence(in, c.island, target.getGridX(), target.getGridY());
+        float def = defence(in, c.island, tx, ty);
         int need = Math.max(ai.params.expedition_size, (int) Math.ceil(ai.params.attack_ratio * def + 6));
         boolean capped = in.units() >= me.getWorld().getMaxUnitCount() - 6;
         if (free.size() >= need || (capped && free.size() >= def)) {
-            ai.army.assault(free, c.island, target.getGridX(), target.getGridY(), second);
+            ai.army.assault(free, c.island, tx, ty, second);
             last_launch = second;
             int n = free.size();
             ai.log.log("CAMP",
-                    () -> "march on " + target.getGridX() + "," + target.getGridY() + " with " + n + " warriors (defence " + def + ") t" + second);
+                    () -> "march on " + tx + "," + ty + " with " + n + " warriors (defence " + def + ") t" + second);
             ai.log.count("march");
             return true;
         }
@@ -250,19 +327,26 @@ final class Campaign {
             float walk = (float) Math.sqrt((double) Geo.dist2(c[0], c[1], tx, ty));
             if (walk > 110)
                 continue;
+            // units leave a ship one at a time: land where the enemy cannot meet them on the beach, away from their
+            // towers, their buildings (they defend near them) and their warriors (drilled ones reach far)
             float danger = 0;
             for (Building b : in.enemy_buildings) {
                 if (b.getIslandId() != island)
                     continue;
                 long d2 = Geo.dist2(b.getGridX(), b.getGridY(), c[0], c[1]);
-                if (Intel.isTower(b) && d2 < 26 * 26)
+                if (Intel.isTower(b) && d2 < 30 * 30)
                     danger += 1000;
-                else if (d2 < 14 * 14)
-                    danger += 200;
+                else if (d2 < 30 * 30)
+                    danger += 150;
             }
-            for (Unit u : in.enemy_warriors)
-                if (u.getIslandId() == island && Geo.dist2(u.getGridX(), u.getGridY(), c[0], c[1]) < 20 * 20)
-                    danger += 15 * Intel.value(u);
+            for (Unit u : in.enemy_warriors) {
+                if (u.getIslandId() != island)
+                    continue;
+                long d2 = Geo.dist2(u.getGridX(), u.getGridY(), c[0], c[1]);
+                int reach = 30 + (int) Ratchet.bonus(u);
+                if (d2 < (long) reach * reach)
+                    danger += 25 * Intel.value(u);
+            }
             int sea = ai.sea.to(field, c[0], c[1]);
             if (sea >= SeaMap.FAR)
                 continue;
@@ -275,13 +359,15 @@ final class Campaign {
         return best;
     }
 
-    private void assault(@NonNull Intel in, @NonNull Building target, @NonNull List<@NonNull Ship> ships,
+    private void assault(@NonNull Intel in, int island, int tx, int ty, @NonNull List<@NonNull Ship> ships,
             @NonNull List<@NonNull Unit> warriors, int second) {
-        int island = target.getIslandId();
-        int[] beach = beachhead(in, island, target.getGridX(), target.getGridY());
+        int[] beach = beachhead(in, island, tx, ty);
         if (beach == null)
             return;
-        Op op = new Op(next_id++, Kind.ASSAULT, island, target.getGridX(), target.getGridY());
+        Op op = new Op(next_id++, Kind.ASSAULT, island, tx, ty);
+        op.started = second;
+        op.kills0 = me.getUnitsKilled();
+        op.lost0 = me.getUnitsLost();
         op.bx = beach[0];
         op.by = beach[1];
         op.since = second;
@@ -290,6 +376,7 @@ final class Campaign {
             Ship s = ships.get(i);
             op.ships.add(s);
             ai.fleet.duty(s).op = op;
+            ai.fleet.cancelDeploys(s);
         }
         embark(in, op, warriors, second);
         ops.add(op);
@@ -306,6 +393,7 @@ final class Campaign {
         op.since = second;
         op.ships.add(ship);
         ai.fleet.duty(ship).op = op;
+        ai.fleet.cancelDeploys(ship);
         embark(in, op, warriors, second);
         ops.add(op);
         last_launch = second;
@@ -317,10 +405,33 @@ final class Campaign {
     /** Warriors to the op's ships, 26 each, and peons to row where a ship lacks them. */
     private void embark(@NonNull Intel in, @NonNull Op op, @NonNull List<@NonNull Unit> warriors, int second) {
         int i = 0;
+        // the chieftain rides along: his seat doubles the ship's speed, and it is free while 22 warriors or fewer sit
+        // on the upper deck (they fill it from the stern, his seat's neighbours last)
+        Unit chief = in.chief;
+        boolean take_chief = ai.params.chief_rides && op.kind == Kind.ASSAULT && chief != null && !chief.isDead()
+                && !chief.isMounted() && chief.getIslandId() == ai.colony.island && !ai.reserved(chief);
+        // Never let him sit anywhere but his own seat: alone on a lower bench he would be given an oar, which only a
+        // peon can hold (an engine assertion, a crash outside the harness). His seat needs both front pairs of the
+        // upper deck empty, so he boards only a ship with no warriors aboard, which takes at most 22 more.
+        Ship chief_ship = null;
+        if (take_chief)
+            for (Ship s : op.ships)
+                if (Fleet.warriorsAboard(s) == 0 && !s.getShipHR().hasChieftain() && !ai.ratchet.inbound(s, second)) {
+                    chief_ship = s;
+                    break;
+                }
+        op.chief_ship = chief_ship;
         for (Ship s : op.ships) {
             List<Unit> group = new ArrayList<>();
-            for (int k = 0; k < 26 && i < warriors.size(); k++, i++)
-                group.add(warriors.get(i));
+            // warriors beyond the upper deck's 26 seats sit on the benches and leave no room to row
+            int seats = Math.max(0, 26 - Fleet.warriorsAboard(s));
+            if (s == chief_ship) {
+                group.add(chief);
+                seats = 22;
+            }
+            List<Unit> later = s == chief_ship ? op.after_chief : group;
+            for (int k = 0; k < seats && i < warriors.size(); k++, i++)
+                later.add(warriors.get(i));
             int rowers = Math.max(0, ai.params.rowers - Fleet.peonsAboard(s));
             List<Unit> peons = rowerCandidates(in, s, rowers);
             group.addAll(peons);
@@ -328,8 +439,10 @@ final class Campaign {
                 op.boarding.put(u, s);
                 ai.reserve(u, 90);
             }
+            for (Unit u : op.after_chief)
+                ai.reserve(u, 90);
             if (!group.isEmpty())
-                me.setTarget(group.toArray(new Unit[0]), s, Action.MOVE, false);
+                ai.order(group, s, Action.MOVE, false);
         }
     }
 
@@ -365,6 +478,27 @@ final class Campaign {
     }
 
     private void embarking(@NonNull Intel in, @NonNull Op op, int second) {
+        // the chieftain's ship: its warriors board once he sits in his seat (or he is gone, or 25 s passed)
+        if (!op.after_chief.isEmpty() && op.chief_ship != null) {
+            Ship cs = op.chief_ship;
+            boolean seated = !cs.isDead() && cs.getShipHR().hasChieftain();
+            boolean stuck = second - op.since > 25 || in.chief == null && !seated && !me.hasActiveChieftain();
+            if (seated || stuck) {
+                List<Unit> go = new ArrayList<>();
+                for (Unit u : op.after_chief)
+                    if (!u.isDead()) {
+                        go.add(u);
+                        op.boarding.put(u, cs);
+                    }
+                op.after_chief.clear();
+                if (!go.isEmpty() && !cs.isDead() && (seated || Fleet.warriorsAboard(cs) == 0))
+                    ai.order(go, cs, Action.MOVE, false);
+                else
+                    for (Unit u : go)
+                        ai.release(u);
+            }
+            return;
+        }
         int outside = 0;
         Map<Ship, List<Unit>> lagging = new LinkedHashMap<>();
         for (Map.Entry<Unit, Ship> e : op.boarding.entrySet()) {
@@ -376,7 +510,7 @@ final class Campaign {
                 lagging.computeIfAbsent(e.getValue(), s -> new ArrayList<>()).add(u);
         }
         for (Map.Entry<Ship, List<Unit>> e : lagging.entrySet())
-            me.setTarget(e.getValue().toArray(new Unit[0]), e.getKey(), Action.MOVE, false);
+            ai.order(e.getValue(), e.getKey(), Action.MOVE, false);
         if (outside > 0 && second - op.since < 40)
             return;
         for (Unit u : op.boarding.keySet())
@@ -406,7 +540,12 @@ final class Campaign {
         for (Ship s : op.ships)
             ai.fleet.goTo(s, op.island, op.bx, op.by, second);
         int carried = aboard;
-        ai.log.log("CAMP", () -> "op " + op.id + " sails with " + carried + " warriors t" + second);
+        int rowers = 0;
+        for (Ship s : op.ships)
+            rowers += s.getShipHR().countRowers();
+        int rowing = rowers;
+        ai.log.log("CAMP",
+                () -> "op " + op.id + " sails with " + carried + " warriors, " + rowing + " rowers on " + op.ships.size() + " ships t" + second);
     }
 
     private boolean inSet(@NonNull Unit u) {
@@ -419,7 +558,12 @@ final class Campaign {
             for (Ship s : op.ships)
                 if (ai.fleet.duty(s).job == Fleet.Job.HUNT)
                     active = true;
-            if (!active || op.prey == null || op.prey.isDead() || second - op.since > 300) {
+            boolean headway = false;
+            for (Ship s : op.ships)
+                if (second - ai.fleet.duty(s).moved < 15)
+                    headway = true;
+            if (!active || op.prey == null || op.prey.isDead() || (!headway && second - op.since > 120)
+                    || second - op.since > 900) {
                 for (Ship s : op.ships) {
                     ai.fleet.duty(s).op = null;
                     ai.fleet.goHome(s, second);
@@ -431,11 +575,16 @@ final class Campaign {
             return;
         }
         boolean all = true;
+        boolean moving = false;
         for (Ship s : op.ships) {
             Fleet.Duty d = ai.fleet.duty(s);
-            if (d.job == Fleet.Job.ARRIVED)
+            if (d.job == Fleet.Job.TRANSIT && second - d.moved < 10)
+                moving = true;
+            if (d.job == Fleet.Job.ARRIVED) {
                 ai.fleet.landWarriors(s);
-            else if (d.job == Fleet.Job.FAILED)
+                if (s.getShipHR().hasChieftain())
+                    me.trainChieftain(s, true);
+            } else if (d.job == Fleet.Job.FAILED)
                 ai.fleet.goHome(s, second);
             else if (d.job == Fleet.Job.TRANSIT && d.island == op.island)
                 all = false;
@@ -444,7 +593,8 @@ final class Campaign {
             op.state = State.DONE;
             return;
         }
-        if (all || second - op.since > 240) {
+        // sea routes round the big islands can take five minutes: wait while the ships make headway
+        if (all || (!moving && second - op.since > 60) || second - op.since > 900) {
             op.state = State.LANDING;
             op.since = second;
             ai.log.log("CAMP", () -> "op " + op.id + " landing t" + second);
@@ -454,8 +604,14 @@ final class Campaign {
     private void landing(@NonNull Op op, int second) {
         boolean empty = true;
         for (Ship s : op.ships) {
-            if (Fleet.warriorsAboard(s) > 0 && Fleet.dockedAt(s) == op.island) {
+            if (Fleet.dockedAt(s) != op.island)
+                continue;
+            if (Fleet.warriorsAboard(s) > 0) {
                 ai.fleet.landWarriors(s);
+                empty = false;
+            }
+            if (s.getShipHR().hasChieftain()) {
+                me.trainChieftain(s, true);
                 empty = false;
             }
         }
@@ -478,6 +634,11 @@ final class Campaign {
                 buildings = true;
                 break;
             }
+        for (Unit u : in.enemy_units)
+            if (u.getIslandId() == op.island) {
+                buildings = true;
+                break;
+            }
         int ours = 0;
         for (Unit w : in.warriors)
             if (w.getIslandId() == op.island)
@@ -488,6 +649,14 @@ final class Campaign {
             ai.log.log("CAMP",
                     () -> "op " + op.id + (left == 0 ? " lost" : " cleared isle " + op.island) + " t" + second);
         }
+    }
+
+    /** Whether an operation is still bringing warriors ashore on the island (the landed wait for the rest). */
+    boolean landingOn(int island) {
+        for (Op op : ops)
+            if (op.island == island && op.kind == Kind.ASSAULT && (op.state == State.SAIL || op.state == State.LANDING))
+                return true;
+        return false;
     }
 
     /** Whether a unit is walking aboard for an operation. */

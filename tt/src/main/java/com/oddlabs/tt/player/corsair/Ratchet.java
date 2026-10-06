@@ -20,6 +20,8 @@ import java.util.List;
 final class Ratchet {
     private final @NonNull CorsairAI ai;
     private final @NonNull Player me;
+    /** Per ship, the game second of our last drill boarding order to it. */
+    private final java.util.Map<@NonNull Ship, Integer> last_board = new java.util.LinkedHashMap<>();
 
     Ratchet(@NonNull CorsairAI ai) {
         this.ai = ai;
@@ -46,7 +48,7 @@ final class Ratchet {
             int aboard = Fleet.warriorsAboard(s);
             if (aboard > 0)
                 ai.fleet.landWarriors(s);
-            int room = Math.min(8, 26 - aboard);
+            int room = Math.min(8, 18 - aboard);
             if (room <= 0 || free.isEmpty())
                 continue;
             Colony.sortByDistance(free, s.getGridX(), s.getGridY());
@@ -55,9 +57,17 @@ final class Ratchet {
                 go.add(free.removeFirst());
             for (Unit u : go)
                 ai.reserve(u, 12);
-            me.setTarget(go.toArray(new Unit[0]), s, Action.MOVE, false);
+            ai.order(go, s, Action.MOVE, false);
+            last_board.put(s, second);
             ai.log.count("ratchet_board");
         }
+    }
+
+    /** Whether drill warriors may still be walking to the ship (ordered within the last 20 s). */
+    boolean inbound(@NonNull Ship s, int second) {
+        last_board.keySet().removeIf(Ship::isDead);
+        Integer t = last_board.get(s);
+        return t != null && second - t < 20;
     }
 
     /** Mean range bonus of our warriors, for the log. */

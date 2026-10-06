@@ -31,6 +31,7 @@ public final class CorsairAI extends AI {
     final @NonNull Army army;
     final @NonNull Campaign campaign;
     final @NonNull Ratchet ratchet;
+    final @NonNull Chief chief;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -51,6 +52,7 @@ public final class CorsairAI extends AI {
         army = new Army(this);
         campaign = new Campaign(this);
         ratchet = new Ratchet(this);
+        chief = new Chief(this);
         reflexes = new Reflexes(owner, log, params.swing_restart, params.stun_cancel);
     }
 
@@ -94,6 +96,7 @@ public final class CorsairAI extends AI {
         ratchet.think(intel, second);
         colony.think(second);
         army.think(intel, second);
+        chief.think(intel, second);
         if (second % 30 == 0)
             stat();
     }
@@ -101,6 +104,44 @@ public final class CorsairAI extends AI {
     @NonNull
     Player me() {
         return getOwner();
+    }
+
+    /** Whether a unit can take an order now: alive, and not inside a tower or aboard a ship. */
+    static boolean orderable(@NonNull Unit u) {
+        return !u.isDead() && !u.isMounted();
+    }
+
+    /** setTarget for the orderable units of the list (the engine asserts on dead and mounted ones). */
+    void order(java.util.@NonNull List<@NonNull Unit> units, com.oddlabs.tt.util.@NonNull Target target,
+            com.oddlabs.tt.model.@NonNull Action action, boolean aggressive) {
+        if (target.isDead())
+            return;
+        java.util.List<Unit> ok = new java.util.ArrayList<>();
+        for (Unit u : units)
+            if (orderable(u))
+                ok.add(u);
+        if (!ok.isEmpty())
+            getOwner().setTarget(ok.toArray(new Unit[0]), target, action, aggressive);
+    }
+
+    void order(@NonNull Unit u, com.oddlabs.tt.util.@NonNull Target target, com.oddlabs.tt.model.@NonNull Action action,
+            boolean aggressive) {
+        if (orderable(u) && !target.isDead())
+            getOwner().setTarget(com.oddlabs.tt.model.Selectable.newArray(u), target, action, aggressive);
+    }
+
+    /** setLandscapeTarget for the orderable units of the list. */
+    void move(java.util.@NonNull List<@NonNull Unit> units, int x, int y, com.oddlabs.tt.model.@NonNull Action action,
+            boolean aggressive) {
+        java.util.List<Unit> ok = new java.util.ArrayList<>();
+        for (Unit u : units)
+            if (orderable(u))
+                ok.add(u);
+        if (ok.isEmpty())
+            return;
+        int size = geo.size;
+        getOwner().setLandscapeTarget(ok.toArray(new Unit[0]), Math.clamp(x, 1, size - 2), Math.clamp(y, 1, size - 2),
+                action, aggressive);
     }
 
     int now() {

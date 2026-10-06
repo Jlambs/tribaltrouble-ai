@@ -2,7 +2,7 @@ package com.oddlabs.tt.player.corsair;
 
 import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
-import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.Ship;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.AttackController;
 import com.oddlabs.tt.model.behaviour.HuntController;
@@ -145,7 +145,7 @@ final class Army {
                 }
             }
             if (best != null) {
-                me.setTarget(Selectable.newArray(best), t, Action.DEFAULT, false);
+                ai.order(best, t, Action.DEFAULT, false);
                 ai.reserve(best, 20);
             }
         }
@@ -209,7 +209,7 @@ final class Army {
                     y) > r * r)
                 far.add(w);
         if (!far.isEmpty())
-            me.setLandscapeTarget(far.toArray(new Unit[0]), x, y, Action.MOVE, false);
+            ai.move(far, x, y, Action.MOVE, false);
     }
 
     /** A target point on an island: its enemy building nearest (x, y), or the island's centre. */
@@ -249,24 +249,79 @@ final class Army {
                     break;
                 }
         }
+        if (second % 10 == 0) {
+            float theirs = 0;
+            for (Unit u : threats)
+                if (u.isWarrior() || u.isChieftain())
+                    theirs += Intel.value(u);
+            float st = theirs;
+            int nt = threats.size();
+            ai.log.log("GROUP",
+                    () -> "g" + g.id + " isle " + g.island + " n " + n + " at " + cx + "," + cy + " target " + g.tx + "," + g.ty + " threats " + nt + " (" + st + ") range+" + String.format(
+                            "%.1f", Ratchet.meanBonus(g.members)));
+        }
         if (!threats.isEmpty()) {
             engage(g.members, threats, 40);
             return;
         }
+        // an enemy ship docked near the body: its crew dies with it, and its hull draws their fire
+        for (Ship s : in.enemyShipsDockedAt(g.island)) {
+            if (Geo.dist2(s.getGridX(), s.getGridY(), cx, cy) > (long) (reach + 20) * (reach + 20))
+                continue;
+            for (Unit w : g.members)
+                if (!busy(w))
+                    ai.order(w, s, Action.ATTACK, true);
+            return;
+        }
+        // the first ashore wait at the beach for the rest
+        if (ai.campaign.landingOn(g.island) && second - g.since < 60)
+            return;
         // the target: re-pick when its building is gone
         Building at = buildingAt(in, g.island, g.tx, g.ty);
         if (at == null) {
             Building next = nearestBuilding(in.enemy_buildings, g.island, cx, cy);
             if (next == null) {
-                // nothing left on the island: hold the centre of the body
-                return;
+                // no building left: go for the nearest enemy unit on the island, else hold
+                Unit u = null;
+                long bd = Long.MAX_VALUE;
+                for (Unit e : in.enemy_units) {
+                    if (e.getIslandId() != g.island)
+                        continue;
+                    long dd = Geo.dist2(e.getGridX(), e.getGridY(), cx, cy);
+                    if (dd < bd) {
+                        bd = dd;
+                        u = e;
+                    }
+                }
+                if (u == null) {
+                    // nothing on land: a docked enemy ship anywhere on the island
+                    List<Ship> docked = in.enemyShipsDockedAt(g.island);
+                    if (!docked.isEmpty()) {
+                        Ship s = docked.getFirst();
+                        g.tx = s.getGridX();
+                        g.ty = s.getGridY();
+                        for (Unit w : g.members)
+                            if (!busy(w))
+                                ai.order(w, s, Action.ATTACK, true);
+                    }
+                    return;
+                }
+                g.tx = u.getGridX();
+                g.ty = u.getGridY();
+                if (bd <= 14 * 14) {
+                    for (Unit w : g.members)
+                        if (!busy(w))
+                            ai.order(w, u, Action.ATTACK, true);
+                    return;
+                }
+            } else {
+                g.tx = next.getGridX();
+                g.ty = next.getGridY();
+                at = next;
             }
-            g.tx = next.getGridX();
-            g.ty = next.getGridY();
-            at = next;
         }
         int d = Geo.dist(cx, cy, g.tx, g.ty);
-        if (d <= 14) {
+        if (d <= 14 && at != null) {
             // at the target: every warrior on a building, towers first
             List<Building> near = new ArrayList<>();
             for (Building b : in.enemy_buildings)
@@ -278,7 +333,7 @@ final class Army {
                 Building b = nearestBuilding(near, g.island, w.getGridX(), w.getGridY());
                 if (b == null)
                     b = at;
-                me.setTarget(Selectable.newArray(w), b, Action.ATTACK, true);
+                ai.order(w, b, Action.ATTACK, true);
             }
             return;
         }
@@ -297,9 +352,9 @@ final class Army {
                 body.add(w);
         }
         if (!stragglers.isEmpty())
-            me.setLandscapeTarget(stragglers.toArray(new Unit[0]), cx, cy, Action.MOVE, false);
+            ai.move(stragglers, cx, cy, Action.MOVE, false);
         if (!body.isEmpty() && second % 2 == 0)
-            me.setLandscapeTarget(body.toArray(new Unit[0]), px, py, Action.ATTACK, true);
+            ai.move(body, px, py, Action.ATTACK, true);
     }
 
     /**
@@ -342,7 +397,7 @@ final class Army {
                 }
             if (best != null) {
                 attackers.merge(best, 1, Integer::sum);
-                me.setTarget(Selectable.newArray(w), best, Action.ATTACK, true);
+                ai.order(w, best, Action.ATTACK, true);
             }
         }
     }

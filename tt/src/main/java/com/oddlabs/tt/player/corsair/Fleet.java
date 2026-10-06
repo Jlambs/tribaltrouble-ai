@@ -153,6 +153,15 @@ final class Fleet {
             me.deployUnits(ship, DeployType.RUBBER_WARRIOR, rubber);
     }
 
+    /** Cancels every unit queued to leave the ship (the drill queues its whole deck to leave). */
+    void cancelDeploys(@NonNull Ship ship) {
+        for (DeployType t : new DeployType[]{DeployType.ROCK_WARRIOR, DeployType.IRON_WARRIOR, DeployType.RUBBER_WARRIOR, DeployType.PEON}) {
+            int n = pending(ship, t);
+            if (n > 0)
+                me.deployUnits(ship, t, -n);
+        }
+    }
+
     /** Lands n peons (rowers to spare). */
     void landPeons(@NonNull Ship ship, int n) {
         int can = Math.min(n, peonsAboard(ship) - pending(ship, DeployType.PEON));
@@ -270,6 +279,8 @@ final class Fleet {
                     if (d.op == null && !ship.isMoving() && dockedAt(ship) == ai.colony.island && !d.land_all
                             && peonsAboard(ship) > 0 && pending(ship, DeployType.PEON) == 0)
                         landPeons(ship, peonsAboard(ship));
+                    if (d.op == null && !ship.isMoving() && dockedAt(ship) != 0 && ship.getShipHR().hasChieftain())
+                        me.trainChieftain(ship, true);
                     if (d.job == Job.ARRIVED && d.land_all) {
                         if (peonsAboard(ship) + warriorsAboard(ship) > 0)
                             landAll(ship);
@@ -288,6 +299,11 @@ final class Fleet {
 
     private void transit(@NonNull Ship ship, @NonNull Duty d, int second) {
         boolean stalled = stalled(ship, d, second);
+        if (second % 10 == 0)
+            ai.log.log("SAIL",
+                    () -> "ship at " + ship.getGridX() + "," + ship.getGridY() + " to isle " + d.island + " " + d.tx + "," + d.ty + " moving " + ship.isMoving() + " docked " + dockedAt(
+                            ship) + " " + behaviourName(
+                                    ship) + " attempts " + d.attempts + " rowers " + ship.getShipHR().countRowers());
         if (ship.isMoving() && !stalled)
             return;
         int at = dockedAt(ship);
@@ -332,6 +348,13 @@ final class Fleet {
         return ship.isMoving() && second - d.moved >= 4;
     }
 
+    static String behaviourName(@NonNull Ship ship) {
+        var b = ship.getCurrentBehaviour();
+        if (b instanceof com.oddlabs.tt.model.behaviour.SailBehaviour sail)
+            return "sail" + (sail.isStuck() ? " stuck" : "") + (sail.isBlocking() ? " blocked" : "") + (sail.getTrajectory() == null ? " notraj" : sail.getTrajectory().exists() ? "" : " nopath");
+        return b == null ? "none" : b.getClass().getSimpleName();
+    }
+
     /** A shore cell of the island near (x, y): the nearest for attempt 0, then further ones round the coast. */
     int @Nullable [] landingCell(int island, int x, int y, int attempt) {
         Geo.Isle isle = ai.geo.isle(island);
@@ -356,6 +379,7 @@ final class Fleet {
         d.job = Job.HUNT;
         d.prey = prey;
         d.since = second;
+        d.moved = second;
         me.setSailingTarget(Selectable.newArray(ship), prey);
         ai.log.log("FLEET",
                 () -> "hunting the ship at " + prey.getGridX() + "," + prey.getGridY() + " with " + warriorsAboard(
@@ -364,10 +388,22 @@ final class Fleet {
 
     private void hunt(@NonNull Ship ship, @NonNull Duty d, @NonNull Intel in, int second) {
         Ship prey = d.prey;
+
         if (prey == null || prey.isDead() || warriorsAboard(ship) == 0) {
             d.job = Job.IDLE;
             d.prey = null;
             return;
+        }
+        if (second % 10 == 0)
+            ai.log.log("HUNT",
+                    () -> "ship at " + ship.getGridX() + "," + ship.getGridY() + " prey at " + prey.getGridX() + "," + prey.getGridY() + " dist " + Geo.dist(
+                            ship.getGridX(), ship.getGridY(), prey.getGridX(),
+                            prey.getGridY()) + " prey hp " + prey.getHitPoints() + " moving " + ship.isMoving() + " " + behaviourName(
+                                    ship) + " deck " + warriorsAboard(ship));
+        if (ship.getGridX() != d.last_x || ship.getGridY() != d.last_y) {
+            d.last_x = ship.getGridX();
+            d.last_y = ship.getGridY();
+            d.moved = second;
         }
         if (second - d.since >= 6 && !ship.isMoving()) {
             d.since = second;

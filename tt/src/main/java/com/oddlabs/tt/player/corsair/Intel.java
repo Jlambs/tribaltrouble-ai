@@ -171,6 +171,16 @@ final class Intel {
         }
     }
 
+    /** Enemy ships lying docked at the island (land units can hit them through their landing stage). */
+    @org.jspecify.annotations.NonNull
+    List<@NonNull Ship> enemyShipsDockedAt(int island) {
+        List<Ship> out = new ArrayList<>();
+        for (Ship s : enemy_ships)
+            if (!s.isDead() && s.isComplete() && Fleet.dockedAt(s) == island)
+                out.add(s);
+        return out;
+    }
+
     /** Units inside our quarters and armories. */
     int peonsInside() {
         int n = 0;

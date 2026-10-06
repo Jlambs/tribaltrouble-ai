@@ -32,6 +32,7 @@ final class Params {
     final int rowers;
     final int max_ships;
     final int ship_start;
+    final boolean chief_rides;
     final boolean ratchet;
     final int ratchet_trips;
 
@@ -61,6 +62,7 @@ final class Params {
         rowers = a.getInt("rowers", 20);
         max_ships = a.getInt("ships", 3);
         ship_start = a.getInt("ship_start", 300);
+        chief_rides = a.getBoolean("chief_rides", false);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
         travel_weight = a.getDouble("travel_weight", 1.0);

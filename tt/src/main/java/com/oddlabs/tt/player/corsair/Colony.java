@@ -263,7 +263,7 @@ final class Colony {
                 if (have < want) {
                     List<Unit> free = freePeons(in, pr.site.getGridX(), pr.site.getGridY(), want - have);
                     if (!free.isEmpty())
-                        me.setTarget(free.toArray(new Unit[0]), pr.site, Action.GATHER_REPAIR, false);
+                        ai.order(free, pr.site, Action.GATHER_REPAIR, false);
                 }
             }
         }
@@ -493,7 +493,7 @@ final class Colony {
             }
         }
         // the chieftain
-        if (p.chieftain && second >= p.chieftain_start && in.chief == null && !me.isTrainingChieftain()
+        if (p.chieftain && second >= p.chieftain_start && !me.hasActiveChieftain() && !me.isTrainingChieftain()
                 && !in.quarters.isEmpty() && in.quarters.size() >= 2 && pop >= 50) {
             Building q = in.quarters.getFirst();
             me.trainChieftain(q, true);
@@ -555,7 +555,7 @@ final class Colony {
                     group.add(u);
             }
             if (!group.isEmpty())
-                me.setTarget(group.toArray(new Unit[0]), b, Action.MOVE, false);
+                ai.order(group, b, Action.MOVE, false);
         }
     }
 }
