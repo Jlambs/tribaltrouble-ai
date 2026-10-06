@@ -30,6 +30,7 @@ public final class CorsairAI extends AI {
     final @NonNull Fleet fleet;
     final @NonNull Army army;
     final @NonNull Campaign campaign;
+    final @NonNull Ratchet ratchet;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -49,6 +50,7 @@ public final class CorsairAI extends AI {
         fleet = new Fleet(this);
         army = new Army(this);
         campaign = new Campaign(this);
+        ratchet = new Ratchet(this);
         reflexes = new Reflexes(owner, log, params.swing_restart, params.stun_cancel);
     }
 
@@ -89,6 +91,7 @@ public final class CorsairAI extends AI {
         reserved.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue() < second);
         fleet.think(intel, second);
         campaign.think(intel, second);
+        ratchet.think(intel, second);
         colony.think(second);
         army.think(intel, second);
         if (second % 30 == 0)
@@ -123,7 +126,9 @@ public final class CorsairAI extends AI {
     private void stat() {
         Intel in = intel;
         log.log("STAT",
-                () -> "units " + in.units() + " peons " + in.peons.size() + "+" + in.peonsInside() + " warriors " + in.warriors.size() + " q " + in.quarters.size() + " a " + in.armories.size() + " t " + in.towers.size() + " ships " + in.ships.size() + " sites " + in.sites.size() + " projects " + colony.projects.size());
+                () -> "units " + in.units() + " peons " + in.peons.size() + "+" + in.peonsInside() + " warriors " + in.warriors.size() + " range+" + String.format(
+                        "%.1f", Ratchet.meanBonus(
+                                in.warriors)) + " q " + in.quarters.size() + " a " + in.armories.size() + " t " + in.towers.size() + " ships " + in.ships.size() + " sites " + in.sites.size() + " projects " + colony.projects.size());
     }
 
     /** One line per island and per player: what the map gives, for lab/corsair/survey.py. */

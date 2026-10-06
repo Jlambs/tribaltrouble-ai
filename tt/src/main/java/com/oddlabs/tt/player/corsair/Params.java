@@ -19,6 +19,7 @@ final class Params {
     final double wood_share;
     final double rock_share;
     final boolean rock_weapons;
+    final int min_peons;
     final int max_towers;
     final int tower_start;
     final int tower_every;
@@ -49,6 +50,7 @@ final class Params {
         wood_share = a.getDouble("wood_share", .5);
         rock_share = a.getDouble("rock_share", .15);
         rock_weapons = a.getBoolean("rock_weapons", true);
+        min_peons = a.getInt("min_peons", 45);
         max_towers = a.getInt("max_towers", 4);
         tower_start = a.getInt("tower_start", 300);
         tower_every = a.getInt("tower_every", 120);
@@ -59,7 +61,7 @@ final class Params {
         rowers = a.getInt("rowers", 20);
         max_ships = a.getInt("ships", 3);
         ship_start = a.getInt("ship_start", 300);
-        ratchet = a.getBoolean("ratchet", false);
+        ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
         travel_weight = a.getDouble("travel_weight", 1.0);
         contest_weight = a.getDouble("contest_weight", 1.0);

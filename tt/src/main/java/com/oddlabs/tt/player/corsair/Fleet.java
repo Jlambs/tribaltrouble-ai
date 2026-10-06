@@ -265,8 +265,12 @@ final class Fleet {
             switch (d.job) {
                 case TRANSIT -> transit(ship, d, second);
                 case HUNT -> hunt(ship, d, in, second);
-                case ARRIVED -> {
-                    if (d.land_all) {
+                case IDLE, ARRIVED, FAILED -> {
+                    // rowers of a ship idle at home go back to work; operations take new ones aboard
+                    if (d.op == null && !ship.isMoving() && dockedAt(ship) == ai.colony.island && !d.land_all
+                            && peonsAboard(ship) > 0 && pending(ship, DeployType.PEON) == 0)
+                        landPeons(ship, peonsAboard(ship));
+                    if (d.job == Job.ARRIVED && d.land_all) {
                         if (peonsAboard(ship) + warriorsAboard(ship) > 0)
                             landAll(ship);
                         else {

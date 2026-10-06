@@ -115,13 +115,18 @@ final class Army {
         return groupOn(island) != null;
     }
 
-    /** Lets warriors out of the armory as weapons come. */
+    /**
+     * Lets warriors out of the armory as weapons come, keeping enough peons to work: a warrior is a peon of the armory
+     * given a weapon, and at the unit cap no more peons are born.
+     */
     private void deploy(@NonNull Intel in) {
         int stock = 0;
         for (Building a : in.armories)
             stock += Colony.weapons(a);
-        if (stock > 0)
-            ai.colony.deployWarriors(in, stock);
+        int peons = in.peons.size() + in.peonsInside();
+        int spare = home_threat ? stock : Math.min(stock, peons - ai.params.min_peons);
+        if (spare > 0)
+            ai.colony.deployWarriors(in, spare);
     }
 
     private void manTowers(@NonNull Intel in) {
@@ -228,12 +233,13 @@ final class Army {
             sy += w.getGridY();
         }
         int cx = (int) (sx / n), cy = (int) (sy / n);
+        int reach = 28 + (int) Ratchet.meanBonus(g.members);
         // threats near the body
         List<Unit> threats = new ArrayList<>();
         for (Unit u : in.enemy_units) {
             if (u.getIslandId() != g.island)
                 continue;
-            if (Geo.dist2(u.getGridX(), u.getGridY(), cx, cy) <= 28 * 28) {
+            if (Geo.dist2(u.getGridX(), u.getGridY(), cx, cy) <= (long) reach * reach) {
                 threats.add(u);
                 continue;
             }
@@ -305,8 +311,9 @@ final class Army {
         for (Unit e : threats)
             if (e.isWarrior() || e.isChieftain())
                 fighters.add(e);
-        long r2 = (long) r * r;
         for (Unit w : warriors) {
+            long reach = r + (long) Ratchet.bonus(w);
+            long r2 = reach * reach;
             Unit current = currentTarget(w);
             if (current != null && !current.isDead()) {
                 attackers.merge(current, 1, Integer::sum);
