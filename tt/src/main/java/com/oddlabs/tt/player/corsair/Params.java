@@ -101,7 +101,7 @@ final class Params {
         sink_docked = a.getBoolean("sink_docked", false);
         tower_fire = a.getBoolean("tower_fire", true);
         ally_join = a.getDouble("ally_join", 1.0);
-        kite = a.getBoolean("kite", false);
+        kite = a.getBoolean("kite", true);
         team_target = a.getBoolean("team_target", false);
         kite_slack = a.getDouble("kite_slack", 3.0);
         kite_step = a.getInt("kite_step", 5);
