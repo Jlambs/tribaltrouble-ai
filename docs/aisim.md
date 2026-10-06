@@ -102,9 +102,9 @@ is drawn per seed, so they cover every size and terrain, and they are the same m
 Narrow them to what you are working on, such as `--size small,medium`.
 
 A 120-game batch takes from about a minute (games of the stock AIs end early) to an hour or more (most games run to
-the 360-minute limit) on a recent desktop; huge maps take the longest. Run batches in the background and keep
-working: they run from their snapshot, so rebuilding cannot disturb them. [Workers](#workers) explains how many games
-run at once.
+the 360-minute limit) on a recent desktop; huge and archipelago maps take the longest. Run batches in the background
+and keep working: they run from their snapshot, so rebuilding cannot disturb them. [Workers](#workers) explains how
+many games run at once.
 
 ## Workers
 
@@ -138,8 +138,8 @@ To take less, or a fixed amount:
   keeps the rest. `--cpus 50%` leaves half the machine.
 - `--memory SIZE` or `--memory P%`: at most SIZE (such as `800m` or `6g`) or P% of the memory for all the workers,
   counted at a worker's typical size: half its heap cap plus 128 MB (256 MB for 2-3 players, 384 MB for 4-12 players
-  or a huge map, 640 MB for more than 12 players). With or without it, a batch starts a worker only while that much
-  memory is available above a margin (5% of the memory, at least 512 MB).
+  or a huge or archipelago map, 640 MB for more than 12 players). With or without it, a batch starts a worker only
+  while that much memory is available above a margin (5% of the memory, at least 512 MB).
 - `--workers N` (1..256): exactly N workers, within `--cpus` and `--memory` when those are given; it does not adapt
   to the machine, but other automatic batches leave its workers alone.
 
@@ -253,7 +253,7 @@ A map is a seed plus the skirmish menu's settings. Each setting option takes one
 
 | Option | Values |
 |---|---|
-| `--size` | `small`, `medium`, `large`, `huge` (the menu's Enormous) |
+| `--size` | `small`, `medium`, `large`, `huge` (the menu's Enormous), `archipelago`; `random` draws only `small..huge` |
 | `--terrain` | `tropical`, `northern` |
 | `--hills`, `--trees`, `--supplies` | the sliders, 0..10 |
 
@@ -279,7 +279,14 @@ narrowing one setting does not change the draws of the others.
   `--seed(s)` and the settings. Every result row carries its map's code, the words you can type into the menu's map
   code box, and `show` prints it.
 - The harness generates exactly the map a player gets with the same menu settings and number of players (starts and
-  resources depend on the player count). Harness games have **no ships** and no Archipelago maps.
+  resources depend on the player count).
+- **Archipelago and ships**: `--size archipelago` plays the menu's Archipelago: a 2048 m sea of islands that only
+  ships reach, where every player starts at sea aboard its starting ships (the AI guide's
+  [Ships](../tt/src/main/java/com/oddlabs/tt/player/AGENTS.md#ships-and-archipelago-maps) section). It is never drawn
+  at random: a random size stays one of `small..huge`, so a seed draws the size it always drew, and only runs that
+  ask for Archipelagos get them. Name it alone, or with the others (`--size large,archipelago`,
+  `--size small..archipelago`). Archipelago maps always have ships; `--ships` gives them to every map, as the menu's
+  Ships setting does, and every player then starts on land as usual. The stock AIs sail only on Archipelagos.
 
 ## Reading results
 
@@ -309,7 +316,8 @@ worst games for team A:
 RESULT example a=hard n=12/12 score=0.917 [0.646,0.985] W11 L1 D0 elim=11-1 ... fail=0
 ```
 
-Warriors include tower garrisons, and workers are peons outside and inside buildings (`curves` explains the table).
+Warriors include tower garrisons and warriors aboard ships, and workers are peons outside and inside buildings and
+aboard ships (`curves` explains the table).
 The milestones are the first quarters (Q1), a player's fourth (Q4), the first armory (A1), tower (T1) and
 chieftain, each the first on its team. The by-map lines show only settings that varied in the run. A team's AIs
 appear under swallowed errors and counters only when they reported any. With more than 4 teams, curves and
@@ -380,7 +388,8 @@ minute over the games still running then, for every team (A / B / ...; with more
 others' mean per team). A team that is out counts as zero while the game goes on. `--split` shows team A in the
 games it won / lost, which shows where the two part; several runs show team A in each, over the games all of them
 counted. `--fields` takes census fields (see
-[Files](#files)), the sums `warriors` (tower garrisons included), `workers` (peons outside and inside), `harvested`
+[Files](#files)), the sums `warriors` (tower garrisons and ship crews included), `workers` (peons outside, inside and
+aboard), `harvested`
 (all four harvested fields) and `stock` (all three stock fields), and any of them with `/min` for the gain over the
 minute before; `--at` takes the minutes:
 
@@ -486,8 +495,8 @@ macOS and `~/.local/state/tribaltrouble/logs/<start millis>/` on Linux):
   convert them.
 
 Read them with `./aisim.sh show "<folder>/game-1.jsonl"`. `./aisim.sh play --map "WORDS" --players "..."`, with as
-many players as the game had, recreates the map in the harness, with the default advanced settings and without
-ships.
+many players as the game had, recreates the map in the harness, with the default advanced settings; add `--ships`
+when the header says `ships: true` on a map other than an Archipelago, which always has them.
 `gui hard` records games against the stock Hard AI for comparison. The Hard-slot swap only works in developer mode,
 which `./aisim.sh gui` sets; started any other way, the game's Hard AI is the stock one.
 
@@ -503,10 +512,10 @@ from there: `--eventload normal ../aisim/playtests/<millis>/event.log`.
 ## Troubleshooting
 
 - Each worker is a JVM whose heap may grow to 256 MB (512 MB when a game of the run has 4 players or more, or a huge
-  map; 1 GB with more than 12 players). Headless workers load no textures, models or sounds, and a full garbage
-  collection before each game drops the last map's garbage, so a worker takes about 250-350 MB in all even for 12
-  players on a large map: the CPU, not memory, usually limits how many run at once ([Workers](#workers)). Cancel a
-  run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers die with their parent.
+  or archipelago map; 1 GB with more than 12 players). Headless workers load no textures, models or sounds, and a
+  full garbage collection before each game drops the last map's garbage, so a worker takes about 250-350 MB in all
+  even for 12 players on a large map: the CPU, not memory, usually limits how many run at once ([Workers](#workers)).
+  Cancel a run with `touch aisim/runs/<name>/STOP` or Ctrl+C. Workers die with their parent.
 - The CPU goes to the engine's unit movement and path finding, map generation (about 0.8 s per game) and the AIs.
   Headless, the engine skips what only drawing reads: the scene tree, the heights and bounds of models, and the motion
   of particles.
@@ -566,9 +575,10 @@ The same list as `./aisim.sh help`:
   e.g. "myai vs hard", "myai vs hard*3", "myai hard vs normal*2 easy", "myai vs hard vs normal"
   P: SPEC[/RACE][*COUNT]: RACE v or n (vikings, natives), COUNT copies in a row, e.g. hard/n*2
   SPEC: easy|normal|hard | NAME (com.oddlabs.tt.player.NAME.NameAI) | CLASS | @TAG, then optional :k=v,k=v
-MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0..10 --trees 0..10 --supplies 0..10
-     each a value, a list (2,5), a range (0..4) or random. A setting not given, or given several values, is drawn
-     per seed, the same for a seed in every run.
+MAP: --size small|medium|large|huge|archipelago --terrain tropical|northern --hills 0..10 --trees 0..10
+     --supplies 0..10, each a value, a list (2,5), a range (0..4) or random (random sizes: small..huge).
+     A setting not given, or given several values, is drawn per seed, the same for a seed in every run.
+     Archipelago maps are islands that only ships reach, where everyone starts at sea.
      Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
 LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
 WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared with the other runs on it,
@@ -577,6 +587,7 @@ WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared
 GAME: --minutes M (the time limit in game minutes; a game that reaches it is a draw) --rng N --no-collapse
       --speed slow|normal|fast|ludicrous (the game speed; the harness counts game time at every speed)
       --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
+      --ships (ships on every map, the skirmish menu's Ships setting; Archipelago maps always have them)
 ```
 
 - **Defaults**: vikings, every map setting random, 360 minutes, `--seeds tune` from every start, `--workers auto`
@@ -592,6 +603,8 @@ GAME: --minutes M (the time limit in game minutes; a game that reaches it is a d
 - **`--logs`** (batch) keeps every game's AI logs, `--logs lost` those of the games team A did not win (the others'
   are deleted as their rows come in); `play` always keeps them ([AI logs](#why-did-it-lose-show-and-replay)).
 - **`--stop-when-a-out`** ends a game as soon as team A is out ([Players](#players)).
+- **`--ships`** gives every map ships, the skirmish menu's Ships setting; Archipelago maps always have them
+  ([Maps](#maps)).
 - **`--speed`** (default `normal`) is the world's game speed, as in the skirmish menu. The world ticks 50 times a
   real second at every speed; the speed sets how much game time a tick covers (half the normal tick's 0.02 s at slow,
   1.75 times at fast, 4 times at ludicrous), so the game plays in coarser steps, and an AI that counts ticks as time
@@ -644,10 +657,10 @@ Per game, team A's measures, the ones `summary` and `compare` use:
 - `elim`: +1 when it won by eliminating every other team, -1 when it was eliminated and lost, else 0.
 - `kd30`: its kills minus its losses at 30:00, or at the end. Units killed by their own side or an ally count in both,
   so friendly fire cancels out.
-- `w15`: its warriors, tower garrisons included, at 15:00 or at the end.
+- `w15`: its warriors, tower garrisons and ship crews included, at 15:00 or at the end.
 - `margin`: +1 for a win, -1 for a loss, 0 for a shared elimination, and at the time limit `(sA - sB) / (sA + sB)` of
-  the strength of team A and of the strongest standing team against it (`Player.getStatus()` plus tower garrisons,
-  which that engine score leaves out, summed over a team).
+  the strength of team A and of the strongest standing team against it (`Player.getStatus()` plus tower garrisons
+  and ship crews, which that engine score leaves out, summed over a team).
 
 ## Files
 
@@ -681,15 +694,16 @@ count), `cpus` and `memoryMb` (null when not given); `profile` whether the worke
 A written as `A` (like `A*2 vs normal*2`) and `config` the map options and game settings (compare checks both), `logs`
 which games keep AI logs (`all`, `lost` or null), and `aPools` and `pools` the jar hashes of the frozen AIs on team A
 and on the other teams (compare checks `pools`). Each job has `run key seed side players seats size terrain hills trees
-supplies minutes rng collapse stopWhenAOut game logs speed`, where `seats` is each slot's `spec race team`, `size` and
-`terrain` index `small medium large huge` and `tropical northern`, and `speed` is null at normal speed.
+supplies minutes rng collapse stopWhenAOut game logs speed ships`, where `seats` is each slot's `spec race team`,
+`size` and `terrain` index `small medium large huge archipelago` and `tropical northern`, `speed` is null at normal
+speed, and `ships` is true with `--ships` and null without it (an Archipelago has ships either way).
 
-**Result row** (`results.jsonl`): `v run key seed side slots players a map mapcode minutes rng speed collapse snap perturb
-end via winnerTeam t ticks checksum result place score elim kd30 w15 margin teams recorderFailed problem replay wall
-cpu`.
+**Result row** (`results.jsonl`): `v run key seed side slots players a map mapcode minutes rng speed ships collapse snap
+perturb end via winnerTeam t ticks checksum result place score elim kd30 w15 margin teams recorderFailed problem
+replay wall cpu`.
 
 - `side` is the first player's slot, `slots` the number of players, `map` the settings in short (`large tropical h2 t10
-  s10`).
+  s10`), `ships` whether players could build ships (an Archipelago, or `--ships`; rows from before it lack it).
 - `winnerTeam` is the number of the team first alone, or null when first place is shared or the game does not count.
 - `result` (`win`, `draw` or `loss`), `place`, `score`, `elim`, `kd30`, `w15` and `margin` are team A's
   ([How a game ends](#how-a-game-ends)); `result` is null for a game that does not count.
@@ -717,9 +731,9 @@ older ones.
 
 | `ev` | Meaning |
 |---|---|
-| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (team A's players), `players`, map, seed, map code, snapshot, `secondsPerTick` (the game time of a tick at the start), `clock: "game"` when that is not the normal 0.02, and per player `s name team race ai x y` (start). |
+| `game` | Header: `source` (`aisim`, or `gui` for a play-test), run, key, `a` (team A's players), `players`, map, seed, map code, `ships` (whether players could build ships), snapshot, `secondsPerTick` (the game time of a tick at the start), `clock: "game"` when that is not the normal 0.02, and per player `s name team race ai x y` (start). |
 | `census` | Census of player `s` every 30 game seconds and at the end (fields below), plus `checksum` (the world's). |
-| `placed`, `built`, `razed` | A building (`b` quarters/armory/tower, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). `razed` also has `inside`, the units lost with the building (see `lostInside` below), and when there were any, how many of each kind (`rock iron rubber peon chief`). |
+| `placed`, `built`, `razed` | A building (`b` quarters/armory/tower/ship, `x`, `y`) was started, completed, destroyed (`site:1` when unfinished). `razed` also has `inside`, the units lost with the building (see `lostInside` below; a ship's crew, who drown), and when there were any, how many of each kind (`rock iron rubber peon chief`). A starting ship is `built` at 0:01. |
 | `chief`, `chief_died` | The player gained or lost an active chieftain. |
 | `cast` | The chieftain cast `magic` (e.g. `Stun`, `PoisonFog`) at `x`, `y`. |
 | `stunned` | `n` of the player's units in the field became stunned, around `x`, `y` (tower garrisons are not seen). |
@@ -732,25 +746,33 @@ older ones.
 
 The census fields, in order: `alive units peons rock iron rubber inside garrison quarters armories towers sites kills
 lost razed buildingsLost harvestedTree harvestedRock harvestedIron harvestedRubber stockRock stockIron stockRubber
-chief casts stunned armyX armyY status strength errors lostInside`.
+chief casts stunned armyX armyY status strength errors lostInside ships aboardPeons aboardWarriors`.
 
 - `units` counts everyone, including peons inside buildings; `peons`, `rock`, `iron` and `rubber` are units outside.
 - `inside` sits in quarters and armories, `garrison` in towers; `quarters armories towers` count completed buildings,
-  `sites` the unfinished ones.
+  `sites` the unfinished ones, ships included.
 - `kills`, `lost`: units killed and lost; `razed`, `buildingsLost`: enemy buildings destroyed and own buildings lost.
 - `harvested...`: resources harvested so far; `stock...`: weapons stocked in armories.
 - `chief`: an active chieftain (0/1); `casts`: its casts so far; `stunned`: own units stunned so far.
 - `armyX armyY`: the centre of the player's warriors (where the army is), -1 without warriors.
-- `status`: the engine's score (`Player.getStatus()`); `strength`: `status` plus tower garrisons; `errors`: the AI's
-  swallowed errors so far.
+- `status`: the engine's score (`Player.getStatus()`); `strength`: `status` plus tower garrisons and ship crews (each
+  unit aboard at its kind's status value), which the engine's score leaves out; `errors`: the AI's swallowed errors
+  so far.
 - `lostInside`: units lost inside razed buildings so far, which `lost` leaves out (below), so `lost + lostInside` is
   every unit lost.
+- `ships`: finished ships; `aboardPeons`, `aboardWarriors`: the peons and warriors aboard them (a chieftain aboard is
+  in neither: `chief` counts him). Files from before them lack these three.
 
 Units inside a razed building vanish from `units`, `inside` and `garrison` without dying: a quarters' or armory's
 peons, inside or queued to deploy, and a tower's gunner. The engine counts no death for them, so they are in neither
 `deaths` nor `lost`, and the attacker gets no `kills` for them. The recorder counts them instead: every tick it reads
 what each building holds, and when one is razed, the `razed` event and `lostInside` take the count it read the tick
 before (exact unless a unit went in or out in that last tick). Files from before `lostInside` lack it.
+
+A sunk ship drowns its crew, whom the engine does count in `lost` (with no `kills` for the attacker and no `deaths`
+event, since units aboard are not in the field), so `lostInside` leaves them out; its `razed` event has the crew as
+read the tick before. Every finished ship also has a helmsman, an imaginary peon in the player's unit set that no
+census field counts; the engine counts it in `lost` too when its ship sinks.
 
 **CSV tables** (`export`): every line of both starts with its game's `run key seed side result` (`side` is the first
 player's slot, `result` team A's win, loss or draw), so the tables of several runs can be joined into one.

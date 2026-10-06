@@ -88,14 +88,18 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
         return new ClientWorld(newWorld(job, landscape), landscape);
     }
 
-    /** The map as TerrainMenu passes the menu settings: the seed squared, fixed start positions, no archipelago. */
+    /**
+     * The map as TerrainMenu passes the menu settings: the seed squared, fixed start positions, and islands with starts
+     * at sea on an Archipelago when the game has ships.
+     */
     private static @NonNull Landscape newLandscape(@NonNull Job job) {
         float hills = job.hills() / 10f;
         float trees = job.trees() / 10f;
         float supplies = job.supplies() / 10f;
         int landscape_seed = job.seed() * job.seed();
+        boolean archipelago = job.archipelago() && Globals.SHIPS_ENABLED;
         return new Landscape(job.slots(), job.meters(), job.terrainType(), detailAlpha(), hills, trees, supplies,
-                landscape_seed, STARTING_UNITS, 0f, false);
+                landscape_seed, STARTING_UNITS, 0f, archipelago);
     }
 
     private static @NonNull World newWorld(@NonNull Job job, @NonNull Landscape landscape) {
@@ -116,7 +120,7 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
                 .maxUnitCount(Game.DEFAULT_MAX_UNIT_COUNT)
                 .mapSize(job.size())
                 .maxBuildingCount(Game.DEFAULT_MAX_BUILDING_COUNT)
-                .ships(false)
+                .ships(job.hasShips())
                 .build();
         // spotless:on
         PlayerInfo[] players = new PlayerInfo[job.slots()];

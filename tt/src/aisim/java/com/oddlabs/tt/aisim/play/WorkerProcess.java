@@ -78,14 +78,15 @@ final class WorkerProcess {
     /**
      * The worker heap for a game. A 1v1 game keeps about 60 MB live even at the unit cap; a larger heap only fills with
      * garbage between collections (memory taken from the other workers), and garbage collection is under 1% of the
-     * time. Games of 4 players and more, and games on huge maps, get more; games of more than 12 players (beyond the
-     * skirmish menu) get 1 GB, since 16 vs 16 kept 356 MB live with 5090 units and all 32 at the unit cap make 8000.
+     * time. Games of 4 players and more, and games on huge and archipelago maps, get more; games of more than 12
+     * players (beyond the skirmish menu) get 1 GB, since 16 vs 16 kept 356 MB live with 5090 units and all 32 at the
+     * unit cap make 8000.
      */
     static @NonNull String heap(int players, int size) {
         if (players > MatchmakingServerInterface.MAX_PLAYERS) {
             return "1g";
         }
-        return players >= 4 || Job.SIZES.get(size).equals("huge") ? "512m" : "256m";
+        return players >= 4 || Job.meters(size) >= 2048 ? "512m" : "256m";
     }
 
     /**

@@ -2,6 +2,7 @@ package com.oddlabs.tt.aisim.play;
 
 import com.oddlabs.matchmaking.Game;
 import com.oddlabs.tt.aisim.UsageException;
+import com.oddlabs.tt.global.Globals;
 import com.oddlabs.tt.procedural.Landscape;
 import com.oddlabs.tt.util.WordsEncoding;
 import org.jspecify.annotations.NonNull;
@@ -16,7 +17,8 @@ import java.util.List;
  * slot is the first player's ({@code side}), the map and how the game runs. {@code players} is the run's lineup as
  * text, such as
  * "myai hard vs normal*2 vs easy/n" (the players in the order they were given, A first, teams separated by vs), which
- * only labels the game.
+ * only labels the game. {@code ships} is true with --ships and null without it, as in every run before the option
+ * existed.
  *
  * <p>Jobs travel as JSON: to worker JVMs, into run.json, and from there to a worker of the run's own snapshot when a
  * game is replayed, which may be older or newer than this harness. So a field may be added, but never renamed, and
@@ -26,12 +28,15 @@ import java.util.List;
 public record Job(@NonNull String run, @NonNull String key, int seed, int side, @NonNull String players,
                   @NonNull List<Seat> seats, int size, int terrain, int hills, int trees, int supplies, int minutes,
                   @Nullable Long rng, boolean collapse, boolean stopWhenAOut, @NonNull String game,
-                  @Nullable String logs, @Nullable String speed) {
+                  @Nullable String logs, @Nullable String speed, @Nullable Boolean ships) {
 
-    /** Map sizes by {@link #size}, as in the skirmish menu (huge is the menu's "Enormous"). */
-    public static final List<String> SIZES = List.of("small", "medium", "large", "huge");
+    /**
+     * Map sizes by {@link #size}, as in the skirmish menu (huge is the menu's "Enormous"). Archipelago, the menu's last
+     * size, is a huge world of islands that only ships reach, where every player starts at sea.
+     */
+    public static final List<String> SIZES = List.of("small", "medium", "large", "huge", "archipelago");
     /** The world's side in meters by {@link #size}. */
-    private static final int[] METERS = {256, 512, 1024, 2048};
+    private static final int[] METERS = {256, 512, 1024, 2048, 2048};
     /** Terrains by {@link #terrain}, as in the skirmish menu. */
     public static final List<String> TERRAINS = List.of("tropical", "northern");
     /**
@@ -95,7 +100,25 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
     }
 
     int meters() {
+        return meters(size);
+    }
+
+    /** The world's side in meters on a map of {@code size}. */
+    public static int meters(int size) {
         return METERS[size];
+    }
+
+    /** Whether the map is an Archipelago (Game.SIZE_ARCHIPELAGO). */
+    boolean archipelago() {
+        return size == Game.SIZE_ARCHIPELAGO;
+    }
+
+    /**
+     * Whether players can build and sail ships, as TerrainMenu decides: on Archipelago maps always, elsewhere with
+     * {@link #ships} (--ships, the skirmish menu's Ships advanced setting; null without it).
+     */
+    boolean hasShips() {
+        return Globals.SHIPS_ENABLED && (Boolean.TRUE.equals(ships) || archipelago());
     }
 
     Landscape.@NonNull TerrainType terrainType() {
@@ -133,8 +156,8 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
      */
     public record MapCode(int seed, int size, int terrain, int hills, int trees, int supplies) {
 
-        // The digits' ranges, TerrainMenu's SLIDER_, TERRAIN_TYPE_ and SIZE_CARDINALITY. The menu has more terrain
-        // and size codes than aisim plays: Archipelago is a size, and aisim plays no ships.
+        // The digits' ranges, TerrainMenu's SLIDER_, TERRAIN_TYPE_ and SIZE_CARDINALITY. The codes leave room for
+        // more terrains and sizes than the menu and aisim offer (TERRAINS and SIZES).
         private static final int SLIDER_VALUES = 11;
         private static final int TERRAIN_VALUES = 4;
         private static final int SIZE_VALUES = 7;
@@ -168,9 +191,8 @@ public record Job(@NonNull String run, @NonNull String key, int seed, int side, 
             code /= TERRAIN_VALUES;
             int size = (int) (code % SIZE_VALUES);
             if (terrain >= TERRAINS.size() || size >= SIZES.size()) {
-                throw new UsageException("""
-                        map code '%s' is not a small..huge tropical or northern map (aisim plays no Archipelago \
-                        maps)""".formatted(words));
+                throw new UsageException("map code '%s' is not a %s map of %s terrain".formatted(words,
+                        String.join("|", SIZES), String.join("|", TERRAINS)));
             }
             return new MapCode(seed, size, terrain, hills, trees, supplies);
         }

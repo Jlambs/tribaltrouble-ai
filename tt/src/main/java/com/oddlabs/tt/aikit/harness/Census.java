@@ -4,6 +4,8 @@ import com.oddlabs.tt.model.LandBuilding;
 import com.oddlabs.tt.model.MountUnitContainer;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.Ship;
+import com.oddlabs.tt.model.ShipHR;
 import com.oddlabs.tt.model.SupplyContainer;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.weapon.IronAxeWeapon;
@@ -53,7 +55,10 @@ public final class Census {
         status,
         strength,
         errors,
-        lostInside;
+        lostInside,
+        ships,
+        aboardPeons,
+        aboardWarriors;
 
         /** This field's value in {@code census}. */
         public int of(int @NonNull [] census) {
@@ -89,10 +94,14 @@ public final class Census {
         long sum_x = 0;
         long sum_y = 0;
         int garrison_status = 0;
+        int crew_status = 0;
         for (Selectable<?> s : player.getUnits().getSet()) {
             if (s instanceof LandBuilding building) {
                 garrison_status += countBuilding(census, building);
-            } else if (s instanceof Unit unit) {
+            } else if (s instanceof Ship ship) {
+                crew_status += countShip(census, race, ship);
+            } else if (s instanceof Unit unit && !unit.isMounted()) {
+                // mounted: a ship's helmsman, an imaginary peon that stays in the set but is no unit of the player
                 int kind = kindOf(race, unit);
                 if (kind == Race.UNIT_PEON) {
                     Field.peons.add(census, 1);
@@ -110,7 +119,7 @@ public final class Census {
         Field.armyY.set(census, warriors > 0 ? (int) (sum_y / warriors) : -1);
         int status = player.getStatus();
         Field.status.set(census, status);
-        Field.strength.set(census, status + garrison_status);
+        Field.strength.set(census, status + garrison_status + crew_status);
         Field.errors.set(census, ai_errors);
         Field.lostInside.set(census, lost_inside);
         return census;
@@ -150,6 +159,40 @@ public final class Census {
             }
         }
         return garrison_status;
+    }
+
+    /**
+     * Counts one ship: a site, or a finished ship with its crew. Returns the crew's status value, as their kinds'
+     * templates give it: units aboard are not in the player's unit set, and Player.getStatus() counts a ship as 0.
+     */
+    private static int countShip(int @NonNull [] census, @NonNull Race race, @NonNull Ship ship) {
+        if (!ship.isComplete()) {
+            Field.sites.add(census, 1);
+            return 0;
+        }
+        Field.ships.add(census, 1);
+        int[] crew = crew(ship);
+        int crew_status = 0;
+        for (int kind = 0; kind < crew.length; kind++) {
+            crew_status += crew[kind] * race.getUnitTemplate(kind).getStatusValue();
+        }
+        Field.aboardPeons.add(census, crew[Race.UNIT_PEON]);
+        Field.aboardWarriors.add(census,
+                crew[Race.UNIT_WARRIOR_ROCK] + crew[Race.UNIT_WARRIOR_IRON] + crew[Race.UNIT_WARRIOR_RUBBER]);
+        return crew_status;
+    }
+
+    /** The units aboard a finished ship, by kind ({@link #UNIT_KINDS}); the chieftain sits apart from the peons. */
+    static int @NonNull [] crew(@NonNull Ship ship) {
+        ShipHR hr = ship.getShipHR();
+        int[] by_kind = new int[UNIT_KINDS.length];
+        by_kind[Race.UNIT_WARRIOR_ROCK] = hr.countUnitsOfType(RockAxeWeapon.class);
+        by_kind[Race.UNIT_WARRIOR_IRON] = hr.countUnitsOfType(IronAxeWeapon.class);
+        by_kind[Race.UNIT_WARRIOR_RUBBER] = hr.countUnitsOfType(RubberAxeWeapon.class);
+        by_kind[Race.UNIT_CHIEFTAIN] = hr.hasChieftain() ? 1 : 0;
+        // countPeons() counts every unit that is not a warrior, the chieftain too
+        by_kind[Race.UNIT_PEON] = Math.max(0, hr.countPeons() - by_kind[Race.UNIT_CHIEFTAIN]);
+        return by_kind;
     }
 
     /** The census fields that are plain player getters. */

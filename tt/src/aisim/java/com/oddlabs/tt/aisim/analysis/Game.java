@@ -31,8 +31,8 @@ import java.util.TreeSet;
 public final class Game {
     /** The sums {@link #value} knows besides the census fields, and the fields each adds up. */
     private static final Map<String, List<String>> SUMS = Map.of(
-            "warriors", List.of("rock", "iron", "rubber", "garrison"),
-            "workers", List.of("peons", "inside"),
+            "warriors", List.of("rock", "iron", "rubber", "garrison", "aboardWarriors"),
+            "workers", List.of("peons", "inside", "aboardPeons"),
             "harvested", List.of("harvestedTree", "harvestedRock", "harvestedIron", "harvestedRubber"),
             "stock", List.of("stockRock", "stockIron", "stockRubber"));
 
@@ -375,8 +375,9 @@ public final class Game {
 
     /**
      * A census field of {@code census} (docs/aisim.md), or one of the sums {@code warriors} (rock iron rubber
-     * garrison), {@code workers} (peons inside), {@code harvested} (the four harvested fields) and {@code stock} (the
-     * three stock fields). An unknown name throws IllegalArgumentException; check it with {@link #isField}.
+     * garrison aboardWarriors), {@code workers} (peons inside aboardPeons), {@code harvested} (the four harvested
+     * fields) and {@code stock} (the three stock fields). A field the file lacks (one newer than the file) is 0. An
+     * unknown name throws IllegalArgumentException; check it with {@link #isField}.
      */
     public static double value(@NonNull Map<?, ?> census, @NonNull String field) {
         List<String> summed = SUMS.get(field);

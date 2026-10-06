@@ -21,7 +21,7 @@ import static com.oddlabs.tt.aisim.analysis.Game.num;
 public final class Show {
     /** A census row every this many game seconds. */
     private static final int CENSUS_EVERY = 300;
-    /** The census fields of the table, after its time and slot columns. */
+    /** The census fields of the table, after its time and slot columns; ships too in a game that had any. */
     private static final List<String> CENSUS_COLUMNS = List.of("units", "warriors", "workers", "quarters", "armories",
             "towers", "sites", "kills", "lost", "strength", "casts", "stunned", "errors");
     /** Deaths are summed per slot over windows this long, and a window is a key event from this many. */
@@ -65,15 +65,19 @@ public final class Show {
 
     /** Every player's census every {@link #CENSUS_EVERY} seconds and at the last sample. */
     private static void printCensusTable(@NonNull Game game) {
+        List<String> columns = new ArrayList<>(CENSUS_COLUMNS);
+        if (game.events("census").stream().anyMatch(sample -> num(sample, "ships") > 0)) {
+            columns.add(columns.indexOf("towers") + 1, "ships");
+        }
         List<List<String>> rows = new ArrayList<>();
         List<String> header = new ArrayList<>(List.of("time", "slot"));
-        header.addAll(CENSUS_COLUMNS);
+        header.addAll(columns);
         rows.add(header);
         for (Map<String, Object> sample : game.events("census")) {
             double t = num(sample, "t");
             if (Math.round(t) % CENSUS_EVERY == 0 || t == game.lastSample()) {
                 List<String> row = new ArrayList<>(List.of(Table.clock(t).trim(), "s" + Game.slot(sample)));
-                for (String field : CENSUS_COLUMNS) {
+                for (String field : columns) {
                     row.add(Table.number(Game.value(sample, field)));
                 }
                 rows.add(row);

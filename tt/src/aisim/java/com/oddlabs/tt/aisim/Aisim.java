@@ -98,9 +98,10 @@ public final class Aisim {
               e.g. "myai vs hard", "myai vs hard*3", "myai hard vs normal*2 easy", "myai vs hard vs normal"
               P: SPEC[/RACE][*COUNT]: RACE v or n (vikings, natives), COUNT copies in a row, e.g. hard/n*2
               SPEC: easy|normal|hard | NAME (com.oddlabs.tt.player.NAME.NameAI) | CLASS | @TAG, then optional :k=v,k=v
-            MAP: --size small|medium|large|huge --terrain tropical|northern --hills 0..10 --trees 0..10 --supplies 0..10
-                 each a value, a list (2,5), a range (0..4) or random. A setting not given, or given several values,
-                 is drawn per seed, the same for a seed in every run.
+            MAP: --size small|medium|large|huge|archipelago --terrain tropical|northern --hills 0..10 --trees 0..10
+                 --supplies 0..10, each a value, a list (2,5), a range (0..4) or random (random sizes: small..huge).
+                 A setting not given, or given several values, is drawn per seed, the same for a seed in every run.
+                 Archipelago maps are islands that only ships reach, where everyone starts at sea.
                  Or --map "WORDS[, WORDS...]": the maps of skirmish map codes, in place of seeds and settings.
             LIST: seeds and ranges like 1..20,31, tune (1..60), holdout (1001..1060), random:N (N random seeds)
             WORKERS: --workers N|auto (auto: as many as the machine has room for now, shared with the other runs on
@@ -109,6 +110,7 @@ public final class Aisim {
             GAME: --minutes M (the time limit in game minutes; a game that reaches it is a draw) --rng N --no-collapse
                   --speed slow|normal|fast|ludicrous (the game speed; the harness counts game time at every speed)
                   --stop-when-a-out (end a game once team A is out, instead of playing the other teams to the end)
+                  --ships (ships on every map, the skirmish menu's Ships setting; Archipelago maps always have them)
             play, batch, gui, lint, freeze (without --from) and replay --snap latest refuse sources newer than the
             last build; --stale-ok overrides.
             defaults: vikings, every map setting random, 360 minutes (up to 600), seeds tune from every start,
@@ -120,7 +122,7 @@ public final class Aisim {
     /** Options that play and batch share: the players, the map's, how the game runs, and --stale-ok. */
     private static final Set<String> GAME_OPTIONS = union(MAP_OPTIONS, "players", "minutes", "rng", "speed",
             "no-collapse",
-            "stop-when-a-out", "stale-ok");
+            "stop-when-a-out", "ships", "stale-ok");
     /**
      * The time limit in game minutes. A game that reaches it is a draw, so only beating every opponent wins; the
      * default leaves room for slow wins (docs/aisim.md, --minutes).
@@ -357,6 +359,7 @@ public final class Aisim {
                     Job.SPEEDS) + ", not '" + speed_option + "'");
         }
         String speed = speed_option.equals("normal") ? null : speed_option;
+        Boolean ships = options.flag("ships") ? Boolean.TRUE : null;
         List<Job> jobs = new ArrayList<>();
         for (Job.MapCode map : maps.maps()) {
             for (int side : sides) {
@@ -365,23 +368,23 @@ public final class Aisim {
                 jobs.add(new Job(run, key, map.seed(), side, lineup.text(), lineup.seats(side), map.size(),
                         map.terrain(), map.hills(), map.trees(), map.supplies(), minutes, rng, collapse,
                         stop_when_a_out,
-                        files + ".jsonl", logs != null ? files : null, speed));
+                        files + ".jsonl", logs != null ? files : null, speed, ships));
             }
         }
         noteCrowding(lineup, maps);
-        String config = maps.description() + " | " + minutes + " min" + (rng == null ? "" : " | rng " + rng) + (collapse ? "" : " | no collapse") + (stop_when_a_out ? " | stop when A is out" : "") + (speed == null ? "" : " | " + speed + " speed");
+        String config = maps.description() + " | " + minutes + " min" + (rng == null ? "" : " | rng " + rng) + (collapse ? "" : " | no collapse") + (stop_when_a_out ? " | stop when A is out" : "") + (speed == null ? "" : " | " + speed + " speed") + (ships == null ? "" : " | ships");
         return new Run(new Batch.Setup(lineup.text(), lineup.masked(), config, logs), jobs);
     }
 
     /**
      * Notes when some maps of the run are more crowded than any skirmish menu game; the games are played as they are.
      * The map places every start on one circle whose size grows with the map, so the menu's most players, 12 on a
-     * small map, are as crowded as 24 on a medium one and 48 on a large one.
+     * small map (256 m), are as crowded as 24 on a medium one (512 m) and 48 on a large one (1024 m).
      */
     private static void noteCrowding(@NonNull Lineup lineup, @NonNull Maps maps) {
         Set<String> crowded = new TreeSet<>(Comparator.comparingInt(Job.SIZES::indexOf));
         for (Job.MapCode map : maps.maps()) {
-            if (lineup.size() > MatchmakingServerInterface.MAX_PLAYERS << map.size()) {
+            if (lineup.size() > MatchmakingServerInterface.MAX_PLAYERS * Job.meters(map.size()) / 256) {
                 crowded.add(Job.SIZES.get(map.size()));
             }
         }

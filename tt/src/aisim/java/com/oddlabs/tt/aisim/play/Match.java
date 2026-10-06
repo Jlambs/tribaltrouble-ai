@@ -479,9 +479,9 @@ final class Match {
         return Field.kills.of(census) - Field.lost.of(census);
     }
 
-    /** The warriors of a census, tower garrisons included, as the reports count them. */
+    /** The warriors of a census, tower garrisons and ship crews included, as the reports count them. */
     private static int warriors(int @NonNull [] census) {
-        return fieldWarriors(census) + Field.garrison.of(census);
+        return fieldWarriors(census) + Field.garrison.of(census) + Field.aboardWarriors.of(census);
     }
 
     /** The warriors of a census that can be out in the field (no garrisons): the weight of the army position. */
@@ -518,6 +518,7 @@ final class Match {
         text.append(",\"seed\":").append(job.seed());
         text.append(",\"mapcode\":\"").append(job.mapcode()).append('"');
         text.append(",\"rng\":").append(job.rng());
+        text.append(",\"ships\":").append(job.hasShips());
         text.append(",\"snap\":\"").append(snapshot).append('"');
         return text.toString();
     }
@@ -646,6 +647,7 @@ final class Match {
         row.put("minutes", job.minutes());
         row.put("rng", job.rng());
         row.put("speed", job.speed());
+        row.put("ships", job.hasShips());
         row.put("collapse", job.collapse());
         row.put("snap", snapshot);
         row.put("perturb", perturb);

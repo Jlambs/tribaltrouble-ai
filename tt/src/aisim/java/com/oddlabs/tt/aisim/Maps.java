@@ -19,7 +19,8 @@ import java.util.stream.IntStream;
  * <p>A setting given as one value holds on every map. A setting given as several values (a list, a range or
  * {@code random}), or not given at all, is drawn per seed from those values. A draw depends only on the seed and the
  * setting, so a seed gets the same settings in every run and runs stay comparable game by game; narrowing one setting
- * leaves the draws of the others as they were.
+ * leaves the draws of the others as they were. A random size is one of the land sizes, small..huge: Archipelago maps
+ * play only when named, which also keeps every seed's random size what it was before aisim had them.
  */
 final class Maps {
     /**
@@ -46,6 +47,11 @@ final class Maps {
             return names == null ? SLIDER_MAX + 1 : names.size();
         }
 
+        /** How many values {@code random} draws from, the first ones: all of them, but only the land sizes of size. */
+        int randomCount() {
+            return this == size ? Job.SIZES.indexOf("huge") + 1 : count();
+        }
+
         /** The index of one value as the command line gives it; -1 for none. */
         int parse(@NonNull String text) {
             if (names != null) {
@@ -68,7 +74,9 @@ final class Maps {
         @NonNull
         String help() {
             String values = names == null ? "0.." + SLIDER_MAX : String.join("|", names);
-            return "--" + name() + " is " + values + ", a list (a,b), a range (a..b) or random";
+            String random = randomCount() == count() ? "random" : "random (" + name(0) + ".." + name(
+                    randomCount() - 1) + ")";
+            return "--" + name() + " is " + values + ", a list (a,b), a range (a..b) or " + random;
         }
     }
 
@@ -178,10 +186,13 @@ final class Maps {
         return z ^ (z >>> 31);
     }
 
-    /** The values an option allows: one, a list like 2,5, ranges like 0..4 (in a list too), or random (all). */
+    /**
+     * The values an option allows: one, a list like 2,5, ranges like 0..4 (in a list too), or random (all, but only
+     * the land sizes of size).
+     */
     private static @NonNull List<Integer> values(@NonNull Setting setting, @NonNull String text) {
         if (text.equals("random")) {
-            return range(0, setting.count() - 1);
+            return range(0, setting.randomCount() - 1);
         }
         Set<Integer> values = new TreeSet<>();
         for (String part : text.split(",")) {

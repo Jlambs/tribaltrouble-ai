@@ -29,8 +29,8 @@ public final class Summary {
     /** A's record from each start slot, this many slots to a line. */
     private static final int SLOTS_PER_LINE = 4;
     /** Map sizes and terrains in the skirmish menu's order, the order of the by-map lines. */
-    private static final List<String> MAP_ORDER = List.of("small", "medium", "large", "huge", "tropical",
-            "northern");
+    private static final List<String> MAP_ORDER = List.of("small", "medium", "large", "huge", "archipelago",
+            "tropical", "northern");
 
     private Summary() {
     }

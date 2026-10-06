@@ -5,6 +5,7 @@ import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.animation.Animated;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.landscape.World;
+import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.DeployContainer;
 import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.LandBuilding;
@@ -12,6 +13,7 @@ import com.oddlabs.tt.model.MountUnitContainer;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.Ship;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.UnitContainer;
 import com.oddlabs.tt.model.behaviour.StunController;
@@ -53,15 +55,19 @@ public final class GameRecorder implements Animated {
 
     private static final DeployType[] DEPLOY_TYPES = DeployType.values();
 
-    /** A building as seen at the last poll; {@code inside} is kept current every tick ({@link #countInside}). */
-    private record KnownBuilding(@NonNull LandBuilding building, int kind, boolean complete, int x, int y,
+    /**
+     * A building (a land building or a ship) as seen at the last poll; {@code inside} is kept current every tick
+     * ({@link #countInside}).
+     */
+    private record KnownBuilding(@NonNull Building building, int kind, boolean complete, int x, int y,
                                  @NonNull Inside inside) {
     }
 
     /**
-     * The units a finished quarters, armory or tower holds, by kind ({@link Census#UNIT_KINDS}): a quarters' or
-     * armory's peons inside and those queued to deploy, a tower's gunner. A razed building drops them at once, without
-     * a death the engine counts, so the recorder reads them every tick and reports the count it last read.
+     * The units a finished quarters, armory, tower or ship holds, by kind ({@link Census#UNIT_KINDS}): a quarters' or
+     * armory's peons inside and those queued to deploy, a tower's gunner, a ship's crew. A razed land building drops
+     * them at once, without a death the engine counts, and a sunk ship drowns its crew, so the recorder reads them
+     * every tick and reports the count it last read.
      */
     private static final class Inside {
         final int @NonNull [] by_kind = new int[Census.UNIT_KINDS.length];
@@ -372,11 +378,16 @@ public final class GameRecorder implements Animated {
     }
 
     /** Fills {@code inside} with what {@code building} holds now, unless it is razed or not finished. */
-    private static void countInside(@NonNull Race race, @NonNull LandBuilding building, @NonNull Inside inside) {
+    private static void countInside(@NonNull Race race, @NonNull Building building, @NonNull Inside inside) {
         if (building.isDead() || !building.isComplete()) {
             return;
         }
         int[] by_kind = inside.by_kind;
+        if (building instanceof Ship ship) {
+            System.arraycopy(Census.crew(ship), 0, by_kind, 0, by_kind.length);
+            inside.total = Arrays.stream(by_kind).sum();
+            return;
+        }
         Arrays.fill(by_kind, 0);
         UnitContainer container = building.getUnitContainer();
         if (container instanceof MountUnitContainer mount) {
@@ -424,13 +435,15 @@ public final class GameRecorder implements Animated {
         Race race = player.getRace();
         Seen now = new Seen();
         for (Selectable<?> s : player.getUnits().getSet()) {
-            if (s instanceof LandBuilding building) {
+            // a ship's landing stage (ShipProxy) is a Building of the set too, but neither of these
+            if (s instanceof LandBuilding || s instanceof Ship) {
+                Building building = (Building) s;
                 int kind = building.getTemplate().getTemplateID();
                 Inside inside = new Inside();
                 countInside(race, building, inside);
                 now.buildings.add(new KnownBuilding(building, kind, building.isComplete(), building.getGridX(),
                         building.getGridY(), inside));
-            } else if (s instanceof Unit unit) {
+            } else if (s instanceof Unit unit && !unit.isMounted()) { // not a ship's helmsman (see Census)
                 now.units.add(new KnownUnit(unit, Census.kindOf(race, unit), unit.getGridX(), unit.getGridY()));
                 if (unit.getCurrentController() instanceof StunController) {
                     now.stunned.add(unit);
@@ -445,7 +458,8 @@ public final class GameRecorder implements Animated {
 
     /**
      * New or newly completed buildings, in unit-set order (placed/built), then remembered ones now gone (razed, with
-     * the units lost inside). Returns how many units were lost inside.
+     * the units lost inside). Returns how many units were lost inside land buildings: a sunk ship's crew drown, which
+     * the engine counts in lost.
      */
     private int reportBuildings(int slot, @NonNull Seen before, @NonNull Seen now) {
         for (KnownBuilding known : now.buildings) {
@@ -463,7 +477,9 @@ public final class GameRecorder implements Animated {
                     extra += "," + members(Census.UNIT_KINDS, inside.by_kind);
                 }
                 buildingEvent("razed", slot, old, extra);
-                lost_inside += inside.total;
+                if (!(old.building() instanceof Ship)) {
+                    lost_inside += inside.total;
+                }
             }
         }
         return lost_inside;
@@ -551,7 +567,7 @@ public final class GameRecorder implements Animated {
 
     /** Linear ==: hashing engine objects would draw identity hashes. */
     private static @Nullable KnownBuilding findBuilding(@NonNull List<KnownBuilding> list,
-            @NonNull LandBuilding building) {
+            @NonNull Building building) {
         for (KnownBuilding known : list) {
             if (known.building() == building) {
                 return known;
