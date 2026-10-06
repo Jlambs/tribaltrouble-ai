@@ -53,6 +53,11 @@ final class Params {
     final int raid;
     final int raid_range;
     final boolean snipe_towers;
+    final boolean stage;
+    final int elite_trips;
+    final int bombard;
+    final int siege_after;
+    final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
 
@@ -110,6 +115,11 @@ final class Params {
         raid = a.getInt("raid", 0);
         raid_range = a.getInt("raid_range", 350);
         snipe_towers = a.getBoolean("snipe_towers", false);
+        stage = a.getBoolean("stage", false);
+        elite_trips = a.getInt("elite_trips", 0);
+        bombard = a.getInt("bombard", 0);
+        siege_after = a.getInt("siege_after", 0);
+        stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
         travel_weight = a.getDouble("travel_weight", 1.0);

@@ -56,6 +56,7 @@ final class Campaign {
         int since;
         int carried;
         int started;
+        int landed_at = Integer.MAX_VALUE;
         int kills0;
         int lost0;
         @Nullable
@@ -70,11 +71,40 @@ final class Campaign {
         }
     }
 
+    /**
+     * stage: a beachhead where landed warriors hold while ships bring the rest, until the whole force outweighs the
+     * target's defence (or nothing more is coming, or stage_max seconds passed).
+     */
+    static final class Stage {
+        final int island;
+        final int bx;
+        final int by;
+        final int tx;
+        final int ty;
+        final int since;
+        boolean released;
+        int last_n;
+        int last_growth;
+
+        Stage(int island, int bx, int by, int tx, int ty, int since) {
+            this.island = island;
+            this.bx = bx;
+            this.by = by;
+            this.tx = tx;
+            this.ty = ty;
+            this.since = since;
+            last_growth = since;
+        }
+    }
+
     private final @NonNull CorsairAI ai;
     private final @NonNull Player me;
     final List<@NonNull Op> ops = new ArrayList<>();
+    final List<@NonNull Stage> stages = new ArrayList<>();
     private int next_id = 1;
     private int last_launch = -1000;
+    /** When the last assault set out (the stalemate clock of siege_after). */
+    private int last_assault = 0;
 
     Campaign(@NonNull CorsairAI ai) {
         this.ai = ai;
@@ -102,8 +132,62 @@ final class Campaign {
             }
         }
         ai.fleet.recallStrays(second);
+        manageStages(in, second);
         if (second - last_launch >= 10 && ai.colony.founded() && !ai.army.homeThreatened())
             launch(in, second);
+    }
+
+    /** The holding stage on an island, or null (none, or released: the troops advance). */
+    @Nullable
+    Stage holding(int island) {
+        for (Stage s : stages)
+            if (s.island == island && !s.released)
+                return s;
+        return null;
+    }
+
+    private void manageStages(@NonNull Intel in, int second) {
+        for (java.util.Iterator<Stage> it = stages.iterator(); it.hasNext();) {
+            Stage s = it.next();
+            int n = 0;
+            float ours = 0;
+            for (Unit w : in.warriors)
+                if (w.getIslandId() == s.island) {
+                    n++;
+                    ours += Intel.value(w);
+                }
+            boolean in_flight = false;
+            for (Op op : ops)
+                if (op.island == s.island && op.state != State.FIGHT && op.state != State.DONE)
+                    in_flight = true;
+            if (n == 0 && !in_flight && second - s.since > 30) {
+                it.remove();
+                continue;
+            }
+            if (!Army.enemyOn(in, s.island)) {
+                it.remove();
+                continue;
+            }
+            if (s.released)
+                continue;
+            if (n > s.last_n) {
+                s.last_n = n;
+                s.last_growth = second;
+            }
+            float def = defence(in, s.island, s.tx, s.ty);
+            boolean ready = ours >= ai.params.attack_ratio * def;
+            boolean nothing_coming = !in_flight && second - s.last_growth > 120
+                    && ai.army.freeWarriorsAtHome(in).size() < 15;
+            if (ready || nothing_coming || second - s.since > ai.params.stage_max) {
+                s.released = true;
+                String why = ready ? "strong enough" : nothing_coming ? "nothing more coming" : "staged long enough";
+                float o = ours, d = def;
+                int nn = n;
+                ai.log.log("CAMP",
+                        () -> "stage on isle " + s.island + " released (" + why + "): " + nn + " warriors, " + o + " vs defence " + d + " t" + second);
+                ai.log.count("stage_release");
+            }
+        }
     }
 
     private void release(@NonNull Op op) {
@@ -193,6 +277,19 @@ final class Campaign {
         List<Ship> ships = ai.fleet.idleAtHome();
         if (ships.isEmpty())
             return;
+        // stage: every free warrior goes to the beachhead that holds
+        for (Stage s : stages) {
+            if (s.released || free.size() < 15)
+                continue;
+            int room = 0;
+            for (Ship sh : ships)
+                room += Math.max(0, 26 - Fleet.warriorsAboard(sh));
+            int take = Math.min(free.size(), room);
+            if (take < 15)
+                return;
+            reinforce(in, s, ships, free.subList(0, take), second);
+            return;
+        }
         // an assault on the weakest, nearest enemy island
         Building target = null;
         float best = Float.MAX_VALUE;
@@ -250,6 +347,18 @@ final class Campaign {
             float team_free = free.size() + (team ? .8f * allyHomeStrength(in) : 0f);
             boolean go = enough_ships && (free.size() >= need || (team && free.size() >= 15 && team_free >= need)
                     || (capped && free.size() >= Math.min(need, 30) && free.size() >= target_def));
+            // siege_after: at the cap and no assault for that long, a stalemate: go with what the ships carry
+            if (!go && ai.params.siege_after > 0 && capped && ships.size() >= all_ships && free.size() >= 40
+                    && second - last_assault >= ai.params.siege_after) {
+                go = true;
+                ai.log.count("siege");
+            }
+            // stage: start a beachhead with what the ships carry, if the beach is quiet; the rest follows
+            if (!go && ai.params.stage && free.size() >= Math.min(need, Math.max(30, room)) && holding(tisl) == null) {
+                int[] beach = beachhead(in, tisl, tx, ty);
+                if (beach != null && beachQuiet(in, tisl, beach[0], beach[1]))
+                    go = true;
+            }
             if (go) {
                 int take = Math.min(free.size(), room);
                 assault(in, tisl, tx, ty, ships, free.subList(0, take), second);
@@ -424,11 +533,59 @@ final class Campaign {
         return best;
     }
 
+    /** Whether no enemy warrior (with its reach) nor building is near a beach: a stage can grow there. */
+    private boolean beachQuiet(@NonNull Intel in, int island, int x, int y) {
+        for (Unit u : in.enemy_warriors) {
+            int r = 50 + (int) Ratchet.bonus(u);
+            if (u.getIslandId() == island && Geo.dist2(u.getGridX(), u.getGridY(), x, y) < (long) r * r)
+                return false;
+        }
+        for (Building b : in.enemy_buildings)
+            if (b.getIslandId() == island && Geo.dist2(b.getGridX(), b.getGridY(), x, y) < 55 * 55)
+                return false;
+        return true;
+    }
+
+    private void reinforce(@NonNull Intel in, @NonNull Stage s, @NonNull List<@NonNull Ship> ships,
+            @NonNull List<@NonNull Unit> warriors, int second) {
+        Op op = new Op(next_id++, Kind.ASSAULT, s.island, s.tx, s.ty);
+        op.started = second;
+        op.kills0 = me.getUnitsKilled();
+        op.lost0 = me.getUnitsLost();
+        op.bx = s.bx;
+        op.by = s.by;
+        op.since = second;
+        int need_ships = Math.min(ships.size(), (warriors.size() + 25) / 26);
+        for (int i = 0; i < need_ships; i++) {
+            Ship sh = ships.get(i);
+            op.ships.add(sh);
+            ai.fleet.duty(sh).op = op;
+            ai.fleet.cancelDeploys(sh);
+            ai.ratchet.haltInbound(sh);
+        }
+        embark(in, op, warriors, second);
+        ops.add(op);
+        last_launch = second;
+        ai.log.log("CAMP",
+                () -> "op " + op.id + " reinforces the stage on isle " + s.island + " with " + op.boarding.size() + " units t" + second);
+        ai.log.count("reinforce");
+    }
+
     private void assault(@NonNull Intel in, int island, int tx, int ty, @NonNull List<@NonNull Ship> ships,
             @NonNull List<@NonNull Unit> warriors, int second) {
         int[] beach = beachhead(in, island, tx, ty);
         if (beach == null)
             return;
+        if (ai.params.stage && holding(island) == null && beachQuiet(in, island, beach[0], beach[1])) {
+            boolean exists = false;
+            for (Stage s : stages)
+                if (s.island == island)
+                    exists = true;
+            if (!exists) {
+                stages.add(new Stage(island, beach[0], beach[1], tx, ty, second));
+                ai.log.log("CAMP", () -> "stage on isle " + island + " at " + beach[0] + "," + beach[1]);
+            }
+        }
         Op op = new Op(next_id++, Kind.ASSAULT, island, tx, ty);
         op.started = second;
         op.kills0 = me.getUnitsKilled();
@@ -450,6 +607,7 @@ final class Campaign {
         ai.log.log("CAMP",
                 () -> "op " + op.id + " assault isle " + island + " target " + op.tx + "," + op.ty + " beach " + op.bx + "," + op.by + " with " + op.boarding.size() + " units on " + op.ships.size() + " ships t" + second);
         ai.log.count("assault");
+        last_assault = second;
     }
 
     private void hunt(@NonNull Intel in, @NonNull Ship ship, @NonNull Ship prey, @NonNull List<@NonNull Unit> warriors,
@@ -690,10 +848,14 @@ final class Campaign {
             Fleet.Duty d = ai.fleet.duty(s);
             if (d.job == Fleet.Job.TRANSIT && second - d.moved < 10)
                 moving = true;
+            if (d.job == Fleet.Job.ARRIVED && op.landed_at == Integer.MAX_VALUE)
+                op.landed_at = second;
             if (d.job == Fleet.Job.ARRIVED) {
-                ai.fleet.landWarriors(s);
-                if (s.getShipHR().hasChieftain())
-                    me.trainChieftain(s, true);
+                if (!holdFire(ai.intel, s, op, second)) {
+                    ai.fleet.landWarriors(s);
+                    if (s.getShipHR().hasChieftain())
+                        me.trainChieftain(s, true);
+                }
             } else if (d.job == Fleet.Job.FAILED)
                 ai.fleet.goHome(s, second);
             else if (d.job == Fleet.Job.TRANSIT && d.island == op.island)
@@ -711,11 +873,36 @@ final class Campaign {
         }
     }
 
+    /**
+     * bombard (seconds): a ship docked at the beachhead keeps its warriors aboard while enemy warriors are near the
+     * shore. On the upper deck they throw from 10 cells further (and a stun does not reach them), and units come off
+     * a ship one at a time: an enemy met on the beach is better shot from the deck than landed into. Returns whether
+     * the ship holds its fire position this round (queued landings are cancelled).
+     */
+    private boolean holdFire(@NonNull Intel in, @NonNull Ship s, @NonNull Op op, int second) {
+        if (ai.params.bombard <= 0 || second - op.landed_at > ai.params.bombard)
+            return false;
+        int near = 0;
+        for (Unit e : in.enemy_warriors)
+            if (e.getIslandId() == op.island && Geo.dist2(e.getGridX(), e.getGridY(), s.getGridX(),
+                    s.getGridY()) <= 30 * 30)
+                near++;
+        if (near < 3)
+            return false;
+        ai.fleet.cancelDeploys(s);
+        ai.log.count("bombard");
+        return true;
+    }
+
     private void landing(@NonNull Op op, int second) {
         boolean empty = true;
         for (Ship s : op.ships) {
             if (Fleet.dockedAt(s) != op.island)
                 continue;
+            if (holdFire(ai.intel, s, op, second)) {
+                empty = false;
+                continue;
+            }
             if (Fleet.warriorsAboard(s) > 0) {
                 ai.fleet.landWarriors(s);
                 empty = false;
@@ -725,7 +912,7 @@ final class Campaign {
                 empty = false;
             }
         }
-        if (!empty && second - op.since < 30)
+        if (!empty && second - op.since < 30 + Math.max(0, ai.params.bombard))
             return;
         for (Ship s : op.ships) {
             ai.fleet.duty(s).op = null;

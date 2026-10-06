@@ -43,9 +43,28 @@ final class Ratchet {
         if (ships.isEmpty())
             return;
         List<Unit> free = new ArrayList<>();
-        for (Unit w : ai.army.freeWarriorsAtHome(in))
-            if (bonus(w) < goal - .5f && w.getPrimaryController() instanceof IdleController)
+        List<Unit> home = ai.army.freeWarriorsAtHome(in);
+        // elite_trips: the most drilled few (one per tower and two more) drill on to garrison the towers
+        List<Unit> elite = new ArrayList<>();
+        if (ai.params.elite_trips > ai.params.ratchet_trips) {
+            List<Unit> by_bonus = new ArrayList<>(home);
+            by_bonus.sort((a, b) -> {
+                int c = Float.compare(bonus(b), bonus(a));
+                if (c != 0)
+                    return c;
+                c = Integer.compare(a.getGridX(), b.getGridX());
+                return c != 0 ? c : Integer.compare(a.getGridY(), b.getGridY());
+            });
+            int k = Math.min(by_bonus.size(), in.towers.size() + 2);
+            elite.addAll(by_bonus.subList(0, k));
+        }
+        float elite_goal = 2f * ai.params.elite_trips;
+        for (Unit w : home) {
+            if (!(w.getPrimaryController() instanceof IdleController))
+                continue;
+            if (elite.contains(w) ? bonus(w) < elite_goal - .5f : bonus(w) < goal - .5f)
                 free.add(w);
+        }
         for (Ship s : ships) {
             int aboard = Fleet.warriorsAboard(s);
             if (aboard > 0)

@@ -175,6 +175,8 @@ final class Army {
     }
 
     private void manTowers(@NonNull Intel in) {
+        if (ai.params.elite_trips > 0)
+            swapGarrisons(in);
         for (Building t : in.towers) {
             if (t.getUnitContainer() == null || t.getUnitContainer().getNumSupplies() > 0)
                 continue;
@@ -197,6 +199,36 @@ final class Army {
             if (best != null) {
                 ai.order(best, t, Action.DEFAULT, false);
                 ai.reserve(best, 20);
+            }
+        }
+    }
+
+    /**
+     * elite_trips: a tower whose garrison is far less drilled than a free warrior near it lets the garrison out, so
+     * the better one goes in (manTowers prefers the most drilled), while no enemy is near the tower.
+     */
+    private void swapGarrisons(@NonNull Intel in) {
+        for (Building t : in.towers) {
+            Unit g = Towers.gunner(t);
+            if (g == null)
+                continue;
+            boolean quiet = true;
+            for (Unit e : in.enemy_units)
+                if (e.getIslandId() == t.getIslandId() && Geo.dist2(e.getGridX(), e.getGridY(), t.getGridX(),
+                        t.getGridY()) < 50 * 50) {
+                            quiet = false;
+                            break;
+                        }
+            if (!quiet)
+                continue;
+            float best = 0;
+            for (Unit w : in.warriors)
+                if (!ai.reserved(w) && !inGroup(w) && w.getIslandId() == t.getIslandId()
+                        && Geo.dist2(w.getGridX(), w.getGridY(), t.getGridX(), t.getGridY()) < 40 * 40)
+                    best = Math.max(best, Ratchet.bonus(w));
+            if (best >= Ratchet.bonus(g) + 6f) {
+                me.exitTower(t);
+                ai.log.count("garrison_swap");
             }
         }
     }
@@ -406,6 +438,12 @@ final class Army {
         // the first ashore wait at the beach for the rest
         if (ai.campaign.landingOn(g.island) && second - g.since < 60)
             return;
+        // stage: hold at the beachhead until the campaign releases the stage
+        Campaign.Stage stage = ai.campaign.holding(g.island);
+        if (stage != null) {
+            gather(g.members, stage.bx, stage.by, 12);
+            return;
+        }
         // the target: re-pick when its building is gone
         Building at = buildingAt(in, g.island, g.tx, g.ty);
         if (at == null) {
