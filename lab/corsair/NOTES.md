@@ -63,6 +63,8 @@ Tools: `lab/corsair/eval.sh NAME SPEC OPPONENT [formats]` (1v1 seeds 1..50 + 2v2
 | v2 (12356135) | sea-distance base choice, massed campaigns, group combat | 45-0-15 | mirror 1v1 9-9-42, 2v2 6-6-48 |
 | v3 (9156155b) | + ratchet (6 trips), peon floor 45, idle rowers land | | vs @v2 1v1: 19-4-37, kd30 +181, margin +.375 (z>2) |
 | v4 (2bc931e8) | + chieftain, safer landings, mop-up of ships and units, ferry fixes | 48-0-12 (v4c) | vs @v3 level |
+| v5c (374560a5) | + tower fire control, drilled garrisons, iron axes only, per-island base score, militia | 180 min: 38-0-2 | vs @v4 1v1 margin +.28, 2v2 +.25 (z>2); 180 min vs v4 12-1-27 |
+| v5f | + kiting | | vs no-drill v4 1v1 43-1-56 (elim +.11, kd30 +107); vs v4 kd30 +64/+98 |
 
 ## Runs and findings
 
@@ -74,3 +76,26 @@ Tools: `lab/corsair/eval.sh NAME SPEC OPPONENT [formats]` (1v1 seeds 1..50 + 2v2
 - Mirror games: 70-93 % timeouts at 60 min. After ~45 min both sides sit at the cap and stop launching (the launch
   rule needs more free warriors than the defender's whole army plus towers), and every landing into an alert
   defender loses 2-5 to 1.
+
+### 2026-10-06 screens (paired, 100 games per format, vs @v4 unless noted)
+
+| change | 1v1 | 2v2 | verdict |
+|---|---|---|---|
+| tower_fire | elim +.08*, kd30 +28*, margin +.08* | margin +.05* | adopted |
+| + drilled_garrison | margin +.09 | kd30 +78*, margin +.09* | adopted |
+| rock_weapons=false (iron only) | elim +.12*, kd30 +56*, margin +.23* | kd30 +163*, margin +.19* | adopted |
+| kite (vs no-drill v4) | elim +.11*, kd30 +107*, margin +.15* | elim +.16*, margin +.15* | adopted |
+| kite (vs v4) | kd30 +64*, margin +.06* | kd30 +99*, margin +.11* | |
+| snipe_towers | kd30 -34* (no-drill) | kd30 -87* | rejected |
+| sink_docked=false | kd30 +13 | kd30 +47, w15 +5* | adopted |
+| worker_share 0.35 / 0.5 | margin -.07* / -.18* | margin -.16* / -.30* | rejected |
+| armories=2, quarters=3, max_towers=2 | worse | worse | rejected |
+| militia (vs a raiding copy) | kd30 +24*, w15 +7* | | adopted |
+| stage (beachhead staging) | neutral | margin +.04 | not adopted |
+| attack_ratio 1.0 / 1.6, rowers 26, quarters 5, max_towers 6, chief_rides, tower_unstun, team_target, upgrade, rower_floor, min_peons 30, expedition 35 | within noise | within noise | |
+
+- Iron-only mirrors never attack: both sides hold ~205 iron warriors behind towers and the launch rule needs more than
+  the defender's whole army. A siege_after rule (attack anyway when stalemated) still loses 2-3:1 per landing: in a
+  true mirror not attacking is right; gains come from beating different strategies.
+- Robustness (rb5-*, @v5c vs @v4): no failed games or swallowed errors with natives on either side, free-for-all,
+  4v4, 2v3, hills 3, normal speed, northern terrain.
