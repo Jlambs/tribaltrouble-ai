@@ -31,6 +31,9 @@ final class Army {
         int ty;
         final List<@NonNull Unit> members = new ArrayList<>();
         int since;
+        int checked;
+        /** Broke off (abort_ratio): dissolved next round. */
+        boolean aborted;
 
         Group(int id, int island, int tx, int ty) {
             this.id = id;
@@ -68,7 +71,7 @@ final class Army {
         // drop the dead from groups, and groups without members
         for (Group g : groups)
             g.members.removeIf(u -> u.isDead() || u.isMounted() || u.getIslandId() != g.island);
-        groups.removeIf(g -> g.members.isEmpty() || !enemyOn(in, g.island));
+        groups.removeIf(g -> g.members.isEmpty() || !enemyOn(in, g.island) || g.aborted);
         // warriors on foreign islands join that island's group, while there is an enemy there to fight
         for (Unit w : in.warriors) {
             if (ai.reserved(w) || inGroup(w) || w.getIslandId() == c.island || w.getIslandId() == 0)
@@ -489,6 +492,31 @@ final class Army {
             }
         }
         int d = Geo.dist(cx, cy, g.tx, g.ty);
+        // abort_ratio: closing on the target, weigh the body against what defends the target (warriors within 50
+        // cells of it, towers at four); outmatched, break off before contact: at home the warriors go back to the
+        // defence, abroad they hold the beach
+        if (ai.params.abort_ratio > 0 && d <= 70 && second - g.checked >= 5) {
+            g.checked = second;
+            float ours = 0;
+            for (Unit w : g.members)
+                ours += Intel.value(w);
+            float theirs = 0;
+            for (Unit e : in.enemy_warriors)
+                if (e.getIslandId() == g.island && Geo.dist2(e.getGridX(), e.getGridY(), g.tx, g.ty) <= 50 * 50)
+                    theirs += Intel.value(e);
+            for (Building b : in.enemy_buildings)
+                if (Intel.isTower(b) && b.isComplete() && b.getIslandId() == g.island
+                        && Geo.dist2(b.getGridX(), b.getGridY(), g.tx, g.ty) <= 40 * 40)
+                    theirs += 4f;
+            if (ours * ai.params.abort_ratio < theirs) {
+                float o = ours, t = theirs;
+                ai.log.log("GROUP", () -> "g" + g.id + " breaks off: " + o + " against " + t + " near "
+                        + g.tx + "," + g.ty + " t" + second);
+                ai.log.count("abort");
+                g.aborted = true;
+                return;
+            }
+        }
         if (d <= 14 && at != null) {
             // at the target: every warrior on a building, towers first
             List<Building> near = new ArrayList<>();

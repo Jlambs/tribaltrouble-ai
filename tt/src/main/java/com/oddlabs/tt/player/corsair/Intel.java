@@ -82,6 +82,8 @@ final class Intel {
     }
 
     static @NonNull Kind kind(@NonNull Unit u) {
+        if (u.isDead())
+            return Kind.PEON; // the engine asserts on a dead unit's weapon; it is worth nothing anyway
         if (u.isChieftain())
             return Kind.CHIEF;
         if (!u.isWarrior())
@@ -96,6 +98,8 @@ final class Intel {
 
     /** Fighting value in iron warriors (gauntlet Combat: hits kill, so value ~ hit chance / chance of being hit). */
     static float value(@NonNull Unit u) {
+        if (u.isDead())
+            return 0f;
         return switch (kind(u)) {
             case PEON -> .2f;
             case ROCK -> .6f;
