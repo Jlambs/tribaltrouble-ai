@@ -63,6 +63,7 @@ final class Params {
     final double drill_adapt;
     final int drill_max;
     final double abort_ratio;
+    final boolean tower_face_land;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -122,15 +123,16 @@ final class Params {
         raid_range = a.getInt("raid_range", 350);
         snipe_towers = a.getBoolean("snipe_towers", false);
         stage = a.getBoolean("stage", false);
-        elite_trips = a.getInt("elite_trips", 0);
+        elite_trips = a.getInt("elite_trips", 8);
         bombard = a.getInt("bombard", 0);
         siege_after = a.getInt("siege_after", 0);
         site_trees = a.getBoolean("site_trees", true);
         outnumbered_towers = a.getInt("outnumbered_towers", 2);
         range_edge = a.getDouble("range_edge", 0.05);
-        drill_adapt = a.getDouble("drill_adapt", 0);
+        drill_adapt = a.getDouble("drill_adapt", 4);
         drill_max = a.getInt("drill_max", 12);
         abort_ratio = a.getDouble("abort_ratio", 0);
+        tower_face_land = a.getBoolean("tower_face_land", false);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);

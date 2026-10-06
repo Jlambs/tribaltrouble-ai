@@ -252,6 +252,12 @@ final class Colony {
             }
         }
         int[] shore = isle == null ? null : isle.nearestShore(ex, ey);
+        // tower_face_land: an enemy building on our own island is where the attacks come from
+        if (p.tower_face_land) {
+            com.oddlabs.tt.model.Building land = Army.nearestBuilding(in.enemy_buildings, island, ax, ay);
+            if (land != null)
+                shore = new int[]{land.getGridX(), land.getGridY()};
+        }
         if (shore == null)
             return new int[]{ax, ay};
         int t = in.towers.size() + count(Race.BUILDING_TOWER);
