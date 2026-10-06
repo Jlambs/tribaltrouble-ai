@@ -48,6 +48,7 @@ final class Fleet {
         int last_x = -1;
         int last_y = -1;
         int moved;
+        int docked_since = -1;
         /** The operation that owns the ship, or null. */
         Campaign.@Nullable Op op;
         @Nullable
@@ -110,6 +111,7 @@ final class Fleet {
         d.since = second;
         d.attempts = 0;
         d.moved = second;
+        d.docked_since = -1;
         d.prey = null;
         sail(ship, x, y);
     }
@@ -311,9 +313,22 @@ final class Fleet {
                     () -> "ship at " + ship.getGridX() + "," + ship.getGridY() + " to isle " + d.island + " " + d.tx + "," + d.ty + " moving " + ship.isMoving() + " docked " + dockedAt(
                             ship) + " " + behaviourName(
                                     ship) + " attempts " + d.attempts + " rowers " + ship.getShipHR().countRowers());
+        int at = dockedAt(ship);
+        // docked at the target island but still moving (wiggling under ShipUnstuckBehaviour, or nudging along the
+        // shore): stop there after 3 s, we can land from here
+        if (ship.isMoving() && d.island != 0 && at == d.island) {
+            if (d.docked_since < 0)
+                d.docked_since = second;
+            else if (second - d.docked_since >= 3) {
+                sail(ship, ship.getGridX(), ship.getGridY());
+                ai.log.count("dock_stop");
+                return;
+            }
+        } else if (at != d.island) {
+            d.docked_since = -1;
+        }
         if (ship.isMoving() && !stalled)
             return;
-        int at = dockedAt(ship);
         if (d.island == 0 ? !ship.isMoving() : at == d.island) {
             if (ship.isMoving()) {
                 // held at the shore (an enemy ship in the way stops us): stop here, we are docked

@@ -55,6 +55,8 @@ final class Colony {
         int ordered = -1000;
         int tries;
         final int created;
+        /** The peons sent to place the site: their controllers name it once placed. */
+        final List<@NonNull Unit> placers = new ArrayList<>();
 
         Project(int type, int x, int y, int created) {
             this.type = type;
@@ -110,9 +112,25 @@ final class Colony {
                 }
                 continue;
             }
-            // find the site our builders placed
+            // find the site our builders placed: first from the placers' own controllers, then by position
+            pr.placers.removeIf(Unit::isDead);
+            for (Unit u : pr.placers) {
+                Controller c = u.getPrimaryController();
+                Building b = c instanceof PlaceBuildingController pb ? pb.getBuilding() : c instanceof RepairController rc ? rc.getBuilding() : null;
+                if (b != null && !b.isDead() && b.getTemplate().getTemplateID() == pr.type && !claimed(b)
+                        && (in.sites.contains(b) || b instanceof com.oddlabs.tt.model.Ship sh && in.ship_sites.contains(
+                                sh))) {
+                    pr.site = b;
+                    pr.x = b.getGridX();
+                    pr.y = b.getGridY();
+                    break;
+                }
+            }
+            if (pr.site != null)
+                continue;
             for (Building b : pr.type == Race.BUILDING_SHIP ? new ArrayList<Building>(in.ship_sites) : in.sites) {
-                if (b.getTemplate().getTemplateID() == pr.type && Geo.dist2(b.getGridX(), b.getGridY(), pr.x, pr.y) <= 9
+                if (b.getTemplate().getTemplateID() == pr.type && Geo.dist2(b.getGridX(), b.getGridY(), pr.x,
+                        pr.y) <= 36
                         && !claimed(b)) {
                     pr.site = b;
                     break;
@@ -127,6 +145,16 @@ final class Colony {
                 }
             }
         }
+    }
+
+    /** Whether a placer of the project is still on its way to place it (re-placing would start a second site). */
+    private static boolean placing(@NonNull Project pr) {
+        for (Unit u : pr.placers)
+            if (!u.isDead() && u.getPrimaryController() instanceof PlaceBuildingController pb
+                    && pb.getBuilding() != null
+                    && pb.getBuilding().getTemplate().getTemplateID() == pr.type)
+                return true;
+        return false;
     }
 
     private boolean claimed(@NonNull Building b) {
@@ -239,7 +267,7 @@ final class Colony {
     /** Sends builders to unplaced projects, and keeps placed sites manned. */
     private void runProjects(@NonNull Intel in, int second) {
         for (Project pr : projects) {
-            if (pr.site == null && second - pr.ordered >= 15) {
+            if (pr.site == null && second - pr.ordered >= 15 && !placing(pr)) {
                 List<Unit> free = freePeons(in, pr.x, pr.y, builderTarget(pr, in));
                 if (free.isEmpty())
                     continue;
@@ -255,11 +283,24 @@ final class Colony {
                 pr.ordered = second;
                 pr.tries++;
                 me.placeBuilding(free.toArray(new Unit[0]), pr.type, site[0], site[1]);
+                pr.placers.clear();
+                pr.placers.addAll(free);
+                float tdist = treeDistance(site[0], site[1]);
                 ai.log.log("BUILD", () -> "place " + name(
-                        pr.type) + " at " + site[0] + "," + site[1] + " with " + free.size());
+                        pr.type) + " at " + site[0] + "," + site[1] + " with " + free.size() + " trees " + tdist);
             } else if (pr.site != null && !pr.site.isDead()) {
                 int have = buildersOn(in, pr.site);
                 int want = builderTarget(pr, in);
+                if (second % 20 == 0) {
+                    Building st = pr.site;
+                    int idle = 0;
+                    for (Unit u : in.peons)
+                        if (u.getIslandId() == island && u.getPrimaryController() instanceof IdleController)
+                            idle++;
+                    int id = idle;
+                    ai.log.log("BUILD", () -> "progress " + name(
+                            pr.type) + " hp " + st.getHitPoints() + " builders " + have + "/" + want + " idle " + id);
+                }
                 if (have < want) {
                     List<Unit> free = freePeons(in, pr.site.getGridX(), pr.site.getGridY(), want - have);
                     if (!free.isEmpty())
@@ -340,18 +381,86 @@ final class Colony {
         ai.geo.grid.scan(filter, x, y);
         int spacing = type == Race.BUILDING_TOWER ? 7 : 10;
         int checked = 0;
+        int[] best = null;
+        float best_score = Float.MAX_VALUE;
+        int candidates = 0;
+        int spaced_seen = 0;
         for (Target t : filter.getResult()) {
-            if (++checked > 400)
+            if (++checked > 3000)
                 break;
             if (type != Race.BUILDING_SHIP && !spaced(t.getGridX(), t.getGridY(), spacing))
                 continue;
-            return new int[]{t.getGridX(), t.getGridY()};
+            // the 20 nearest spaced sites, then every 6th further out, so a site among trees farther off can win
+            if (p.site_trees && type != Race.BUILDING_SHIP && ++spaced_seen > 20 && spaced_seen % 6 != 0)
+                continue;
+            if (type == Race.BUILDING_SHIP || !p.site_trees)
+                return new int[]{t.getGridX(), t.getGridY()};
+            // builders chop the wood they build with: a site among trees goes up about twice as fast; the armory's
+            // gatherers walk to the iron
+            int tx = t.getGridX(), ty = t.getGridY();
+            float score = .5f * (float) Math.sqrt((double) Geo.dist2(tx, ty, x, y)) + 1.5f * treeDistance(tx, ty);
+            if (type == Race.BUILDING_ARMORY)
+                score += ironDistance(tx, ty);
+            if (score < best_score) {
+                best_score = score;
+                best = new int[]{tx, ty};
+            }
+            if (++candidates >= 80)
+                break;
         }
+        if (best != null)
+            return best;
         if (!filter.getResult().isEmpty()) {
             Target t = filter.getResult().getFirst();
             return new int[]{t.getGridX(), t.getGridY()};
         }
         return null;
+    }
+
+    /** Mean distance in cells to the 6 nearest standing trees within 18 cells (a missing one counts 25). */
+    private float treeDistance(int x, int y) {
+        var grid = ai.geo.grid;
+        int size = grid.getGridSize();
+        float[] near = new float[6];
+        java.util.Arrays.fill(near, 25f);
+        for (int dy = -18; dy <= 18; dy++)
+            for (int dx = -18; dx <= 18; dx++) {
+                int cx = x + dx, cy = y + dy;
+                if (cx < 0 || cy < 0 || cx >= size || cy >= size)
+                    continue;
+                if (grid.getOccupant(cx, cy) instanceof TreeSupply tree && !tree.isEmpty()) {
+                    float d = (float) Math.sqrt((double) (dx * dx + dy * dy));
+                    // keep the 6 smallest
+                    int worst = 0;
+                    for (int i = 1; i < near.length; i++)
+                        if (near[i] > near[worst])
+                            worst = i;
+                    if (d < near[worst])
+                        near[worst] = d;
+                }
+            }
+        float sum = 0;
+        for (float d : near)
+            sum += d;
+        return sum / near.length;
+    }
+
+    /** Mean distance in cells to the 3 nearest iron nodes of our island (a missing one counts 40). */
+    private float ironDistance(int x, int y) {
+        float[] near = {40f, 40f, 40f};
+        for (com.oddlabs.tt.model.IronSupply s : ai.geo.iron_nodes) {
+            if (s.isEmpty() || ai.geo.islandAt(s.getGridX(), s.getGridY()) != 0
+                    && ai.geo.islandAt(s.getGridX(), s.getGridY()) != island)
+                continue;
+            float d = (float) Math.sqrt((double) Geo.dist2(s.getGridX(), s.getGridY(), x, y));
+            int worst = 0;
+            for (int i = 1; i < near.length; i++)
+                if (near[i] > near[worst])
+                    worst = i;
+            if (d < near[worst])
+                near[worst] = d;
+        }
+        return (near[0] + near[1] + near[2]) / 3f;
     }
 
     private boolean spaced(int x, int y, int min) {

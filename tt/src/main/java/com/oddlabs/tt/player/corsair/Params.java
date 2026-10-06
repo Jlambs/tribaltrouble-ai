@@ -57,6 +57,7 @@ final class Params {
     final int elite_trips;
     final int bombard;
     final int siege_after;
+    final boolean site_trees;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -119,6 +120,7 @@ final class Params {
         elite_trips = a.getInt("elite_trips", 0);
         bombard = a.getInt("bombard", 0);
         siege_after = a.getInt("siege_after", 0);
+        site_trees = a.getBoolean("site_trees", false);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
