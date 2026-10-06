@@ -44,8 +44,9 @@ first opponent to beat.
   an exception you caught; the game goes on and the count shows in every row.
 - `AiLog`, `AiParams` and `GameTime` are the AI's toolkit, `com.oddlabs.tt.aikit`. Its subpackage `aikit.harness`
   is the harness's.
-- **Ships**: harness games never have ships. GUI games have them only on Archipelago maps or with the Ships advanced
-  setting, so ship orders matter only for play-tests there.
+- **Ships**: games on Archipelago maps (`--size archipelago`) always have them, and other games with `--ships` (the
+  skirmish menu's Ships setting). On an Archipelago every player starts at sea, aboard its starting ships, so an AI
+  that never sails sits there for the whole game. See [Ships and Archipelago maps](#ships-and-archipelago-maps).
 
 ## How orders reach the game
 
@@ -78,15 +79,15 @@ All of them are methods of `getOwner()`, your `Player`. `gx, gy` are grid cells 
 |---|---|
 | `setTarget(units, target, action, aggressive)` | The right-click. `target` is a unit, a building, a resource (tree, rock, iron or rubber) or `new LandscapeTarget(gx, gy)`. `Action.DEFAULT` chooses like a right-click, in this order: a peon builds an unplaced building site, gathers a resource, or repairs a damaged building of yours or an ally's (but a finished armory it enters; repairing that takes `GATHER_REPAIR`); a unit enters your building (quarters, armory, tower) if there is room; it attacks an enemy; otherwise it walks there, fighting on the way if `aggressive`. `MOVE` enters or walks without fighting. `ATTACK` attacks the target, even a friendly one, or walks there fighting. `GATHER_REPAIR` gathers or repairs. `aggressive` only matters when `DEFAULT` ends up walking. |
 | `setLandscapeTarget(units, gx, gy, action, aggressive)` | The same towards a map cell. The group spreads over the cells around it. |
-| `placeBuilding(peons, Race.BUILDING_QUARTERS / _ARMORY / _TOWER / _SHIP, gx, gy)` | Creates a building site and sends the peons to build it. The UI checks the site before sending this order; the peons check only a slightly smaller footprint when they arrive, and drop an illegal site. So check the site yourself (recipe below). |
-| `deployUnits(building, DeployType, count)` | Units leave a finished building through its deploy queue. Quarters: `PEON` only. Armory, and ships: `PEON`; `ROCK_WARRIOR`, `IRON_WARRIOR`, `RUBBER_WARRIOR` (each takes a weapon from stock); `PEON_HARVEST_TREE`, `_ROCK`, `_IRON`, `_RUBBER` (gather that resource and bring it back); `PEON_TRANSPORT_*` (carry a load of it to the rally point). A negative count cancels queued units, as the UI's decrease button does. |
+| `placeBuilding(peons, Race.BUILDING_QUARTERS / _ARMORY / _TOWER / _SHIP, gx, gy)` | Creates a building site and sends the peons to build it. The UI checks the site before sending this order; the peons check only a slightly smaller footprint when they arrive, and drop an illegal site. So check the site yourself (recipe below). A ship's site is on the shore ([Ships](#ships-and-archipelago-maps)). |
+| `deployUnits(building, DeployType, count)` | Units leave a finished building through its deploy queue. Quarters: `PEON` only. Armory, and ships: `PEON`; `ROCK_WARRIOR`, `IRON_WARRIOR`, `RUBBER_WARRIOR` (from an armory each takes a weapon from stock; from a ship they are the warriors of that kind aboard); `PEON_HARVEST_TREE`, `_ROCK`, `_IRON`, `_RUBBER` (gather that resource and bring it back); `PEON_TRANSPORT_*` (carry a load of it to the rally point). A negative count cancels queued units, as the UI's decrease button does. Units leave a ship only while it is docked and still. |
 | `buildRockWeapons`, `buildIronWeapons`, `buildRubberWeapons(armory, count, infinite)` | Queue weapons in a finished armory. The peons inside make them from the resources in its stock. |
 | `recallGatherers(building, TreeSupply.class / RockSupply.class / IronSupply.class / RubberSupply.class, count)` | The `count` nearest gatherers of that resource working for the building walk back into it. |
 | `setRallyPoint(building, target)`, `setRallyPoint(building, gx, gy)` | Where units deployed from the building go. |
 | `trainChieftain(quarters, start)` | Starts (`true`) or stops (`false`) training the chieftain. |
 | `doMagic(chieftain, index)` | Casts a spell if the chieftain is charged (`chieftain.canDoMagic(index)`). Vikings: `RacesResources.INDEX_MAGIC_STUN`, `INDEX_MAGIC_BLAST`. Natives: `INDEX_MAGIC_POISON`, `INDEX_MAGIC_LIGHTNING`. |
 | `exitTower(tower)` | The unit in the tower comes out. |
-| `setSailingTarget(ships, target)`, `setSailingTarget(ships, gx, gy)` | Ships sail (only in GUI games with ships, see above). |
+| `setSailingTarget(ships, target)`, `setSailingTarget(ships, gx, gy)` | Ships sail towards a unit, a building or a cell, and dock at the shore when they reach land ([Ships](#ships-and-archipelago-maps)). |
 
 Not for AIs:
 
@@ -114,7 +115,8 @@ The game has no fog of war (humans see the whole map), so an AI may read any sta
   - `getChieftain()`, `hasActiveChieftain()`, `isTrainingChieftain()`, `getRace()`.
   - `getStartX()`, `getStartY()`: world coordinates.
   - `getUnitCountContainer().getNumSupplies()`.
-  - `isEnemy(other_player)`, `findNearestEnemy(gx, gy)`, `findNearestEnemyBuilding(gx, gy)`.
+  - `isEnemy(other_player)`, `findNearestEnemy(gx, gy)`, `findNearestEnemyBuilding(gx, gy)`, and
+    `findNearestEnemy(gx, gy, filter)` with a predicate, such as `s -> s.getIslandId() == island`.
 - **The base class `AI`**:
   - `getIdlePeons()`, `getIdleWarriors()`, `getGatherTreePeons()` (and rock, iron, rubber), `getArmory()`,
     `getQuarters()`, `getTowers()`, `getConstructionSites()` and more. They return arrays, or null when a group is
@@ -132,7 +134,7 @@ The game has no fog of war (humans see the whole map), so an AI may read any sta
     the container is null until the building is finished.
   - Stock, only on a finished armory (and ships): `getSupplyContainer(TreeSupply.class)` for resources (also
     `RockSupply`, `IronSupply`, `RubberSupply`), and `getSupplyContainer(RockAxeWeapon.class)` for weapons of both
-    races (also `IronAxeWeapon`, `RubberAxeWeapon`).
+    races (also `IronAxeWeapon`, `RubberAxeWeapon`); on a ship, that is the warriors of the kind aboard.
   - These getters assert that the building is alive.
 - **Coordinates**: orders and scans take grid cells. `UnitGrid.toGridCoordinate(world_x)` converts a world position.
 - **Scans**: `getUnitGrid().scan(filter, gx, gy)`, with `new FindOccupantFilter<>(x, y, radius, null, Unit.class)`
@@ -195,6 +197,78 @@ for (Unit unit : near.getResult()) {
 }
 ```
 
+## Ships and Archipelago maps
+
+An Archipelago (`--size archipelago`, the skirmish menu's last map size) is a 2048 m sea of islands that only ships
+connect. Every player starts at sea: `super(owner, units)` puts the starting units aboard starting ships at the
+player's start (a ship per full 26 units, at least one: one for the harness's 20), with no buildings. Until the AI
+lands them, its unit set holds only its ships. On other maps, ships come with `--ships` (the menu's Ships setting),
+and everyone starts on land as usual. `getWorld().isShipsEnabled()` says whether the game has ships, and
+`getWorld().getMapSize() == Game.SIZE_ARCHIPELAGO` whether it is an Archipelago.
+
+- **A ship is a building** (`model.Ship`, a `Building` but not a `LandBuilding`), placed on a dock site at the shore
+  and built by peons; it counts against the building limit. Peons repair it with `Action.GATHER_REPAIR`.
+- **Docked or at sea**: a ship that lies at a shore has a landing stage on the land beside it, a `ShipProxy`.
+  `ship.getEntrance()` returns that stage, or the ship itself while it is at sea, so
+  `ship.getEntrance().getIslandId()` is the island it is docked at. The stage is a `Building` in your unit set too:
+  skip it, it takes no orders.
+- **Crew**: units board with `setTarget(units, ship, Action.MOVE, false)`, walking to the landing stage of a docked
+  ship, and leave your unit set while aboard. They leave the ship through its deploy queues, `deployUnits(ship, ...)`
+  (the orders table), only while it is docked and still; queued while it sails, they land when it docks. How many
+  fit depends on the units' sizes: `getShipHR().canAllocate(unit)` says whether one more does. Peons row, and a ship
+  sails faster the more of them are aboard (twice as fast with the chieftain); warriors on the upper deck shoot at
+  enemies in range, a little beyond a tower's. A ship that loses its hit points sinks and drowns everyone aboard:
+  they count as lost units, with no kill for the attacker. A chieftain who boards cannot land again by any order (the
+  UI lands him with a direct call that lint refuses), so keep him ashore.
+- **Reading a ship**: `isComplete()`, `getHitPoints()`, `isMoving()`, `getEntrance()`, and once it is complete
+  `getShipHR()`: `countUnits()` (everyone aboard), `countPeons()` (everyone but the warriors, the chieftain too),
+  `countUnitsOfType(RockAxeWeapon.class)` (the warriors of a kind; also `IronAxeWeapon`, `RubberAxeWeapon`),
+  `hasChieftain()` and `countRowers()`.
+- **The helmsman**: every finished ship has an imaginary peon at its rudder that stays in your unit set
+  (`unit.isMounted()` is true) but is not one of your units (`getNumSupplies()` leaves it out). Skip mounted units
+  when you count or order peons.
+- **Islands**: units on land never leave their island on foot. `getWorld().getHeightMap()` has `getIslandInfos()`,
+  every island with `id()`, `area()`, `trees()`, `rocks()`, `iron()`, its bounds (`minX()` ... `maxY()`,
+  `centerX()`, `centerY()`) and `contourPoints()`, its shore cells as `{gx, gy}`; `getIslandInfo(id)` and
+  `getIslandId(gx, gy)`. Every unit and building has `getIslandId()`. Island ids start at 2; 0 is water or ground no
+  unit can stand on. A map without islands is one island.
+
+```java
+// sail a ship to the shore cell of an island nearest to it (island: an IslandInfo)
+int[] landing = null;
+long best = Long.MAX_VALUE;
+for (int[] cell : island.contourPoints()) {
+    long dx = cell[0] - ship.getGridX(), dy = cell[1] - ship.getGridY();
+    if (dx * dx + dy * dy < best) {
+        best = dx * dx + dy * dy;
+        landing = cell;
+    }
+}
+if (landing != null) {
+    me.setSailingTarget(Selectable.newArray(ship), landing[0], landing[1]);
+}
+
+// land everyone aboard: queued at sea, they leave once the ship docks
+ShipHR crew = ship.getShipHR();
+me.deployUnits(ship, DeployType.PEON, crew.countPeons() - (crew.hasChieftain() ? 1 : 0));
+me.deployUnits(ship, DeployType.ROCK_WARRIOR, crew.countUnitsOfType(RockAxeWeapon.class));
+me.deployUnits(ship, DeployType.IRON_WARRIOR, crew.countUnitsOfType(IronAxeWeapon.class));
+me.deployUnits(ship, DeployType.RUBBER_WARRIOR, crew.countUnitsOfType(RubberAxeWeapon.class));
+
+// a new ship: a dock site on the builders' island, near (gx, gy)
+BuildingTemplate hull = me.getRace().getBuildingTemplate(Race.BUILDING_SHIP);
+BuildingSiteScanFilter docks = new BuildingSiteScanFilter(getUnitGrid(), hull, 100, true, builders[0].getIslandId());
+getUnitGrid().scan(docks, gx, gy);
+if (!docks.getResult().isEmpty()) {
+    Target site = docks.getResult().getFirst();
+    me.placeBuilding(builders, Race.BUILDING_SHIP, site.getGridX(), site.getGridY());
+}
+```
+
+The stock AI plays Archipelagos in `AdvancedAI` (`nodePickInitIsland`, `nodeBuildShipAndLoad`, `useShip`): it lands
+its starting ships on the nearest island with wood, rock and iron, builds quarters and an armory, then up to three
+ships, crews each with peons and warriors, and lands the warriors on enemy islands.
+
 ## Rules
 
 `./aisim.sh build` lints every AI package in `tt/src/main/java` (a package `com.oddlabs.tt.player.NAME` that holds
@@ -217,8 +291,9 @@ An AI may do exactly what a human player can do through the UI, and nothing more
     `Unit.setTarget`, `Selectable.initTarget`, `Unit.doMagic` and so on. Each has an order that does the same fairly.
   - the stock chieftain AI (`getRace().getChieftainAI().decide(...)`), which casts with `Unit.doMagic` directly;
   - anything else that changes state: `Unit.hit`, `Selectable.remove`, `Player.buildBuilding`,
-    `BuildingTemplate.create`, `SupplyContainer.increaseSupply`, `Army.add`, and `new Unit(...)` or any other
-    world object;
+    `BuildingTemplate.create`, `SupplyContainer.increaseSupply`, `Army.add`, `Ship.newStartingShips`, the
+    `ShipHR` methods that seat or unseat units (`tryAllocate`, `exitUnit`, `exitChieftain`), and `new Unit(...)` or
+    any other world object;
   - writing any engine field, such as `Globals` or `Settings`;
   - `Player.createHarvesters`, `setPreferredGamespeed` and `changePreferredGamespeed`;
   - creating another AI (`new AdvancedAI(...)`) or a `UnitInfo`. Either would give your player a second set of

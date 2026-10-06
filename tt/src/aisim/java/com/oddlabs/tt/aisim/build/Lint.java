@@ -8,6 +8,8 @@ import com.oddlabs.tt.model.Army;
 import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.Element;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.Ship;
+import com.oddlabs.tt.model.ShipHR;
 import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.SupplyContainer;
 import com.oddlabs.tt.pathfinder.ScanFilter;
@@ -558,8 +560,11 @@ public final class Lint {
                     && (name.equals("increaseSupply") || name.equals("exit"));
             boolean harvest = Supply.class.isAssignableFrom(declarer) && (name.equals("hit") || name.equals("respawn"));
             boolean build = (declarer == Player.class && name.equals("buildBuilding"))
-                    || (declarer == BuildingTemplate.class && name.equals("create"));
-            return supplies || harvest || build;
+                    || (declarer == BuildingTemplate.class && name.equals("create"))
+                    || (declarer == Ship.class && name.equals("newStartingShips"));
+            boolean crew = declarer == ShipHR.class
+                    && (name.equals("tryAllocate") || name.equals("exitUnit") || name.equals("exitChieftain"));
+            return supplies || harvest || build || crew;
         }
 
         private void checkJdkCall(@NonNull String file, int line, @NonNull Class<?> declarer, @NonNull String name,
