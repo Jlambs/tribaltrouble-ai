@@ -1247,8 +1247,9 @@ public final class ActionButtonPanel extends GUIObject implements Animated {
     }
 
     private void deployChieftainFromShip(@NonNull MouseButton button, int x, int y, int clicks) {
-        if (current_ship && current_building instanceof Ship ship) {
-            ship.deployChieftain();
+        // an order, so every machine of the game lands him (Ship.trainChieftain), not this one alone
+        if (current_ship && current_building instanceof Ship ship && !ship.isDead()) {
+            viewer.getPeerHub().getPlayerInterface().trainChieftain(ship, true);
         }
     }
 

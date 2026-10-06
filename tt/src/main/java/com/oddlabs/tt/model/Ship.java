@@ -443,7 +443,11 @@ public class Ship extends Building implements Movable {
         return false;
     }
 
+    /** On a ship the chieftain order lands the chieftain aboard, once the ship is docked and still. */
     public final void trainChieftain(boolean start) {
+        if (start) {
+            deployChieftain();
+        }
     }
 
     public final void deployChieftain() {

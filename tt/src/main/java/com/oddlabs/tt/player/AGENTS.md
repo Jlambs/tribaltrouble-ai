@@ -84,7 +84,7 @@ All of them are methods of `getOwner()`, your `Player`. `gx, gy` are grid cells 
 | `buildRockWeapons`, `buildIronWeapons`, `buildRubberWeapons(armory, count, infinite)` | Queue weapons in a finished armory. The peons inside make them from the resources in its stock. |
 | `recallGatherers(building, TreeSupply.class / RockSupply.class / IronSupply.class / RubberSupply.class, count)` | The `count` nearest gatherers of that resource working for the building walk back into it. |
 | `setRallyPoint(building, target)`, `setRallyPoint(building, gx, gy)` | Where units deployed from the building go. |
-| `trainChieftain(quarters, start)` | Starts (`true`) or stops (`false`) training the chieftain. |
+| `trainChieftain(quarters, start)` | Starts (`true`) or stops (`false`) training the chieftain. On a ship, `true` lands the chieftain aboard once it is docked and still. |
 | `doMagic(chieftain, index)` | Casts a spell if the chieftain is charged (`chieftain.canDoMagic(index)`). Vikings: `RacesResources.INDEX_MAGIC_STUN`, `INDEX_MAGIC_BLAST`. Natives: `INDEX_MAGIC_POISON`, `INDEX_MAGIC_LIGHTNING`. |
 | `exitTower(tower)` | The unit in the tower comes out. |
 | `setSailingTarget(ships, target)`, `setSailingTarget(ships, gx, gy)` | Ships sail towards a unit, a building or a cell, and dock at the shore when they reach land ([Ships](#ships-and-archipelago-maps)). |
@@ -218,8 +218,8 @@ and everyone starts on land as usual. `getWorld().isShipsEnabled()` says whether
   fit depends on the units' sizes: `getShipHR().canAllocate(unit)` says whether one more does. Peons row, and a ship
   sails faster the more of them are aboard (twice as fast with the chieftain); warriors on the upper deck shoot at
   enemies in range, a little beyond a tower's. A ship that loses its hit points sinks and drowns everyone aboard:
-  they count as lost units, with no kill for the attacker. A chieftain who boards cannot land again by any order (the
-  UI lands him with a direct call that lint refuses), so keep him ashore.
+  they count as lost units, with no kill for the attacker. The chieftain lands with `trainChieftain(ship, true)`, as
+  the ship's chieftain button does, likewise once the ship is docked and still.
 - **Reading a ship**: `isComplete()`, `getHitPoints()`, `isMoving()`, `getEntrance()`, and once it is complete
   `getShipHR()`: `countUnits()` (everyone aboard), `countPeons()` (everyone but the warriors, the chieftain too),
   `countUnitsOfType(RockAxeWeapon.class)` (the warriors of a kind; also `IronAxeWeapon`, `RubberAxeWeapon`),
