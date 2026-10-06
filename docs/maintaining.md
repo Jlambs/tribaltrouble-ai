@@ -122,9 +122,18 @@ rm -rf aisim/runs/check-*                                       # the run names 
     ./aisim.sh replay check-free-for-all s1-2
 # headless plays every game as the game's own code path does (headless=false needs GL 4.1 and an audio device):
 # compare prints "identical games 3"
-./aisim.sh batch --players "hard/n*2 vs hard*2 vs normal/n" --size medium --seeds 1..3 --side 0 --minutes 20 \n    --name check-headless
-AISIM_JAVA_OPTS=-Dcom.oddlabs.tt.headless=false ./aisim.sh batch --players "hard/n*2 vs hard*2 vs normal/n" \n    --size medium --seeds 1..3 --side 0 --minutes 20 --name check-headless-off
+./aisim.sh batch --players "hard/n*2 vs hard*2 vs normal/n" --size medium --seeds 1..3 --side 0 --minutes 20 \
+    --name check-headless
+AISIM_JAVA_OPTS=-Dcom.oddlabs.tt.headless=false ./aisim.sh batch --players "hard/n*2 vs hard*2 vs normal/n" \
+    --size medium --seeds 1..3 --side 0 --minutes 20 --name check-headless-off
 ./aisim.sh compare check-headless-off check-headless
+# Archipelago: islands, starts at sea and ships; the replay VERIFIED, and headless plays it as the game does too
+# (compare prints "identical games 2")
+./aisim.sh batch --players "hard vs normal/n" --size archipelago --seeds 1..2 --side 0 --minutes 40 \
+    --name check-archipelago && ./aisim.sh replay check-archipelago s1-0
+AISIM_JAVA_OPTS=-Dcom.oddlabs.tt.headless=false ./aisim.sh batch --players "hard vs normal/n" --size archipelago \
+    --seeds 1..2 --side 0 --minutes 40 --name check-archipelago-off
+./aisim.sh compare check-archipelago-off check-archipelago
 # 32 players, beyond the skirmish menu's 12: the engine must still build and play them
 ./aisim.sh batch --players "hard*16 vs normal*16" --size large --seeds 3 --side 5 --minutes 3 --name check-32-players &&
     ./aisim.sh replay check-32-players s3-5
