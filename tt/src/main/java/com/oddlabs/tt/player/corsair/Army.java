@@ -67,10 +67,12 @@ final class Army {
         // drop the dead from groups, and groups without members
         for (Group g : groups)
             g.members.removeIf(u -> u.isDead() || u.isMounted() || u.getIslandId() != g.island);
-        groups.removeIf(g -> g.members.isEmpty());
-        // warriors on foreign islands join that island's group
+        groups.removeIf(g -> g.members.isEmpty() || !enemyOn(in, g.island));
+        // warriors on foreign islands join that island's group, while there is an enemy there to fight
         for (Unit w : in.warriors) {
             if (ai.reserved(w) || inGroup(w) || w.getIslandId() == c.island || w.getIslandId() == 0)
+                continue;
+            if (!enemyOn(in, w.getIslandId()))
                 continue;
             Group g = groupOn(w.getIslandId());
             if (g == null) {
@@ -85,6 +87,17 @@ final class Army {
         defend(in, second);
         for (Group g : groups)
             lead(in, g, second);
+    }
+
+    /** Whether any enemy unit, building or docked ship is on the island. */
+    static boolean enemyOn(@NonNull Intel in, int island) {
+        for (Unit u : in.enemy_units)
+            if (u.getIslandId() == island)
+                return true;
+        for (Building b : in.enemy_buildings)
+            if (b.getIslandId() == island)
+                return true;
+        return !in.enemyShipsDockedAt(island).isEmpty();
     }
 
     private boolean inGroup(@NonNull Unit w) {
@@ -139,7 +152,12 @@ final class Army {
                 if (w.getIslandId() != t.getIslandId() || ai.reserved(w) || inGroup(w))
                     continue;
                 long d = Geo.dist2(w.getGridX(), w.getGridY(), t.getGridX(), t.getGridY());
-                if (d < bd && d < 60 * 60) {
+                if (d >= 60 * 60)
+                    continue;
+                // drilled_garrison: the most drilled warrior near, its range is the tower's under fire control
+                if (ai.params.drilled_garrison)
+                    d -= (long) (Ratchet.bonus(w) * 400);
+                if (d < bd) {
                     bd = d;
                     best = w;
                 }
@@ -193,10 +211,30 @@ final class Army {
             if (u.isWarrior() || u.isChieftain())
                 theirs += Intel.value(u);
         home_threat = theirs > 2;
+        // an enemy ship docked at our island is landing troops: its hull is in reach from the shore, and each hit
+        // may kill one aboard; sunk, it drowns them all
+        List<Ship> docked = new ArrayList<>();
+        if (ai.params.sink_docked)
+            for (Ship s : in.enemyShipsDockedAt(c.island))
+                if (Geo.dist2(s.getGridX(), s.getGridY(), c.ax, c.ay) <= 90 * 90)
+                    docked.add(s);
+        if (!docked.isEmpty()) {
+            home_threat = true;
+            Ship s = docked.getFirst();
+            List<Unit> sinkers = new ArrayList<>();
+            for (Unit w : mine)
+                if (!busy(w) && (threats.isEmpty() || sinkers.size() * 2 < mine.size()))
+                    sinkers.add(w);
+            for (Unit w : sinkers)
+                ai.order(w, s, Action.ATTACK, true);
+            mine.removeAll(sinkers);
+        }
         if (!threats.isEmpty()) {
             engage(mine, threats, 60);
             return;
         }
+        if (!docked.isEmpty())
+            return;
         int[] dock = ai.fleet.homeDock();
         gather(mine, (c.ax * 2 + dock[0]) / 3, (c.ay * 2 + dock[1]) / 3, 14);
     }
@@ -367,6 +405,8 @@ final class Army {
             if (e.isWarrior() || e.isChieftain())
                 fighters.add(e);
         for (Unit w : warriors) {
+            if (ai.params.kite && kite(w, fighters))
+                continue;
             long reach = r + (long) Ratchet.bonus(w);
             long r2 = reach * reach;
             Unit current = currentTarget(w);
@@ -400,6 +440,37 @@ final class Army {
                 ai.order(w, best, Action.ATTACK, true);
             }
         }
+    }
+
+    /**
+     * Stand-off for a warrior that outranges its nearest threat: when an enemy warrior comes within its own throwing
+     * range (plus a step, as decisions come once a second), back off a few cells, straight away from it, and throw
+     * again once out of its reach. Returns whether the warrior was ordered back.
+     */
+    private boolean kite(@NonNull Unit w, @NonNull List<@NonNull Unit> fighters) {
+        Unit danger = null;
+        long bd = Long.MAX_VALUE;
+        for (Unit e : fighters) {
+            if (e.isDead() || e.isChieftain())
+                continue;
+            float er = e.getRange(w) + (float) ai.params.kite_slack;
+            long d2 = Geo.dist2(e.getGridX(), e.getGridY(), w.getGridX(), w.getGridY());
+            if (d2 <= (long) (er * er) && d2 < bd) {
+                bd = d2;
+                danger = e;
+            }
+        }
+        if (danger == null || w.getRange(danger) < danger.getRange(w) + 3f)
+            return false;
+        int dx = w.getGridX() - danger.getGridX(), dy = w.getGridY() - danger.getGridY();
+        int len = Math.max(1, (int) Math.sqrt((double) dx * dx + (double) dy * dy));
+        int step = ai.params.kite_step;
+        int tx = w.getGridX() + dx * step / len, ty = w.getGridY() + dy * step / len;
+        if (ai.geo.islandAt(tx, ty) != w.getIslandId())
+            return false; // backed against the shore: stand and throw
+        ai.move(List.of(w), tx, ty, Action.MOVE, false);
+        ai.log.count("kite");
+        return true;
     }
 
     private static @Nullable Unit currentTarget(@NonNull Unit w) {

@@ -32,6 +32,7 @@ public final class CorsairAI extends AI {
     final @NonNull Campaign campaign;
     final @NonNull Ratchet ratchet;
     final @NonNull Chief chief;
+    final @NonNull Towers towers;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -53,6 +54,7 @@ public final class CorsairAI extends AI {
         campaign = new Campaign(this);
         ratchet = new Ratchet(this);
         chief = new Chief(this);
+        towers = new Towers(this);
         reflexes = new Reflexes(owner, log, params.swing_restart, params.stun_cancel);
     }
 
@@ -97,6 +99,7 @@ public final class CorsairAI extends AI {
         colony.think(second);
         army.think(intel, second);
         chief.think(intel, second);
+        towers.think(intel);
         if (second % 30 == 0)
             stat();
     }

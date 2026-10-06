@@ -13,6 +13,7 @@ for f in ${formats//,/ }; do
     3v3) players="$a*3 vs $b*3"; seeds=1..15 ;;
   esac
   run="$name-$f"
+  [ ${#run} -gt 40 ] && { echo "run name too long: $run"; exit 2; }
   [ -f "aisim/runs/$run/summary.txt" ] && continue
   rm -rf "aisim/runs/$run"
   ./aisim.sh batch --name "$run" --players "$players" --seeds "$seeds" $common 2>&1 | grep -E "^RESULT|failed|swallowed errors [1-9]"

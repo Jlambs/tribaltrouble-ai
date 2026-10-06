@@ -476,6 +476,20 @@ final class Colony {
         return done;
     }
 
+    /** Lets up to n peons out of our quarters (they come out idle, for rowing or work). */
+    void releasePeons(@NonNull Intel in, int n) {
+        for (Building q : in.quarters) {
+            if (n <= 0)
+                return;
+            int inside = q.getUnitContainer().getNumSupplies() - pendingDeploys(q);
+            int k = Math.min(n, inside);
+            if (k > 0) {
+                me.deployUnits(q, DeployType.PEON, k);
+                n -= k;
+            }
+        }
+    }
+
     // --- quarters --------------------------------------------------------------------------------------------------
 
     private void manageQuarters(@NonNull Intel in, int second) {

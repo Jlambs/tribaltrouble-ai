@@ -133,8 +133,60 @@ final class Campaign {
         return d;
     }
 
+    /** Per ally: the sea field from its base, refreshed every two minutes (team_target). */
+    private final Map<com.oddlabs.tt.player.@NonNull Player, int @NonNull []> ally_fields = new LinkedHashMap<>();
+    private int ally_fields_at = -1000;
+
+    /** An ally's base: the centre of its quarters and armories, or null without any. */
+    private static int @Nullable [] baseOf(com.oddlabs.tt.player.@NonNull Player p) {
+        long sx = 0, sy = 0;
+        int n = 0;
+        for (com.oddlabs.tt.model.Selectable<?> s : p.getUnits().getSet())
+            if (s instanceof Building b && !b.isDead() && b.isComplete() && (Intel.isQuarters(b) || Intel.isArmory(
+                    b))) {
+                        sx += b.getGridX();
+                        sy += b.getGridY();
+                        n++;
+                    }
+        return n == 0 ? null : new int[]{(int) (sx / n), (int) (sy / n)};
+    }
+
+    private void refreshAllyFields(@NonNull Intel in, int second) {
+        if (second - ally_fields_at < 120)
+            return;
+        ally_fields_at = second;
+        ally_fields.clear();
+        for (com.oddlabs.tt.player.Player p : in.allies) {
+            int[] base = baseOf(p);
+            if (base == null)
+                continue;
+            Geo.Isle isle = ai.geo.isle(ai.geo.islandAt(base[0], base[1]));
+            int[] shore = isle == null ? null : isle.nearestShore(base[0], base[1]);
+            if (shore != null)
+                ally_fields.put(p, ai.sea.field(shore[0], shore[1]));
+        }
+    }
+
+    /** Allied warriors standing on their own home islands (what they could ship to a common target). */
+    private float allyHomeStrength(@NonNull Intel in) {
+        float v = 0;
+        for (com.oddlabs.tt.player.Player p : in.allies) {
+            int[] base = baseOf(p);
+            if (base == null)
+                continue;
+            int isl = ai.geo.islandAt(base[0], base[1]);
+            for (Unit u : in.ally_warriors)
+                if (u.getOwner() == p && u.getIslandId() == isl)
+                    v += Intel.value(u);
+        }
+        return v;
+    }
+
     private void launch(@NonNull Intel in, int second) {
         Colony c = ai.colony;
+        boolean team = ai.params.team_target && !in.allies.isEmpty();
+        if (team)
+            refreshAllyFields(in, second);
         List<Unit> free = ai.army.freeWarriorsAtHome(in);
         if (landAssault(in, free, second))
             return;
@@ -151,10 +203,21 @@ final class Campaign {
                 continue;
             if (!(Intel.isArmory(b) || Intel.isQuarters(b)) && hasEconomy(in, isl))
                 continue;
-            float def = defence(in, isl, b.getGridX(), b.getGridY());
+            float allied = (float) ai.params.ally_join * in.allyStrengthOn(isl);
+            float def = Math.max(0f, defence(in, isl, b.getGridX(), b.getGridY()) - .7f * allied);
             int[] field = homeField();
             int sea = ai.sea.to(field, b.getGridX(), b.getGridY());
-            float cost = 2f * def + Math.min(sea, 2000) / 40f + (fightingOn(isl) ? -10f : 0f);
+            if (team) {
+                // the whole team measures the same way, so allies pick the same target
+                int sum = Math.min(sea, 2000), n = 1;
+                for (int[] f : ally_fields.values()) {
+                    sum += Math.min(ai.sea.to(f, b.getGridX(), b.getGridY()), 2000);
+                    n++;
+                }
+                sea = sum / n;
+            }
+            float cost = 2f * def + Math.min(sea, 2000) / 40f + (fightingOn(
+                    isl) ? -10f : 0f) - (allied >= 8f ? 15f : 0f);
             if (cost < best) {
                 best = cost;
                 target = b;
@@ -183,8 +246,10 @@ final class Campaign {
             int all_ships = ai.fleet.duties.size();
             // the whole force at once: enough ships at home for it, or every ship we have
             boolean enough_ships = room >= need || ships.size() >= all_ships;
-            boolean go = enough_ships && (free.size() >= need || (capped && free.size() >= Math.min(need, 30)
-                    && free.size() >= target_def));
+            // team_target: allies shipping to the same target at the same time share the need
+            float team_free = free.size() + (team ? .8f * allyHomeStrength(in) : 0f);
+            boolean go = enough_ships && (free.size() >= need || (team && free.size() >= 15 && team_free >= need)
+                    || (capped && free.size() >= Math.min(need, 30) && free.size() >= target_def));
             if (go) {
                 int take = Math.min(free.size(), room);
                 assault(in, tisl, tx, ty, ships, free.subList(0, take), second);
@@ -336,14 +401,14 @@ final class Campaign {
                 long d2 = Geo.dist2(b.getGridX(), b.getGridY(), c[0], c[1]);
                 if (Intel.isTower(b) && d2 < 30 * 30)
                     danger += 1000;
-                else if (d2 < 30 * 30)
+                else if (d2 < (long) ai.params.beach_building_cells * ai.params.beach_building_cells)
                     danger += 150;
             }
             for (Unit u : in.enemy_warriors) {
                 if (u.getIslandId() != island)
                     continue;
                 long d2 = Geo.dist2(u.getGridX(), u.getGridY(), c[0], c[1]);
-                int reach = 30 + (int) Ratchet.bonus(u);
+                int reach = ai.params.beach_warrior_cells + (int) Ratchet.bonus(u);
                 if (d2 < (long) reach * reach)
                     danger += 25 * Intel.value(u);
             }
@@ -377,6 +442,7 @@ final class Campaign {
             op.ships.add(s);
             ai.fleet.duty(s).op = op;
             ai.fleet.cancelDeploys(s);
+            ai.ratchet.haltInbound(s);
         }
         embark(in, op, warriors, second);
         ops.add(op);
@@ -394,6 +460,7 @@ final class Campaign {
         op.ships.add(ship);
         ai.fleet.duty(ship).op = op;
         ai.fleet.cancelDeploys(ship);
+        ai.ratchet.haltInbound(ship);
         embark(in, op, warriors, second);
         ops.add(op);
         last_launch = second;
@@ -416,7 +483,7 @@ final class Campaign {
         Ship chief_ship = null;
         if (take_chief)
             for (Ship s : op.ships)
-                if (Fleet.warriorsAboard(s) == 0 && !s.getShipHR().hasChieftain() && !ai.ratchet.inbound(s, second)) {
+                if (Fleet.warriorsAboard(s) == 0 && !s.getShipHR().hasChieftain()) {
                     chief_ship = s;
                     break;
                 }
@@ -499,6 +566,7 @@ final class Campaign {
             }
             return;
         }
+        op.boarding.keySet().removeIf(Unit::isDead);
         int outside = 0;
         Map<Ship, List<Unit>> lagging = new LinkedHashMap<>();
         for (Map.Entry<Unit, Ship> e : op.boarding.entrySet()) {
@@ -511,7 +579,31 @@ final class Campaign {
         }
         for (Map.Entry<Ship, List<Unit>> e : lagging.entrySet())
             ai.order(e.getValue(), e.getKey(), Action.MOVE, false);
-        if (outside > 0 && second - op.since < 40)
+        // rowers: a ship without peons crawls; top them up while boarding goes on
+        boolean short_rowers = false;
+        for (Ship s : ai.params.rower_topup ? op.ships : List.<Ship>of()) {
+            int coming = 0;
+            for (Map.Entry<Unit, Ship> e : op.boarding.entrySet())
+                if (e.getValue() == s && !e.getKey().isWarrior() && !e.getKey().isChieftain() && inSet(e.getKey()))
+                    coming++;
+            int have = Fleet.peonsAboard(s) + coming;
+            if (have < ai.params.rowers) {
+                List<Unit> more = rowerCandidates(in, s, ai.params.rowers - have);
+                for (Unit u : more) {
+                    op.boarding.put(u, s);
+                    ai.reserve(u, 90);
+                }
+                if (!more.isEmpty())
+                    ai.order(more, s, Action.MOVE, false);
+                else
+                    ai.colony.releasePeons(in, ai.params.rowers - have);
+            }
+            if (Fleet.peonsAboard(s) < 8)
+                short_rowers = true;
+        }
+        if ((outside > 0 || short_rowers) && second - op.since < 40)
+            return;
+        if (short_rowers && second - op.since < 70)
             return;
         for (Unit u : op.boarding.keySet())
             ai.release(u);

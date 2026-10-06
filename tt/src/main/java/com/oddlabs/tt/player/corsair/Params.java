@@ -33,6 +33,17 @@ final class Params {
     final int max_ships;
     final int ship_start;
     final boolean chief_rides;
+    final boolean rower_topup;
+    final int beach_building_cells;
+    final int beach_warrior_cells;
+    final boolean sink_docked;
+    final boolean tower_fire;
+    final double ally_join;
+    final boolean kite;
+    final boolean team_target;
+    final double kite_slack;
+    final int kite_step;
+    final boolean drilled_garrison;
     final boolean ratchet;
     final int ratchet_trips;
 
@@ -63,6 +74,17 @@ final class Params {
         max_ships = a.getInt("ships", 3);
         ship_start = a.getInt("ship_start", 300);
         chief_rides = a.getBoolean("chief_rides", false);
+        rower_topup = a.getBoolean("rower_topup", true);
+        beach_building_cells = a.getInt("beach_buildings", 50);
+        beach_warrior_cells = a.getInt("beach_warriors", 45);
+        sink_docked = a.getBoolean("sink_docked", false);
+        tower_fire = a.getBoolean("tower_fire", true);
+        ally_join = a.getDouble("ally_join", 1.0);
+        kite = a.getBoolean("kite", false);
+        team_target = a.getBoolean("team_target", false);
+        kite_slack = a.getDouble("kite_slack", 3.0);
+        kite_step = a.getInt("kite_step", 5);
+        drilled_garrison = a.getBoolean("drilled_garrison", true);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
         travel_weight = a.getDouble("travel_weight", 1.0);

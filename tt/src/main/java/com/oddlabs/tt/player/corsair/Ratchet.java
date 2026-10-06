@@ -22,6 +22,8 @@ final class Ratchet {
     private final @NonNull Player me;
     /** Per ship, the game second of our last drill boarding order to it. */
     private final java.util.Map<@NonNull Ship, Integer> last_board = new java.util.LinkedHashMap<>();
+    /** Per drill walker: the ship it was sent to. */
+    private final java.util.Map<@NonNull Unit, @NonNull Ship> walking = new java.util.LinkedHashMap<>();
 
     Ratchet(@NonNull CorsairAI ai) {
         this.ai = ai;
@@ -59,8 +61,29 @@ final class Ratchet {
                 ai.reserve(u, 12);
             ai.order(go, s, Action.MOVE, false);
             last_board.put(s, second);
+            for (Unit u : go)
+                walking.put(u, s);
             ai.log.count("ratchet_board");
         }
+    }
+
+    /**
+     * Halts the drill warriors still walking to a ship an operation takes (each stops where it stands), so no one but
+     * the operation's own boards it. Returns how many were stopped.
+     */
+    int haltInbound(@NonNull Ship s) {
+        int n = 0;
+        java.util.List<Unit> stop = new ArrayList<>();
+        for (java.util.Map.Entry<Unit, Ship> e : walking.entrySet())
+            if (e.getValue() == s && CorsairAI.orderable(e.getKey()) && me.getUnits().getSet().contains(e.getKey()))
+                stop.add(e.getKey());
+        for (Unit u : stop) {
+            ai.move(java.util.List.of(u), u.getGridX(), u.getGridY(), Action.MOVE, false);
+            walking.remove(u);
+            n++;
+        }
+        walking.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead() || e.getKey().isMounted());
+        return n;
     }
 
     /** Whether drill warriors may still be walking to the ship (ordered within the last 20 s). */

@@ -52,6 +52,7 @@ final class Intel {
     final List<@NonNull Unit> enemy_warriors = new ArrayList<>();
     final List<@NonNull Building> enemy_buildings = new ArrayList<>();
     final List<@NonNull Ship> enemy_ships = new ArrayList<>();
+    final List<@NonNull Unit> ally_warriors = new ArrayList<>();
     final List<@NonNull Player> enemies = new ArrayList<>();
     final List<@NonNull Player> allies = new ArrayList<>();
 
@@ -146,6 +147,11 @@ final class Intel {
                     towers.add(b);
             }
         }
+        ally_warriors.clear();
+        for (Player p : allies)
+            for (Selectable<?> s : p.getUnits().getSet())
+                if (s instanceof Unit u && !u.isDead() && !u.isMounted() && (u.isWarrior() || u.isChieftain()))
+                    ally_warriors.add(u);
         enemy_units.clear();
         enemy_warriors.clear();
         enemy_buildings.clear();
@@ -199,6 +205,15 @@ final class Intel {
     float enemyStrengthOn(int island) {
         float v = 0;
         for (Unit u : enemy_warriors)
+            if (u.getIslandId() == island)
+                v += value(u);
+        return v;
+    }
+
+    /** Allied warriors' value on an island. */
+    float allyStrengthOn(int island) {
+        float v = 0;
+        for (Unit u : ally_warriors)
             if (u.getIslandId() == island)
                 v += value(u);
         return v;
