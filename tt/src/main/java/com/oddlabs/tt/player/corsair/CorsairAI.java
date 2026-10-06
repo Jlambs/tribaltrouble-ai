@@ -24,10 +24,12 @@ public final class CorsairAI extends AI {
     final @NonNull Params params;
     private final GameTime.@NonNull Every every_second = new GameTime.Every(1000);
     final @NonNull Geo geo;
+    final @NonNull SeaMap sea;
     final @NonNull Intel intel;
     final @NonNull Colony colony;
     final @NonNull Fleet fleet;
     final @NonNull Army army;
+    final @NonNull Campaign campaign;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -41,10 +43,12 @@ public final class CorsairAI extends AI {
         log = AiLog.of(owner);
         log.log("PARAM", a.done()); // fails on unknown keys, so a typo cannot silently play the defaults
         geo = new Geo(owner);
+        sea = new SeaMap(owner.getWorld().getUnitGrid());
         intel = new Intel(owner, geo);
         colony = new Colony(this);
         fleet = new Fleet(this);
         army = new Army(this);
+        campaign = new Campaign(this);
         reflexes = new Reflexes(owner, log, params.swing_restart, params.stun_cancel);
     }
 
@@ -84,6 +88,7 @@ public final class CorsairAI extends AI {
         }
         reserved.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue() < second);
         fleet.think(intel, second);
+        campaign.think(intel, second);
         colony.think(second);
         army.think(intel, second);
         if (second % 30 == 0)

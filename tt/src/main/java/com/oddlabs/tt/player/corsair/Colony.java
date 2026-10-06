@@ -41,6 +41,9 @@ final class Colony {
     int island;
     int ax;
     int ay;
+    /** The shore cell our ships land at, -1 until known. */
+    int dock_x = -1;
+    int dock_y = -1;
 
     static final class Project {
         final int type;

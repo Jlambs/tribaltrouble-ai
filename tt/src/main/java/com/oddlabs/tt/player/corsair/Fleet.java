@@ -1,14 +1,11 @@
 package com.oddlabs.tt.player.corsair;
 
-import com.oddlabs.tt.model.Action;
 import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Ship;
 import com.oddlabs.tt.model.ShipHR;
-import com.oddlabs.tt.model.Unit;
-import com.oddlabs.tt.model.behaviour.IdleController;
 import com.oddlabs.tt.model.weapon.IronAxeWeapon;
 import com.oddlabs.tt.model.weapon.RockAxeWeapon;
 import com.oddlabs.tt.model.weapon.RubberAxeWeapon;
@@ -22,37 +19,48 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Our ships and what each is doing: the opening voyage to the home island, ferrying an expedition to an enemy island
- * and back, and waiting at home.
+ * Our ships: where each is going and whether it got there. Operations ({@link Campaign}) and the opening give ships
+ * destinations; this class sails them, retries landings when a ship stalls or docks at the wrong shore, and hunts
+ * enemy ships with ships that carry deck fighters.
  */
 final class Fleet {
     enum Job {
-        HOME,
-        LAND,
-        BOARD,
-        SAIL,
-        UNLOAD,
-        RETURN
+        /** Docked or waiting, free for any use. */
+        IDLE,
+        /** Sailing to (island, tx, ty). */
+        TRANSIT,
+        /** Docked and still at the destination island. */
+        ARRIVED,
+        /** Gave up reaching the destination. */
+        FAILED,
+        /** Chasing an enemy ship. */
+        HUNT
     }
 
     static final class Duty {
         @NonNull
-        Job job = Job.HOME;
-        /** Where the ship is headed: a cell on the target island (the shore planner picks the landing). */
+        Job job = Job.IDLE;
+        int island;
         int tx = -1;
         int ty = -1;
-        int island;
         int since;
         int attempts;
-        /** Units ordered aboard for the current job. */
-        final List<@NonNull Unit> boarding = new ArrayList<>();
-        /** Expedition id this ship carries, -1 without. */
-        int expedition = -1;
+        int last_x = -1;
+        int last_y = -1;
+        int moved;
+        /** The operation that owns the ship, or null. */
+        Campaign.@Nullable Op op;
+        @Nullable
+        Ship prey;
+        /** Land everyone aboard on arrival (the opening). */
+        boolean land_all;
     }
 
     private final @NonNull CorsairAI ai;
     private final @NonNull Player me;
     final Map<@NonNull Ship, @NonNull Duty> duties = new LinkedHashMap<>();
+    /** Sea distances from our home landing, for choosing beachheads. */
+    int @Nullable [] home_field;
 
     Fleet(@NonNull CorsairAI ai) {
         this.ai = ai;
@@ -70,86 +78,69 @@ final class Fleet {
         return e == ship ? 0 : e.getIslandId();
     }
 
-    // --- the opening -----------------------------------------------------------------------------------------------
-
-    /** Picks the home island and sends every starting ship there with everyone aboard ready to land. */
-    void openingVoyage(@NonNull Intel in, int second) {
-        Geo geo = ai.geo;
-        geo.scanSupplies();
-        geo.rateIsles();
-        int sx = Geo.gridOf(me.getStartX()), sy = Geo.gridOf(me.getStartY());
-        Geo.Isle best = null;
-        float best_score = -1e9f;
-        for (Geo.Isle isle : geo.isles) {
-            if (isle.score < 8f || isle.ax < 0)
-                continue;
-            int[] shore = isle.nearestShore(isle.ax, isle.ay);
-            if (shore == null)
-                continue;
-            int travel = Geo.dist(sx, sy, shore[0], shore[1]) + Geo.dist(shore[0], shore[1], isle.ax, isle.ay) / 2;
-            int mine = Geo.dist(sx, sy, isle.ax, isle.ay);
-            float contest = 0;
-            for (Player e : in.enemies) {
-                int d = Geo.dist(Geo.gridOf(e.getStartX()), Geo.gridOf(e.getStartY()), isle.ax, isle.ay);
-                if (d < mine * 1.25f)
-                    contest += d < mine ? 1f : .5f;
-            }
-            float allied = 0;
-            for (Player a : in.allies) {
-                int d = Geo.dist(Geo.gridOf(a.getStartX()), Geo.gridOf(a.getStartY()), isle.ax, isle.ay);
-                if (d < mine)
-                    allied += .5f;
-            }
-            float s = isle.score - (float) ai.params.travel_weight * travel / 20f - (float) ai.params.contest_weight * 8f * contest - 2f * allied;
-            float contested = contest;
-            ai.log.log("OPEN",
-                    () -> "candidate " + isle + " base " + isle.ax + "," + isle.ay + " quality " + isle.score + " travel " + travel + " contest " + contested + " -> " + s);
-            if (s > best_score) {
-                best_score = s;
-                best = isle;
-            }
-        }
-        if (best == null) {
-            // no island with all three: the largest island
-            for (Geo.Isle isle : geo.isles)
-                if (best == null || isle.area > best.area)
-                    best = isle;
-            if (best == null)
-                return;
-            best.ax = best.cx;
-            best.ay = best.cy;
-        }
-        Geo.Isle home = best;
-        ai.colony.found(home.id, home.ax, home.ay);
-        ai.log.log("OPEN", () -> "home " + home + " base " + home.ax + "," + home.ay);
-        for (Ship ship : in.ships) {
-            Duty d = duty(ship);
-            d.job = Job.LAND;
-            d.island = home.id;
-            d.tx = home.ax;
-            d.ty = home.ay;
-            d.since = second;
-            sail(ship, d.tx, d.ty);
-            landAll(ship);
-        }
+    static int warriorsAboard(@NonNull Ship ship) {
+        ShipHR crew = ship.getShipHR();
+        return crew.countUnitsOfType(RockAxeWeapon.class) + crew.countUnitsOfType(
+                IronAxeWeapon.class) + crew.countUnitsOfType(RubberAxeWeapon.class);
     }
 
-    private void sail(@NonNull Ship ship, int x, int y) {
+    static int peonsAboard(@NonNull Ship ship) {
+        ShipHR crew = ship.getShipHR();
+        return crew.countPeons() - (crew.hasChieftain() ? 1 : 0);
+    }
+
+    static int pending(@NonNull Ship ship, @NonNull DeployType type) {
+        var c = ship.getDeployContainer(type);
+        return c == null ? 0 : c.getNumSupplies();
+    }
+
+    // --- orders ----------------------------------------------------------------------------------------------------
+
+    void sail(@NonNull Ship ship, int x, int y) {
         me.setSailingTarget(Selectable.newArray(ship), x, y);
     }
 
+    /** Sends a ship to a cell on an island (0 for a point at sea). */
+    void goTo(@NonNull Ship ship, int island, int x, int y, int second) {
+        Duty d = duty(ship);
+        d.job = Job.TRANSIT;
+        d.island = island;
+        d.tx = x;
+        d.ty = y;
+        d.since = second;
+        d.attempts = 0;
+        d.moved = second;
+        d.prey = null;
+        sail(ship, x, y);
+    }
+
+    void goHome(@NonNull Ship ship, int second) {
+        Colony c = ai.colony;
+        int[] cell = homeDock();
+        goTo(ship, c.island, cell[0], cell[1], second);
+    }
+
+    /** The shore cell our ships use at home. */
+    int @NonNull [] homeDock() {
+        Colony c = ai.colony;
+        if (c.dock_x >= 0)
+            return new int[]{c.dock_x, c.dock_y};
+        Geo.Isle isle = ai.geo.isle(c.island);
+        int[] cell = isle == null ? null : isle.nearestShore(c.ax, c.ay);
+        return cell != null ? cell : new int[]{c.ax, c.ay};
+    }
+
     /** Queues everyone aboard to land (they leave once the ship docks). */
-    private void landAll(@NonNull Ship ship) {
-        ShipHR crew = ship.getShipHR();
-        int peons = crew.countPeons() - (crew.hasChieftain() ? 1 : 0) - pending(ship, DeployType.PEON);
+    void landAll(@NonNull Ship ship) {
+        int peons = peonsAboard(ship) - pending(ship, DeployType.PEON);
         if (peons > 0)
             me.deployUnits(ship, DeployType.PEON, peons);
         landWarriors(ship);
-        if (crew.hasChieftain())
+        if (ship.getShipHR().hasChieftain())
             me.trainChieftain(ship, true);
     }
 
-    private void landWarriors(@NonNull Ship ship) {
+    void landWarriors(@NonNull Ship ship) {
         ShipHR crew = ship.getShipHR();
         int rock = crew.countUnitsOfType(RockAxeWeapon.class) - pending(ship, DeployType.ROCK_WARRIOR);
         int iron = crew.countUnitsOfType(IronAxeWeapon.class) - pending(ship, DeployType.IRON_WARRIOR);
@@ -162,15 +153,107 @@ final class Fleet {
             me.deployUnits(ship, DeployType.RUBBER_WARRIOR, rubber);
     }
 
-    static int pending(@NonNull Ship ship, @NonNull DeployType type) {
-        var c = ship.getDeployContainer(type);
-        return c == null ? 0 : c.getNumSupplies();
+    /** Lands n peons (rowers to spare). */
+    void landPeons(@NonNull Ship ship, int n) {
+        int can = Math.min(n, peonsAboard(ship) - pending(ship, DeployType.PEON));
+        if (can > 0)
+            me.deployUnits(ship, DeployType.PEON, can);
     }
 
-    static int warriorsAboard(@NonNull Ship ship) {
-        ShipHR crew = ship.getShipHR();
-        return crew.countUnitsOfType(RockAxeWeapon.class) + crew.countUnitsOfType(
-                IronAxeWeapon.class) + crew.countUnitsOfType(RubberAxeWeapon.class);
+    // --- the opening -----------------------------------------------------------------------------------------------
+
+    /** Walking a cell costs as much as sailing this many (peons walk ~2 cells/s, full ships sail ~4.7). */
+    static final float WALK = 2.5f;
+
+    /** A possible base: its anchor, the shore cell to land at, and what it costs us and the others to get there. */
+    record Spot(Geo.Isle isle, int ax, int ay, int lx, int ly, float quality, float cost, float contest, float score) {
+    }
+
+    /** The cheapest landing for reaching (ax, ay) from a sea field: {cost, lx, ly}. */
+    float @NonNull [] reach(int @NonNull [] field, Geo.@NonNull Isle isle, int ax, int ay) {
+        float best = Float.MAX_VALUE;
+        int lx = -1, ly = -1;
+        SeaMap sea = ai.sea;
+        for (int[] c : isle.shore) {
+            float walk = (float) Math.sqrt((double) Geo.dist2(c[0], c[1], ax, ay));
+            if (walk > 90)
+                continue;
+            int s = sea.to(field, c[0], c[1]);
+            if (s >= SeaMap.FAR)
+                continue;
+            float cost = s + WALK * walk;
+            if (cost < best) {
+                best = cost;
+                lx = c[0];
+                ly = c[1];
+            }
+        }
+        return new float[]{best, lx, ly};
+    }
+
+    /** Picks where to found the base and sends every starting ship there with everyone aboard ready to land. */
+    void openingVoyage(@NonNull Intel in, int second) {
+        Geo geo = ai.geo;
+        geo.scanSupplies();
+        geo.rateIsles();
+        int sx = Geo.gridOf(me.getStartX()), sy = Geo.gridOf(me.getStartY());
+        int[] mine = ai.sea.field(sx, sy);
+        List<int[]> enemy_fields = new ArrayList<>();
+        for (Player e : in.enemies)
+            enemy_fields.add(ai.sea.field(Geo.gridOf(e.getStartX()), Geo.gridOf(e.getStartY())));
+        List<int[]> ally_fields = new ArrayList<>();
+        for (Player a : in.allies)
+            ally_fields.add(ai.sea.field(Geo.gridOf(a.getStartX()), Geo.gridOf(a.getStartY())));
+        Spot best = null;
+        for (Geo.Isle isle : geo.isles) {
+            if (isle.score < 8f)
+                continue;
+            for (int[] cand : geo.candidates(isle, .6f, 40)) {
+                int ax = cand[0], ay = cand[1];
+                float quality = geo.baseScore(ax / Geo.BIN, ay / Geo.BIN);
+                float[] r = reach(mine, isle, ax, ay);
+                if (r[0] == Float.MAX_VALUE)
+                    continue;
+                float contest = 0;
+                for (int[] f : enemy_fields) {
+                    float e = reach(f, isle, ax, ay)[0];
+                    if (e < r[0] * 1.25f)
+                        contest += e < r[0] ? 1f : .5f;
+                }
+                float allied = 0;
+                for (int[] f : ally_fields) {
+                    float a = reach(f, isle, ax, ay)[0];
+                    if (a < r[0])
+                        allied += .5f;
+                }
+                float score = quality - (float) ai.params.travel_weight * r[0] / 20f - (float) ai.params.contest_weight * 8f * contest - 2f * allied;
+                if (best == null || score > best.score())
+                    best = new Spot(isle, ax, ay, (int) r[1], (int) r[2], quality, r[0], contest, score);
+            }
+        }
+        if (best == null) {
+            Geo.Isle big = null;
+            for (Geo.Isle isle : geo.isles)
+                if (big == null || isle.area > big.area)
+                    big = isle;
+            if (big == null)
+                return;
+            int[] shore = big.nearestShore(big.cx, big.cy);
+            best = new Spot(big, big.cx, big.cy, shore == null ? big.cx : shore[0], shore == null ? big.cy : shore[1],
+                    0, 0, 0, 0);
+        }
+        Spot home = best;
+        ai.colony.found(home.isle().id, home.ax(), home.ay());
+        ai.colony.dock_x = home.lx();
+        ai.colony.dock_y = home.ly();
+        home_field = ai.sea.field(home.lx(), home.ly());
+        ai.log.log("OPEN",
+                () -> "home " + home.isle() + " base " + home.ax() + "," + home.ay() + " landing " + home.lx() + "," + home.ly() + " quality " + home.quality() + " cost " + home.cost() + " contest " + home.contest() + " score " + home.score());
+        for (Ship ship : in.ships) {
+            goTo(ship, home.isle().id, home.lx(), home.ly(), second);
+            duty(ship).land_all = true;
+            landAll(ship);
+        }
     }
 
     // --- every second ----------------------------------------------------------------------------------------------
@@ -180,42 +263,69 @@ final class Fleet {
         for (Ship ship : in.ships) {
             Duty d = duty(ship);
             switch (d.job) {
-                case LAND -> land(ship, d, second);
-                case BOARD -> board(ship, d, second);
-                case SAIL -> sailOn(ship, d, second);
-                case UNLOAD -> unload(ship, d, second);
-                case RETURN -> returnHome(ship, d, second);
-                case HOME -> home(ship, d, second);
+                case TRANSIT -> transit(ship, d, second);
+                case HUNT -> hunt(ship, d, in, second);
+                case ARRIVED -> {
+                    if (d.land_all) {
+                        if (peonsAboard(ship) + warriorsAboard(ship) > 0)
+                            landAll(ship);
+                        else {
+                            d.land_all = false;
+                            d.job = Job.IDLE;
+                        }
+                    }
+                }
+                default -> {
+                }
             }
         }
         buildShips(in, second);
     }
 
-    private void land(@NonNull Ship ship, @NonNull Duty d, int second) {
-        if (ship.isMoving())
+    private void transit(@NonNull Ship ship, @NonNull Duty d, int second) {
+        boolean stalled = stalled(ship, d, second);
+        if (ship.isMoving() && !stalled)
             return;
         int at = dockedAt(ship);
-        if (at == d.island) {
-            if (ship.getShipHR().countPeons() - (ship.getShipHR().hasChieftain() ? 1 : 0) > 0
-                    || warriorsAboard(ship) > 0) {
-                landAll(ship);
+        if (d.island == 0 ? !ship.isMoving() : at == d.island) {
+            if (ship.isMoving()) {
+                // held at the shore (an enemy ship in the way stops us): stop here, we are docked
+                sail(ship, ship.getGridX(), ship.getGridY());
                 return;
             }
+            d.job = Job.ARRIVED;
+            d.since = second;
+            if (d.land_all)
+                landAll(ship);
             ai.log.log("FLEET",
-                    () -> "landed at isle " + d.island + " " + ship.getGridX() + "," + ship.getGridY() + " t" + second);
-            d.job = Job.HOME;
+                    () -> "ship at " + ship.getGridX() + "," + ship.getGridY() + " arrived at isle " + d.island + " t" + second);
             return;
         }
-        // stopped at sea or at the wrong island: try another landing
-        if (second - d.since > 5) {
+        if (second - d.since > 4 || stalled) {
             d.attempts++;
             d.since = second;
-            int[] cell = landingCell(d.island, d.tx, d.ty, d.attempts);
-            ai.log.log("FLEET",
-                    () -> "re-land attempt " + d.attempts + " at " + (cell == null ? "-" : cell[0] + "," + cell[1]));
+            d.moved = second;
+            if (d.attempts > 10) {
+                d.job = Job.FAILED;
+                ai.log.log("FLEET",
+                        () -> "ship at " + ship.getGridX() + "," + ship.getGridY() + " gave up reaching isle " + d.island);
+                return;
+            }
+            int[] cell = d.island == 0 ? new int[]{d.tx, d.ty} : landingCell(d.island, d.tx, d.ty, d.attempts);
             if (cell != null)
                 sail(ship, cell[0], cell[1]);
         }
+    }
+
+    /** Whether a sailing ship has not moved for 4 s (blocked by another ship, or wedged). */
+    private boolean stalled(@NonNull Ship ship, @NonNull Duty d, int second) {
+        if (ship.getGridX() != d.last_x || ship.getGridY() != d.last_y) {
+            d.last_x = ship.getGridX();
+            d.last_y = ship.getGridY();
+            d.moved = second;
+            return false;
+        }
+        return ship.isMoving() && second - d.moved >= 4;
     }
 
     /** A shore cell of the island near (x, y): the nearest for attempt 0, then further ones round the coast. */
@@ -231,140 +341,65 @@ final class Fleet {
             c = Integer.compare(a[0], b[0]);
             return c != 0 ? c : Integer.compare(a[1], b[1]);
         });
-        int i = Math.min(cells.size() - 1, attempt * 7);
+        int i = Math.min(cells.size() - 1, attempt * 6);
         return cells.get(i);
     }
 
-    private void home(@NonNull Ship ship, @NonNull Duty d, int second) {
-        // nothing: Army asks for ferries
+    // --- hunting ---------------------------------------------------------------------------------------------------
+
+    void startHunt(@NonNull Ship ship, @NonNull Ship prey, int second) {
+        Duty d = duty(ship);
+        d.job = Job.HUNT;
+        d.prey = prey;
+        d.since = second;
+        me.setSailingTarget(Selectable.newArray(ship), prey);
+        ai.log.log("FLEET",
+                () -> "hunting the ship at " + prey.getGridX() + "," + prey.getGridY() + " with " + warriorsAboard(
+                        ship) + " deck fighters");
     }
 
-    // --- expeditions -----------------------------------------------------------------------------------------------
+    private void hunt(@NonNull Ship ship, @NonNull Duty d, @NonNull Intel in, int second) {
+        Ship prey = d.prey;
+        if (prey == null || prey.isDead() || warriorsAboard(ship) == 0) {
+            d.job = Job.IDLE;
+            d.prey = null;
+            return;
+        }
+        if (second - d.since >= 6 && !ship.isMoving()) {
+            d.since = second;
+            me.setSailingTarget(Selectable.newArray(ship), prey);
+        }
+    }
 
-    /** A ship docked at home and free to ferry, or null. */
-    @Nullable
-    Ship freeFerry(int home) {
+    // --- queries ---------------------------------------------------------------------------------------------------
+
+    /** Our ships docked at home and free. */
+    @NonNull
+    List<@NonNull Ship> idleAtHome() {
+        List<Ship> out = new ArrayList<>();
+        int home = ai.colony.island;
         for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
             Ship s = e.getKey();
-            if (!s.isDead() && s.isComplete() && e.getValue().job == Job.HOME && !s.isMoving() && dockedAt(s) == home)
-                return s;
+            Duty d = e.getValue();
+            if (s.isDead() || !s.isComplete() || d.op != null || s.isMoving())
+                continue;
+            if ((d.job == Job.IDLE || d.job == Job.ARRIVED || d.job == Job.FAILED) && dockedAt(s) == home)
+                out.add(s);
         }
-        return null;
+        return out;
     }
 
-    /** Starts boarding an expedition: the warriors and rower peons walk aboard. */
-    void startFerry(@NonNull Ship ship, @NonNull List<@NonNull Unit> warriors, @NonNull List<@NonNull Unit> rowers,
-            int island, int tx, int ty, int expedition, int second) {
-        Duty d = duty(ship);
-        d.job = Job.BOARD;
-        d.island = island;
-        d.tx = tx;
-        d.ty = ty;
-        d.since = second;
-        d.attempts = 0;
-        d.expedition = expedition;
-        d.boarding.clear();
-        d.boarding.addAll(warriors);
-        d.boarding.addAll(rowers);
-        List<Unit> all = new ArrayList<>(d.boarding);
-        for (Unit u : all)
-            ai.reserve(u);
-        me.setTarget(all.toArray(new Unit[0]), ship, Action.MOVE, false);
-        ai.log.log("FLEET",
-                () -> "boarding " + warriors.size() + " warriors + " + rowers.size() + " rowers for isle " + island + " t" + second);
-    }
-
-    private void board(@NonNull Ship ship, @NonNull Duty d, int second) {
-        d.boarding.removeIf(Unit::isDead);
-        // units aboard have left our unit set; the ones still outside are the ones walking
-        int outside = 0;
-        List<Unit> lagging = new ArrayList<>();
-        for (Unit u : d.boarding) {
-            if (inSet(u)) {
-                outside++;
-                if (u.getPrimaryController() instanceof IdleController)
-                    lagging.add(u);
-            }
-        }
-        if (!lagging.isEmpty())
-            me.setTarget(lagging.toArray(new Unit[0]), ship, Action.MOVE, false);
-        boolean timeout = second - d.since > 45;
-        if (outside == 0 || timeout) {
-            for (Unit u : d.boarding)
-                ai.release(u);
-            d.boarding.clear();
-            if (warriorsAboard(ship) == 0) {
-                d.job = Job.HOME;
-                ai.log.log("FLEET", () -> "boarding failed: no warriors aboard");
-                return;
-            }
-            d.job = Job.SAIL;
-            d.since = second;
-            int[] cell = landingCell(d.island, d.tx, d.ty, 0);
-            if (cell != null)
-                sail(ship, d.tx, d.ty);
-            ai.log.log("FLEET", () -> "sailing with " + warriorsAboard(
-                    ship) + " warriors, " + ship.getShipHR().countRowers() + " rowers to isle " + d.island + " t" + second);
-        }
-    }
-
-    private boolean inSet(@NonNull Unit u) {
-        return !u.isDead() && !u.isMounted() && me.getUnits().getSet().contains(u);
-    }
-
-    private void sailOn(@NonNull Ship ship, @NonNull Duty d, int second) {
-        if (ship.isMoving())
-            return;
-        int at = dockedAt(ship);
-        if (at == d.island) {
-            d.job = Job.UNLOAD;
-            d.since = second;
-            landWarriors(ship);
-            ai.log.log("FLEET",
-                    () -> "unloading at isle " + d.island + " " + ship.getGridX() + "," + ship.getGridY() + " t" + second);
-            return;
-        }
-        if (second - d.since > 5) {
-            d.attempts++;
-            d.since = second;
-            if (d.attempts > 6) {
-                d.job = Job.RETURN;
-                return;
-            }
-            int[] cell = landingCell(d.island, d.tx, d.ty, d.attempts);
-            if (cell != null)
-                sail(ship, cell[0], cell[1]);
-        }
-    }
-
-    private void unload(@NonNull Ship ship, @NonNull Duty d, int second) {
-        if (warriorsAboard(ship) > 0) {
-            if (second - d.since > 30) {
-                d.job = Job.RETURN;
-                return;
-            }
-            landWarriors(ship);
-            return;
-        }
-        d.job = Job.RETURN;
-        d.since = second;
-        ai.log.log("FLEET", () -> "unloaded, returning t" + second);
-    }
-
-    private void returnHome(@NonNull Ship ship, @NonNull Duty d, int second) {
+    /** Free ships that are not at home (to bring back). */
+    void recallStrays(int second) {
         int home = ai.colony.island;
-        if (!ship.isMoving() && dockedAt(ship) == home) {
-            d.job = Job.HOME;
-            d.expedition = -1;
-            // rowers stay aboard for the next trip
-            return;
-        }
-        if (!ship.isMoving() && second - d.since > 3) {
-            d.since = second;
-            d.attempts++;
-            int[] cell = landingCell(home, ai.colony.ax, ai.colony.ay, d.attempts % 4);
-            if (cell != null)
-                sail(ship, cell[0], cell[1]);
+        for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
+            Ship s = e.getKey();
+            Duty d = e.getValue();
+            if (s.isDead() || !s.isComplete() || d.op != null)
+                continue;
+            if ((d.job == Job.IDLE || d.job == Job.ARRIVED || d.job == Job.FAILED) && dockedAt(s) != home
+                    && !s.isMoving())
+                goHome(s, second);
         }
     }
 
@@ -379,12 +414,8 @@ final class Fleet {
             return;
         if (in.peons.size() + in.peonsInside() < 50)
             return;
-        // a dock on the shore nearest the base
-        Geo.Isle isle = ai.geo.isle(c.island);
-        int[] shore = isle == null ? null : isle.nearestShore(c.ax, c.ay);
-        if (shore == null)
-            return;
-        c.projects.add(new Colony.Project(Race.BUILDING_SHIP, shore[0], shore[1], second));
-        ai.log.log("BUILD", () -> "plan ship near " + shore[0] + "," + shore[1]);
+        int[] dock = homeDock();
+        c.projects.add(new Colony.Project(Race.BUILDING_SHIP, dock[0], dock[1], second));
+        ai.log.log("BUILD", () -> "plan ship near " + dock[0] + "," + dock[1]);
     }
 }

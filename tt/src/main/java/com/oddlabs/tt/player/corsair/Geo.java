@@ -185,6 +185,25 @@ final class Geo {
         return 3f * Math.min(i, 8) + 1.5f * Math.min(r, 6) + .25f * Math.min(t, 60);
     }
 
+    /** Bin centres on the island scoring at least {@code share} of its best, the best first, at most {@code max}. */
+    List<int @NonNull []> candidates(@NonNull Isle isle, float share, int max) {
+        List<int[]> out = new ArrayList<>();
+        int bx0 = isle.info.minX() / BIN, bx1 = isle.info.maxX() / BIN;
+        int by0 = isle.info.minY() / BIN, by1 = isle.info.maxY() / BIN;
+        for (int by = by0; by <= by1; by++)
+            for (int bx = bx0; bx <= bx1; bx++) {
+                int cx = bx * BIN + BIN / 2, cy = by * BIN + BIN / 2;
+                if (islandAt(cx, cy) != isle.id)
+                    continue;
+                float s = baseScore(bx, by);
+                if (s >= isle.score * share)
+                    out.add(new int[]{cx, cy, (int) (s * 100)});
+            }
+        out.sort((a, b) -> a[2] != b[2] ? Integer.compare(b[2], a[2]) : a[1] != b[1] ? Integer.compare(a[1],
+                b[1]) : Integer.compare(a[0], b[0]));
+        return out.size() > max ? new ArrayList<>(out.subList(0, max)) : out;
+    }
+
     /** Finds each island's best base point (needs {@link #scanSupplies} first). */
     void rateIsles() {
         for (Isle isle : isles) {

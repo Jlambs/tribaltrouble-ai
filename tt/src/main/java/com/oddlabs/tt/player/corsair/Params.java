@@ -56,9 +56,9 @@ final class Params {
         chieftain_start = a.getInt("chieftain_start", 420);
         expedition_size = a.getInt("expedition", 20);
         attack_ratio = a.getDouble("attack_ratio", 1.3);
-        rowers = a.getInt("rowers", 12);
-        max_ships = a.getInt("ships", 2);
-        ship_start = a.getInt("ship_start", 360);
+        rowers = a.getInt("rowers", 20);
+        max_ships = a.getInt("ships", 3);
+        ship_start = a.getInt("ship_start", 300);
         ratchet = a.getBoolean("ratchet", false);
         ratchet_trips = a.getInt("ratchet_trips", 4);
         travel_weight = a.getDouble("travel_weight", 1.0);
