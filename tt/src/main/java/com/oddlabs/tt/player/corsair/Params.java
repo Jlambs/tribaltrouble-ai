@@ -44,6 +44,15 @@ final class Params {
     final double kite_slack;
     final int kite_step;
     final boolean drilled_garrison;
+    final boolean tower_unstun;
+    final int rower_floor;
+    final double worker_share;
+    final boolean upgrade;
+    final int rock_axe_cap;
+    final boolean militia;
+    final int raid;
+    final int raid_range;
+    final boolean snipe_towers;
     final boolean ratchet;
     final int ratchet_trips;
 
@@ -53,26 +62,33 @@ final class Params {
 
     final boolean survey;
 
+    /** standard, blitz (early small raids, few towers) or turtle (many towers, late big assaults). */
+    final @NonNull String style;
+
     Params(@NonNull AiParams a) {
+        style = a.getString("style", "standard");
+        boolean blitz = style.equals("blitz"), turtle = style.equals("turtle");
+        if (!blitz && !turtle && !style.equals("standard"))
+            throw new IllegalArgumentException("style " + style);
         swing_restart = a.getBoolean("swing_restart", true);
         stun_cancel = a.getBoolean("stun_cancel", true);
-        quarters = a.getInt("quarters", 4);
+        quarters = a.getInt("quarters", blitz ? 3 : 4);
         peons_per_quarters = a.getInt("hold", 10);
         armories = a.getInt("armories", 1);
         wood_share = a.getDouble("wood_share", .5);
         rock_share = a.getDouble("rock_share", .15);
-        rock_weapons = a.getBoolean("rock_weapons", true);
+        rock_weapons = a.getBoolean("rock_weapons", false);
         min_peons = a.getInt("min_peons", 45);
-        max_towers = a.getInt("max_towers", 4);
-        tower_start = a.getInt("tower_start", 300);
-        tower_every = a.getInt("tower_every", 120);
-        chieftain = a.getBoolean("chieftain", true);
+        max_towers = a.getInt("max_towers", blitz ? 1 : turtle ? 8 : 4);
+        tower_start = a.getInt("tower_start", blitz ? 600 : turtle ? 200 : 300);
+        tower_every = a.getInt("tower_every", turtle ? 60 : 120);
+        chieftain = a.getBoolean("chieftain", !blitz);
         chieftain_start = a.getInt("chieftain_start", 420);
-        expedition_size = a.getInt("expedition", 20);
-        attack_ratio = a.getDouble("attack_ratio", 1.3);
+        expedition_size = a.getInt("expedition", blitz ? 12 : turtle ? 60 : 20);
+        attack_ratio = a.getDouble("attack_ratio", blitz ? .8 : turtle ? 2.0 : 1.3);
         rowers = a.getInt("rowers", 20);
         max_ships = a.getInt("ships", 3);
-        ship_start = a.getInt("ship_start", 300);
+        ship_start = a.getInt("ship_start", blitz ? 150 : 300);
         chief_rides = a.getBoolean("chief_rides", false);
         rower_topup = a.getBoolean("rower_topup", true);
         beach_building_cells = a.getInt("beach_buildings", 50);
@@ -85,6 +101,15 @@ final class Params {
         kite_slack = a.getDouble("kite_slack", 3.0);
         kite_step = a.getInt("kite_step", 5);
         drilled_garrison = a.getBoolean("drilled_garrison", true);
+        tower_unstun = a.getBoolean("tower_unstun", false);
+        rower_floor = a.getInt("rower_floor", 0);
+        worker_share = a.getDouble("worker_share", 0);
+        upgrade = a.getBoolean("upgrade", false);
+        rock_axe_cap = a.getInt("rock_axe_cap", 0);
+        militia = a.getBoolean("militia", true);
+        raid = a.getInt("raid", 0);
+        raid_range = a.getInt("raid_range", 350);
+        snipe_towers = a.getBoolean("snipe_towers", false);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
         travel_weight = a.getDouble("travel_weight", 1.0);

@@ -62,6 +62,7 @@ final class Army {
         if (!c.founded())
             return;
         deploy(in);
+        upgrade(in);
         manTowers(in);
         attackers.clear();
         // drop the dead from groups, and groups without members
@@ -126,6 +127,37 @@ final class Army {
 
     boolean assaulting(int island) {
         return groupOn(island) != null;
+    }
+
+    /**
+     * upgrade: an armory takes any unit back in as a worker (WorkerUnitContainer, the weapon is lost). At the unit cap
+     * an idle rock warrior at home is worth less than the iron warrior its slot could hold: while iron axes wait in
+     * stock, as many rock warriors walk in, to come out with them.
+     */
+    private void upgrade(@NonNull Intel in) {
+        if (!ai.params.upgrade || in.armories.isEmpty() || home_threat)
+            return;
+        if (in.units() < me.getWorld().getMaxUnitCount() - 4)
+            return;
+        Building armory = in.armories.getFirst();
+        int axes = armory.getSupplyContainer(
+                com.oddlabs.tt.model.weapon.IronAxeWeapon.class).getNumSupplies() + armory.getSupplyContainer(
+                        com.oddlabs.tt.model.weapon.RubberAxeWeapon.class).getNumSupplies();
+        if (axes <= 0)
+            return;
+        List<Unit> rocks = new ArrayList<>();
+        for (Unit w : in.warriors)
+            if (Intel.kind(w) == Intel.Kind.ROCK && w.getIslandId() == ai.colony.island && !ai.reserved(w)
+                    && !inGroup(w) && w.getPrimaryController() instanceof IdleController)
+                rocks.add(w);
+        Colony.sortByDistance(rocks, armory.getGridX(), armory.getGridY());
+        List<Unit> go = new ArrayList<>(rocks.subList(0, Math.min(axes, rocks.size())));
+        if (go.isEmpty())
+            return;
+        for (Unit w : go)
+            ai.reserve(w, 30);
+        ai.order(go, armory, Action.MOVE, false);
+        ai.log.count("upgrade");
     }
 
     /**
@@ -211,6 +243,7 @@ final class Army {
             if (u.isWarrior() || u.isChieftain())
                 theirs += Intel.value(u);
         home_threat = theirs > 2;
+        militia(in, mine, threats);
         // an enemy ship docked at our island is landing troops: its hull is in reach from the shore, and each hit
         // may kill one aboard; sunk, it drowns them all
         List<Ship> docked = new ArrayList<>();
@@ -237,6 +270,63 @@ final class Army {
             return;
         int[] dock = ai.fleet.homeDock();
         gather(mine, (c.ax * 2 + dock[0]) / 3, (c.ay * 2 + dock[1]) / 3, 14);
+    }
+
+    /**
+     * Peon militia: an early raid (enemy units in the base while our warriors cannot match them) is met by the peons
+     * near it, a few per raider, when they outnumber it well. Raids by peons on builders are the usual case; against
+     * warriors, peons are worth little and stay at work.
+     */
+    private void militia(@NonNull Intel in, @NonNull List<@NonNull Unit> warriors,
+            @NonNull List<@NonNull Unit> threats) {
+        if (!ai.params.militia || threats.isEmpty())
+            return;
+        float ours = 0, theirs = 0;
+        for (Unit w : warriors)
+            ours += Intel.value(w);
+        List<Unit> raiders = new ArrayList<>();
+        for (Unit u : threats)
+            if (nearOurBase(in, u, 25)) {
+                raiders.add(u);
+                theirs += Intel.value(u);
+            }
+        if (raiders.isEmpty() || ours >= theirs * 1.5f)
+            return;
+        // peons fight at ~0.2 of an iron warrior: they need numbers
+        float peon_value = 0;
+        List<Unit> near = new ArrayList<>();
+        for (Unit p : in.peons) {
+            if (ai.reserved(p) || p.getIslandId() != ai.colony.island)
+                continue;
+            for (Unit r : raiders)
+                if (Geo.dist2(p.getGridX(), p.getGridY(), r.getGridX(), r.getGridY()) <= 30 * 30) {
+                    near.add(p);
+                    peon_value += Intel.value(p);
+                    break;
+                }
+        }
+        if (peon_value + ours < 1.5f * theirs)
+            return;
+        Map<Unit, Integer> on = new LinkedHashMap<>();
+        for (Unit p : near) {
+            Unit best = null;
+            long bd = Long.MAX_VALUE;
+            for (Unit r : raiders) {
+                if (r.isDead() || on.getOrDefault(r, 0) >= (r.isWarrior() ? 6 : 3))
+                    continue;
+                long d = Geo.dist2(p.getGridX(), p.getGridY(), r.getGridX(), r.getGridY());
+                if (d < bd) {
+                    bd = d;
+                    best = r;
+                }
+            }
+            if (best == null)
+                break;
+            on.merge(best, 1, Integer::sum);
+            ai.order(p, best, Action.ATTACK, true);
+            ai.reserve(p, 8);
+        }
+        ai.log.count("militia");
     }
 
     /** Idle warriors farther than r from the point walk to it. */
@@ -298,6 +388,8 @@ final class Army {
                     () -> "g" + g.id + " isle " + g.island + " n " + n + " at " + cx + "," + cy + " target " + g.tx + "," + g.ty + " threats " + nt + " (" + st + ") range+" + String.format(
                             "%.1f", Ratchet.meanBonus(g.members)));
         }
+        if (ai.params.snipe_towers)
+            snipeTowers(in, g, cx, cy, reach);
         if (!threats.isEmpty()) {
             engage(g.members, threats, 40);
             return;
@@ -405,6 +497,8 @@ final class Army {
             if (e.isWarrior() || e.isChieftain())
                 fighters.add(e);
         for (Unit w : warriors) {
+            if (ai.reserved(w))
+                continue;
             if (ai.params.kite && kite(w, fighters))
                 continue;
             long reach = r + (long) Ratchet.bonus(w);
@@ -438,6 +532,39 @@ final class Army {
             if (best != null) {
                 attackers.merge(best, 1, Integer::sum);
                 ai.order(w, best, Action.ATTACK, true);
+            }
+        }
+    }
+
+    /**
+     * Tower sniping: a warrior whose reach against an enemy tower beats the garrison's reach against it (the drill
+     * against an undrilled garrison) attacks the tower and stands at its own range, out of the tower's. Each sniper is
+     * reserved for a few seconds so engage leaves it on the tower.
+     */
+    private void snipeTowers(@NonNull Intel in, @NonNull Group g, int cx, int cy, int reach) {
+        long r2 = (long) (reach + 20) * (reach + 20);
+        for (Building t : in.enemy_buildings) {
+            if (!Intel.isTower(t) || !t.isComplete() || t.getIslandId() != g.island
+                    || Geo.dist2(t.getGridX(), t.getGridY(), cx, cy) > r2)
+                continue;
+            Unit garrison = Towers.gunner(t);
+            int on = 0;
+            for (Unit w : g.members) {
+                if (on >= 12 || !CorsairAI.orderable(w))
+                    continue;
+                float ours = w.getRange(t);
+                float theirs = garrison == null ? 0f : garrison.getRange(w);
+                if (ours < theirs + 2f)
+                    continue;
+                if (currentTarget(w) == null && w.getPrimaryController() instanceof HuntController h
+                        && h.getTarget() == t) {
+                    on++;
+                    continue;
+                }
+                ai.order(w, t, Action.ATTACK, true);
+                ai.reserve(w, 3);
+                on++;
+                ai.log.count("snipe");
             }
         }
     }

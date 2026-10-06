@@ -49,6 +49,9 @@ final class Reflexes {
     private final @NonNull AiLog log;
     private final boolean swing_restart;
     private final boolean stun_cancel;
+    private final @NonNull CorsairAI ai;
+    /** Per tower, the controller its garrison had on top in the previous tick. */
+    private final Map<com.oddlabs.tt.model.@NonNull Building, @NonNull Controller> tower_last = new LinkedHashMap<>();
     private final Map<@NonNull Unit, @NonNull Swing> swings = new LinkedHashMap<>();
     private final List<@NonNull Unit> due = new ArrayList<>();
     private final List<@NonNull Unit> stunned = new ArrayList<>();
@@ -63,7 +66,9 @@ final class Reflexes {
         }
     }
 
-    Reflexes(@NonNull Player me, @NonNull AiLog log, boolean swing_restart, boolean stun_cancel) {
+    Reflexes(@NonNull CorsairAI ai, @NonNull Player me, @NonNull AiLog log, boolean swing_restart,
+            boolean stun_cancel) {
+        this.ai = ai;
         this.me = me;
         this.log = log;
         this.swing_restart = swing_restart;
@@ -77,6 +82,8 @@ final class Reflexes {
         if (step <= 0f)
             return;
         tick++;
+        if (ai.params.tower_unstun)
+            towerUnstun();
         due.clear();
         stunned.clear();
         for (Selectable<?> s : me.getUnits().getSet()) {
@@ -106,6 +113,30 @@ final class Reflexes {
             restart(u);
         if (tick % 250 == 0)
             swings.keySet().removeIf(Unit::isDead);
+    }
+
+    /**
+     * A stun also lands on a tower's garrison. An order to the tower pushes an AttackController on the garrison without
+     * clearing its stack, so ordered on the tick its StunController comes on top it decides at once and throws on; the
+     * stun waits underneath (the gauntlet AI's tower_unstun).
+     */
+    private void towerUnstun() {
+        for (com.oddlabs.tt.model.Building t : ai.intel.towers) {
+            Unit g = Towers.gunner(t);
+            if (g == null)
+                continue;
+            Controller current = g.getCurrentController();
+            Controller previous = tower_last.put(t, current);
+            if (!(current instanceof StunController) || current == previous)
+                continue;
+            Unit target = Towers.bestTarget(ai.intel, t, g);
+            if (target == null)
+                continue;
+            me.setTarget(Selectable.newArray(t), target, Action.ATTACK, false);
+            log.count("tower_unstun");
+        }
+        if (tick % 250 == 0)
+            tower_last.keySet().removeIf(com.oddlabs.tt.model.Building::isDead);
     }
 
     private void restart(@NonNull Unit u) {

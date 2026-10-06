@@ -33,6 +33,7 @@ public final class CorsairAI extends AI {
     final @NonNull Ratchet ratchet;
     final @NonNull Chief chief;
     final @NonNull Towers towers;
+    final @NonNull Raid raid;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -55,7 +56,8 @@ public final class CorsairAI extends AI {
         ratchet = new Ratchet(this);
         chief = new Chief(this);
         towers = new Towers(this);
-        reflexes = new Reflexes(owner, log, params.swing_restart, params.stun_cancel);
+        raid = new Raid(this);
+        reflexes = new Reflexes(this, owner, log, params.swing_restart, params.stun_cancel);
     }
 
     @Override
@@ -94,6 +96,7 @@ public final class CorsairAI extends AI {
         }
         reserved.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue() < second);
         fleet.think(intel, second);
+        raid.think(intel, second);
         campaign.think(intel, second);
         ratchet.think(intel, second);
         colony.think(second);
@@ -173,6 +176,30 @@ public final class CorsairAI extends AI {
                 () -> "units " + in.units() + " peons " + in.peons.size() + "+" + in.peonsInside() + " warriors " + in.warriors.size() + " range+" + String.format(
                         "%.1f", Ratchet.meanBonus(
                                 in.warriors)) + " q " + in.quarters.size() + " a " + in.armories.size() + " t " + in.towers.size() + " ships " + in.ships.size() + " sites " + in.sites.size() + " projects " + colony.projects.size());
+        if (second % 120 == 0 && !in.armories.isEmpty()) {
+            com.oddlabs.tt.model.Building a = in.armories.getFirst();
+            int rock = 0, iron = 0;
+            for (Unit w : in.warriors)
+                if (Intel.kind(w) == Intel.Kind.ROCK)
+                    rock++;
+                else if (Intel.kind(w) == Intel.Kind.IRON)
+                    iron++;
+            int iron_nodes = 0;
+            geo.scanSupplies();
+            for (com.oddlabs.tt.model.IronSupply s : geo.iron_nodes)
+                if (s.getGridX() >= 0 && geo.islandAt(s.getGridX(), s.getGridY()) == colony.island)
+                    iron_nodes++;
+            int rk = rock, ir = iron, nodes = iron_nodes;
+            log.log("ECON", () -> "gatherers tree " + getOwner().getGathererCount(
+                    com.oddlabs.tt.landscape.TreeSupply.class, a) + " rock " + getOwner().getGathererCount(
+                            com.oddlabs.tt.model.RockSupply.class, a) + " iron " + getOwner().getGathererCount(
+                                    com.oddlabs.tt.model.IronSupply.class,
+                                    a) + " inside " + a.getUnitContainer().getNumSupplies() + " stock wood " + a.getSupplyContainer(
+                                            com.oddlabs.tt.landscape.TreeSupply.class).getNumSupplies() + " iron " + a.getSupplyContainer(
+                                                    com.oddlabs.tt.model.IronSupply.class).getNumSupplies() + " axes rock " + a.getSupplyContainer(
+                                                            com.oddlabs.tt.model.weapon.RockAxeWeapon.class).getNumSupplies() + " iron " + a.getSupplyContainer(
+                                                                    com.oddlabs.tt.model.weapon.IronAxeWeapon.class).getNumSupplies() + " | warriors rock " + rk + " iron " + ir + " | home iron nodes " + nodes);
+        }
     }
 
     /** One line per island and per player: what the map gives, for lab/corsair/survey.py. */

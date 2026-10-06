@@ -74,6 +74,22 @@ final class Towers {
         }
     }
 
+    /** The enemy in reach worth most to a tower's garrison, or null. */
+    static @Nullable Unit bestTarget(@NonNull Intel in, @NonNull Building t, @NonNull Unit g) {
+        Unit best = null;
+        float best_score = 0;
+        for (Unit e : in.enemy_units) {
+            if (e.isDead() || e.getIslandId() != t.getIslandId() || !inReach(g, e))
+                continue;
+            float score = (e.isWarrior() || e.isChieftain() ? Intel.value(e) : .3f) * (1f - e.getDefenseChance());
+            if (score > best_score) {
+                best_score = score;
+                best = e;
+            }
+        }
+        return best;
+    }
+
     /** Whether the garrison can throw at the unit from where it sits (its entry cell), with a cell to spare. */
     private static boolean inReach(@NonNull Unit g, @NonNull Unit e) {
         float r = g.getRange(e) - 1f;

@@ -130,9 +130,10 @@ final class Fleet {
         return cell != null ? cell : new int[]{c.ax, c.ay};
     }
 
-    /** Queues everyone aboard to land (they leave once the ship docks). */
+    /** Queues everyone aboard to land (they leave once the ship docks); the raid ship keeps its raiders. */
     void landAll(@NonNull Ship ship) {
-        int peons = peonsAboard(ship) - pending(ship, DeployType.PEON);
+        int keep = ai.raid.owns(ship) ? ai.params.raid : 0;
+        int peons = peonsAboard(ship) - pending(ship, DeployType.PEON) - keep;
         if (peons > 0)
             me.deployUnits(ship, DeployType.PEON, peons);
         landWarriors(ship);
@@ -219,7 +220,7 @@ final class Fleet {
                 continue;
             for (int[] cand : geo.candidates(isle, .6f, 40)) {
                 int ax = cand[0], ay = cand[1];
-                float quality = geo.baseScore(ax / Geo.BIN, ay / Geo.BIN);
+                float quality = geo.baseScore(ax / Geo.BIN, ay / Geo.BIN, isle.id);
                 float[] r = reach(mine, isle, ax, ay);
                 if (r[0] == Float.MAX_VALUE)
                     continue;
@@ -258,7 +259,12 @@ final class Fleet {
         home_field = ai.sea.field(home.lx(), home.ly());
         ai.log.log("OPEN",
                 () -> "home " + home.isle() + " base " + home.ax() + "," + home.ay() + " landing " + home.lx() + "," + home.ly() + " quality " + home.quality() + " cost " + home.cost() + " contest " + home.contest() + " score " + home.score());
+        boolean raider = ai.params.raid > 0;
         for (Ship ship : in.ships) {
+            if (raider) {
+                ai.raid.start(ship);
+                raider = false;
+            }
             goTo(ship, home.isle().id, home.lx(), home.ly(), second);
             duty(ship).land_all = true;
             landAll(ship);
@@ -277,12 +283,13 @@ final class Fleet {
                 case IDLE, ARRIVED, FAILED -> {
                     // rowers of a ship idle at home go back to work; operations take new ones aboard
                     if (d.op == null && !ship.isMoving() && dockedAt(ship) == ai.colony.island && !d.land_all
-                            && peonsAboard(ship) > 0 && pending(ship, DeployType.PEON) == 0)
+                            && peonsAboard(ship) > 0 && pending(ship, DeployType.PEON) == 0 && !ai.raid.owns(ship))
                         landPeons(ship, peonsAboard(ship));
                     if (d.op == null && !ship.isMoving() && dockedAt(ship) != 0 && ship.getShipHR().hasChieftain())
                         me.trainChieftain(ship, true);
                     if (d.job == Job.ARRIVED && d.land_all) {
-                        if (peonsAboard(ship) + warriorsAboard(ship) > 0)
+                        int keep = ai.raid.owns(ship) ? ai.params.raid : 0;
+                        if (peonsAboard(ship) + warriorsAboard(ship) > keep)
                             landAll(ship);
                         else {
                             d.land_all = false;
@@ -421,7 +428,7 @@ final class Fleet {
         for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
             Ship s = e.getKey();
             Duty d = e.getValue();
-            if (s.isDead() || !s.isComplete() || d.op != null || s.isMoving())
+            if (s.isDead() || !s.isComplete() || d.op != null || s.isMoving() || ai.raid.owns(s))
                 continue;
             if ((d.job == Job.IDLE || d.job == Job.ARRIVED || d.job == Job.FAILED) && dockedAt(s) == home)
                 out.add(s);
@@ -435,7 +442,7 @@ final class Fleet {
         for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
             Ship s = e.getKey();
             Duty d = e.getValue();
-            if (s.isDead() || !s.isComplete() || d.op != null)
+            if (s.isDead() || !s.isComplete() || d.op != null || ai.raid.owns(s))
                 continue;
             if ((d.job == Job.IDLE || d.job == Job.ARRIVED || d.job == Job.FAILED) && dockedAt(s) != home
                     && !s.isMoving())

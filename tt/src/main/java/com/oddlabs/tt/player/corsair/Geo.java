@@ -89,6 +89,11 @@ final class Geo {
     final int @NonNull [] bin_rock;
     final int @NonNull [] bin_iron;
     final List<@NonNull IronSupply> iron_nodes = new ArrayList<>();
+    /**
+     * Resource counts per (bin, island): key bin * 4096 + island, value {trees, rock, iron}. A bin can hold the coasts
+     * of two islands; a base only ever uses its own island's resources. Looked up, never iterated.
+     */
+    private final java.util.HashMap<Integer, int @NonNull []> by_bin_isle = new java.util.HashMap<>();
     final List<@NonNull RockSupply> rock_nodes = new ArrayList<>();
 
     Geo(@NonNull Player me) {
@@ -143,28 +148,69 @@ final class Geo {
         java.util.Arrays.fill(bin_iron, 0);
         iron_nodes.clear();
         rock_nodes.clear();
+        by_bin_isle.clear();
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 Occupant occ = grid.getOccupant(x, y);
                 if (occ == null)
                     continue;
                 int b = (y / BIN) * bins + x / BIN;
+                int kind = -1;
                 if (occ instanceof TreeSupply tree) {
-                    if (!tree.isEmpty() && tree.getGridX() == x && tree.getGridY() == y)
+                    if (!tree.isEmpty() && tree.getGridX() == x && tree.getGridY() == y) {
                         bin_tree[b]++;
+                        kind = 0;
+                    }
                 } else if (occ instanceof IronSupply s) {
                     if (!s.isEmpty() && s.getGridX() == x && s.getGridY() == y) {
                         bin_iron[b]++;
                         iron_nodes.add(s);
+                        kind = 2;
                     }
                 } else if (occ instanceof RockSupply s) {
                     if (!s.isEmpty() && s.getGridX() == x && s.getGridY() == y) {
                         bin_rock[b]++;
                         rock_nodes.add(s);
+                        kind = 1;
                     }
+                }
+                if (kind >= 0) {
+                    int isl = islandOfSupply(x, y);
+                    by_bin_isle.computeIfAbsent(b * 4096 + isl, k -> new int[3])[kind]++;
                 }
             }
         }
+    }
+
+    /**
+     * The island a supply at (x, y) belongs to: supplies block their own cell, so the nearest cell of land around it
+     * names the island.
+     */
+    private int islandOfSupply(int x, int y) {
+        for (int r = 0; r <= 3; r++)
+            for (int dy = -r; dy <= r; dy++)
+                for (int dx = -r; dx <= r; dx++) {
+                    int id = islandAt(x + dx, y + dy);
+                    if (id >= 2)
+                        return id;
+                }
+        return 0;
+    }
+
+    /** {trees, rock, iron} of one island within r bins of bin (bx, by). */
+    int @NonNull [] windowOn(int bx, int by, int r, int island) {
+        int[] sum = new int[3];
+        for (int y = Math.max(0, by - r); y <= Math.min(bins - 1, by + r); y++)
+            for (int x = Math.max(0, bx - r); x <= Math.min(bins - 1, bx + r); x++)
+                if ((x - bx) * (x - bx) + (y - by) * (y - by) <= r * r) {
+                    int[] c = by_bin_isle.get((y * bins + x) * 4096 + island);
+                    if (c != null) {
+                        sum[0] += c[0];
+                        sum[1] += c[1];
+                        sum[2] += c[2];
+                    }
+                }
+        return sum;
     }
 
     /** Sum of a bin table over the bins within r bins of bin (bx, by). */
@@ -177,11 +223,13 @@ final class Geo {
         return sum;
     }
 
-    /** How good a base at the centre of bin (bx, by) would be: iron, rock and wood within ~3 bins. */
-    float baseScore(int bx, int by) {
-        int i = window(bin_iron, bx, by, 3);
-        int r = window(bin_rock, bx, by, 3);
-        int t = window(bin_tree, bx, by, 3);
+    /**
+     * How good a base at the centre of bin (bx, by) on an island would be: that island's iron, rock and wood within ~3
+     * bins (resources across the water count for nothing).
+     */
+    float baseScore(int bx, int by, int island) {
+        int[] c = windowOn(bx, by, 3, island);
+        int t = c[0], r = c[1], i = c[2];
         return 3f * Math.min(i, 8) + 1.5f * Math.min(r, 6) + .25f * Math.min(t, 60);
     }
 
@@ -195,7 +243,7 @@ final class Geo {
                 int cx = bx * BIN + BIN / 2, cy = by * BIN + BIN / 2;
                 if (islandAt(cx, cy) != isle.id)
                     continue;
-                float s = baseScore(bx, by);
+                float s = baseScore(bx, by, isle.id);
                 if (s >= isle.score * share)
                     out.add(new int[]{cx, cy, (int) (s * 100)});
             }
@@ -209,7 +257,7 @@ final class Geo {
         for (Isle isle : isles) {
             isle.score = 0;
             isle.ax = isle.ay = -1;
-            if (isle.area < 400)
+            if (isle.area < 400 || isle.trees <= 0 || isle.rocks <= 0 || isle.iron <= 0)
                 continue;
             int bx0 = isle.info.minX() / BIN, bx1 = isle.info.maxX() / BIN;
             int by0 = isle.info.minY() / BIN, by1 = isle.info.maxY() / BIN;
@@ -218,7 +266,7 @@ final class Geo {
                     int cx = bx * BIN + BIN / 2, cy = by * BIN + BIN / 2;
                     if (islandAt(cx, cy) != isle.id)
                         continue;
-                    float s = baseScore(bx, by);
+                    float s = baseScore(bx, by, isle.id);
                     if (s > isle.score) {
                         isle.score = s;
                         isle.ax = cx;

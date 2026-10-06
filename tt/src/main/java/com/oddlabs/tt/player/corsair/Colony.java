@@ -369,6 +369,10 @@ final class Colony {
     /** Peons an armory keeps inside to make weapons. */
     private int workersWanted(@NonNull Intel in) {
         int pop = in.peons.size() + in.peonsInside();
+        // worker_share: an iron weapon is 80 man-s of work and 3 loads (~1.9 gatherer-minutes at our harvest
+        // rates), so about 40 % of the peons inside keep up with the rest gathering
+        if (p.worker_share > 0)
+            return Math.max(3, (int) Math.round(pop * p.worker_share));
         return Math.max(3, Math.min(14, pop / 8));
     }
 
@@ -387,6 +391,9 @@ final class Colony {
         int iron = armory.getSupplyContainer(IronSupply.class).getNumSupplies();
         int rock = armory.getSupplyContainer(RockSupply.class).getNumSupplies();
         boolean want_rock = p.rock_weapons && (iron == 0 || rock > 6);
+        // rock_axe_cap: axes nobody takes (the unit cap) are labour lost to iron
+        if (p.rock_axe_cap > 0 && armory.getSupplyContainer(RockAxeWeapon.class).getNumSupplies() >= p.rock_axe_cap)
+            want_rock = false;
         int rock_orders = armory.getBuildSupplyContainer(RockAxeWeapon.class).getNumSupplies();
         if (want_rock && rock_orders == 0)
             me.buildRockWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
@@ -404,6 +411,23 @@ final class Colony {
         int rock_stock = armory.getSupplyContainer(RockSupply.class).getNumSupplies();
         int workers = workersWanted(in);
         int spare = inside - workers - pendingDeploys(armory);
+        if (p.worker_share > 0 && spare < 0) {
+            // short of workers: call back gatherers of whatever the stock has plenty of
+            int need = -spare;
+            if (wood_stock > 60 && tree > 2) {
+                int k = Math.min(need, tree - 2);
+                me.recallGatherers(armory, TreeSupply.class, k);
+                need -= k;
+            }
+            if (need > 0 && rock_stock > 20 && rock > 1) {
+                int k = Math.min(need, rock - 1);
+                me.recallGatherers(armory, RockSupply.class, k);
+                need -= k;
+            }
+            if (need > 0 && iron_stock > 30 && iron > 2)
+                me.recallGatherers(armory, IronSupply.class, Math.min(need, iron - 2));
+            return;
+        }
         if (spare <= 0)
             return;
         // gatherer shares: wood twice the ore, ore mostly iron

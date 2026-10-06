@@ -513,8 +513,26 @@ final class Campaign {
         }
     }
 
+    /** Peons rowing or walking aboard for any operation. */
+    private int rowersAway(@NonNull Intel in) {
+        int n = 0;
+        for (Ship s : in.ships)
+            if (ai.fleet.duty(s).op != null)
+                n += Fleet.peonsAboard(s);
+        for (Op op : ops)
+            for (Unit u : op.boarding.keySet())
+                if (!u.isDead() && !u.isWarrior() && !u.isChieftain() && inSet(u))
+                    n++;
+        return n;
+    }
+
     private @NonNull List<@NonNull Unit> rowerCandidates(@NonNull Intel in, @NonNull Ship s, int n) {
         List<Unit> out = new ArrayList<>();
+        // rower_floor: the economy keeps that many peons at home whatever the ships want
+        if (ai.params.rower_floor > 0) {
+            int home = in.peons.size() + in.peonsInside() - rowersAway(in);
+            n = Math.min(n, home - ai.params.rower_floor);
+        }
         if (n <= 0)
             return out;
         List<Unit> peons = new ArrayList<>();
@@ -595,7 +613,7 @@ final class Campaign {
                 }
                 if (!more.isEmpty())
                     ai.order(more, s, Action.MOVE, false);
-                else
+                else if (ai.params.rower_floor == 0)
                     ai.colony.releasePeons(in, ai.params.rowers - have);
             }
             if (Fleet.peonsAboard(s) < 8)

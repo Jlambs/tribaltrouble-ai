@@ -46,6 +46,15 @@ Tools: `lab/corsair/eval.sh NAME SPEC OPPONENT [formats]` (1v1 seeds 1..50 + 2v2
 - `replay --snap latest` of a run whose team A was a frozen `@TAG` replays that jar, not the new code: play the seed
   with `corsair` instead to test new code.
 
+- A warrior can walk back into an armory (WorkerUnitContainer takes any unit; the weapon is lost): rock warriors at the
+  cap can be swapped for iron ones (param upgrade).
+- Economy at the cap (lab: ECON log lines): iron is not scarce (a home island keeps 130+ nodes after an hour);
+  weapons were labour-bound (armory workers pop/8, ~4 iron axes/min) and peons went to the oars (3 ships x 20 rowers
+  left 2-6 working peons during operations).
+- baseScore counted resources across the water: a tiny islet next to a rich island won the opening and the AI never
+  made a warrior (3 % of 1v1 games, all lost). Fixed: per-island bin counts, and the island must have all three.
+- Decisive mirror games are decided by the map: the same slot wins both rotations of a seed.
+
 ## Ladder
 
 | version | what | vs hard (60 games, 30 seeds, 60 min) | self-play |
