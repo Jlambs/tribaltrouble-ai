@@ -38,7 +38,7 @@ final class Ratchet {
     void think(@NonNull Intel in, int second) {
         if (!ai.params.ratchet || !ai.colony.founded() || ai.army.homeThreatened())
             return;
-        float goal = 2f * ai.params.ratchet_trips;
+        float goal = goal(in);
         List<Ship> ships = ai.fleet.idleAtHome();
         if (ships.isEmpty())
             return;
@@ -58,7 +58,8 @@ final class Ratchet {
             int k = Math.min(by_bonus.size(), in.towers.size() + 2);
             elite.addAll(by_bonus.subList(0, k));
         }
-        float elite_goal = 2f * ai.params.elite_trips;
+        float elite_goal = Math.max(2f * ai.params.elite_trips,
+                goal + 2f * (ai.params.elite_trips - ai.params.ratchet_trips));
         for (Unit w : home) {
             if (!(w.getPrimaryController() instanceof IdleController))
                 continue;
@@ -103,6 +104,28 @@ final class Ratchet {
         }
         walking.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead() || e.getKey().isMounted());
         return n;
+    }
+
+    /**
+     * The drill goal in cells: ratchet_trips trips, or with drill_adapt enough to outreach the enemy warriors seen by
+     * that many cells (their mean drill), at most drill_max trips. Drilling deeper than the enemy needs only delays
+     * the attacks (no-drill v4: 8 trips elim -.16); against a drilled enemy range wins fights (v5c: kd30 +85..+169).
+     */
+    float goal(@NonNull Intel in) {
+        float base = 2f * ai.params.ratchet_trips;
+        if (ai.params.drill_adapt <= 0 || in.enemy_warriors.isEmpty())
+            return base;
+        float theirs = 0;
+        int n = 0;
+        for (Unit e : in.enemy_warriors)
+            if (!e.isChieftain()) {
+                theirs += bonus(e);
+                n++;
+            }
+        if (n == 0)
+            return base;
+        float want = theirs / n + (float) ai.params.drill_adapt;
+        return Math.min(2f * ai.params.drill_max, Math.max(base, want));
     }
 
     /** Whether drill warriors may still be walking to the ship (ordered within the last 20 s). */

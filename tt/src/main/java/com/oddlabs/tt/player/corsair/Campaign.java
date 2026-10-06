@@ -208,12 +208,25 @@ final class Campaign {
     /** Enemy defence of an island near a point: every warrior on it, and towers within 30 at four warriors each. */
     float defence(@NonNull Intel in, int island, int x, int y) {
         float d = 0;
+        float their_bonus = 0;
+        int n = 0;
         for (Unit u : in.enemy_warriors)
-            if (u.getIslandId() == island)
+            if (u.getIslandId() == island) {
                 d += Intel.value(u);
+                their_bonus += Ratchet.bonus(u);
+                n++;
+            }
         for (Building b : in.enemy_buildings)
             if (Intel.isTower(b) && b.isComplete() && Geo.dist2(b.getGridX(), b.getGridY(), x, y) <= 30 * 30)
                 d += 4f;
+        // range_edge: kiting turns a range edge into kills; the defence counts for less the more our drilled warriors
+        // outreach theirs (per cell of mean drill bonus, clamped to [0.6, 1.4])
+        if (ai.params.range_edge > 0 && n > 0) {
+            float ours = Ratchet.meanBonus(ai.intel.warriors);
+            float edge = ours - their_bonus / n;
+            float f = Math.clamp(1f - (float) ai.params.range_edge * edge, .6f, 1.4f);
+            d *= f;
+        }
         return d;
     }
 

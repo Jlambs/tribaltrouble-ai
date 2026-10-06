@@ -209,7 +209,10 @@ final class Colony {
         }
         if (in.armories.isEmpty())
             return;
-        int want_towers = Math.min(p.max_towers, (second - p.tower_start) / p.tower_every + 1);
+        // outnumbered_towers: each enemy beyond our team's size adds that many towers
+        int surplus = Math.max(0, in.enemies.size() - in.allies.size() - 1);
+        int max_towers = p.max_towers + p.outnumbered_towers * surplus;
+        int want_towers = Math.min(max_towers, (second - p.tower_start) / p.tower_every + 1);
         if (second >= p.tower_start && t < want_towers && peons >= 30) {
             int[] spot = towerSpot(in);
             add(Race.BUILDING_TOWER, spot[0], spot[1], second);
