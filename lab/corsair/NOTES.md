@@ -177,3 +177,10 @@ stalemates were often not about the launch rule but about ships:
   gatherers into a pocket for the rest of the game (stall_raze: our warriors pull down a site that stopped
   growing; it freed them). On a shared island the blitz style killed 134 of our peons building 20 tower sites
   under fire (safe_build: no placing or building within 30 cells of enemy warriors; turned that loss into a win).
+- late_drill 1500 (drill on to 15 trips at the cap after 25 min; defence discount floor .3; marches weigh the
+  range edge) vs the turtle style (8 towers): 1v1 W5 -> 12, margin +.19*; 2v2 +.06, margin +.14*; with
+  soft_target 1v1 elim +.08*, 2v2 +.11*. Deep range is what breaks towers. Rescreened vs @v4 and blitz on v11.
+- v11 vs @v10 (the new sparring partner: mirror games are decisive about 30 % of the time now): 1v1 14-15-71,
+  2v2 22-19-59.
+- On v11e vs @v4 / blitz: stall_raze, expand 3 (now only when not outnumbered), safe_build, militia_smart: all
+  within a win or two of the base at 60 min (safe_build vs blitz 1v1 elim +.09, 2v2 -.01). Not adopted.

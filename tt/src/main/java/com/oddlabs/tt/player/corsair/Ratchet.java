@@ -114,8 +114,11 @@ final class Ratchet {
     float goal(@NonNull Intel in) {
         // late_drill: at the cap that late in the game neither side attacks an equal defence; drill on to
         // late_trips, so our warriors outreach theirs and their towers by far
+        // late_idle: only in a stalemate, when no op or march has gone for that long (against an enemy we beat
+        // anyway the deep drill only delays the attacks: vs @v4 1v1 elim -.09)
         if (ai.params.late_drill > 0 && !late && ai.now() >= ai.params.late_drill
-                && in.units() >= me.getWorld().getMaxUnitCount() - 10) {
+                && in.units() >= me.getWorld().getMaxUnitCount() - 10
+                && (ai.params.late_idle <= 0 || ai.now() - ai.campaign.lastLaunch() >= ai.params.late_idle)) {
             late = true;
             ai.log.log("DRILL", () -> "late drill to " + ai.params.late_trips + " trips t" + ai.now());
         }

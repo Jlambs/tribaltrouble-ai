@@ -292,6 +292,11 @@ final class Campaign {
         return v;
     }
 
+    /** The game second the last op or march started. */
+    int lastLaunch() {
+        return last_launch;
+    }
+
     private void launch(@NonNull Intel in, int second) {
         Colony c = ai.colony;
         boolean team = ai.params.team_target && !in.allies.isEmpty();

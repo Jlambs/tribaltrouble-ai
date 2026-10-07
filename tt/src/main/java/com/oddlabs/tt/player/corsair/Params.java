@@ -87,6 +87,7 @@ final class Params {
     final boolean safe_build;
     final boolean militia_smart;
     final double spread_open;
+    final int late_idle;
     final boolean team_march;
     final boolean tower_rush;
     final boolean soft_target;
@@ -174,14 +175,15 @@ final class Params {
         rebeach = a.getBoolean("rebeach", true);
         unload_wait = a.getInt("unload_wait", 15);
         rock_until = a.getInt("rock_until", 0);
-        expand = a.getInt("expand", 0);
+        expand = a.getInt("expand", 3);
         workers_max = a.getInt("workers_max", 14);
         workers_per = a.getInt("workers_per", 8);
-        stall_drop = a.getInt("stall_drop", 0);
-        stall_raze = a.getBoolean("stall_raze", false);
+        stall_drop = a.getInt("stall_drop", 180);
+        stall_raze = a.getBoolean("stall_raze", true);
         safe_build = a.getBoolean("safe_build", false);
         militia_smart = a.getBoolean("militia_smart", false);
         spread_open = a.getDouble("spread_open", 0);
+        late_idle = a.getInt("late_idle", 0);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);
