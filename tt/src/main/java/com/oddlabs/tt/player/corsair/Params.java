@@ -166,10 +166,10 @@ final class Params {
         pack = a.getInt("pack", 20);
         dock_near = a.getInt("dock_near", 40);
         row_min = a.getInt("row_min", 10);
-        late_drill = a.getInt("late_drill", 0);
+        late_drill = a.getInt("late_drill", 1500);
         late_trips = a.getInt("late_trips", 15);
-        edge_floor = a.getDouble("edge_floor", .6);
-        abort_edge = a.getBoolean("abort_edge", false);
+        edge_floor = a.getDouble("edge_floor", .3);
+        abort_edge = a.getBoolean("abort_edge", true);
         docks = a.getInt("docks", 5);
         dock_gap = a.getInt("dock_gap", 30);
         rebeach = a.getBoolean("rebeach", true);
@@ -183,7 +183,7 @@ final class Params {
         safe_build = a.getBoolean("safe_build", false);
         militia_smart = a.getBoolean("militia_smart", false);
         spread_open = a.getDouble("spread_open", 0);
-        late_idle = a.getInt("late_idle", 0);
+        late_idle = a.getInt("late_idle", 600);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);

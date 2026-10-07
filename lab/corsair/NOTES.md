@@ -184,3 +184,10 @@ stalemates were often not about the launch rule but about ships:
   2v2 22-19-59.
 - On v11e vs @v4 / blitz: stall_raze, expand 3 (now only when not outnumbered), safe_build, militia_smart: all
   within a win or two of the base at 60 min (safe_build vs blitz 1v1 elim +.09, 2v2 -.01). Not adopted.
+- late_drill 1500 on v11e: vs @v4 1v1 elim -.09* (88 -> 79 wins: the drill delays attacks we would win anyway),
+  2v2 -.04; vs blitz 1v1 +.18* (W25 -> 40), 2v2 +.15* (W36 -> 49); soft_target on top adds nothing. late_idle
+  600 (start the late drill only when no op or march has gone for 10 minutes) screened on v12.
+- late_idle 600 on v12 (late drill only after 10 minutes without an op or march): vs @v4 1v1 -.05 (n.s.), 2v2
+  -.01; turtle +.04 / +.04 (margin +.12*); mirror @v11 1v1 W13 -> 20, elim +.10*, 2v2 +.04 (margin +.09*); blitz
+  1v1 +.10* (W26 -> 35), 2v2 +.08. Ungated vs blitz +.16* / +.14*. Adopted gated (v13): late_drill 1500,
+  late_trips 15, late_idle 600, edge_floor .3, abort_edge.
