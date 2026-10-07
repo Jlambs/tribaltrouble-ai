@@ -219,3 +219,8 @@ stalemates were often not about the launch rule but about ships:
   losses in 60 there; expand_safe adds nothing. Keeping expand 3.
 - rock_fallback (rock axes once the island's iron nodes are down to 2): 180 min vs raid W34 L13 -> W36 L7, elim
   +.13* (with expand_safe 36-6); vs turtle 34-6 -> 33-4 (neutral). Adopted (v14).
+- v14 vs @v4 at 60 min: 1v1 86-0-14, 2v2 87-0-13, 1v2 15-8-37; rock_fallback off instead: 85 / 85 / 15 (neutral
+  at 60 min, as expected: it fires in long games).
+- v14 league: 426 wins, 10 losses (v13: 424 and 10). 180 min: vs @v4 56-0-4, blitz 49-4-7 (v13 48-5-7), vs @v13
+  16-24-20, but paired against @v13 vs @v13 on the same games (identical unless the fallback fires) that is +.025
+  (3 better, 2 worse, 55 the same): mirror games swing on the start slot, not on the change.
