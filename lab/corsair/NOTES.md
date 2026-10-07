@@ -242,3 +242,7 @@ stalemates were often not about the launch rule but about ships:
 - shelter (peons near raiders that no militia meets go inside the nearest quarters or armory): fewer peons die
   (kd30 +63* in 2v2) but games are lost: vs blitz 1v1 elim -.15*, 2v2 -.10; vs @v4 1v1 -.07, 1v2 -.12. Hidden
   peons stop the economy, and a razed building takes everyone inside with it. Rejected.
+- unstick + evac (a body standing idle for a minute short of an unreachable target, often an enemy ship docked
+  out of reach, retargets or gives the island up for ten minutes; stranded warriors are shipped home): turned the
+  seed it was built on into a win, but vs @v4 1v1 0, 2v2 -.05 (first version, still and not idle: -.07*), blitz
+  0 / 0, mirror @v13 +.02 / +.02. Not adopted (params off).
