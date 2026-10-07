@@ -251,3 +251,7 @@ stalemates were often not about the launch rule but about ships:
   game, no swallowed error.
 - An extreme rush sparring variant (@v7:style=blitz,rock_weapons=true,expedition=10,attack_ratio=0.8): v15 1v1
   36-1-23, 2v2 35-1-24.
+- Team sizes vs blitz (v15): 3v3 37-7-46, 3v2 45-0-15, 2v3 7-19-34, 1v2 0-21-39. Outnumbered against an aggressive
+  style is the weakest case: most 2v3 losses come with no op launched, at 18-36 min, from bases settled 50 cells
+  from an enemy on a shared island (one fight: 273 of our peons and 197 of theirs). outnumbered_ratio 1.5 / 2
+  (a higher launch bar when outnumbered): no effect vs blitz or @v4 (2v3 -.08 vs @v4, n.s.). Not adopted.
