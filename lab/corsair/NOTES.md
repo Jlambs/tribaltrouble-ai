@@ -197,3 +197,7 @@ stalemates were often not about the launch rule but about ships:
 - v13 league: 424 wins, 10 losses of 720 (v10: 394 and 11). v13 vs @v12 (late drill the only difference): 1v1
   19-11-70, 2v2 20-16-64. Tuning vs @v12: late_idle 300 1v1 +.07 (n.s.), late_trips 20 neutral, late_drill
   1200 2v2 +.05*.
+- Robustness rb13 (@v13 vs @v4): natives 37-1-2, vs natives 33-0-7, FFA3 12-0-18, 4v4 33-0-7, 2v3 18-1-21,
+  hills 3 32-1-7, normal speed 14-0-6, northern 11-1-8; no failed game, no swallowed error.
+- v13 team sizes vs @v4: 1v2 15-8-37 (v10 18-7-35), 2v3 28-2-30 (v10 21-2-37), 3v3 68-1-21 (v10 57-0-33),
+  2v1 60-0-0.
