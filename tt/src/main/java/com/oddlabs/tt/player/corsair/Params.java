@@ -189,7 +189,7 @@ final class Params {
         late_idle = a.getInt("late_idle", 600);
         ally_aid = a.getBoolean("ally_aid", false);
         expand_safe = a.getBoolean("expand_safe", false);
-        rock_fallback = a.getBoolean("rock_fallback", false);
+        rock_fallback = a.getBoolean("rock_fallback", true);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);

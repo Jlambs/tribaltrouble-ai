@@ -217,3 +217,5 @@ stalemates were often not about the launch rule but about ships:
   island's iron is gone) screened next.
 - 180 min vs turtle: expand 3 34-6-20, expand 0 33-10-17, expand_safe 33-6-21. Moving the colony is worth ~4
   losses in 60 there; expand_safe adds nothing. Keeping expand 3.
+- rock_fallback (rock axes once the island's iron nodes are down to 2): 180 min vs raid W34 L13 -> W36 L7, elim
+  +.13* (with expand_safe 36-6); vs turtle 34-6 -> 33-4 (neutral). Adopted (v14).
