@@ -225,3 +225,9 @@ stalemates were often not about the launch rule but about ships:
   16-24-20, but paired against @v13 vs @v13 on the same games (identical unless the fallback fires) that is +.025
   (3 better, 2 worse, 55 the same): mirror games swing on the start slot, not on the change.
 - contest_weight 2 / 3 (opening): not one base choice changed in 1v1 or 1v2 (identical games).
+- outnumbered_towers 0 / 4 (default 2) in 1v2 and 2v3: 0 worse (2v3 elim -.08*), 4 neutral.
+- Wood runs out too: an island of 184 trees had none left at 76 min with 79 iron nodes standing; no axes, a loss
+  at 146 min to the raid style. expand_wood 15 (the colony moves when 15 trees or fewer are left and the armory
+  has under 20 wood) won that game; screened at 180 min.
+- expand_wood 15 at 180 min: raid 36-7 -> 37-6, turtle identical, mirror vs @v13 one win -> draw. Fires rarely;
+  net zero. Not adopted (param left in, off).
