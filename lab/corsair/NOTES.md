@@ -203,3 +203,11 @@ stalemates were often not about the launch rule but about ships:
   2v1 60-0-0.
 - late_idle 300 on v13: vs @v4 1v1 elim -.09* (2v2 0), vs blitz +.03 / +.02; with late_drill 1200 vs @v4 1v1
   -.06*, blitz 2v2 +.07*. Keeping 600 / 1500.
+- 180-minute games, v13 1v1: vs turtle 34-6-20, raid 34-13-13, blitz 48-5-7, @v12 44-8-8. Most losses come after
+  90 minutes. Homes run out of iron in long games and the colony moves (expand) in 6-14 of 60: those games went
+  2-7-5 against raid. One: the new home was razed within minutes and 167 peons sat idle at the old one for the
+  last 90 minutes with no ships to fetch them. expand_safe (settle away from enemy buildings; fall back to the old
+  home when the new one has no peons left) screened at 180 minutes against expand 0 and 3.
+- ally_aid (ship free warriors to an ally base under attack): vs blitz 2v2 / 3v3 and @v4 2v2 / 3v3 within a win of
+  the base; it seldom fires (an ally under attack usually shares our island or our own island is contested). Not
+  adopted. late_idle 300 + late_drill 1200 vs @v12: 2v2 elim +.08*, 1v1 +.05; vs @v4 1v1 -.06*: not adopted.
