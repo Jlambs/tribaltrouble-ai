@@ -59,6 +59,9 @@ final class Campaign {
         int carried;
         int started;
         int landed_at = Integer.MAX_VALUE;
+        /** unload_wait: the warriors still aboard the docked ships, and when that last fell. */
+        int last_aboard = Integer.MAX_VALUE;
+        int unloaded_at = -1;
         int kills0;
         int lost0;
         @Nullable
@@ -1072,11 +1075,15 @@ final class Campaign {
 
     private void landing(@NonNull Op op, int second) {
         boolean empty = true;
+        boolean holding = false;
+        int aboard = 0;
         for (Ship s : op.ships) {
             if (Fleet.dockedAt(s) != op.island)
                 continue;
+            aboard += Fleet.warriorsAboard(s);
             if (holdFire(ai.intel, s, op, second)) {
                 empty = false;
+                holding = true;
                 continue;
             }
             if (Fleet.warriorsAboard(s) > 0) {
@@ -1088,8 +1095,21 @@ final class Campaign {
                 empty = false;
             }
         }
-        if (!empty && second - op.since < 30 + Math.max(0, ai.params.bombard))
+        if (ai.params.unload_wait > 0) {
+            // unload_wait: units leave one at a time (an iron warrior 1.5 s), so a packed ship takes over a minute:
+            // the ships stay while the warriors still come off (they went home after 30 s with two thirds aboard)
+            if (op.unloaded_at < 0 || aboard < op.last_aboard || holding)
+                op.unloaded_at = second;
+            op.last_aboard = Math.min(op.last_aboard, aboard);
+            if (!empty && second - op.unloaded_at < ai.params.unload_wait && second - op.since < 300)
+                return;
+        } else if (!empty && second - op.since < 30 + Math.max(0, ai.params.bombard))
             return;
+        if (aboard > 0) {
+            int a = aboard;
+            ai.log.log("CAMP", () -> "op " + op.id + " ships leave with " + a + " warriors aboard t" + second);
+            ai.log.count("unlanded");
+        }
         for (Ship s : op.ships) {
             ai.fleet.duty(s).op = null;
             ai.fleet.goHome(s, second);

@@ -2,7 +2,7 @@
 # Robustness of a team-A spec on odd settings: failed games and swallowed errors matter most here.
 # usage: lab/corsair/robust.sh PREFIX "A-SPEC" OPPONENT
 p=$1; a=$2; b=$3
-base="--size archipelago --terrain tropical --trees 10 --supplies 10 --speed ludicrous --minutes 60 --rng 1"
+base="--size archipelago --terrain tropical --trees 10 --supplies 10 --speed ludicrous --minutes 60 --rng 1 --stale-ok"
 run() { n=$1; shift; [ -f aisim/runs/$n/summary.txt ] && return; rm -rf aisim/runs/$n; ./aisim.sh batch --name $n "$@" 2>&1 | grep -E "^RESULT|failed|swallowed errors [1-9]|crash"; }
 run $p-natives  --players "$a/n vs $b" --hills 0 --seeds 1..20 $base
 run $p-vsnat    --players "$a vs $b/n" --hills 0 --seeds 1..20 $base
