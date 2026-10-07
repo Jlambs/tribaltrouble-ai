@@ -92,6 +92,7 @@ final class Params {
     final boolean expand_safe;
     final boolean rock_fallback;
     final int expand_wood;
+    final boolean shelter;
     final boolean team_march;
     final boolean tower_rush;
     final boolean soft_target;
@@ -192,6 +193,7 @@ final class Params {
         expand_safe = a.getBoolean("expand_safe", false);
         rock_fallback = a.getBoolean("rock_fallback", true);
         expand_wood = a.getInt("expand_wood", 0);
+        shelter = a.getBoolean("shelter", false);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);

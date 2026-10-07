@@ -278,7 +278,8 @@ final class Army {
             if (u.isWarrior() || u.isChieftain())
                 theirs += Intel.value(u);
         home_threat = theirs > 2;
-        militia(in, mine, threats);
+        if (!militia(in, mine, threats) && ai.params.shelter)
+            shelter(in, threats);
         // an enemy ship docked at our island is landing troops: its hull is in reach from the shore, and each hit
         // may kill one aboard; sunk, it drowns them all
         List<Ship> docked = new ArrayList<>();
@@ -312,6 +313,52 @@ final class Army {
      * near it, a few per raider, when they outnumber it well. Raids by peons on builders are the usual case; against
      * warriors, peons are worth little and stay at work.
      */
+    /**
+     * shelter: peons near raiders that no militia meets go into our nearest quarters or armory (an early raid
+     * once killed 190 of our peons, gathering or fighting, in six minutes).
+     */
+    private void shelter(@NonNull Intel in, @NonNull List<@NonNull Unit> threats) {
+        List<Unit> raiders = new ArrayList<>();
+        for (Unit u : threats)
+            if (!u.isDead() && (u.isWarrior() || u.isChieftain()))
+                raiders.add(u);
+        if (raiders.isEmpty())
+            return;
+        List<Building> refuges = new ArrayList<>(ai.colony.local(in.quarters));
+        refuges.addAll(ai.colony.local(in.armories));
+        if (refuges.isEmpty())
+            return;
+        int n = 0;
+        for (Unit p : in.peons) {
+            if (p.isDead() || ai.reserved(p) || p.getIslandId() != ai.colony.island)
+                continue;
+            boolean near = false;
+            for (Unit r : raiders)
+                if (Geo.dist2(p.getGridX(), p.getGridY(), r.getGridX(), r.getGridY()) <= 22 * 22) {
+                    near = true;
+                    break;
+                }
+            if (!near)
+                continue;
+            Building best = null;
+            long bd = Long.MAX_VALUE;
+            for (Building b : refuges) {
+                long d = Geo.dist2(p.getGridX(), p.getGridY(), b.getGridX(), b.getGridY());
+                if (d < bd) {
+                    bd = d;
+                    best = b;
+                }
+            }
+            if (best != null) {
+                ai.order(p, best, Action.MOVE, false);
+                ai.reserve(p, 10);
+                n++;
+            }
+        }
+        if (n > 0)
+            ai.log.count("shelter");
+    }
+
     /** Mean drill bonus of the warriors in a list (peons and the dead left out). */
     private static float warriorBonus(@NonNull List<@NonNull Unit> units) {
         float sum = 0;
@@ -324,10 +371,10 @@ final class Army {
         return n == 0 ? 0f : sum / n;
     }
 
-    private void militia(@NonNull Intel in, @NonNull List<@NonNull Unit> warriors,
+    private boolean militia(@NonNull Intel in, @NonNull List<@NonNull Unit> warriors,
             @NonNull List<@NonNull Unit> threats) {
         if (!ai.params.militia || threats.isEmpty())
-            return;
+            return false;
         float ours = 0, theirs = 0;
         for (Unit w : warriors)
             ours += Intel.value(w);
@@ -338,11 +385,11 @@ final class Army {
                 theirs += Intel.value(u);
             }
         if (raiders.isEmpty() || ours >= theirs * 1.5f)
-            return;
+            return false;
         // militia_smart: peons only meet early raids by undrilled warriors; drilled ones kite them down from
         // range (an enemy base next to ours once cost 220 peons in six minutes)
         if (ai.params.militia_smart && (ai.now() >= 900 || warriorBonus(raiders) >= 2f))
-            return;
+            return false;
         // peons fight at ~0.2 of an iron warrior: they need numbers
         float peon_value = 0;
         List<Unit> near = new ArrayList<>();
@@ -357,7 +404,7 @@ final class Army {
                 }
         }
         if (peon_value + ours < 1.5f * theirs)
-            return;
+            return false;
         Map<Unit, Integer> on = new LinkedHashMap<>();
         for (Unit p : near) {
             Unit best = null;
@@ -378,6 +425,7 @@ final class Army {
             ai.reserve(p, 8);
         }
         ai.log.count("militia");
+        return true;
     }
 
     /** Idle warriors farther than r from the point walk to it. */
