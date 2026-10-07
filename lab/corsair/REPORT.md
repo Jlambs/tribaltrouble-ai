@@ -2,7 +2,7 @@
 
 `corsair` is a Tribal Trouble computer player for Archipelago maps (`--size archipelago`), tuned on tropical, hills 0,
 trees 10, supplies 10 at ludicrous speed, for any team sizes. Package `tt/src/main/java/com/oddlabs/tt/player/corsair/`
-(about 4,800 lines), branch `corsair` off `boats`. The working record is `lab/corsair/NOTES.md`; tools are in
+(about 6,000 lines), branch `corsair` off `boats`. The working record is `lab/corsair/NOTES.md`; tools are in
 `lab/corsair/` (eval.sh, sweep.sh, league.sh, robust.sh, collect.sh, survey.py).
 
 ## How it plays
@@ -28,28 +28,35 @@ trees 10, supplies 10 at ludicrous speed, for any team sizes. Package `tt/src/ma
    comes within its own reach. Groups break off before contact when the target's defence outweighs them. The
    chieftain stuns (vikings) or calls lightning/poison (natives) when enough enemies are in reach.
 5. **Across the sea (Campaign, Fleet).** An assault waits until free warriors outweigh the target island's whole
-   defence (warriors there, towers at four, discounted by our range edge) and enough ships are home to carry them,
-   20 peons rowing each. It lands at a beach away from enemy towers, buildings and warriors (units leave a ship one at
-   a time, so a contested beach is a massacre), the landed wait for the rest, and ships go home. Enemies on our own
-   island are met by a march on foot. Mop-up hunts enemy ships and attacks ships docked at cleared islands from the
-   shore (each hit may kill one aboard; sunk, all drown).
+   defence (warriors there, towers at four, discounted by our range edge) and enough ships are home to carry them.
+   Each ship carries 26 warriors on deck and 20 more on the benches beside its rowers (the bench warriors board once
+   the rowers sit); an op takes only as many ships as it has rowers for (10+ each; spare armory peons row too). It
+   lands at a beach away from enemy towers, buildings and warriors (units leave a ship one at a time, so a contested
+   beach is a massacre), re-picks the beach on approach if the enemy has moved onto it, and **the ships stay docked
+   until every warrior is off** (they used to leave after 30 s with up to half aboard). Ships are built and dock 30
+   cells apart (side by side they lock each other in sliding out) and stop only near their target cell. Enemies on
+   our own island are met by a march on foot. Mop-up hunts enemy ships and attacks ships docked at cleared islands
+   from the shore (each hit may kill one aboard; sunk, all drown).
 
 ## Results
 
 League (lab/corsair/league.sh; 60-minute games at ludicrous on archipelago 0/10/10, `--rng 1`; 1v1 on seeds 1..30
-from both starts, 2v2 on seeds 1..15 from all four, 60 games per cell; W-L-D, margin = strength edge at the time limit):
+from both starts, 2v2 on seeds 1..15 from all four, 60 games per cell; W-L-D, margin = strength edge at the time
+limit). The styles are `@v7` with params (blitz: early aggression, turtle: towers and defence, raid: a raiding
+opening).
 
-| opponent | `@v6` 1v1 | `@v6` 2v2 | `@v4` (morning release) 1v1 | `@v4` 2v2 |
+| opponent | `@v10` 1v1 | `@v10` 2v2 | `@v7` 1v1 | `@v7` 2v2 |
 |---|---|---|---|---|
-| `@v4` (last release) | 7-0-53, +.34 | 11-0-49, +.42 | 8-9-43, -.01 (mirror) | 2-2-56, +.03 (mirror) |
-| `@v4` without the drill (a stand-in for AIs that do not use ships' quirks) | 19-2-39, +.47 | 23-0-37, +.60 | 16-6-38, +.29 | 10-0-50, +.28 |
-| stock Hard | 52-0-8, +.96 | 55-0-5, +.99 | 53-0-7, +.95 | 54-0-6, +.98 |
-| blitz style (`@v6:style=blitz`) | 4-1-55, +.11 | 3-0-57, +.12 | 0-13-47, -.32 | 0-13-47, -.37 |
-| turtle style (`@v6:style=turtle`) | 1-0-59, -.01 | 0-0-60, -.03 | 0-5-55, -.31 | 0-8-52, -.38 |
-| raid opening (`@v6:raid=7`) | 2-3-55, -.01 | 0-0-60, +.04 | 0-10-50, -.32 | 0-12-48, -.46 |
+| `@v4` (an earlier release) | 52-0-8, +.86 | 47-0-13, +.85 | 20-1-39 | 19-0-41 |
+| `@v4` without the drill (a stand-in for AIs that do not use ships' quirks) | 56-0-4, +.94 | 55-0-5, +.94 | 28-1-31 | 37-0-23 |
+| stock Hard | 54-0-6, +.97 | 58-0-2, +.99 | 55-0-5 | 57-0-3 |
+| blitz style | 18-4-38, +.30 | 24-3-33, +.37 | 9-3-48 | 5-3-52 |
+| turtle style | 3-2-55, -.04 | 9-0-51, +.16 | 1-1-58 | 1-0-59 |
+| raid opening | 4-2-54, -.02 | 18-0-42, +.28 | 1-2-57 | 1-0-59 |
 
-`@v6` lost 6 of 720 league games; `@v4` lost 78. No game failed and no error was swallowed. 180-minute games against
-the stock Hard: 38-0-2 (`@v5c`).
+`@v10` won 394 of 720 league games and lost 11 (`@v7`: 234 and 11). No game failed and no error was swallowed.
+180-minute games against `@v4`: 1v1 55-1-4, 2v2 52-0-8 (`@v8`: 34-2-24, 36-0-24). Other team sizes against `@v4`
+(60-90 games each): 1v2 18-7-35 (`@v8`: 10-6-44), 2v1 59-0-1 and 3v3 50-1-39 (`@v9`).
 
 ## Exploits used
 
@@ -62,6 +69,8 @@ engine or harness code was changed on this branch.
 - Equal opponents: defending an island is far stronger than landing on one, so mirror games end in timeouts (both
   sides hold ~205 iron warriors behind towers and neither attacks). Wins come against weaker or different
   strategies.
-- Outnumbered (1v2) games are held to draws more often than not, but not won.
+- Outnumbered (1v2) games are mostly draws; the losses come at 17-28 minutes when both enemies land together.
+- A shared home island with an aggressive neighbour is the weak spot (most league losses are seed 4, where we
+  arrive second on the only good island). Garrisoned towers outrange our drilled warriors by the tower's 8 cells.
 - The chieftain does not ride ships (a chieftain alone on a rowing bench trips an engine assertion: a crash outside
   the harness), so stuns happen only on our own island and on land marches.
