@@ -249,3 +249,5 @@ stalemates were often not about the launch rule but about ships:
 - Release candidate @v15 (branch head; plays as v14 on checked games): robustness rb15 natives 37-1-2, vs natives
   33-0-7, FFA3 12-0-18, 4v4 34-0-6, 2v3 18-1-21, hills 3 32-1-7, normal speed 14-0-6, northern 11-1-8; no failed
   game, no swallowed error.
+- An extreme rush sparring variant (@v7:style=blitz,rock_weapons=true,expedition=10,attack_ratio=0.8): v15 1v1
+  36-1-23, 2v2 35-1-24.

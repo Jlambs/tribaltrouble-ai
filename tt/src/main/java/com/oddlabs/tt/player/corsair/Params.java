@@ -95,6 +95,7 @@ final class Params {
     final boolean shelter;
     final boolean unstick;
     final boolean evac;
+    final double outnumbered_ratio;
     final boolean team_march;
     final boolean tower_rush;
     final boolean soft_target;
@@ -198,6 +199,7 @@ final class Params {
         shelter = a.getBoolean("shelter", false);
         unstick = a.getBoolean("unstick", false);
         evac = a.getBoolean("evac", false);
+        outnumbered_ratio = a.getDouble("outnumbered_ratio", 1.0);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);

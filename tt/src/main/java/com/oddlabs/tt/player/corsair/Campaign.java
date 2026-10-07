@@ -447,7 +447,9 @@ final class Campaign {
         int pop = in.units();
         boolean capped = pop >= me.getWorld().getMaxUnitCount() - 6;
         if (tisl != 0) {
-            int need = Math.max(ai.params.expedition_size, (int) Math.ceil(ai.params.attack_ratio * target_def + 6));
+            // outnumbered_ratio: with more enemies than we and our allies, an op leaves home open to the others
+            double ratio = ai.params.attack_ratio * (in.enemies.size() > in.allies.size() + 1 ? ai.params.outnumbered_ratio : 1.0);
+            int need = Math.max(ai.params.expedition_size, (int) Math.ceil(ratio * target_def + 6));
             int room = 0;
             int rowable = shipsWeCanRow(in, ships);
             for (Ship s : ships.subList(0, rowable))
