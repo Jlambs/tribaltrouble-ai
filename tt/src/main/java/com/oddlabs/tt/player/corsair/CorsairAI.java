@@ -192,6 +192,25 @@ public final class CorsairAI extends AI {
                 what.merge(k, 1, Integer::sum);
             }
             log.log("PEONS", what::toString);
+            // a few wood gatherers: where they stand, their tree, what they do (wood locks)
+            StringBuilder sb = new StringBuilder();
+            int k = 0;
+            for (Unit u : in.peons) {
+                if (k >= 4 || u.isDead())
+                    break;
+                if (u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.GatherController<?> g
+                        && g.getSupplyType() == com.oddlabs.tt.landscape.TreeSupply.class) {
+                    var s = g.getSupply();
+                    var b = u.getCurrentBehaviour();
+                    sb.append(u.getGridX()).append(',').append(u.getGridY()).append(" tree ").append(
+                            s == null ? "-" : s.getGridX() + "," + s.getGridY()).append(' ').append(
+                                    b == null ? "none" : b.getClass().getSimpleName()).append(" carry ").append(
+                                            u.getSupplyContainer().getNumSupplies()).append(" | ");
+                    k++;
+                }
+            }
+            String g = sb.toString();
+            log.log("WOOD", () -> g);
         }
         if (second % 120 == 0 && !colony.local(in.armories).isEmpty()) {
             com.oddlabs.tt.model.Building a = colony.local(in.armories).getFirst();
@@ -206,7 +225,7 @@ public final class CorsairAI extends AI {
             for (com.oddlabs.tt.model.IronSupply s : geo.iron_nodes)
                 if (s.getGridX() >= 0 && geo.islandAt(s.getGridX(), s.getGridY()) == colony.island)
                     iron_nodes++;
-            int rk = rock, ir = iron, nodes = iron_nodes;
+            int rk = rock, ir = iron, nodes = iron_nodes, trees = geo.totalsOn(colony.island)[0];
             log.log("ECON", () -> "gatherers tree " + getOwner().getGathererCount(
                     com.oddlabs.tt.landscape.TreeSupply.class, a) + " rock " + getOwner().getGathererCount(
                             com.oddlabs.tt.model.RockSupply.class, a) + " iron " + getOwner().getGathererCount(
@@ -215,7 +234,7 @@ public final class CorsairAI extends AI {
                                             com.oddlabs.tt.landscape.TreeSupply.class).getNumSupplies() + " iron " + a.getSupplyContainer(
                                                     com.oddlabs.tt.model.IronSupply.class).getNumSupplies() + " axes rock " + a.getSupplyContainer(
                                                             com.oddlabs.tt.model.weapon.RockAxeWeapon.class).getNumSupplies() + " iron " + a.getSupplyContainer(
-                                                                    com.oddlabs.tt.model.weapon.IronAxeWeapon.class).getNumSupplies() + " | warriors rock " + rk + " iron " + ir + " | home iron nodes " + nodes);
+                                                                    com.oddlabs.tt.model.weapon.IronAxeWeapon.class).getNumSupplies() + " | warriors rock " + rk + " iron " + ir + " | home iron nodes " + nodes + " trees " + trees);
         }
     }
 

@@ -71,6 +71,8 @@ final class Colony {
     }
 
     final List<@NonNull Project> projects = new ArrayList<>();
+    /** stall_raze: our own stalled sites our warriors pull down. */
+    private final List<@NonNull Building> raze = new ArrayList<>();
 
     Colony(@NonNull CorsairAI ai) {
         this.ai = ai;
@@ -96,6 +98,23 @@ final class Colony {
         this.dock_x = dock_x;
         this.dock_y = dock_y;
         projects.clear();
+    }
+
+    private void razeSites(@NonNull Intel in) {
+        raze.removeIf(b -> b.isDead() || b.isComplete());
+        for (Building b : raze) {
+            List<Unit> near = new ArrayList<>();
+            for (Unit w : in.warriors)
+                if (w.getIslandId() == b.getIslandId() && !ai.reserved(w)
+                        && Geo.dist2(w.getGridX(), w.getGridY(), b.getGridX(), b.getGridY()) <= 80 * 80)
+                    near.add(w);
+            sortByDistance(near, b.getGridX(), b.getGridY());
+            List<Unit> go = new ArrayList<>(near.subList(0, Math.min(8, near.size())));
+            for (Unit w : go)
+                ai.reserve(w, 12);
+            ai.order(go, b, Action.ATTACK, false);
+            ai.log.count("raze_own");
+        }
     }
 
     /** The buildings of a list that stand on our island. */
@@ -316,8 +335,14 @@ final class Colony {
                     return false;
                 ai.log.log("BUILD", () -> "stalled " + name(pr.type) + " at " + pr.x + "," + pr.y + " hp " + hp);
                 ai.log.count("stalled_site");
+                // stall_raze: a site that does not grow may be walling peons in (a ship site at the shore once
+                // sealed 106 wood gatherers into a pocket for the rest of the game): our warriors pull it down
+                if (p.stall_raze)
+                    raze.add(pr.site);
                 return true;
             });
+        if (!raze.isEmpty() && second % 10 == 0)
+            razeSites(in);
         for (Project pr : projects) {
             if (pr.site == null && second - pr.ordered >= 15 && !placing(pr)) {
                 List<Unit> free = freePeons(in, pr.x, pr.y, builderTarget(pr, in));
