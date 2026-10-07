@@ -525,7 +525,7 @@ final class Colony {
         // rates), so about 40 % of the peons inside keep up with the rest gathering
         if (p.worker_share > 0)
             return Math.max(3, (int) Math.round(pop * p.worker_share));
-        return Math.max(3, Math.min(14, pop / 8));
+        return Math.max(3, Math.min(p.workers_max, pop / p.workers_per));
     }
 
     /**
