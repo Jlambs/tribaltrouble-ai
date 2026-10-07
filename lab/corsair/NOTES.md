@@ -120,3 +120,25 @@ Tools: `lab/corsair/eval.sh NAME SPEC OPPONENT [formats]` (1v1 seeds 1..50 + 2v2
 League v7 (60 games per cell; W-L-D): vs v4 20-1-39 / 19-0-41, no-drill 28-1-31 / 37-0-23, Hard 55-0-5 / 57-0-3,
 blitz 9-3-48 / 5-3-52, turtle 1-1-58 / 1-0-59, raid 1-2-57 / 1-0-59 (1v1 / 2v2; styles are v7 with params).
 234 wins and 11 losses in 720 games (v6: 177 and 6, against v6-based styles).
+
+### 2026-10-07 night: logistics in stalled games
+
+Logs of v7/v8 timeouts (`WAIT` trace every 120 s in Campaign.launch, `PEONS` controller counts) showed the
+stalemates were often not about the launch rule but about ships:
+
+- Ships home from an op stopped at the first shore of the home island they touched (dock_stop accepts any shore of
+  the target island): 170 cells from the base, so the next op's boarders did not arrive in its 70 s and it sailed
+  with 26 of 70 warriors and 2 rowers (13 minutes to cross). dock_near 40: only stop that way near the target cell.
+- At the cap the peons are ~45, mostly inside the armory (full stocks deploy no gatherers), and ops sailed with
+  20, 20, 5, 0, 0 rowers; the empty ships never left the dock. row_min 10: ships per op limited to the rowers we
+  have, spare armory peons row too, ships without rowers drop out, an op without any lands again.
+- pack 40: warriors fill the benches beside the rowers (26 deck + ~40 bench). The bench warriors must wait for
+  the rowers still walking up, or they take the room (an op sailed with 3 rowers of 40 ordered).
+- ShipSlideBehaviour: a ship leaving a dock slides back to deep water uninterruptibly and stops for good while
+  another ship is behind it. Ships built side by side at the dock locked each other in (3 of 5 for 10+ minutes).
+  docks 5: ships are built and dock dock_gap (30) cells apart, and an op's ships land apart.
+- 2v2 with both enemies on one island: their two armies are one defence (need 334 against our 168 + 146 at
+  home); nobody attacks. late_drill (drill on to 15 trips at the cap after 20 min, defence discount floor 0.3,
+  marches weigh the range edge too) is screened for these stalemates.
+- Screens vs @v4: pack 30 / 45 (alone) 2v2 elim +.09* / +.08*, 1v1 neutral; stage 2v2 elim +.06* (again), 1v1
+  neutral; ships 6 / 7 and wood_weight neutral.

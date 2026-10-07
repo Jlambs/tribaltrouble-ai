@@ -181,6 +181,8 @@ public final class CorsairAI extends AI {
             // what the peons outside do: controller counts (r: reserved, f: on another island)
             java.util.Map<String, Integer> what = new java.util.TreeMap<>();
             for (Unit u : in.peons) {
+                if (u.isDead())
+                    continue;
                 var c = u.getPrimaryController();
                 String k = (c == null ? "none" : c.getClass().getSimpleName().replace("Controller", "")) + (reserved(
                         u) ? "/r" : "") + (u.getIslandId() != colony.island ? "/f" : "");
