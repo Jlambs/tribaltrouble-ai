@@ -40,6 +40,8 @@ public final class CorsairAI extends AI {
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
     private int second;
     private boolean opened;
+    /** Iron nodes left on our island at the last economy count (every 120 s), -1 before the first. */
+    int home_iron = -1;
 
     public CorsairAI(@NonNull Player owner, @NonNull UnitInfo units, @NonNull String spec_params) {
         super(owner, units); // first: registers this AI and creates the starting units
@@ -226,6 +228,7 @@ public final class CorsairAI extends AI {
                 if (s.getGridX() >= 0 && geo.islandAt(s.getGridX(), s.getGridY()) == colony.island)
                     iron_nodes++;
             int rk = rock, ir = iron, nodes = iron_nodes, trees = geo.totalsOn(colony.island)[0];
+            home_iron = nodes;
             log.log("ECON", () -> "gatherers tree " + getOwner().getGathererCount(
                     com.oddlabs.tt.landscape.TreeSupply.class, a) + " rock " + getOwner().getGathererCount(
                             com.oddlabs.tt.model.RockSupply.class, a) + " iron " + getOwner().getGathererCount(

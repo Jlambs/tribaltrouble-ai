@@ -608,6 +608,9 @@ final class Colony {
      * 50 at 10 minutes, and razed us by 21.
      */
     private boolean rockPhase() {
+        // rock_fallback: with the island's iron gone, rock axes beat none (rock is left unused otherwise)
+        if (p.rock_fallback && ai.home_iron >= 0 && ai.home_iron <= 2)
+            return true;
         return p.rock_weapons || p.rock_until > 0 && ai.now() < p.rock_until;
     }
 
