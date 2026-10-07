@@ -191,3 +191,6 @@ stalemates were often not about the launch rule but about ships:
   -.01; turtle +.04 / +.04 (margin +.12*); mirror @v11 1v1 W13 -> 20, elim +.10*, 2v2 +.04 (margin +.09*); blitz
   1v1 +.10* (W26 -> 35), 2v2 +.08. Ungated vs blitz +.16* / +.14*. Adopted gated (v13): late_drill 1500,
   late_trips 15, late_idle 600, edge_floor .3, abort_edge.
+- Decomposition vs blitz (ungated): the deep drill alone 1v1 elim +.07, 2v2 +.09 (margin z>2); the edge rules
+  alone (defence discount floor .3, marches weigh the range edge) +.04 / +.07; both +.16* / +.14*. They need each
+  other: the deeper range is what makes the bolder launch rule right.
