@@ -160,3 +160,9 @@ stalemates were often not about the launch rule but about ships:
   (off): with N iron nodes or fewer left and an empty armory, a ship takes 45 peons and 20 warriors to the best
   wood-and-iron island no enemy builds on, the colony is founded again there, and a crewed ferry brings the rest
   over. One of three starved seeds turned into a win; one picked an island the enemy then razed.
+- v10 league (styles from @v7): 394 wins and 11 losses in 720 (v7: 234 and 11); 180 min vs @v4 1v1 55-1-4,
+  2v2 52-0-8 (v8: 34-2-24, 36-0-24). expand 3 / 6: 1v1 +1 win, 1v2 two more losses (an outnumbered colony that
+  moves gets caught): not adopted. workers_max 20 / 28: neutral to worse.
+- Team play (v10e vs @v4): team_target (allies count each other's home warriors and pick targets by their average
+  sea distance) + team_march (allies sharing our island count against its enemies; marches start on a 30 s cue):
+  2v2 W79 -> 87, elim +.08; 3v3 elim +.13* (W57 -> 69). Adopted (v11); inert without allies.

@@ -131,7 +131,7 @@ final class Params {
         tower_fire = a.getBoolean("tower_fire", true);
         ally_join = a.getDouble("ally_join", 1.0);
         kite = a.getBoolean("kite", true);
-        team_target = a.getBoolean("team_target", false);
+        team_target = a.getBoolean("team_target", true);
         kite_slack = a.getDouble("kite_slack", 3.0);
         kite_step = a.getInt("kite_step", 5);
         drilled_garrison = a.getBoolean("drilled_garrison", true);
@@ -174,7 +174,7 @@ final class Params {
         workers_max = a.getInt("workers_max", 14);
         workers_per = a.getInt("workers_per", 8);
         stall_drop = a.getInt("stall_drop", 0);
-        team_march = a.getBoolean("team_march", false);
+        team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);
         stage_max = a.getInt("stage_max", 600);
