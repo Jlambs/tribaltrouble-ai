@@ -194,3 +194,6 @@ stalemates were often not about the launch rule but about ships:
 - Decomposition vs blitz (ungated): the deep drill alone 1v1 elim +.07, 2v2 +.09 (margin z>2); the edge rules
   alone (defence discount floor .3, marches weigh the range edge) +.04 / +.07; both +.16* / +.14*. They need each
   other: the deeper range is what makes the bolder launch rule right.
+- v13 league: 424 wins, 10 losses of 720 (v10: 394 and 11). v13 vs @v12 (late drill the only difference): 1v1
+  19-11-70, 2v2 20-16-64. Tuning vs @v12: late_idle 300 1v1 +.07 (n.s.), late_trips 20 neutral, late_drill
+  1200 2v2 +.05*.
