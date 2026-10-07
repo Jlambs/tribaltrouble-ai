@@ -255,3 +255,6 @@ stalemates were often not about the launch rule but about ships:
   style is the weakest case: most 2v3 losses come with no op launched, at 18-36 min, from bases settled 50 cells
   from an enemy on a shared island (one fight: 273 of our peons and 197 of theirs). outnumbered_ratio 1.5 / 2
   (a higher launch bar when outnumbered): no effect vs blitz or @v4 (2v3 -.08 vs @v4, n.s.). Not adopted.
+- neighbor_exp 6 / 10 (marches on an enemy settling within 120 cells of our base before 15 min need only that
+  many warriors): vs blitz 1v1 +1 win, 2v3 -1 / 0. The close neighbour's defence matches our first warriors, so
+  the march rarely starts earlier. Not adopted.

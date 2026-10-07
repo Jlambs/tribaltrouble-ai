@@ -84,7 +84,10 @@ engine or harness code was changed on this branch.
 - Equal opponents: defending an island is far stronger than landing on one, so mirror games end in timeouts (both
   sides hold ~205 iron warriors behind towers and neither attacks). Wins come against weaker or different
   strategies.
-- Outnumbered (1v2) games are mostly draws; the losses come at 17-28 minutes when both enemies land together.
+- Outnumbered games: against `@v4` 1v2 15-8-37 and 2v3 28-2-30, but against the aggressive blitz style 1v2
+  0-21-39 and 2v3 7-19-34. Most of those losses come early, with no op launched, from bases settled within ~50
+  cells of an enemy on a shared island; none of the defensive rules tried (more towers, a higher launch bar,
+  hiding peons, early marches on the neighbour) changed that.
 - A shared home island with an aggressive neighbour is the weak spot (most league losses are seed 4, where we
   arrive second on the only good island). Garrisoned towers outrange our drilled warriors by the tower's 8 cells.
 - The chieftain does not ride ships (a chieftain alone on a rowing bench trips an engine assertion: a crash outside
