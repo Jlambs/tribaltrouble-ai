@@ -177,6 +177,17 @@ public final class CorsairAI extends AI {
                 () -> "units " + in.units() + " peons " + in.peons.size() + "+" + in.peonsInside() + " warriors " + in.warriors.size() + " range+" + String.format(
                         "%.1f", Ratchet.meanBonus(
                                 in.warriors)) + " q " + in.quarters.size() + " a " + in.armories.size() + " t " + in.towers.size() + " ships " + in.ships.size() + " sites " + in.sites.size() + " projects " + colony.projects.size());
+        if (second % 120 == 0) {
+            // what the peons outside do: controller counts (r: reserved, f: on another island)
+            java.util.Map<String, Integer> what = new java.util.TreeMap<>();
+            for (Unit u : in.peons) {
+                var c = u.getPrimaryController();
+                String k = (c == null ? "none" : c.getClass().getSimpleName().replace("Controller", "")) + (reserved(
+                        u) ? "/r" : "") + (u.getIslandId() != colony.island ? "/f" : "");
+                what.merge(k, 1, Integer::sum);
+            }
+            log.log("PEONS", what::toString);
+        }
         if (second % 120 == 0 && !in.armories.isEmpty()) {
             com.oddlabs.tt.model.Building a = in.armories.getFirst();
             int rock = 0, iron = 0;

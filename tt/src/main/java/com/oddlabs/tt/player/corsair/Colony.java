@@ -8,6 +8,7 @@ import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Race;
+import com.oddlabs.tt.model.Ship;
 import com.oddlabs.tt.model.RockSupply;
 import com.oddlabs.tt.model.Unit;
 import com.oddlabs.tt.model.behaviour.Controller;
@@ -399,6 +400,9 @@ final class Colony {
                 break;
             if (type != Race.BUILDING_SHIP && !spaced(t.getGridX(), t.getGridY(), spacing))
                 continue;
+            // docks: a new ship stands clear of the others, or they lock each other in at the dock
+            if (type == Race.BUILDING_SHIP && p.docks > 1 && nearOurShip(t.getGridX(), t.getGridY()))
+                continue;
             // the 20 nearest spaced sites, then every 6th further out, so a site among trees farther off can win
             if (p.site_trees && type != Race.BUILDING_SHIP && ++spaced_seen > 20 && spaced_seen % 6 != 0)
                 continue;
@@ -424,6 +428,15 @@ final class Colony {
             return new int[]{t.getGridX(), t.getGridY()};
         }
         return null;
+    }
+
+    private boolean nearOurShip(int x, int y) {
+        long gap2 = (long) p.dock_gap * p.dock_gap;
+        for (List<Ship> l : List.of(ai.intel.ships, ai.intel.ship_sites))
+            for (Ship s : l)
+                if (Geo.dist2(s.getGridX(), s.getGridY(), x, y) < gap2)
+                    return true;
+        return false;
     }
 
     /** Mean distance in cells to the 6 nearest standing trees within 18 cells (a missing one counts 25). */
@@ -630,6 +643,22 @@ final class Colony {
                 n -= k;
             }
         }
+        // row_min: at the cap the spare peons sit in the armory (full stocks deploy no gatherers); they row too
+        if (p.row_min > 0)
+            for (Building a : in.armories) {
+                if (n <= 0 || a.getIslandId() != island)
+                    return;
+                int k = Math.min(n, armorySpare(in, a));
+                if (k > 0) {
+                    me.deployUnits(a, DeployType.PEON, k);
+                    n -= k;
+                }
+            }
+    }
+
+    /** The peons in an armory beyond the workers it wants (and those already leaving). */
+    int armorySpare(@NonNull Intel in, @NonNull Building armory) {
+        return Math.max(0, armory.getUnitContainer().getNumSupplies() - workersWanted(in) - pendingDeploys(armory));
     }
 
     // --- quarters --------------------------------------------------------------------------------------------------

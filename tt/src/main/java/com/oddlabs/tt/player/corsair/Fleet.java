@@ -119,7 +119,92 @@ final class Fleet {
     void goHome(@NonNull Ship ship, int second) {
         Colony c = ai.colony;
         int[] cell = homeDock();
+        if (ai.params.docks > 1) {
+            // the nearest spaced dock no other ship of ours holds or heads for
+            long gap2 = (long) ai.params.dock_gap * ai.params.dock_gap;
+            for (int[] dock : spacedShores(c.island, cell[0], cell[1])) {
+                boolean free = true;
+                for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
+                    Ship o = e.getKey();
+                    Duty od = e.getValue();
+                    if (o == ship || o.isDead())
+                        continue;
+                    boolean near = Geo.dist2(o.getGridX(), o.getGridY(), dock[0], dock[1]) < gap2;
+                    boolean bound = od.job == Job.TRANSIT && od.island == c.island
+                            && Geo.dist2(od.tx, od.ty, dock[0], dock[1]) < gap2;
+                    if (near || bound) {
+                        free = false;
+                        break;
+                    }
+                }
+                if (free) {
+                    cell = dock;
+                    break;
+                }
+            }
+        }
         goTo(ship, c.island, cell[0], cell[1], second);
+    }
+
+    /**
+     * docks: the k-th of up to `docks` shore cells of an island near (x, y), at least dock_gap cells apart, nearest
+     * first. Ships docked side by side lock each other in: a ship leaves a dock sliding back to deep water,
+     * uninterruptibly, and stops for good while another ship is behind it (ShipSlideBehaviour); 3 of 5 ships once
+     * sat so at our dock for minutes.
+     */
+    int @NonNull [] spacedShore(int island, int x, int y, int k) {
+        List<int[]> picked = spacedShores(island, x, y);
+        if (picked.isEmpty())
+            return new int[]{x, y};
+        int[] c = picked.get(k % picked.size());
+        return new int[]{c[0], c[1]};
+    }
+
+    /** docks: up to `docks` shore cells of an island within 100 cells of (x, y), dock_gap apart, nearest first. */
+    @NonNull
+    List<int @NonNull []> spacedShores(int island, int x, int y) {
+        Geo.Isle isle = ai.geo.isle(island);
+        List<int[]> picked = new ArrayList<>();
+        if (ai.params.docks <= 1 || isle == null || isle.shore.isEmpty())
+            return picked;
+        List<int[]> cells = new ArrayList<>(isle.shore);
+        cells.sort((a, b) -> {
+            int c = Long.compare(Geo.dist2(a[0], a[1], x, y), Geo.dist2(b[0], b[1], x, y));
+            if (c != 0)
+                return c;
+            c = Integer.compare(a[0], b[0]);
+            return c != 0 ? c : Integer.compare(a[1], b[1]);
+        });
+        long gap2 = (long) ai.params.dock_gap * ai.params.dock_gap;
+        for (int[] c : cells) {
+            if (Geo.dist2(c[0], c[1], x, y) > 100 * 100)
+                break;
+            boolean ok = true;
+            for (int[] p : picked)
+                if (Geo.dist2(p[0], p[1], c[0], c[1]) < gap2) {
+                    ok = false;
+                    break;
+                }
+            if (ok) {
+                picked.add(c);
+                if (picked.size() >= ai.params.docks)
+                    break;
+            }
+        }
+        return picked;
+    }
+
+    /** The jobs of our ships, for the log ("IDLE@2 TRANSIT@15 ..."). */
+    @NonNull
+    String jobs() {
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
+            Ship s = e.getKey();
+            Duty d = e.getValue();
+            sb.append(d.job).append(d.op != null ? "+op" : "").append(ai.raid.owns(s) ? "+raid" : "").append(
+                    '@').append(dockedAt(s)).append(s.isMoving() ? "~" : "").append(' ');
+        }
+        return sb.toString().trim();
     }
 
     /** The shore cell our ships use at home. */
@@ -314,12 +399,18 @@ final class Fleet {
                             ship) + " " + behaviourName(
                                     ship) + " attempts " + d.attempts + " rowers " + ship.getShipHR().countRowers());
         int at = dockedAt(ship);
+        // dock_near: a ship that touches the target island far from its cell (a coast passed on the way: home ships
+        // stopped 170 cells from the base and the warriors could not reach them in time) sails on; it stops there
+        // only after 45 s along that shore
+        boolean far = ai.params.dock_near > 0 && d.island != 0
+                && Geo.dist2(ship.getGridX(), ship.getGridY(), d.tx,
+                        d.ty) > (long) ai.params.dock_near * ai.params.dock_near;
         // docked at the target island but still moving (wiggling under ShipUnstuckBehaviour, or nudging along the
         // shore): stop there after 3 s, we can land from here
         if (ship.isMoving() && d.island != 0 && at == d.island) {
             if (d.docked_since < 0)
                 d.docked_since = second;
-            else if (second - d.docked_since >= 3) {
+            else if (second - d.docked_since >= (far ? 45 : 3)) {
                 sail(ship, ship.getGridX(), ship.getGridY());
                 ai.log.count("dock_stop");
                 return;
@@ -329,7 +420,7 @@ final class Fleet {
         }
         if (ship.isMoving() && !stalled)
             return;
-        if (d.island == 0 ? !ship.isMoving() : at == d.island) {
+        if (d.island == 0 ? !ship.isMoving() : at == d.island && (!far || !ship.isMoving() && d.attempts >= 3)) {
             if (ship.isMoving()) {
                 // held at the shore (an enemy ship in the way stops us): stop here, we are docked
                 sail(ship, ship.getGridX(), ship.getGridY());

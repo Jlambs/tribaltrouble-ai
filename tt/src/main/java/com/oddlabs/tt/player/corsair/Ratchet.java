@@ -112,6 +112,22 @@ final class Ratchet {
      * the attacks (no-drill v4: 8 trips elim -.16); against a drilled enemy range wins fights (v5c: kd30 +85..+169).
      */
     float goal(@NonNull Intel in) {
+        // late_drill: at the cap that late in the game neither side attacks an equal defence; drill on to
+        // late_trips, so our warriors outreach theirs and their towers by far
+        if (ai.params.late_drill > 0 && !late && ai.now() >= ai.params.late_drill
+                && in.units() >= me.getWorld().getMaxUnitCount() - 10) {
+            late = true;
+            ai.log.log("DRILL", () -> "late drill to " + ai.params.late_trips + " trips t" + ai.now());
+        }
+        if (late)
+            return Math.max(2f * ai.params.late_trips, goalBefore(in));
+        return goalBefore(in);
+    }
+
+    /** late_drill: set once the late drill began (it goes on even when units are lost). */
+    private boolean late;
+
+    private float goalBefore(@NonNull Intel in) {
         float base = 2f * ai.params.ratchet_trips;
         if (ai.params.drill_adapt <= 0 || in.enemy_warriors.isEmpty())
             return base;

@@ -516,10 +516,17 @@ final class Army {
             float ours = 0;
             for (Unit w : movers)
                 ours += Intel.value(w);
-            float theirs = 0;
+            float theirs = 0, their_bonus = 0;
+            int nb = 0;
             for (Unit e : in.enemy_warriors)
-                if (e.getIslandId() == g.island && Geo.dist2(e.getGridX(), e.getGridY(), g.tx, g.ty) <= 50 * 50)
+                if (e.getIslandId() == g.island && Geo.dist2(e.getGridX(), e.getGridY(), g.tx, g.ty) <= 50 * 50) {
                     theirs += Intel.value(e);
+                    their_bonus += Ratchet.bonus(e);
+                    nb++;
+                }
+            // abort_edge: their warriors count for less the more ours outreach them (as in the launch rule)
+            if (ai.params.abort_edge && nb > 0)
+                theirs *= ai.campaign.rangeFactor(their_bonus / nb);
             for (Building b : in.enemy_buildings)
                 if (Intel.isTower(b) && b.isComplete() && b.getIslandId() == g.island
                         && Geo.dist2(b.getGridX(), b.getGridY(), g.tx, g.ty) <= 40 * 40)
