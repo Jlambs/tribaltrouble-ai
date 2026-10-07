@@ -34,6 +34,7 @@ public final class CorsairAI extends AI {
     final @NonNull Chief chief;
     final @NonNull Towers towers;
     final @NonNull Raid raid;
+    final @NonNull Expand expand;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -58,6 +59,7 @@ public final class CorsairAI extends AI {
         chief = new Chief(this);
         towers = new Towers(this);
         raid = new Raid(this);
+        expand = new Expand(this);
         reflexes = new Reflexes(this, owner, log, params.swing_restart, params.stun_cancel);
     }
 
@@ -98,6 +100,7 @@ public final class CorsairAI extends AI {
         reserved.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue() < second);
         fleet.think(intel, second);
         raid.think(intel, second);
+        expand.think(intel, second);
         campaign.think(intel, second);
         ratchet.think(intel, second);
         colony.think(second);
@@ -190,8 +193,8 @@ public final class CorsairAI extends AI {
             }
             log.log("PEONS", what::toString);
         }
-        if (second % 120 == 0 && !in.armories.isEmpty()) {
-            com.oddlabs.tt.model.Building a = in.armories.getFirst();
+        if (second % 120 == 0 && !colony.local(in.armories).isEmpty()) {
+            com.oddlabs.tt.model.Building a = colony.local(in.armories).getFirst();
             int rock = 0, iron = 0;
             for (Unit w : in.warriors)
                 if (Intel.kind(w) == Intel.Kind.ROCK)

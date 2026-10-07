@@ -85,6 +85,26 @@ final class Colony {
         return island != 0;
     }
 
+    /** expand: the colony moves to another island; the old buildings stay where they are. */
+    void relocate(int island, int ax, int ay, int dock_x, int dock_y) {
+        this.island = island;
+        this.ax = ax;
+        this.ay = ay;
+        this.dock_x = dock_x;
+        this.dock_y = dock_y;
+        projects.clear();
+    }
+
+    /** The buildings of a list that stand on our island. */
+    @NonNull
+    List<@NonNull Building> local(@NonNull List<@NonNull Building> list) {
+        List<Building> out = new ArrayList<>();
+        for (Building b : list)
+            if (b.getIslandId() == island)
+                out.add(b);
+        return out;
+    }
+
     // ---------------------------------------------------------------------------------------------------------------
 
     void think(int second) {
@@ -184,9 +204,10 @@ final class Colony {
 
     /** Decides which buildings to start. */
     private void plan(@NonNull Intel in, int second) {
-        int q = in.quarters.size() + count(Race.BUILDING_QUARTERS);
-        int a = in.armories.size() + count(Race.BUILDING_ARMORY);
-        int t = in.towers.size() + count(Race.BUILDING_TOWER);
+        List<Building> quarters = local(in.quarters), armories = local(in.armories);
+        int q = quarters.size() + count(Race.BUILDING_QUARTERS);
+        int a = armories.size() + count(Race.BUILDING_ARMORY);
+        int t = local(in.towers).size() + count(Race.BUILDING_TOWER);
         int peons = in.peons.size() + in.peonsInside();
         int room = me.getWorld().getMaxBuildingCount() - in.buildings - unplaced();
         if (room <= 0)
@@ -196,7 +217,7 @@ final class Colony {
             add(Race.BUILDING_QUARTERS, ax, ay, second);
             return;
         }
-        if (in.quarters.isEmpty())
+        if (quarters.isEmpty())
             return; // first quarters first
         if (a == 0) {
             add(Race.BUILDING_ARMORY, ax, ay, second);
@@ -208,7 +229,7 @@ final class Colony {
             add(Race.BUILDING_QUARTERS, ax, ay, second);
             return;
         }
-        if (in.armories.isEmpty())
+        if (armories.isEmpty())
             return;
         // outnumbered_towers: each enemy beyond our team's size adds that many towers
         int surplus = Math.max(0, in.enemies.size() - in.allies.size() - 1);
@@ -261,7 +282,7 @@ final class Colony {
         }
         if (shore == null)
             return new int[]{ax, ay};
-        int t = in.towers.size() + count(Race.BUILDING_TOWER);
+        int t = local(in.towers).size() + count(Race.BUILDING_TOWER);
         // alternate: odd towers nearer the base
         float f = t % 2 == 0 ? .45f : .7f;
         int x = (int) (ax + (shore[0] - ax) * f);
@@ -323,7 +344,7 @@ final class Colony {
     private int builderTarget(@NonNull Project pr, @NonNull Intel in) {
         int peons = in.peons.size() + in.peonsInside();
         return switch (pr.type) {
-            case Race.BUILDING_QUARTERS -> in.quarters.isEmpty() ? 20 : Math.max(6, Math.min(12, peons / 5));
+            case Race.BUILDING_QUARTERS -> local(in.quarters).isEmpty() ? 20 : Math.max(6, Math.min(12, peons / 5));
             case Race.BUILDING_ARMORY -> Math.max(8, Math.min(14, peons / 4));
             case Race.BUILDING_TOWER -> 6;
             default -> Math.max(8, Math.min(16, peons / 5));
@@ -688,8 +709,8 @@ final class Colony {
         }
         // the chieftain
         if (p.chieftain && second >= p.chieftain_start && !me.hasActiveChieftain() && !me.isTrainingChieftain()
-                && !in.quarters.isEmpty() && in.quarters.size() >= 2 && pop >= 50) {
-            Building q = in.quarters.getFirst();
+                && local(in.quarters).size() >= 2 && pop >= 50) {
+            Building q = local(in.quarters).getFirst();
             me.trainChieftain(q, true);
             ai.log.log("CHIEF", () -> "train at " + q.getGridX() + "," + q.getGridY());
         }
@@ -715,9 +736,9 @@ final class Colony {
             if (q_room > 0 && !capped) {
                 to_quarters.add(u);
                 q_room--;
-            } else if (!in.armories.isEmpty()) {
+            } else if (!local(in.armories).isEmpty()) {
                 to_armory.add(u);
-            } else if (!in.quarters.isEmpty()) {
+            } else if (!local(in.quarters).isEmpty()) {
                 to_quarters.add(u);
             }
         }

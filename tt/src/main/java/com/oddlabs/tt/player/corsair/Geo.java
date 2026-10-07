@@ -199,6 +199,18 @@ final class Geo {
         return 0;
     }
 
+    /** {trees, rock, iron} supplies left on an island (needs {@link #scanSupplies} first). */
+    int @NonNull [] totalsOn(int island) {
+        int[] sum = new int[3];
+        for (var e : by_bin_isle.entrySet())
+            if (e.getKey() % 4096 == island) {
+                sum[0] += e.getValue()[0];
+                sum[1] += e.getValue()[1];
+                sum[2] += e.getValue()[2];
+            }
+        return sum;
+    }
+
     /** {trees, rock, iron} of one island within r bins of bin (bx, by). */
     int @NonNull [] windowOn(int bx, int by, int r, int island) {
         int[] sum = new int[3];

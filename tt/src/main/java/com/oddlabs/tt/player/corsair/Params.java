@@ -79,6 +79,7 @@ final class Params {
     final boolean rebeach;
     final int unload_wait;
     final int rock_until;
+    final int expand;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -163,6 +164,7 @@ final class Params {
         rebeach = a.getBoolean("rebeach", true);
         unload_wait = a.getInt("unload_wait", 15);
         rock_until = a.getInt("rock_until", 0);
+        expand = a.getInt("expand", 0);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
