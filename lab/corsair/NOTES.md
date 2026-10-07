@@ -168,3 +168,12 @@ stalemates were often not about the launch rule but about ships:
   2v2 W79 -> 87, elim +.08; 3v3 elim +.13* (W57 -> 69). Adopted (v11); inert without allies.
 - v10 in other team sizes vs @v4: 2v1 60-0-0, 3v3 57-0-33, 2v3 21-2-37 (v8 13-2-45), 3v2 53-0-7 (v8 47-0-13).
   stall_drop 240 (give up construction sites that stop growing): fires in 0.1-0.2 games per 100, no effect.
+- Garrisoned towers outrange our drilled warriors (tower +8 on an elite garrison): a 130-warrior march kited in
+  front of one for six minutes (218 lost, 21 killed). tower_rush (the body goes for a tower that reaches it, if
+  few enemies are near) and soft_target (raze the buildings no tower covers first): vs @v4 2v2 elim -.06* / -.04*,
+  vs blitz and turtle neutral to worse. Rejected.
+- Pathologies found with lab/corsair/quirks.py on logged draws: iron-starved homes (4 of 12 1v1 draws), stalemates
+  at the cap with 150+ free warriors (2v2), and one wood lock: a stalled ship site at the shore walled 106 wood
+  gatherers into a pocket for the rest of the game (stall_raze: our warriors pull down a site that stopped
+  growing; it freed them). On a shared island the blitz style killed 134 of our peons building 20 tower sites
+  under fire (safe_build: no placing or building within 30 cells of enemy warriors; turned that loss into a win).
