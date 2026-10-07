@@ -13,6 +13,8 @@ for f in ${formats//,/ }; do
     1v2) players="$a vs $b*2"; seeds=1..20 ;;
     2v1) players="$a*2 vs $b"; seeds=1..20 ;;
     3v3) players="$a*3 vs $b*3"; seeds=1..15 ;;
+    2v3) players="$a*2 vs $b*3"; seeds=1..12 ;;
+    3v2) players="$a*3 vs $b*2"; seeds=1..12 ;;
   esac
   run="$name-$f"
   [ ${#run} -gt 40 ] && { echo "run name too long: $run"; exit 2; }
