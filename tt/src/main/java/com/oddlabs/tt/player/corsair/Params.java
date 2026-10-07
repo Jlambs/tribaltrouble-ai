@@ -85,6 +85,7 @@ final class Params {
     final int stall_drop;
     final boolean stall_raze;
     final boolean safe_build;
+    final boolean militia_smart;
     final boolean team_march;
     final boolean tower_rush;
     final boolean soft_target;
@@ -178,6 +179,7 @@ final class Params {
         stall_drop = a.getInt("stall_drop", 0);
         stall_raze = a.getBoolean("stall_raze", false);
         safe_build = a.getBoolean("safe_build", false);
+        militia_smart = a.getBoolean("militia_smart", false);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);

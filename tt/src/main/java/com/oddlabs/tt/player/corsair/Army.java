@@ -312,6 +312,18 @@ final class Army {
      * near it, a few per raider, when they outnumber it well. Raids by peons on builders are the usual case; against
      * warriors, peons are worth little and stay at work.
      */
+    /** Mean drill bonus of the warriors in a list (peons and the dead left out). */
+    private static float warriorBonus(@NonNull List<@NonNull Unit> units) {
+        float sum = 0;
+        int n = 0;
+        for (Unit u : units)
+            if (!u.isDead() && u.isWarrior()) {
+                sum += Ratchet.bonus(u);
+                n++;
+            }
+        return n == 0 ? 0f : sum / n;
+    }
+
     private void militia(@NonNull Intel in, @NonNull List<@NonNull Unit> warriors,
             @NonNull List<@NonNull Unit> threats) {
         if (!ai.params.militia || threats.isEmpty())
@@ -326,6 +338,10 @@ final class Army {
                 theirs += Intel.value(u);
             }
         if (raiders.isEmpty() || ours >= theirs * 1.5f)
+            return;
+        // militia_smart: peons only meet early raids by undrilled warriors; drilled ones kite them down from
+        // range (an enemy base next to ours once cost 220 peons in six minutes)
+        if (ai.params.militia_smart && (ai.now() >= 900 || warriorBonus(raiders) >= 2f))
             return;
         // peons fight at ~0.2 of an iron warrior: they need numbers
         float peon_value = 0;
