@@ -104,7 +104,7 @@ final class Army {
         return !in.enemyShipsDockedAt(island).isEmpty();
     }
 
-    private boolean inGroup(@NonNull Unit w) {
+    boolean inGroup(@NonNull Unit w) {
         for (Group g : groups)
             if (g.members.contains(w))
                 return true;

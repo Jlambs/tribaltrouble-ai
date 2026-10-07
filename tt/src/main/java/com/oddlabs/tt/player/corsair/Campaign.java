@@ -302,6 +302,18 @@ final class Campaign {
             return;
         }
         List<Ship> ships = ai.fleet.idleAtHome();
+        if (trace) {
+            // where the warriors are: home or abroad, what they do (r: reserved, g: in a group)
+            Map<String, Integer> what = new java.util.TreeMap<>();
+            for (Unit w : in.warriors) {
+                if (w.isDead())
+                    continue;
+                String k = (w.getIslandId() == c.island ? "home:" : "away:") + w.getPrimaryController().getClass().getSimpleName().replace(
+                        "Controller", "") + (ai.reserved(w) ? "/r" : "") + (ai.army.inGroup(w) ? "/g" : "");
+                what.merge(k, 1, Integer::sum);
+            }
+            ai.log.log("ARMY", what::toString);
+        }
         if (trace)
             ai.log.log("WAIT",
                     () -> "free " + free.size() + " ships home " + ships.size() + " of " + ai.fleet.duties.size() + " " + ai.fleet.jobs() + " t" + second);
@@ -528,6 +540,32 @@ final class Campaign {
     }
 
     /** A shore cell of the target island out of reach of the enemy's towers, near the target. */
+    /**
+     * Units leave a ship one at a time: land where the enemy cannot meet them on the beach, away from their towers,
+     * their buildings (they defend near them) and their warriors (drilled ones reach far).
+     */
+    float beachDanger(@NonNull Intel in, int island, int x, int y) {
+        float danger = 0;
+        for (Building b : in.enemy_buildings) {
+            if (b.getIslandId() != island)
+                continue;
+            long d2 = Geo.dist2(b.getGridX(), b.getGridY(), x, y);
+            if (Intel.isTower(b) && d2 < 30 * 30)
+                danger += 1000;
+            else if (d2 < (long) ai.params.beach_building_cells * ai.params.beach_building_cells)
+                danger += 150;
+        }
+        for (Unit u : in.enemy_warriors) {
+            if (u.getIslandId() != island)
+                continue;
+            long d2 = Geo.dist2(u.getGridX(), u.getGridY(), x, y);
+            int reach = ai.params.beach_warrior_cells + (int) Ratchet.bonus(u);
+            if (d2 < (long) reach * reach)
+                danger += 25 * Intel.value(u);
+        }
+        return danger;
+    }
+
     int @Nullable [] beachhead(@NonNull Intel in, int island, int tx, int ty) {
         Geo.Isle isle = ai.geo.isle(island);
         if (isle == null)
@@ -539,26 +577,7 @@ final class Campaign {
             float walk = (float) Math.sqrt((double) Geo.dist2(c[0], c[1], tx, ty));
             if (walk > 110)
                 continue;
-            // units leave a ship one at a time: land where the enemy cannot meet them on the beach, away from their
-            // towers, their buildings (they defend near them) and their warriors (drilled ones reach far)
-            float danger = 0;
-            for (Building b : in.enemy_buildings) {
-                if (b.getIslandId() != island)
-                    continue;
-                long d2 = Geo.dist2(b.getGridX(), b.getGridY(), c[0], c[1]);
-                if (Intel.isTower(b) && d2 < 30 * 30)
-                    danger += 1000;
-                else if (d2 < (long) ai.params.beach_building_cells * ai.params.beach_building_cells)
-                    danger += 150;
-            }
-            for (Unit u : in.enemy_warriors) {
-                if (u.getIslandId() != island)
-                    continue;
-                long d2 = Geo.dist2(u.getGridX(), u.getGridY(), c[0], c[1]);
-                int reach = ai.params.beach_warrior_cells + (int) Ratchet.bonus(u);
-                if (d2 < (long) reach * reach)
-                    danger += 25 * Intel.value(u);
-            }
+            float danger = beachDanger(in, island, c[0], c[1]);
             int sea = ai.sea.to(field, c[0], c[1]);
             if (sea >= SeaMap.FAR)
                 continue;
@@ -1001,6 +1020,26 @@ final class Campaign {
         if (op.ships.isEmpty()) {
             op.state = State.DONE;
             return;
+        }
+        // rebeach: the enemy moved to our beach while we sailed (a beach is picked minutes before we get there):
+        // land at a quieter one, while no ship has docked yet
+        if (ai.params.rebeach && op.kind == Kind.ASSAULT && op.landed_at == Integer.MAX_VALUE && second % 10 == 0) {
+            float now = beachDanger(ai.intel, op.island, op.bx, op.by);
+            if (now >= 125f) {
+                int[] nb = beachhead(ai.intel, op.island, op.tx, op.ty);
+                if (nb != null && beachDanger(ai.intel, op.island, nb[0], nb[1]) < now / 3f
+                        && Geo.dist2(nb[0], nb[1], op.bx, op.by) > 30 * 30) {
+                    op.bx = nb[0];
+                    op.by = nb[1];
+                    for (int k = 0; k < op.ships.size(); k++) {
+                        int[] cell = ai.fleet.spacedShore(op.island, op.bx, op.by, k);
+                        ai.fleet.goTo(op.ships.get(k), op.island, cell[0], cell[1], second);
+                    }
+                    ai.log.count("rebeach");
+                    ai.log.log("CAMP",
+                            () -> "op " + op.id + " lands at " + nb[0] + "," + nb[1] + " instead (danger " + now + ") t" + second);
+                }
+            }
         }
         // sea routes round the big islands can take five minutes: wait while the ships make headway
         if (all || (!moving && second - op.since > 60) || second - op.since > 900) {
