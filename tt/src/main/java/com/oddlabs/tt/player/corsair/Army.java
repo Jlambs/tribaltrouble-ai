@@ -425,15 +425,31 @@ final class Army {
         }
         if (ai.params.snipe_towers)
             snipeTowers(in, g, cx, cy, reach);
+        List<Unit> movers = g.members;
         if (!threats.isEmpty()) {
-            engage(g.members, threats, 40);
-            return;
+            // siege: with no enemy warrior worth the name near, peons (gatherers walking by, or coming out of their
+            // buildings) would keep the whole body busy for ever: a 195-warrior march sat 137 cells short of a base
+            // for hours, and another killed 7,000 peons at one without razing a building. A quarter takes the
+            // peons; near buildings the rest raze them (towers first, then quarters, which breed), else they advance.
+            if (ai.params.siege_peons && peonsOnly(threats, g)) {
+                if (siege(in, g, threats, cx, cy))
+                    return;
+                movers = new ArrayList<>(g.members);
+                int hunters = movers.size() / 4;
+                List<Unit> hunt = new ArrayList<>(movers.subList(0, hunters));
+                movers.subList(0, hunters).clear();
+                engage(hunt, threats, 40);
+                ai.log.count("siege_advance");
+            } else {
+                engage(g.members, threats, 40);
+                return;
+            }
         }
         // an enemy ship docked near the body: its crew dies with it, and its hull draws their fire
         for (Ship s : in.enemyShipsDockedAt(g.island)) {
             if (Geo.dist2(s.getGridX(), s.getGridY(), cx, cy) > (long) (reach + 20) * (reach + 20))
                 continue;
-            for (Unit w : g.members)
+            for (Unit w : movers)
                 if (!busy(w))
                     ai.order(w, s, Action.ATTACK, true);
             return;
@@ -444,7 +460,7 @@ final class Army {
         // stage: hold at the beachhead until the campaign releases the stage
         Campaign.Stage stage = ai.campaign.holding(g.island);
         if (stage != null) {
-            gather(g.members, stage.bx, stage.by, 12);
+            gather(movers, stage.bx, stage.by, 12);
             return;
         }
         // the target: re-pick when its building is gone
@@ -471,7 +487,7 @@ final class Army {
                         Ship s = docked.getFirst();
                         g.tx = s.getGridX();
                         g.ty = s.getGridY();
-                        for (Unit w : g.members)
+                        for (Unit w : movers)
                             if (!busy(w))
                                 ai.order(w, s, Action.ATTACK, true);
                     }
@@ -480,7 +496,7 @@ final class Army {
                 g.tx = u.getGridX();
                 g.ty = u.getGridY();
                 if (bd <= 14 * 14) {
-                    for (Unit w : g.members)
+                    for (Unit w : movers)
                         if (!busy(w))
                             ai.order(w, u, Action.ATTACK, true);
                     return;
@@ -498,7 +514,7 @@ final class Army {
         if (ai.params.abort_ratio > 0 && d <= 70 && second - g.checked >= 5) {
             g.checked = second;
             float ours = 0;
-            for (Unit w : g.members)
+            for (Unit w : movers)
                 ours += Intel.value(w);
             float theirs = 0;
             for (Unit e : in.enemy_warriors)
@@ -523,7 +539,7 @@ final class Army {
             for (Building b : in.enemy_buildings)
                 if (b.getIslandId() == g.island && Geo.dist2(b.getGridX(), b.getGridY(), cx, cy) <= 22 * 22)
                     near.add(b);
-            for (Unit w : g.members) {
+            for (Unit w : movers) {
                 if (busy(w))
                     continue;
                 Building b = nearestBuilding(near, g.island, w.getGridX(), w.getGridY());
@@ -539,7 +555,7 @@ final class Army {
         int py = cy + (g.ty - cy) * step / Math.max(1, d);
         List<Unit> stragglers = new ArrayList<>();
         List<Unit> body = new ArrayList<>();
-        for (Unit w : g.members) {
+        for (Unit w : movers) {
             if (busy(w))
                 continue;
             if (Geo.dist2(w.getGridX(), w.getGridY(), cx, cy) > 16 * 16)
@@ -600,6 +616,74 @@ final class Army {
                 ai.order(w, best, Action.ATTACK, true);
             }
         }
+    }
+
+    /** Whether the threats hold no enemy warrior worth a tenth of the body (and less than 3). */
+    private static boolean peonsOnly(@NonNull List<@NonNull Unit> threats, @NonNull Group g) {
+        float warriors = 0;
+        for (Unit u : threats)
+            if (u.isWarrior() || u.isChieftain())
+                warriors += Intel.value(u);
+        float ours = 0;
+        for (Unit w : g.members)
+            ours += Intel.value(w);
+        return warriors < Math.max(3f, .1f * ours);
+    }
+
+    /** Returns whether it ordered the siege (threats are peons only and buildings stand near). */
+    private boolean siege(@NonNull Intel in, @NonNull Group g, @NonNull List<@NonNull Unit> threats, int cx, int cy) {
+        float warriors = 0;
+        for (Unit u : threats)
+            if (u.isWarrior() || u.isChieftain())
+                warriors += Intel.value(u);
+        float ours = 0;
+        for (Unit w : g.members)
+            ours += Intel.value(w);
+        if (warriors >= Math.max(3f, .1f * ours))
+            return false;
+        List<Building> near = new ArrayList<>();
+        for (Building b : in.enemy_buildings)
+            if (b.getIslandId() == g.island && Geo.dist2(b.getGridX(), b.getGridY(), cx, cy) <= 45 * 45)
+                near.add(b);
+        if (near.isEmpty())
+            return false;
+        near.sort((a, b) -> {
+            int ra = rank(a), rb = rank(b);
+            if (ra != rb)
+                return Integer.compare(ra, rb);
+            return Long.compare(Geo.dist2(a.getGridX(), a.getGridY(), cx, cy), Geo.dist2(b.getGridX(), b.getGridY(),
+                    cx, cy));
+        });
+        List<Unit> members = new ArrayList<>(g.members);
+        int hunters = members.size() / 4;
+        List<Unit> peon_hunters = new ArrayList<>();
+        List<Unit> breakers = new ArrayList<>();
+        for (Unit w : members)
+            (peon_hunters.size() < hunters ? peon_hunters : breakers).add(w);
+        engage(peon_hunters, threats, 40);
+        // up to 20 on each building, in rank order
+        int i = 0;
+        for (Building b : near) {
+            for (int k = 0; k < 20 && i < breakers.size(); k++, i++) {
+                Unit w = breakers.get(i);
+                if (w.getPrimaryController() instanceof HuntController h && h.getTarget() == b)
+                    continue;
+                ai.order(w, b, Action.ATTACK, true);
+            }
+        }
+        ai.log.count("siege_peons");
+        return true;
+    }
+
+    /** Siege order of enemy buildings: towers (they shoot), quarters (they breed), armories, the rest. */
+    private static int rank(@NonNull Building b) {
+        if (Intel.isTower(b))
+            return 0;
+        if (Intel.isQuarters(b))
+            return 1;
+        if (Intel.isArmory(b))
+            return 2;
+        return 3;
     }
 
     /**
