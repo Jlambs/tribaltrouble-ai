@@ -85,6 +85,7 @@ final class Params {
     final int stall_drop;
     final boolean team_march;
     final boolean tower_rush;
+    final boolean soft_target;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -175,6 +176,7 @@ final class Params {
         stall_drop = a.getInt("stall_drop", 0);
         team_march = a.getBoolean("team_march", false);
         tower_rush = a.getBoolean("tower_rush", false);
+        soft_target = a.getBoolean("soft_target", false);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);

@@ -470,6 +470,17 @@ final class Army {
         }
         // the target: re-pick when its building is gone
         Building at = buildingAt(in, g.island, g.tx, g.ty);
+        // soft_target: the buildings no garrisoned tower covers first (quarters and armory end their army); the
+        // towers when nothing else is left
+        if (ai.params.soft_target && second % 10 == 0 && !g.members.isEmpty()) {
+            Building soft = softTarget(in, g, cx, cy);
+            if (soft != null && soft != at) {
+                g.tx = soft.getGridX();
+                g.ty = soft.getGridY();
+                at = soft;
+                ai.log.count("soft_target");
+            }
+        }
         if (at == null) {
             Building next = nearestBuilding(in.enemy_buildings, g.island, cx, cy);
             if (next == null) {
@@ -769,6 +780,41 @@ final class Army {
         if (c instanceof AttackController a && a.getTarget() instanceof Unit u)
             return u;
         return null;
+    }
+
+    /** soft_target: the nearest enemy building on the group's island that no garrisoned tower reaches, or null. */
+    private @Nullable Building softTarget(@NonNull Intel in, @NonNull Group g, int cx, int cy) {
+        Unit sample = g.members.getFirst();
+        List<Building> towers = new ArrayList<>();
+        List<Unit> guns = new ArrayList<>();
+        for (Building b : in.enemy_buildings)
+            if (Intel.isTower(b) && b.getIslandId() == g.island) {
+                Unit gun = Towers.gunner(b);
+                if (gun != null) {
+                    towers.add(b);
+                    guns.add(gun);
+                }
+            }
+        Building best = null;
+        long bd = Long.MAX_VALUE;
+        for (Building b : in.enemy_buildings) {
+            if (b.isDead() || b.getIslandId() != g.island || Intel.isTower(b) || b instanceof Ship)
+                continue;
+            boolean covered = false;
+            for (int i = 0; i < towers.size() && !covered; i++) {
+                float r = guns.get(i).getRange(sample) + 3;
+                Building t = towers.get(i);
+                covered = Geo.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY()) <= (long) (r * r);
+            }
+            if (covered)
+                continue;
+            long d = Geo.dist2(b.getGridX(), b.getGridY(), cx, cy);
+            if (d < bd) {
+                bd = d;
+                best = b;
+            }
+        }
+        return best;
     }
 
     /** tower_rush: orders the body onto an enemy tower whose garrison reaches one of us, if few enemies are near. */
