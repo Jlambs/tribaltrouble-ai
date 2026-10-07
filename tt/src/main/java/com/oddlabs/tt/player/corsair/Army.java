@@ -34,6 +34,10 @@ final class Army {
         int checked;
         /** Broke off (abort_ratio): dissolved next round. */
         boolean aborted;
+        /** unstick: where the body stood, since when, and the targets it could not reach. */
+        int still_x = -1, still_y = -1, still_since;
+        int stuck_tries;
+        final List<@NonNull Building> unreachable = new ArrayList<>();
 
         Group(int id, int island, int tx, int ty) {
             this.id = id;
@@ -47,6 +51,8 @@ final class Army {
     private final @NonNull Player me;
     private boolean home_threat;
     final List<@NonNull Group> groups = new ArrayList<>();
+    /** unstick: islands where no group forms until the game second given. */
+    private final Map<Integer, Integer> no_go = new java.util.TreeMap<>();
     private int next_group = 1;
     /** Per enemy, our warriors ordered at it this round. */
     private final Map<@NonNull Unit, Integer> attackers = new LinkedHashMap<>();
@@ -71,12 +77,16 @@ final class Army {
         // drop the dead from groups, and groups without members
         for (Group g : groups)
             g.members.removeIf(u -> u.isDead() || u.isMounted() || u.getIslandId() != g.island);
+        // unstick: a body that could reach nothing leaves its island alone for ten minutes (evac fetches it)
+        for (Group g : groups)
+            if (g.aborted && g.stuck_tries > 0)
+                no_go.put(g.island, second + 600);
         groups.removeIf(g -> g.members.isEmpty() || !enemyOn(in, g.island) || g.aborted);
         // warriors on foreign islands join that island's group, while there is an enemy there to fight
         for (Unit w : in.warriors) {
             if (ai.reserved(w) || inGroup(w) || w.getIslandId() == c.island || w.getIslandId() == 0)
                 continue;
-            if (!enemyOn(in, w.getIslandId()))
+            if (!enemyOn(in, w.getIslandId()) || second < no_go.getOrDefault(w.getIslandId(), -1))
                 continue;
             Group g = groupOn(w.getIslandId());
             if (g == null) {
@@ -514,10 +524,28 @@ final class Army {
                 return;
             }
         }
+        // unstick: how long the body has stood on the same spot
+        boolean stuck = false;
+        if (ai.params.unstick) {
+            if (Geo.dist2(cx, cy, g.still_x, g.still_y) > 4 * 4) {
+                g.still_x = cx;
+                g.still_y = cy;
+                g.still_since = second;
+            } else
+                stuck = second - g.still_since >= 60;
+        }
         // an enemy ship docked near the body: its crew dies with it, and its hull draws their fire
         for (Ship s : in.enemyShipsDockedAt(g.island)) {
-            if (Geo.dist2(s.getGridX(), s.getGridY(), cx, cy) > (long) (reach + 20) * (reach + 20))
+            if (Geo.dist2(s.getGridX(), s.getGridY(), cx, cy) > (long) (reach + 20) * (reach + 20)
+                    || g.unreachable.contains(s))
                 continue;
+            if (stuck) {
+                // a docked ship the body cannot get at (it once held 93 warriors idle for eight minutes)
+                g.unreachable.add(s);
+                g.still_since = second;
+                ai.log.count("unstick_ship");
+                continue;
+            }
             for (Unit w : movers)
                 if (!busy(w))
                     ai.order(w, s, Action.ATTACK, true);
@@ -561,8 +589,14 @@ final class Army {
                     }
                 }
                 if (u == null) {
-                    // nothing on land: a docked enemy ship anywhere on the island
-                    List<Ship> docked = in.enemyShipsDockedAt(g.island);
+                    // nothing on land: a docked enemy ship anywhere on the island (unstick: one we can reach)
+                    List<Ship> docked = new ArrayList<>(in.enemyShipsDockedAt(g.island));
+                    docked.removeIf(g.unreachable::contains);
+                    if (docked.isEmpty() && ai.params.unstick && !g.unreachable.isEmpty()) {
+                        g.aborted = true;
+                        g.stuck_tries++;
+                        return;
+                    }
                     if (!docked.isEmpty()) {
                         Ship s = docked.getFirst();
                         g.tx = s.getGridX();
@@ -588,6 +622,41 @@ final class Army {
             }
         }
         int d = Geo.dist(cx, cy, g.tx, g.ty);
+        // unstick: a body that has not moved for a minute short of its target, with nobody to fight, cannot get
+        // there (a 93-warrior body sat 25 cells from a tower for the last eight minutes of a game): first everyone
+        // attacks it outright (they may reach it from range), then the body tries the next building
+        if (ai.params.unstick && at != null && d > 14) {
+            if (stuck) {
+                g.still_since = second;
+                Building t = at;
+                if (g.stuck_tries++ % 2 == 0) {
+                    for (Unit w : movers)
+                        ai.order(w, t, Action.ATTACK, true);
+                    ai.log.count("unstick_attack");
+                    return;
+                }
+                g.unreachable.add(t);
+                Building next = null;
+                long bd = Long.MAX_VALUE;
+                for (Building b : in.enemy_buildings) {
+                    if (b.isDead() || b.getIslandId() != g.island || g.unreachable.contains(b))
+                        continue;
+                    long dd = Geo.dist2(b.getGridX(), b.getGridY(), cx, cy);
+                    if (dd < bd) {
+                        bd = dd;
+                        next = b;
+                    }
+                }
+                ai.log.count("unstick_retarget");
+                if (next == null) {
+                    g.aborted = true;
+                    return;
+                }
+                g.tx = next.getGridX();
+                g.ty = next.getGridY();
+                return;
+            }
+        }
         // abort_ratio: closing on the target, weigh the body against what defends the target (warriors within 50
         // cells of it, towers at four); outmatched, break off before contact: at home the warriors go back to the
         // defence, abroad they hold the beach
