@@ -575,7 +575,13 @@ final class Campaign {
                 cue = second % 30 == 0;
             }
         }
-        int need = Math.max(ai.params.expedition_size, (int) Math.ceil(ai.params.attack_ratio * def + 6));
+        // neighbor_exp: an enemy settling close by on our island early is best fought before it stands (bases 50
+        // cells apart once cost us 273 peons by minute 15): the first few warriors already march
+        int floor = ai.params.expedition_size;
+        if (ai.params.neighbor_exp > 0 && second < 900
+                && Geo.dist2(tx, ty, c.ax, c.ay) <= 120 * 120)
+            floor = ai.params.neighbor_exp;
+        int need = Math.max(floor, (int) Math.ceil(ai.params.attack_ratio * def + 6));
         boolean capped = in.units() >= me.getWorld().getMaxUnitCount() - 6;
         if (cue && (free.size() >= need || (capped && free.size() >= def))) {
             ai.army.assault(free, c.island, tx, ty, second);

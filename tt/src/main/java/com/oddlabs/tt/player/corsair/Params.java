@@ -96,6 +96,7 @@ final class Params {
     final boolean unstick;
     final boolean evac;
     final double outnumbered_ratio;
+    final int neighbor_exp;
     final boolean team_march;
     final boolean tower_rush;
     final boolean soft_target;
@@ -200,6 +201,7 @@ final class Params {
         unstick = a.getBoolean("unstick", false);
         evac = a.getBoolean("evac", false);
         outnumbered_ratio = a.getDouble("outnumbered_ratio", 1.0);
+        neighbor_exp = a.getInt("neighbor_exp", 0);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);
