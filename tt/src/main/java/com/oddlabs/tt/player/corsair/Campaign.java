@@ -292,6 +292,63 @@ final class Campaign {
         return v;
     }
 
+    /** ally_aid: ships free warriors to the ally base under the heaviest attack we can outweigh. */
+    private boolean allyAid(@NonNull Intel in, @NonNull List<@NonNull Ship> ships, @NonNull List<@NonNull Unit> free,
+            int second) {
+        if (in.allies.isEmpty() || free.size() < 15)
+            return false;
+        int best_isl = 0, bx = 0, by = 0;
+        float best_threat = 0;
+        for (com.oddlabs.tt.player.Player p : in.allies) {
+            int[] base = baseOf(p);
+            if (base == null)
+                continue;
+            int isl = ai.geo.islandAt(base[0], base[1]);
+            if (isl == 0 || isl == ai.colony.island)
+                continue;
+            float threat = 0;
+            long sx = 0, sy = 0;
+            int n = 0;
+            for (Unit e : in.enemy_warriors)
+                if (e.getIslandId() == isl && Geo.dist2(e.getGridX(), e.getGridY(), base[0], base[1]) <= 50 * 50) {
+                    threat += Intel.value(e);
+                    sx += e.getGridX();
+                    sy += e.getGridY();
+                    n++;
+                }
+            float theirs = threat - .8f * in.allyStrengthOn(isl);
+            if (n > 0 && threat >= 8f && theirs > best_threat) {
+                best_threat = theirs;
+                best_isl = isl;
+                bx = (int) (sx / n);
+                by = (int) (sy / n);
+            }
+        }
+        if (best_isl == 0)
+            return false;
+        int need = (int) Math.ceil(ai.params.attack_ratio * best_threat + 6);
+        if (free.size() < need) {
+            if (second % 30 == 0) {
+                int isl = best_isl, f = free.size();
+                float t = best_threat;
+                ai.log.log("WAIT",
+                        () -> "ally on isle " + isl + " under attack (" + t + "), free " + f + " t" + second);
+            }
+            return false;
+        }
+        int room = 0;
+        int rowable = shipsWeCanRow(in, ships);
+        for (Ship sh : ships.subList(0, rowable))
+            room += Math.max(0, 26 - Fleet.warriorsAboard(sh)) + ai.params.pack;
+        int take = Math.min(free.size(), Math.min(room, need + 20));
+        int isl = best_isl, tx = bx, ty = by;
+        float t = best_threat;
+        ai.log.log("CAMP", () -> "aid to isle " + isl + " against " + t + " near " + tx + "," + ty + " t" + second);
+        ai.log.count("ally_aid");
+        assault(in, isl, tx, ty, ships, free.subList(0, take), second);
+        return true;
+    }
+
     /** The game second the last op or march started. */
     int lastLaunch() {
         return last_launch;
@@ -340,6 +397,10 @@ final class Campaign {
             reinforce(in, s, ships, free.subList(0, take), second);
             return;
         }
+        // ally_aid: an ally whose base is under attack on another island gets our free warriors (a 2v2 ally was
+        // razed by minute 14 by a neighbour sharing its island while we sat at home with 100 warriors)
+        if (ai.params.ally_aid && allyAid(in, ships, free, second))
+            return;
         // an assault on the weakest, nearest enemy island
         Building target = null;
         float best = Float.MAX_VALUE;
