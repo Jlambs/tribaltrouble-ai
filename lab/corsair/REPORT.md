@@ -76,6 +76,10 @@ engine or harness code was changed on this branch.
 
 ## Known limits
 
+- Engine bug on `boats` (outside this branch): a ship whose sailing target lies on an island with no contour
+  points crashes the game in `ShipTrajectory.pickTargetPosition` (`pts.get(0)` on an empty list). Seen once in
+  100 games of `@v8` vs Hard (`./aisim.sh replay fresh-v8-hard-1v1 s64-0` reproduces it, likely Hard's ship).
+
 - Equal opponents: defending an island is far stronger than landing on one, so mirror games end in timeouts (both
   sides hold ~205 iron warriors behind towers and neither attacks). Wins come against weaker or different
   strategies.

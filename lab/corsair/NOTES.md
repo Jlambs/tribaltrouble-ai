@@ -231,3 +231,11 @@ stalemates were often not about the launch rule but about ships:
   has under 20 wood) won that game; screened at 180 min.
 - expand_wood 15 at 180 min: raid 36-7 -> 37-6, turtle identical, mirror vs @v13 one win -> draw. Fires rarely;
   net zero. Not adopted (param left in, off).
+- Fresh seeds 51..100 (validation; nothing was tuned on them), 1v1 at 60 min, v14 / v8: vs @v4 81-0-19 / 41-0-59,
+  vs @v10 25-14-61 / 3-15-82, vs Hard 91-0-9 / 88-0-11, vs blitz 29-3-68 / 14-4-82.
+- **Engine crash (boats branch, not AI code):** `fresh-v8-hard-1v1 s64-0` (@v8 vs hard, seed 64, slot 0) crashes at
+  38:24 with IndexOutOfBoundsException in `ShipTrajectory.pickTargetPosition` (ShipTrajectory.java:315,
+  `pts.get(0)` on an island whose `contourPoints()` is empty), from `SailBehaviour.replanIfNeeded`. Our AI had
+  not sailed since minute 1, so the sailing ship was most likely Hard's. Reproduce: `./aisim.sh replay
+  fresh-v8-hard-1v1 s64-0` (VERIFIED, then crash). Any player's sailing target on such an island crashes every
+  client.
