@@ -224,3 +224,4 @@ stalemates were often not about the launch rule but about ships:
 - v14 league: 426 wins, 10 losses (v13: 424 and 10). 180 min: vs @v4 56-0-4, blitz 49-4-7 (v13 48-5-7), vs @v13
   16-24-20, but paired against @v13 vs @v13 on the same games (identical unless the fallback fires) that is +.025
   (3 better, 2 worse, 55 the same): mirror games swing on the start slot, not on the change.
+- contest_weight 2 / 3 (opening): not one base choice changed in 1v1 or 1v2 (identical games).
