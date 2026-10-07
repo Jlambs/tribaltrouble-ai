@@ -82,6 +82,7 @@ final class Params {
     final int expand;
     final int workers_max;
     final int workers_per;
+    final int stall_drop;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -169,6 +170,7 @@ final class Params {
         expand = a.getInt("expand", 0);
         workers_max = a.getInt("workers_max", 14);
         workers_per = a.getInt("workers_per", 8);
+        stall_drop = a.getInt("stall_drop", 0);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);

@@ -153,3 +153,10 @@ stalemates were often not about the launch rule but about ships:
 - stage on v9: 1v1 elim +.07*, other formats neutral.
 - blast_adapt (v7b mirror): no effect. late_drill 1200: 1v1 elim -.11, 2v2 +.14* (with the fixes); at 120 min
   13-0-7 against the fixes' 16-0-4: rejected.
+- v10 (unload_wait 15, rebeach, pack 20) vs @v4: 1v1 88-0-12, 2v2 79-0-21, 1v2 18-7-35 (v9: 53-0-47, 64-0-36,
+  7-8-45). On v10: pack 30 / 40 neutral to worse (2v2 elim -.05* at 40), stage neutral, rock_until 720 neutral
+  (1v2 w15 -18*).
+- Iron runs out on small homes (15-17 iron nodes: none left by 12 min; 120 peons then sit in the armory). expand N
+  (off): with N iron nodes or fewer left and an empty armory, a ship takes 45 peons and 20 warriors to the best
+  wood-and-iron island no enemy builds on, the colony is founded again there, and a crewed ferry brings the rest
+  over. One of three starved seeds turned into a win; one picked an island the enemy then razed.

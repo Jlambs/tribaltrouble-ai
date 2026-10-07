@@ -58,6 +58,9 @@ final class Colony {
         final int created;
         /** The peons sent to place the site: their controllers name it once placed. */
         final List<@NonNull Unit> placers = new ArrayList<>();
+        /** The site's hit points when they last grew, and when. */
+        int last_hp = -1;
+        int hp_at;
 
         Project(int type, int x, int y, int created) {
             this.type = type;
@@ -297,6 +300,24 @@ final class Colony {
 
     /** Sends builders to unplaced projects, and keeps placed sites manned. */
     private void runProjects(@NonNull Intel in, int second) {
+        // a site that stopped growing for minutes (its builders cannot reach it: a ship site behind a docked ship
+        // once sat at 246 hp to the end, and no other ship was built) is left as it is
+        if (p.stall_drop > 0)
+            projects.removeIf(pr -> {
+                if (pr.site == null || pr.site.isDead())
+                    return false;
+                int hp = pr.site.getHitPoints();
+                if (hp > pr.last_hp) {
+                    pr.last_hp = hp;
+                    pr.hp_at = second;
+                    return false;
+                }
+                if (second - pr.hp_at < p.stall_drop)
+                    return false;
+                ai.log.log("BUILD", () -> "stalled " + name(pr.type) + " at " + pr.x + "," + pr.y + " hp " + hp);
+                ai.log.count("stalled_site");
+                return true;
+            });
         for (Project pr : projects) {
             if (pr.site == null && second - pr.ordered >= 15 && !placing(pr)) {
                 List<Unit> free = freePeons(in, pr.x, pr.y, builderTarget(pr, in));
