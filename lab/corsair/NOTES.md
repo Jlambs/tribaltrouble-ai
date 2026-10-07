@@ -246,3 +246,6 @@ stalemates were often not about the launch rule but about ships:
   out of reach, retargets or gives the island up for ten minutes; stranded warriors are shipped home): turned the
   seed it was built on into a win, but vs @v4 1v1 0, 2v2 -.05 (first version, still and not idle: -.07*), blitz
   0 / 0, mirror @v13 +.02 / +.02. Not adopted (params off).
+- Release candidate @v15 (branch head; plays as v14 on checked games): robustness rb15 natives 37-1-2, vs natives
+  33-0-7, FFA3 12-0-18, 4v4 34-0-6, 2v3 18-1-21, hills 3 32-1-7, normal speed 14-0-6, northern 11-1-8; no failed
+  game, no swallowed error.

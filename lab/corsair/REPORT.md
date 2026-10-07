@@ -3,7 +3,8 @@
 `corsair` is a Tribal Trouble computer player for Archipelago maps (`--size archipelago`), tuned on tropical, hills 0,
 trees 10, supplies 10 at ludicrous speed, for any team sizes. Package `tt/src/main/java/com/oddlabs/tt/player/corsair/`
 (about 6,300 lines), branch `corsair` off `boats`. The working record is `lab/corsair/NOTES.md`; tools are in
-`lab/corsair/` (eval.sh, sweep.sh, league.sh, robust.sh, collect.sh, survey.py).
+`lab/corsair/` (eval.sh, sweep.sh, league.sh, robust.sh, collect.sh, quirks.py, survey.py). The release is the
+branch head, frozen as `@v15` (it plays exactly as `@v14`; params added since are off by default).
 
 ## How it plays
 
