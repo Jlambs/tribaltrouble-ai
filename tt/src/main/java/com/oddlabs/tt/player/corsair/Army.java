@@ -527,7 +527,12 @@ final class Army {
         // unstick: how long the body has stood on the same spot
         boolean stuck = false;
         if (ai.params.unstick) {
-            if (Geo.dist2(cx, cy, g.still_x, g.still_y) > 4 * 4) {
+            // still, and idle: a body razing or shooting from where it stands is not stuck
+            int idle = 0;
+            for (Unit w : g.members)
+                if (w.getPrimaryController() instanceof IdleController)
+                    idle++;
+            if (Geo.dist2(cx, cy, g.still_x, g.still_y) > 4 * 4 || idle * 5 < g.members.size() * 4) {
                 g.still_x = cx;
                 g.still_y = cy;
                 g.still_since = second;
