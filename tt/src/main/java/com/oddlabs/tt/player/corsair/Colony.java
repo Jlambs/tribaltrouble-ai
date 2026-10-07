@@ -344,6 +344,24 @@ final class Colony {
         if (!raze.isEmpty() && second % 10 == 0)
             razeSites(in);
         for (Project pr : projects) {
+            // safe_build: no building where the enemy fights; builders there die by the hundred (a shared island
+            // once cost 134 peons and 20 tower sites in ten minutes): placing waits, builders on a site come away
+            if (p.safe_build && underFire(in, pr)) {
+                if (pr.site != null && !pr.site.isDead() && second % 5 == 0) {
+                    List<Unit> away = new ArrayList<>();
+                    for (Unit u : in.peons) {
+                        Controller c = u.getPrimaryController();
+                        if (c instanceof RepairController r && r.getBuilding() == pr.site
+                                || c instanceof PlaceBuildingController pb && pb.getBuilding() == pr.site)
+                            away.add(u);
+                    }
+                    if (!away.isEmpty()) {
+                        ai.move(away, ax, ay, Action.MOVE, false);
+                        ai.log.count("safe_build");
+                    }
+                }
+                continue;
+            }
             if (pr.site == null && second - pr.ordered >= 15 && !placing(pr)) {
                 List<Unit> free = freePeons(in, pr.x, pr.y, builderTarget(pr, in));
                 if (free.isEmpty())
@@ -395,6 +413,16 @@ final class Colony {
             case Race.BUILDING_TOWER -> 6;
             default -> Math.max(8, Math.min(16, peons / 5));
         };
+    }
+
+    /** safe_build: enemy warriors (value 3+) within 30 cells of a project's spot. */
+    private boolean underFire(@NonNull Intel in, @NonNull Project pr) {
+        int x = pr.site != null ? pr.site.getGridX() : pr.x, y = pr.site != null ? pr.site.getGridY() : pr.y;
+        float v = 0;
+        for (Unit e : in.enemy_warriors)
+            if (e.getIslandId() == island && Geo.dist2(e.getGridX(), e.getGridY(), x, y) <= 30 * 30)
+                v += Intel.value(e);
+        return v >= 3f;
     }
 
     private int buildersOn(@NonNull Intel in, @NonNull Building site) {
