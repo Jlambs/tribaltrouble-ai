@@ -497,14 +497,25 @@ final class Campaign {
             return true;
         }
         float def = defence(in, c.island, tx, ty);
+        // team_march: allies sharing our island march on the same cue (every 30 s), so their warriors count against
+        // the enemies' (with four players on one island, two armies of 200 faced two of 200 and nobody moved)
+        boolean cue = true;
+        if (ai.params.team_march && !in.allies.isEmpty()) {
+            float allied = in.allyStrengthOn(c.island);
+            if (allied > 0) {
+                def = Math.max(0f, def - .8f * allied);
+                cue = second % 30 == 0;
+            }
+        }
         int need = Math.max(ai.params.expedition_size, (int) Math.ceil(ai.params.attack_ratio * def + 6));
         boolean capped = in.units() >= me.getWorld().getMaxUnitCount() - 6;
-        if (free.size() >= need || (capped && free.size() >= def)) {
+        if (cue && (free.size() >= need || (capped && free.size() >= def))) {
             ai.army.assault(free, c.island, tx, ty, second);
             last_launch = second;
             int n = free.size();
+            float d = def;
             ai.log.log("CAMP",
-                    () -> "march on " + tx + "," + ty + " with " + n + " warriors (defence " + def + ") t" + second);
+                    () -> "march on " + tx + "," + ty + " with " + n + " warriors (defence " + d + ") t" + second);
             ai.log.count("march");
             return true;
         }
