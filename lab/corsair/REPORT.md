@@ -2,7 +2,7 @@
 
 `corsair` is a Tribal Trouble computer player for Archipelago maps (`--size archipelago`), tuned on tropical, hills 0,
 trees 10, supplies 10 at ludicrous speed, for any team sizes. Package `tt/src/main/java/com/oddlabs/tt/player/corsair/`
-(about 6,000 lines), branch `corsair` off `boats`. The working record is `lab/corsair/NOTES.md`; tools are in
+(about 6,300 lines), branch `corsair` off `boats`. The working record is `lab/corsair/NOTES.md`; tools are in
 `lab/corsair/` (eval.sh, sweep.sh, league.sh, robust.sh, collect.sh, survey.py).
 
 ## How it plays
@@ -36,7 +36,13 @@ trees 10, supplies 10 at ludicrous speed, for any team sizes. Package `tt/src/ma
    until every warrior is off** (they used to leave after 30 s with up to half aboard). Ships are built and dock 30
    cells apart (side by side they lock each other in sliding out) and stop only near their target cell. Enemies on
    our own island are met by a march on foot. Mop-up hunts enemy ships and attacks ships docked at cleared islands
-   from the shore (each hit may kill one aboard; sunk, all drown).
+   from the shore (each hit may kill one aboard; sunk, all drown). Allies count each other's armies: they pick
+   targets by their average sea distance and march together on a shared cue when they share an island.
+6. **Stalemates and stuck states.** After 25 minutes at the unit cap with no op for 10 minutes, the drill goes on
+   to 15 trips (+30 cells) and the launch rule discounts the defence by the range edge down to 0.3: deep range is
+   what breaks towers and equal armies. A construction site that stops growing is pulled down by our own warriors
+   (one walled 106 wood gatherers into a pocket), and when the home island runs out of iron the colony moves to
+   the best free island and a ferry brings the rest.
 
 ## Results
 
@@ -45,18 +51,20 @@ from both starts, 2v2 on seeds 1..15 from all four, 60 games per cell; W-L-D, ma
 limit). The styles are `@v7` with params (blitz: early aggression, turtle: towers and defence, raid: a raiding
 opening).
 
-| opponent | `@v10` 1v1 | `@v10` 2v2 | `@v7` 1v1 | `@v7` 2v2 |
-|---|---|---|---|---|
-| `@v4` (an earlier release) | 52-0-8, +.86 | 47-0-13, +.85 | 20-1-39 | 19-0-41 |
-| `@v4` without the drill (a stand-in for AIs that do not use ships' quirks) | 56-0-4, +.94 | 55-0-5, +.94 | 28-1-31 | 37-0-23 |
-| stock Hard | 54-0-6, +.97 | 58-0-2, +.99 | 55-0-5 | 57-0-3 |
-| blitz style | 18-4-38, +.30 | 24-3-33, +.37 | 9-3-48 | 5-3-52 |
-| turtle style | 3-2-55, -.04 | 9-0-51, +.16 | 1-1-58 | 1-0-59 |
-| raid opening | 4-2-54, -.02 | 18-0-42, +.28 | 1-2-57 | 1-0-59 |
+| opponent | `@v13` 1v1 | `@v13` 2v2 | `@v10` 1v1 | `@v10` 2v2 | `@v7` 1v1 | `@v7` 2v2 |
+|---|---|---|---|---|---|---|
+| `@v4` (an earlier release) | 50-0-10, +.87 | 53-0-7, +.91 | 52-0-8 | 47-0-13 | 20-1-39 | 19-0-41 |
+| `@v4` without the drill (a stand-in for AIs that do not use ships' quirks) | 58-0-2, +.98 | 57-0-3, +.95 | 56-0-4 | 55-0-5 | 28-1-31 | 37-0-23 |
+| stock Hard | 54-0-6, +.97 | 59-0-1, +1.0 | 54-0-6 | 58-0-2 | 55-0-5 | 57-0-3 |
+| blitz style | 26-3-31, +.43 | 30-2-28, +.52 | 18-4-38 | 24-3-33 | 9-3-48 | 5-3-52 |
+| turtle style | 5-1-54, +.08 | 13-0-47, +.31 | 3-2-55 | 9-0-51 | 1-1-58 | 1-0-59 |
+| raid opening | 4-2-54, +.09 | 15-2-43, +.35 | 4-2-54 | 18-0-42 | 1-2-57 | 1-0-59 |
 
-`@v10` won 394 of 720 league games and lost 11 (`@v7`: 234 and 11). No game failed and no error was swallowed.
-180-minute games against `@v4`: 1v1 55-1-4, 2v2 52-0-8 (`@v8`: 34-2-24, 36-0-24). Other team sizes against `@v4`
-(60-90 games each): 1v2 18-7-35 (`@v8`: 10-6-44), 2v1 59-0-1 and 3v3 50-1-39 (`@v9`).
+`@v13` won 424 of 720 league games and lost 10 (`@v10`: 394 and 11; `@v7`: 234 and 11). No game failed and no
+error was swallowed. Mirror games are decisive now: `@v13`'s late drill against `@v12` (equal otherwise), 1v1
+W20-L11 (W13-L14 without it). 180-minute games against `@v4`: 1v1 56-1-3 (`@v12`), 55-1-4 (`@v10`; `@v8`: 34-2-24).
+Other team sizes against `@v4` (`@v10`, 60-90 games each): 1v2 18-7-35 (`@v8`: 10-6-44), 2v1 60-0-0, 3v3 57-0-33,
+2v3 21-2-37 (`@v8` 13-2-45), 3v2 53-0-7.
 
 ## Exploits used
 
