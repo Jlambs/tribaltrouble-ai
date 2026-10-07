@@ -131,7 +131,7 @@ final class Params {
         range_edge = a.getDouble("range_edge", 0.05);
         drill_adapt = a.getDouble("drill_adapt", 4);
         drill_max = a.getInt("drill_max", 12);
-        abort_ratio = a.getDouble("abort_ratio", 0);
+        abort_ratio = a.getDouble("abort_ratio", 1.0);
         tower_face_land = a.getBoolean("tower_face_land", false);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);

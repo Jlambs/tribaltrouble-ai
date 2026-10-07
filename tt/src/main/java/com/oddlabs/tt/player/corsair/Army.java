@@ -510,8 +510,8 @@ final class Army {
                     theirs += 4f;
             if (ours * ai.params.abort_ratio < theirs) {
                 float o = ours, t = theirs;
-                ai.log.log("GROUP", () -> "g" + g.id + " breaks off: " + o + " against " + t + " near "
-                        + g.tx + "," + g.ty + " t" + second);
+                ai.log.log("GROUP",
+                        () -> "g" + g.id + " breaks off: " + o + " against " + t + " near " + g.tx + "," + g.ty + " t" + second);
                 ai.log.count("abort");
                 g.aborted = true;
                 return;
