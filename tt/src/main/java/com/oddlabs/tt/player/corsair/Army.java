@@ -425,6 +425,11 @@ final class Army {
         }
         if (ai.params.snipe_towers)
             snipeTowers(in, g, cx, cy, reach);
+        // tower_rush: a garrisoned tower that reaches the body shoots it for as long as it stays; a few enemy
+        // warriors near kept a 130-warrior body kiting in front of one for six minutes (218 lost, 21 killed). With
+        // little else around, the whole body goes for the tower
+        if (ai.params.tower_rush && towerRush(in, g, threats))
+            return;
         List<Unit> movers = g.members;
         if (!threats.isEmpty()) {
             // siege: with no enemy warrior worth the name near, peons (gatherers walking by, or coming out of their
@@ -764,6 +769,45 @@ final class Army {
         if (c instanceof AttackController a && a.getTarget() instanceof Unit u)
             return u;
         return null;
+    }
+
+    /** tower_rush: orders the body onto an enemy tower whose garrison reaches one of us, if few enemies are near. */
+    private boolean towerRush(@NonNull Intel in, @NonNull Group g, @NonNull List<@NonNull Unit> threats) {
+        Building tower = null;
+        long best = Long.MAX_VALUE;
+        for (Building b : in.enemy_buildings) {
+            if (!Intel.isTower(b) || b.getIslandId() != g.island)
+                continue;
+            Unit gun = Towers.gunner(b);
+            if (gun == null)
+                continue;
+            for (Unit w : g.members) {
+                float r = gun.getRange(w) + 2;
+                long d2 = Geo.dist2(w.getGridX(), w.getGridY(), b.getGridX(), b.getGridY());
+                if (d2 <= (long) (r * r)) {
+                    if (d2 < best) {
+                        best = d2;
+                        tower = b;
+                    }
+                    break;
+                }
+            }
+        }
+        if (tower == null)
+            return false;
+        float ours = 0, theirs = 0;
+        for (Unit w : g.members)
+            ours += Intel.value(w);
+        for (Unit u : threats)
+            theirs += Intel.value(u);
+        if (theirs >= .25f * ours)
+            return false;
+        Building t = tower;
+        for (Unit w : g.members)
+            if (!(w.getPrimaryController() instanceof AttackController a && a.getTarget() == t))
+                ai.order(w, t, Action.ATTACK, true);
+        ai.log.count("tower_rush");
+        return true;
     }
 
     private static boolean busy(@NonNull Unit w) {
