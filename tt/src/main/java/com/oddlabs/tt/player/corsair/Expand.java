@@ -86,7 +86,8 @@ final class Expand {
 
     private void consider(@NonNull Intel in, int second) {
         Colony c = ai.colony;
-        if (ferry != null)
+        // outnumbered, a colony on the move gets caught (1v2: two more losses in 60 games)
+        if (ferry != null || in.enemies.size() > in.allies.size() + 1)
             return;
         int stock = 0;
         for (Building a : in.armories)

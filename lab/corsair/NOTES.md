@@ -166,3 +166,5 @@ stalemates were often not about the launch rule but about ships:
 - Team play (v10e vs @v4): team_target (allies count each other's home warriors and pick targets by their average
   sea distance) + team_march (allies sharing our island count against its enemies; marches start on a 30 s cue):
   2v2 W79 -> 87, elim +.08; 3v3 elim +.13* (W57 -> 69). Adopted (v11); inert without allies.
+- v10 in other team sizes vs @v4: 2v1 60-0-0, 3v3 57-0-33, 2v3 21-2-37 (v8 13-2-45), 3v2 53-0-7 (v8 47-0-13).
+  stall_drop 240 (give up construction sites that stop growing): fires in 0.1-0.2 games per 100, no effect.
