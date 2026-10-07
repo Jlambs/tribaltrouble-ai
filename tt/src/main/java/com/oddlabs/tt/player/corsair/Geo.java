@@ -83,6 +83,8 @@ final class Geo {
     final @NonNull List<@NonNull Isle> isles = new ArrayList<>();
     private final Isle @NonNull [] by_id;
     final boolean archipelago;
+    /** Score bases on wood and iron (params.wood_weight), set by the AI after construction. */
+    boolean wood_weight;
 
     final int bins;
     final int @NonNull [] bin_tree;
@@ -230,6 +232,10 @@ final class Geo {
     float baseScore(int bx, int by, int island) {
         int[] c = windowOn(bx, by, 3, island);
         int t = c[0], r = c[1], i = c[2];
+        if (wood_weight) {
+            // iron axes only: wood (two per axe, and every building) and iron make the base; rock only a tiebreak
+            return 3f * Math.min(i, 8) + .4f * Math.min(t, 60) + .3f * Math.min(r, 6);
+        }
         return 3f * Math.min(i, 8) + 1.5f * Math.min(r, 6) + .25f * Math.min(t, 60);
     }
 
@@ -257,7 +263,7 @@ final class Geo {
         for (Isle isle : isles) {
             isle.score = 0;
             isle.ax = isle.ay = -1;
-            if (isle.area < 400 || isle.trees <= 0 || isle.rocks <= 0 || isle.iron <= 0)
+            if (isle.area < 400 || isle.trees <= (wood_weight ? 50 : 0) || isle.rocks <= 0 || isle.iron <= 0)
                 continue;
             int bx0 = isle.info.minX() / BIN, bx1 = isle.info.maxX() / BIN;
             int by0 = isle.info.minY() / BIN, by1 = isle.info.maxY() / BIN;

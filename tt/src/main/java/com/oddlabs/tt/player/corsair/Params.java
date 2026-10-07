@@ -66,6 +66,7 @@ final class Params {
     final boolean tower_face_land;
     final boolean siege_peons;
     final boolean blast_adapt;
+    final boolean wood_weight;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -101,7 +102,7 @@ final class Params {
         expedition_size = a.getInt("expedition", blitz ? 12 : turtle ? 60 : 20);
         attack_ratio = a.getDouble("attack_ratio", blitz ? .8 : turtle ? 2.0 : 1.3);
         rowers = a.getInt("rowers", 20);
-        max_ships = a.getInt("ships", 3);
+        max_ships = a.getInt("ships", 5);
         ship_start = a.getInt("ship_start", blitz ? 150 : 300);
         chief_rides = a.getBoolean("chief_rides", false);
         rower_topup = a.getBoolean("rower_topup", true);
@@ -137,6 +138,7 @@ final class Params {
         tower_face_land = a.getBoolean("tower_face_land", false);
         siege_peons = a.getBoolean("siege_peons", true);
         blast_adapt = a.getBoolean("blast_adapt", false);
+        wood_weight = a.getBoolean("wood_weight", false);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);

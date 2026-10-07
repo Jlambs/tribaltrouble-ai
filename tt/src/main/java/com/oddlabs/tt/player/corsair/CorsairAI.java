@@ -47,6 +47,7 @@ public final class CorsairAI extends AI {
         log = AiLog.of(owner);
         log.log("PARAM", a.done()); // fails on unknown keys, so a typo cannot silently play the defaults
         geo = new Geo(owner);
+        geo.wood_weight = params.wood_weight;
         sea = new SeaMap(owner.getWorld().getUnitGrid());
         intel = new Intel(owner, geo);
         colony = new Colony(this);

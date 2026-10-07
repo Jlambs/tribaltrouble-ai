@@ -130,8 +130,8 @@ final class Chief {
             if (ai.params.blast_adapt) {
                 stun_victims.clear();
                 for (Unit e : in.enemy_warriors)
-                    if (!isStunned(e) && Geo.dist2(e.getGridX(), e.getGridY(), chief.getGridX(), chief.getGridY())
-                            <= 16 * 16)
+                    if (!isStunned(e) && Geo.dist2(e.getGridX(), e.getGridY(), chief.getGridX(),
+                            chief.getGridY()) <= 16 * 16)
                         stun_victims.add(e);
                 stun_check = second + 4;
             }
