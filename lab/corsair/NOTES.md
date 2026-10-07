@@ -211,3 +211,9 @@ stalemates were often not about the launch rule but about ships:
 - ally_aid (ship free warriors to an ally base under attack): vs blitz 2v2 / 3v3 and @v4 2v2 / 3v3 within a win of
   the base; it seldom fires (an ally under attack usually shares our island or our own island is contested). Not
   adopted. late_idle 300 + late_drill 1200 vs @v12: 2v2 elim +.08*, 1v1 +.05; vs @v4 1v1 -.06*: not adopted.
+- 180 min vs raid: expand 3 34-13-13, expand 0 34-12-14, expand_safe 34-12-14: the colony move does not decide
+  these. The long losses are iron attrition: in the losses after 2 hours we kill more than we lose, but the enemy
+  harvested ~2x our iron (s8-0: 1490 against 680) once our island ran dry. rock_fallback (rock axes once the
+  island's iron is gone) screened next.
+- 180 min vs turtle: expand 3 34-6-20, expand 0 33-10-17, expand_safe 33-6-21. Moving the colony is worth ~4
+  losses in 60 there; expand_safe adds nothing. Keeping expand 3.
