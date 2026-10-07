@@ -65,6 +65,7 @@ final class Params {
     final double abort_ratio;
     final boolean tower_face_land;
     final boolean siege_peons;
+    final boolean blast_adapt;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -135,6 +136,7 @@ final class Params {
         abort_ratio = a.getDouble("abort_ratio", 1.0);
         tower_face_land = a.getBoolean("tower_face_land", false);
         siege_peons = a.getBoolean("siege_peons", true);
+        blast_adapt = a.getBoolean("blast_adapt", false);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);

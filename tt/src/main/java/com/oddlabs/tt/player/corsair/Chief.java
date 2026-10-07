@@ -21,6 +21,11 @@ final class Chief {
     private final @NonNull Player me;
     private final boolean viking;
     private int last_move = -100;
+    /** blast_adapt: the enemy warriors our last stun should have caught, and when to look whether it did. */
+    private final java.util.List<@NonNull Unit> stun_victims = new java.util.ArrayList<>();
+    private int stun_check = -1;
+    /** Share of the enemies in reach that our stuns caught (an enemy who cancels stuns brings it down). */
+    private float catch_rate = 1f;
 
     Chief(@NonNull CorsairAI ai) {
         this.ai = ai;
@@ -41,6 +46,27 @@ final class Chief {
         if (cast(in, chief, second))
             return;
         position(in, chief, second);
+    }
+
+    /** blast_adapt: 4 s after a stun, the share of its expected victims that stand stunned, into catch_rate. */
+    private void checkStun(int second) {
+        if (stun_check < 0 || second < stun_check)
+            return;
+        stun_check = -1;
+        int alive = 0, stunned = 0;
+        for (Unit e : stun_victims) {
+            if (e.isDead())
+                continue;
+            alive++;
+            if (isStunned(e))
+                stunned++;
+        }
+        stun_victims.clear();
+        if (alive == 0)
+            return;
+        catch_rate = .5f * catch_rate + .5f * stunned / alive;
+        float r = catch_rate;
+        ai.log.log("CHIEF", () -> "stun caught " + r + " (running)");
     }
 
     /** Counts enemy warriors (chieftains count 3) within r cells of the chieftain, not already stunned. */
@@ -66,6 +92,29 @@ final class Chief {
     }
 
     private boolean cast(@NonNull Intel in, @NonNull Unit chief, int second) {
+        if (viking && ai.params.blast_adapt)
+            checkStun(second);
+        if (viking && ai.params.blast_adapt && catch_rate < .3f) {
+            // the enemy cancels our stuns: the blast hurts whether he orders his units or not, friend and foe within
+            // 36 m of a point before the chieftain, so only where enemies are thick and ours are not
+            if (!chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST))
+                return false;
+            float theirs = 0;
+            for (Unit e : in.enemy_warriors)
+                if (Geo.dist2(e.getGridX(), e.getGridY(), chief.getGridX(), chief.getGridY()) <= 16 * 16)
+                    theirs += Intel.value(e);
+            float ours = 0;
+            for (Unit u : in.warriors)
+                if (Geo.dist2(u.getGridX(), u.getGridY(), chief.getGridX(), chief.getGridY()) <= 20 * 20)
+                    ours += Intel.value(u);
+            if (theirs < 5f || ours > .4f * theirs)
+                return false;
+            me.doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
+            ai.log.count("blast");
+            float t = theirs, o = ours;
+            ai.log.log("CHIEF", () -> "blast catching " + t + " of theirs and " + o + " of ours t" + second);
+            return true;
+        }
         if (viking) {
             if (!chief.canDoMagic(RacesResources.INDEX_MAGIC_STUN))
                 return false;
@@ -78,6 +127,14 @@ final class Chief {
                 return false;
             me.doMagic(chief, RacesResources.INDEX_MAGIC_STUN);
             ai.log.count("stun");
+            if (ai.params.blast_adapt) {
+                stun_victims.clear();
+                for (Unit e : in.enemy_warriors)
+                    if (!isStunned(e) && Geo.dist2(e.getGridX(), e.getGridY(), chief.getGridX(), chief.getGridY())
+                            <= 16 * 16)
+                        stun_victims.add(e);
+                stun_check = second + 4;
+            }
             ai.log.log("CHIEF",
                     () -> "stun at " + chief.getGridX() + "," + chief.getGridY() + " catching " + c + " with " + ours + " of ours t" + second);
             return true;
