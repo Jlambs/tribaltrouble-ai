@@ -201,3 +201,5 @@ stalemates were often not about the launch rule but about ships:
   hills 3 32-1-7, normal speed 14-0-6, northern 11-1-8; no failed game, no swallowed error.
 - v13 team sizes vs @v4: 1v2 15-8-37 (v10 18-7-35), 2v3 28-2-30 (v10 21-2-37), 3v3 68-1-21 (v10 57-0-33),
   2v1 60-0-0.
+- late_idle 300 on v13: vs @v4 1v1 elim -.09* (2v2 0), vs blitz +.03 / +.02; with late_drill 1200 vs @v4 1v1
+  -.06*, blitz 2v2 +.07*. Keeping 600 / 1500.
