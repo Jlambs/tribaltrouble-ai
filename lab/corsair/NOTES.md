@@ -99,3 +99,24 @@ Tools: `lab/corsair/eval.sh NAME SPEC OPPONENT [formats]` (1v1 seeds 1..50 + 2v2
   true mirror not attacking is right; gains come from beating different strategies.
 - Robustness (rb5-*, @v5c vs @v4): no failed games or swallowed errors with natives on either side, free-for-all,
   4v4, 2v3, hills 3, normal speed, northern terrain.
+
+### 2026-10-06/07: v6 -> v8
+
+- abort_ratio 1.0 (marches break off before contact when outmatched): 2v2 elim +.04*, 1v1/1v2 slightly +. A
+  1v2 loss had a march grow to 193 warriors (home guard 6) and walk into both enemies' armies (175).
+- drill_adapt 4 + elite_trips 8 (drill to outreach the enemy's mean drill by 4 cells; the most drilled few to 8
+  trips for the towers): vs @v5c 1v1 margin +.14*, 2v2 elim +.06*; inert vs no-drill (goal stays 4 trips).
+- siege_peons: a 195-warrior march sat 137 cells short of a base for hours, held by a few enemy gatherers in reach,
+  and another farmed 7,500 peons at a base without razing a building. With peons only in reach a quarter takes
+  them and the rest advance or raze (towers, quarters, armory): vs @v4 1v1 elim +.19*, 2v2 +.14*; vs no-drill
+  1v1 49-2-49, 2v2 57-0-43. 180-min vs v4: 11-1-28 (was 9-1-30).
+- attack_ratio 1.0 / siege_after 600 in 180-min games: no change (9-1-30). The draws are not a threshold problem.
+- ships 4 / 5 (was 3): vs @v4 1v1 elim +.18* / +.21*, 2v2 +.12* / +.11*. Bigger simultaneous landings and
+  parallel unloading. stage: 2v2 elim +.07*, 1v1 neutral. attack_ratio 1.1, min_peons 35, rowers 14,
+  chief_rides: neutral.
+- An island with 2 trees (good iron and rock) won an opening: with iron axes only, rock is worthless and wood is the
+  most used resource (wood_weight screened next).
+
+League v7 (60 games per cell; W-L-D): vs v4 20-1-39 / 19-0-41, no-drill 28-1-31 / 37-0-23, Hard 55-0-5 / 57-0-3,
+blitz 9-3-48 / 5-3-52, turtle 1-1-58 / 1-0-59, raid 1-2-57 / 1-0-59 (1v1 / 2v2; styles are v7 with params).
+234 wins and 11 losses in 720 games (v6: 177 and 6, against v6-based styles).
