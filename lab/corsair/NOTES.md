@@ -142,3 +142,14 @@ stalemates were often not about the launch rule but about ships:
   marches weigh the range edge too) is screened for these stalemates.
 - Screens vs @v4: pack 30 / 45 (alone) 2v2 elim +.09* / +.08*, 1v1 neutral; stage 2v2 elim +.06* (again), 1v1
   neutral; ships 6 / 7 and wood_weight neutral.
+- v9 (pack 40, dock_near 40, row_min 10, docks 5 on) vs v8 in other formats vs @v4: 2v1 59-0-1 (v8 54-0-6),
+  3v3 50-1-39 (42-1-47), 1v2 7-8-45 (10-6-44; margin -.12*). 1v2 losses come at 17-28 min, when both enemies land
+  together on a base that has 50-70 warriors to their 140 + 80; common to v8 and v9.
+- **The landing phase sent the ships home 30 s after the last one docked.** Units leave a ship one at a time
+  (iron 1.5 s), so ships went home with up to 58 of 102 warriors still aboard (they landed back at home): every
+  op landed a fraction of what it carried, packed ones most. unload_wait 15 (ships stay while warriors still
+  come off, up to 5 min): vs @v4 1v1 W53 -> 79 of 100, elim +.26*, margin +.23*; 2v2 W64 -> 75, elim +.11*.
+  With rebeach (re-pick the beach on approach when the enemy stands at it): 1v1 W83 (+.30*), 2v2 W74.
+- stage on v9: 1v1 elim +.07*, other formats neutral.
+- blast_adapt (v7b mirror): no effect. late_drill 1200: 1v1 elim -.11, 2v2 +.14* (with the fixes); at 120 min
+  13-0-7 against the fixes' 16-0-4: rejected.

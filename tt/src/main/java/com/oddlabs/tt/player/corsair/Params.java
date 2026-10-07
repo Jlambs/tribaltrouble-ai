@@ -151,7 +151,7 @@ final class Params {
         siege_peons = a.getBoolean("siege_peons", true);
         blast_adapt = a.getBoolean("blast_adapt", false);
         wood_weight = a.getBoolean("wood_weight", false);
-        pack = a.getInt("pack", 40);
+        pack = a.getInt("pack", 20);
         dock_near = a.getInt("dock_near", 40);
         row_min = a.getInt("row_min", 10);
         late_drill = a.getInt("late_drill", 0);
@@ -160,8 +160,8 @@ final class Params {
         abort_edge = a.getBoolean("abort_edge", false);
         docks = a.getInt("docks", 5);
         dock_gap = a.getInt("dock_gap", 30);
-        rebeach = a.getBoolean("rebeach", false);
-        unload_wait = a.getInt("unload_wait", 0);
+        rebeach = a.getBoolean("rebeach", true);
+        unload_wait = a.getInt("unload_wait", 15);
         rock_until = a.getInt("rock_until", 0);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
