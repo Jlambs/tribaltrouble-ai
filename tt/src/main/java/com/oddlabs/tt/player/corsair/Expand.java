@@ -40,6 +40,7 @@ final class Expand {
     /** The home we left, and its dock. */
     private int old_island;
     private int old_dx, old_dy;
+    private int old_ax, old_ay;
     private @Nullable Ship ferry;
 
     private enum Phase {
@@ -74,6 +75,8 @@ final class Expand {
             case BOARD -> board(in, second);
             case SAIL -> sail(in, second);
             case FERRY -> {
+                if (ai.params.expand_safe && second % 60 == 0 && fallBack(in, second))
+                    return;
                 if (second % 5 == 0)
                     ferry(in, second);
                 if (second % 30 == 0 && second >= cooldown && moves < 3)
@@ -127,6 +130,12 @@ final class Expand {
                 if (r[0] == Float.MAX_VALUE)
                     continue;
                 float score = quality - r[0] / 20f;
+                // expand_safe: away from the enemy's buildings, wherever they are
+                if (ai.params.expand_safe)
+                    for (Building b : in.enemy_buildings) {
+                        float d = (float) Math.sqrt((double) Geo.dist2(b.getGridX(), b.getGridY(), cand[0], cand[1]));
+                        score -= 25f * Math.max(0f, 1f - d / 300f) / Math.max(1, in.enemy_buildings.size() / 6);
+                    }
                 if (best == null || score > best_score) {
                     best = isle;
                     best_score = score;
@@ -229,6 +238,8 @@ final class Expand {
         if ((d.job == Fleet.Job.ARRIVED || d.job == Fleet.Job.IDLE) && Fleet.dockedAt(s) == t.id) {
             Colony c = ai.colony;
             old_island = c.island;
+            old_ax = c.ax;
+            old_ay = c.ay;
             int[] dock = ai.fleet.homeDock();
             old_dx = dock[0];
             old_dy = dock[1];
@@ -241,6 +252,39 @@ final class Expand {
             ai.log.log("EXPAND",
                     () -> "settled on " + t + " base " + bx + "," + by + "; old home isle " + old_island + " t" + second);
         }
+    }
+
+    /**
+     * expand_safe: the new home was overrun (no peons of ours left there) while most of them still wait at the old
+     * one: the colony goes back there, where its buildings still stand (a new colony razed in minutes once left 167
+     * peons idle on the old island for the last hour and a half).
+     */
+    private boolean fallBack(@NonNull Intel in, int second) {
+        if (old_island == 0)
+            return false;
+        int here = 0, there = 0;
+        for (Unit u : in.peons)
+            if (u.getIslandId() == ai.colony.island)
+                here++;
+            else if (u.getIslandId() == old_island)
+                there++;
+        there += insideOld(in);
+        if (here >= 5 || there < 10)
+            return false;
+        int back = old_island;
+        ai.colony.relocate(old_island, old_ax, old_ay, old_dx, old_dy);
+        ai.fleet.home_field = ai.sea.field(old_dx, old_dy);
+        if (ferry != null)
+            ai.fleet.goHome(ferry, second);
+        ferry = null;
+        old_island = 0;
+        state = State.NONE;
+        cooldown = second + 1200;
+        int h = here, t = there;
+        ai.log.log("EXPAND",
+                () -> "new home lost (" + h + " peons there, " + t + " at the old): back to isle " + back + " t" + second);
+        ai.log.count("expand_back");
+        return true;
     }
 
     private void reset(int second) {
