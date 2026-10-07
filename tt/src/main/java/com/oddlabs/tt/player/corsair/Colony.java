@@ -507,6 +507,15 @@ final class Colony {
         return Math.max(3, Math.min(14, pop / 8));
     }
 
+    /**
+     * Whether the armory makes rock axes too. Iron only pays at the unit cap (every slot counts); early on, rock
+     * axes are quicker to make (rock_until: until then). Two early-armed enemies once had 140 and 81 warriors to our
+     * 50 at 10 minutes, and razed us by 21.
+     */
+    private boolean rockPhase() {
+        return p.rock_weapons || p.rock_until > 0 && ai.now() < p.rock_until;
+    }
+
     private void manageArmories(@NonNull Intel in, int second) {
         for (Building armory : in.armories) {
             if (armory.getIslandId() != island)
@@ -521,7 +530,7 @@ final class Colony {
             me.buildIronWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         int iron = armory.getSupplyContainer(IronSupply.class).getNumSupplies();
         int rock = armory.getSupplyContainer(RockSupply.class).getNumSupplies();
-        boolean want_rock = p.rock_weapons && (iron == 0 || rock > 6);
+        boolean want_rock = rockPhase() && (iron == 0 || rock > 6);
         // rock_axe_cap: axes nobody takes (the unit cap) are labour lost to iron
         if (p.rock_axe_cap > 0 && armory.getSupplyContainer(RockAxeWeapon.class).getNumSupplies() >= p.rock_axe_cap)
             want_rock = false;
@@ -564,7 +573,7 @@ final class Colony {
         // gatherer shares: wood twice the ore, ore mostly iron
         int total = tree + iron + rock + spare;
         int want_tree = (int) (total * p.wood_share);
-        int want_rock = p.rock_weapons ? (int) (total * p.rock_share) : 0;
+        int want_rock = rockPhase() ? (int) (total * p.rock_share) : 0;
         int want_iron = total - want_tree - want_rock;
         if (wood_stock > 40)
             want_tree = Math.min(want_tree, tree);

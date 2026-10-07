@@ -78,6 +78,7 @@ final class Params {
     final int dock_gap;
     final boolean rebeach;
     final int unload_wait;
+    final int rock_until;
     final int stage_max;
     final boolean ratchet;
     final int ratchet_trips;
@@ -161,6 +162,7 @@ final class Params {
         dock_gap = a.getInt("dock_gap", 30);
         rebeach = a.getBoolean("rebeach", false);
         unload_wait = a.getInt("unload_wait", 0);
+        rock_until = a.getInt("rock_until", 0);
         stage_max = a.getInt("stage_max", 600);
         ratchet = a.getBoolean("ratchet", true);
         ratchet_trips = a.getInt("ratchet_trips", 4);
