@@ -302,6 +302,32 @@ final class Fleet {
         for (Player a : in.allies)
             ally_fields.add(ai.sea.field(Geo.gridOf(a.getStartX()), Geo.gridOf(a.getStartY())));
         Spot best = null;
+        // spread_open: where each enemy would found its base by our own measure (quality less its travel); we
+        // keep away from those spots on a shared island (bases side by side fight from the first minute: a 2v2
+        // where two of four picked the same cell lost 220 peons by minute 16)
+        List<int[]> enemy_spots = new ArrayList<>();
+        if (ai.params.spread_open > 0)
+            for (int[] f : enemy_fields) {
+                float bs = -Float.MAX_VALUE;
+                int[] spot = null;
+                for (Geo.Isle isle : geo.isles) {
+                    if (isle.score < 8f)
+                        continue;
+                    for (int[] cand : geo.candidates(isle, .6f, 40)) {
+                        float q = geo.baseScore(cand[0] / Geo.BIN, cand[1] / Geo.BIN, isle.id);
+                        float e = reach(f, isle, cand[0], cand[1])[0];
+                        if (e == Float.MAX_VALUE)
+                            continue;
+                        float sc = q - e / 20f;
+                        if (sc > bs) {
+                            bs = sc;
+                            spot = new int[]{cand[0], cand[1], isle.id};
+                        }
+                    }
+                }
+                if (spot != null)
+                    enemy_spots.add(spot);
+            }
         for (Geo.Isle isle : geo.isles) {
             if (isle.score < 8f)
                 continue;
@@ -324,6 +350,11 @@ final class Fleet {
                         allied += .5f;
                 }
                 float score = quality - (float) ai.params.travel_weight * r[0] / 20f - (float) ai.params.contest_weight * 8f * contest - 2f * allied;
+                for (int[] es : enemy_spots)
+                    if (es[2] == isle.id) {
+                        float d = (float) Math.sqrt((double) Geo.dist2(es[0], es[1], ax, ay));
+                        score -= (float) ai.params.spread_open * Math.max(0f, 1f - d / 150f);
+                    }
                 if (best == null || score > best.score())
                     best = new Spot(isle, ax, ay, (int) r[1], (int) r[2], quality, r[0], contest, score);
             }
