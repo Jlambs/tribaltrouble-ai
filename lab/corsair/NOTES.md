@@ -239,3 +239,6 @@ stalemates were often not about the launch rule but about ships:
   not sailed since minute 1, so the sailing ship was most likely Hard's. Reproduce: `./aisim.sh replay
   fresh-v8-hard-1v1 s64-0` (VERIFIED, then crash). Any player's sailing target on such an island crashes every
   client.
+- shelter (peons near raiders that no militia meets go inside the nearest quarters or armory): fewer peons die
+  (kd30 +63* in 2v2) but games are lost: vs blitz 1v1 elim -.15*, 2v2 -.10; vs @v4 1v1 -.07, 1v2 -.12. Hidden
+  peons stop the economy, and a razed building takes everyone inside with it. Rejected.
