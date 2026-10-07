@@ -92,16 +92,21 @@ final class Expand {
         // outnumbered, a colony on the move gets caught (1v2: two more losses in 60 games)
         if (ferry != null || in.enemies.size() > in.allies.size() + 1)
             return;
-        int stock = 0;
+        int stock = 0, wood = 0;
         for (Building a : in.armories)
-            if (a.getIslandId() == c.island && a.isComplete())
+            if (a.getIslandId() == c.island && a.isComplete()) {
                 stock += a.getSupplyContainer(IronSupply.class).getNumSupplies();
-        if (stock >= 15)
-            return;
+                wood += a.getSupplyContainer(com.oddlabs.tt.landscape.TreeSupply.class).getNumSupplies();
+            }
         Geo geo = ai.geo;
         geo.scanSupplies();
-        int iron = geo.totalsOn(c.island)[2];
-        if (iron > ai.params.expand)
+        int[] left = geo.totalsOn(c.island);
+        int iron = left[2];
+        boolean no_iron = iron <= ai.params.expand && stock < 15;
+        // expand_wood: the trees run out too (an island of 184 trees had none left by 76 minutes, with 79 iron
+        // nodes still standing: no wood, no axes)
+        boolean no_wood = ai.params.expand_wood > 0 && left[0] <= ai.params.expand_wood && wood < 20;
+        if (!no_iron && !no_wood)
             return;
         geo.rateIsles();
         int[] dock = ai.fleet.homeDock();
@@ -176,9 +181,9 @@ final class Expand {
         state = State.BOARD;
         since = second;
         Geo.Isle t = best;
-        int n = go.size(), left = iron;
+        int n = go.size(), left_iron = iron, left_trees = left[0];
         ai.log.log("EXPAND",
-                () -> "home has " + left + " iron nodes: settling " + t + " base " + bx + "," + by + " landing " + lx + "," + ly + " with " + n + " units t" + second);
+                () -> "home has " + left_iron + " iron nodes, " + left_trees + " trees: settling " + t + " base " + bx + "," + by + " landing " + lx + "," + ly + " with " + n + " units t" + second);
         ai.log.count("expand");
     }
 
@@ -188,12 +193,13 @@ final class Expand {
             reset(second);
             return;
         }
-        // stragglers: peons that came out of the quarters join
-        if (second % 5 == 0 && second - since < 50) {
+        // stragglers: peons that came out of the quarters and the armory join, every second (the colony would send
+        // them back inside: two expeditions once left with 1 and 0 peons aboard)
+        if (second - since < 50) {
             List<Unit> more = new ArrayList<>();
             for (Unit u : in.peons)
                 if (u.getIslandId() == ai.colony.island && !ai.reserved(u)
-                        && u.getPrimaryController() instanceof IdleController && more.size() < 10)
+                        && u.getPrimaryController() instanceof IdleController && more.size() < 20)
                     more.add(u);
             if (Fleet.peonsAboard(s) < 40 && !more.isEmpty()) {
                 for (Unit u : more)
