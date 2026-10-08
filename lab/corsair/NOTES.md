@@ -258,3 +258,7 @@ stalemates were often not about the launch rule but about ships:
 - neighbor_exp 6 / 10 (marches on an enemy settling within 120 cells of our base before 15 min need only that
   many warriors): vs blitz 1v1 +1 win, 2v3 -1 / 0. The close neighbour's defence matches our first warriors, so
   the march rarely starts earlier. Not adopted.
+- Opening placement: spread_open 5 / 10 (keep away from where each enemy would settle by our measure) and
+  ally_near 6 / 12 (settle within reach of where an ally would): 1v2 vs blitz identical games (no choice
+  changed), 2v3 vs blitz +.03 / 0 / +.02 / +.03 (n.s.), 2v2 vs blitz ally_near 12 elim -.11*, vs @v4 2v2 spread
+  +.03, ally_near 6 -.04. Not adopted.
