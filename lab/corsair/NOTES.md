@@ -267,3 +267,6 @@ stalemates were often not about the launch rule but about ships:
   of 1v1 games. 60 min vs @v4: 1v1 elim -.07 / -.11*, 2v2 -.09* / -.07*; vs blitz 1v1 -.02 / +.04, 2v2 -.04 /
   -.03. Settlers, escort and a ship leave home while the army would win, and outpost peons take unit slots.
   180-minute runs and a stalemate-gated variant (outpost_idle 600) next.
+- outpost 1500 at 180 min (v15f): vs raid 37-7-16 -> 42-4-14 (+.067, 1.9 SE), turtle 32-4-24 -> 29-4-27 (-.025),
+  mirror @v13 17-23-20 -> 16-24-20 (-.017). Gated on a stalemate (outpost_idle 600) it fires 0.1 times per
+  60-min game and costs vs @v4 1v1 -.01, 2v2 -.04 (n.s.); its 180-min runs next.
