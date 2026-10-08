@@ -36,6 +36,7 @@ public final class CorsairAI extends AI {
     final @NonNull Raid raid;
     final @NonNull Expand expand;
     final @NonNull Evac evac;
+    final @NonNull Outpost outpost;
     private final @NonNull Reflexes reflexes;
     /** Units another module owns for now, with the game second the claim ends. */
     private final Map<@NonNull Unit, Integer> reserved = new LinkedHashMap<>();
@@ -64,6 +65,7 @@ public final class CorsairAI extends AI {
         raid = new Raid(this);
         expand = new Expand(this);
         evac = new Evac(this);
+        outpost = new Outpost(this);
         reflexes = new Reflexes(this, owner, log, params.swing_restart, params.stun_cancel);
     }
 
@@ -106,6 +108,7 @@ public final class CorsairAI extends AI {
         raid.think(intel, second);
         expand.think(intel, second);
         evac.think(intel, second);
+        outpost.think(intel, second);
         campaign.think(intel, second);
         ratchet.think(intel, second);
         colony.think(second);

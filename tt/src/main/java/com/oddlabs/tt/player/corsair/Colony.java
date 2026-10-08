@@ -40,6 +40,8 @@ final class Colony {
 
     /** The island we live on, and the point our base grows around. */
     int island;
+    /** outpost: a second colony on another island (armory first, two quarters and a tower at most). */
+    boolean outpost;
     int ax;
     int ay;
     /** The shore cell our ships land at, -1 until known. */
@@ -235,6 +237,19 @@ final class Colony {
         if (room <= 0)
             return;
         boolean busy = unplaced() > 0 || projects.size() >= 2;
+        if (outpost) {
+            if (busy)
+                return;
+            if (a == 0)
+                add(Race.BUILDING_ARMORY, ax, ay, second);
+            else if (q < 2 && !armories.isEmpty())
+                add(Race.BUILDING_QUARTERS, ax, ay, second);
+            else if (t < 1 && q >= 1 && room > 2) {
+                int[] spot = towerSpot(in);
+                add(Race.BUILDING_TOWER, spot[0], spot[1], second);
+            }
+            return;
+        }
         if (q == 0) {
             add(Race.BUILDING_QUARTERS, ax, ay, second);
             return;
@@ -743,6 +758,8 @@ final class Colony {
         for (Building q : in.quarters) {
             if (n <= 0)
                 return;
+            if (q.getIslandId() != island)
+                continue;
             int inside = q.getUnitContainer().getNumSupplies() - pendingDeploys(q);
             int k = Math.min(n, inside);
             if (k > 0) {
@@ -785,7 +802,8 @@ final class Colony {
             }
         }
         // the chieftain
-        if (p.chieftain && second >= p.chieftain_start && !me.hasActiveChieftain() && !me.isTrainingChieftain()
+        if (!outpost && p.chieftain && second >= p.chieftain_start && !me.hasActiveChieftain()
+                && !me.isTrainingChieftain()
                 && local(in.quarters).size() >= 2 && pop >= 50) {
             Building q = local(in.quarters).getFirst();
             me.trainChieftain(q, true);

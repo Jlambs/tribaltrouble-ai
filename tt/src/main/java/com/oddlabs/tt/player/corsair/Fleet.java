@@ -417,7 +417,7 @@ final class Fleet {
                     // rowers of a ship idle at home go back to work; operations take new ones aboard
                     if (d.op == null && !ship.isMoving() && dockedAt(ship) == ai.colony.island && !d.land_all
                             && peonsAboard(ship) > 0 && pending(ship, DeployType.PEON) == 0 && !ai.raid.owns(ship)
-                            && !ai.expand.owns(ship) && !ai.evac.owns(ship))
+                            && !ai.expand.owns(ship) && !ai.evac.owns(ship) && !ai.outpost.owns(ship))
                         landPeons(ship, peonsAboard(ship));
                     if (d.op == null && !ship.isMoving() && dockedAt(ship) != 0 && ship.getShipHR().hasChieftain())
                         me.trainChieftain(ship, true);
@@ -582,7 +582,7 @@ final class Fleet {
             Ship s = e.getKey();
             Duty d = e.getValue();
             if (s.isDead() || !s.isComplete() || d.op != null || s.isMoving() || ai.raid.owns(s) || ai.expand.owns(s)
-                    || ai.evac.owns(s))
+                    || ai.evac.owns(s) || ai.outpost.owns(s))
                 continue;
             if ((d.job == Job.IDLE || d.job == Job.ARRIVED || d.job == Job.FAILED) && dockedAt(s) == home)
                 out.add(s);
@@ -596,8 +596,8 @@ final class Fleet {
         for (Map.Entry<Ship, Duty> e : duties.entrySet()) {
             Ship s = e.getKey();
             Duty d = e.getValue();
-            if (s.isDead() || !s.isComplete() || d.op != null || ai.raid.owns(s) || ai.expand.owns(s) || ai.evac.owns(
-                    s))
+            if (s.isDead() || !s.isComplete() || d.op != null || ai.raid.owns(s) || ai.expand.owns(s) || ai.evac.owns(s)
+                    || ai.outpost.owns(s))
                 continue;
             if ((d.job == Job.IDLE || d.job == Job.ARRIVED || d.job == Job.FAILED) && dockedAt(s) != home
                     && !s.isMoving())

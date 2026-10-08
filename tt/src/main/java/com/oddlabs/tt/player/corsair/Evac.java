@@ -39,17 +39,24 @@ final class Evac {
         return s == ship;
     }
 
-    /** Our idle warriors on an island other than home, in no group. */
+    /**
+     * Our idle warriors on an island other than home, in no group, and our idle peons there unless an outpost
+     * lives on that island (a colony razed or moved away once left 132 peons idle for an hour).
+     */
     private List<@NonNull Unit> stranded(@NonNull Intel in, int isl) {
         List<Unit> out = new ArrayList<>();
         for (Unit w : in.warriors)
             if (w.getIslandId() == isl && !ai.reserved(w) && !ai.army.inGroup(w) && Campaign.isFree(w))
                 out.add(w);
+        if (isl != ai.outpost.island())
+            for (Unit p : in.peons)
+                if (p.getIslandId() == isl && !ai.reserved(p) && p.getPrimaryController() instanceof IdleController)
+                    out.add(p);
         return out;
     }
 
     void think(@NonNull Intel in, int second) {
-        if (!ai.params.evac || !ai.colony.founded())
+        if (!(ai.params.evac || ai.params.outpost > 0) || !ai.colony.founded())
             return;
         Ship s = ship;
         if (s != null && s.isDead()) {
@@ -99,14 +106,18 @@ final class Evac {
             }
             case LOAD -> {
                 List<Unit> left = stranded(in, island);
-                int room = Math.max(0, 26 + ai.params.pack - Fleet.warriorsAboard(s));
+                if (island == ai.outpost.island())
+                    left = left.subList(0, Math.max(0, left.size() - 10));
+                int room = Math.max(0, 26 + ai.params.pack - Fleet.warriorsAboard(s)) + Math.max(0,
+                        60 - Fleet.peonsAboard(s));
                 List<Unit> go = new ArrayList<>(left.subList(0, Math.min(room, left.size())));
                 for (Unit u : go)
                     ai.reserve(u, 30);
                 ai.order(go, s, Action.MOVE, false);
                 if (second - since >= 60 || left.isEmpty() && second - since >= 10) {
-                    int n = Fleet.warriorsAboard(s);
-                    ai.log.log("EVAC", () -> "bringing " + n + " warriors home from isle " + island + " t" + second);
+                    int n = Fleet.warriorsAboard(s), np = Fleet.peonsAboard(s);
+                    ai.log.log("EVAC",
+                            () -> "bringing " + n + " warriors and " + np + " peons home from isle " + island + " t" + second);
                     back(s, d, second);
                 }
             }
@@ -139,11 +150,21 @@ final class Evac {
                 continue;
             count.merge(isl, 1, Integer::sum);
         }
+        for (Unit p : in.peons) {
+            int isl = p.getIslandId();
+            if (isl == 0 || isl == ai.colony.island || isl == ai.outpost.island() || ai.reserved(p)
+                    || !(p.getPrimaryController() instanceof IdleController))
+                continue;
+            count.merge(isl, 1, Integer::sum);
+        }
         for (var e : count.entrySet())
             if (e.getValue() > best_n) {
                 best_n = e.getValue();
                 best = e.getKey();
             }
+        // an outpost keeps a guard of 10
+        if (best == ai.outpost.island())
+            best_n -= 10;
         if (best_n < 12 || ai.campaign.fightingOn(best))
             return;
         // the stranded must have stood idle a while: a fresh landing waits for its body to form
