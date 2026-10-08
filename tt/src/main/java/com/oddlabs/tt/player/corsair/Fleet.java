@@ -288,6 +288,34 @@ final class Fleet {
         return new float[]{best, lx, ly};
     }
 
+    /** Where players starting at these sea fields would found their bases by our own measure: {x, y, island}. */
+    private @NonNull List<int @NonNull []> predictSpots(@NonNull List<int @NonNull []> fields) {
+        Geo geo = ai.geo;
+        List<int[]> out = new ArrayList<>();
+        for (int[] f : fields) {
+            float bs = -Float.MAX_VALUE;
+            int[] spot = null;
+            for (Geo.Isle isle : geo.isles) {
+                if (isle.score < 8f)
+                    continue;
+                for (int[] cand : geo.candidates(isle, .6f, 40)) {
+                    float q = geo.baseScore(cand[0] / Geo.BIN, cand[1] / Geo.BIN, isle.id);
+                    float e = reach(f, isle, cand[0], cand[1])[0];
+                    if (e == Float.MAX_VALUE)
+                        continue;
+                    float sc = q - e / 20f;
+                    if (sc > bs) {
+                        bs = sc;
+                        spot = new int[]{cand[0], cand[1], isle.id};
+                    }
+                }
+            }
+            if (spot != null)
+                out.add(spot);
+        }
+        return out;
+    }
+
     /** Picks where to found the base and sends every starting ship there with everyone aboard ready to land. */
     void openingVoyage(@NonNull Intel in, int second) {
         Geo geo = ai.geo;
@@ -305,29 +333,10 @@ final class Fleet {
         // spread_open: where each enemy would found its base by our own measure (quality less its travel); we
         // keep away from those spots on a shared island (bases side by side fight from the first minute: a 2v2
         // where two of four picked the same cell lost 220 peons by minute 16)
-        List<int[]> enemy_spots = new ArrayList<>();
-        if (ai.params.spread_open > 0)
-            for (int[] f : enemy_fields) {
-                float bs = -Float.MAX_VALUE;
-                int[] spot = null;
-                for (Geo.Isle isle : geo.isles) {
-                    if (isle.score < 8f)
-                        continue;
-                    for (int[] cand : geo.candidates(isle, .6f, 40)) {
-                        float q = geo.baseScore(cand[0] / Geo.BIN, cand[1] / Geo.BIN, isle.id);
-                        float e = reach(f, isle, cand[0], cand[1])[0];
-                        if (e == Float.MAX_VALUE)
-                            continue;
-                        float sc = q - e / 20f;
-                        if (sc > bs) {
-                            bs = sc;
-                            spot = new int[]{cand[0], cand[1], isle.id};
-                        }
-                    }
-                }
-                if (spot != null)
-                    enemy_spots.add(spot);
-            }
+        List<int[]> enemy_spots = ai.params.spread_open > 0 ? predictSpots(enemy_fields) : new ArrayList<>();
+        // ally_near: where each ally would found its base; we settle within reach of it (team_march then makes
+        // one army of two on a shared island; outnumbered 2v3 games were lost base by base)
+        List<int[]> ally_spots = ai.params.ally_near > 0 ? predictSpots(ally_fields) : new ArrayList<>();
         for (Geo.Isle isle : geo.isles) {
             if (isle.score < 8f)
                 continue;
@@ -354,6 +363,12 @@ final class Fleet {
                     if (es[2] == isle.id) {
                         float d = (float) Math.sqrt((double) Geo.dist2(es[0], es[1], ax, ay));
                         score -= (float) ai.params.spread_open * Math.max(0f, 1f - d / 150f);
+                    }
+                for (int[] as : ally_spots)
+                    if (as[2] == isle.id) {
+                        float d = (float) Math.sqrt((double) Geo.dist2(as[0], as[1], ax, ay));
+                        if (d >= 30f)
+                            score += (float) ai.params.ally_near * Math.max(0f, 1f - d / 200f);
                     }
                 if (best == null || score > best.score())
                     best = new Spot(isle, ax, ay, (int) r[1], (int) r[2], quality, r[0], contest, score);
