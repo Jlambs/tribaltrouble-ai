@@ -51,6 +51,8 @@ final class Army {
     private final @NonNull Player me;
     private boolean home_threat;
     final List<@NonNull Group> groups = new ArrayList<>();
+    /** The enemy units near our base this round (defend). */
+    final List<@NonNull Unit> home_threats = new ArrayList<>();
     /** unstick: islands where no group forms until the game second given. */
     private final Map<Integer, Integer> no_go = new java.util.TreeMap<>();
     private int next_group = 1;
@@ -288,6 +290,8 @@ final class Army {
             if (u.isWarrior() || u.isChieftain())
                 theirs += Intel.value(u);
         home_threat = theirs > 2;
+        home_threats.clear();
+        home_threats.addAll(threats);
         if (!militia(in, mine, threats) && ai.params.shelter)
             shelter(in, threats);
         // an enemy ship docked at our island is landing troops: its hull is in reach from the shore, and each hit

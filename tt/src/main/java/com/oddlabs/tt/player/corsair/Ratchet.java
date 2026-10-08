@@ -36,6 +36,10 @@ final class Ratchet {
     }
 
     void think(@NonNull Intel in, int second) {
+        if (ai.params.deck_defence && ai.colony.founded() && ai.army.homeThreatened()) {
+            deckDefence(in, second);
+            return;
+        }
         if (!ai.params.ratchet || !ai.colony.founded() || ai.army.homeThreatened())
             return;
         float goal = goal(in);
@@ -84,6 +88,48 @@ final class Ratchet {
             for (Unit u : go)
                 walking.put(u, s);
             ai.log.count("ratchet_board");
+        }
+    }
+
+    /**
+     * deck_defence: while raiders are at the base, idle ships docked near them take warriors on deck, where they
+     * shoot 10 cells farther and cannot be stunned (the drill's own seats); the ratchet lands them again once the
+     * raid is over. Outnumbered by an aggressive team, bases fell to early raids the towers alone could not hold.
+     */
+    private void deckDefence(@NonNull Intel in, int second) {
+        List<Unit> raiders = new ArrayList<>();
+        for (Unit u : ai.army.home_threats)
+            if (!u.isDead() && (u.isWarrior() || u.isChieftain()))
+                raiders.add(u);
+        if (raiders.isEmpty())
+            return;
+        List<Unit> free = ai.army.freeWarriorsAtHome(in);
+        for (Ship s : ai.fleet.idleAtHome()) {
+            boolean near = false;
+            for (Unit r : raiders)
+                if (Geo.dist2(r.getGridX(), r.getGridY(), s.getGridX(), s.getGridY()) <= 40 * 40) {
+                    near = true;
+                    break;
+                }
+            if (!near)
+                continue;
+            ai.fleet.cancelDeploys(s);
+            int room = 26 - Fleet.warriorsAboard(s);
+            if (room <= 0 || free.isEmpty())
+                continue;
+            Colony.sortByDistance(free, s.getGridX(), s.getGridY());
+            List<Unit> go = new ArrayList<>();
+            while (go.size() < room && !free.isEmpty()) {
+                Unit w = free.removeFirst();
+                if (Geo.dist2(w.getGridX(), w.getGridY(), s.getGridX(), s.getGridY()) <= 30 * 30)
+                    go.add(w);
+            }
+            if (go.isEmpty())
+                continue;
+            for (Unit u : go)
+                ai.reserve(u, 15);
+            ai.order(go, s, Action.MOVE, false);
+            ai.log.count("deck_defence");
         }
     }
 
