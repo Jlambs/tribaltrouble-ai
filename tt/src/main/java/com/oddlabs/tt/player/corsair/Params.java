@@ -99,6 +99,7 @@ final class Params {
     final int neighbor_exp;
     final double ally_near;
     final int outpost;
+    final int outpost_idle;
     final boolean team_march;
     final boolean tower_rush;
     final boolean soft_target;
@@ -206,6 +207,7 @@ final class Params {
         neighbor_exp = a.getInt("neighbor_exp", 0);
         ally_near = a.getDouble("ally_near", 0);
         outpost = a.getInt("outpost", 0);
+        outpost_idle = a.getInt("outpost_idle", 0);
         team_march = a.getBoolean("team_march", true);
         tower_rush = a.getBoolean("tower_rush", false);
         soft_target = a.getBoolean("soft_target", false);

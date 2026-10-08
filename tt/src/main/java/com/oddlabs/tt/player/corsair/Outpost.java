@@ -90,6 +90,10 @@ final class Outpost {
         if (in.enemies.size() > in.allies.size() + 1 || home.local(in.armories).isEmpty()
                 || home.local(in.quarters).size() < 3 || in.peons.size() + in.peonsInside() < 60)
             return;
+        // outpost_idle: only in a stalemate (no op or march for that long): an outpost founded while we are
+        // winning only delays the win (vs @v4 at 60 min, elim -.07 to -.11)
+        if (ai.params.outpost_idle > 0 && second - ai.campaign.lastLaunch() < ai.params.outpost_idle)
+            return;
         Geo geo = ai.geo;
         geo.scanSupplies();
         geo.rateIsles();
