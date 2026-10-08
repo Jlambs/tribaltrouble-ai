@@ -270,3 +270,7 @@ stalemates were often not about the launch rule but about ships:
 - outpost 1500 at 180 min (v15f): vs raid 37-7-16 -> 42-4-14 (+.067, 1.9 SE), turtle 32-4-24 -> 29-4-27 (-.025),
   mirror @v13 17-23-20 -> 16-24-20 (-.017). Gated on a stalemate (outpost_idle 600) it fires 0.1 times per
   60-min game and costs vs @v4 1v1 -.01, 2v2 -.04 (n.s.); its 180-min runs next.
+- outpost gated on a stalemate (outpost 1500, outpost_idle 600), 180 min: raid 37-6-17 (+.008), turtle 28-4-28
+  (-.033), mirror @v13 14-27-19 (-.058*). Founding an outpost in a quiet phase weakens home just before an equal
+  opponent's late push. Outposts are not adopted (params off): against these opponents the unit slots are worth
+  more as drilled warriors at home, with rock_fallback and expand (moving the colony) covering a dry island.
