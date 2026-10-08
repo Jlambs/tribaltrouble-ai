@@ -274,3 +274,9 @@ stalemates were often not about the launch rule but about ships:
   (-.033), mirror @v13 14-27-19 (-.058*). Founding an outpost in a quiet phase weakens home just before an equal
   opponent's late push. Outposts are not adopted (params off): against these opponents the unit slots are worth
   more as drilled warriors at home, with rock_fallback and expand (moving the colony) covering a dry island.
+- Outnumbered vs blitz, economy timing (v15): ship_start 900 (ships at 15 min instead of 5) 1v2 losses 23 -> 38,
+  elim -.25*, kd30 -119*; 2v3 kd30 -163*; with ships 3 as bad. Early ships are early defence here (the range drill
+  and deck guns). tower_start 200: 1v2 -.10, 2v3 +.05 (n.s.).
+- Earlier ships vs blitz (ship_start 150 / 200, and 150 with 6 ships): 1v2 +.02 / +.02 / +.03, 2v3 0 / 0 / -.02
+  (kd30 -68* with 6 ships), 1v1 -.02 / -.03 / -.02. 300 s stays. Being outnumbered by the blitz style looks
+  structural: nothing in timing, placement, defence or launch rules has moved it.
