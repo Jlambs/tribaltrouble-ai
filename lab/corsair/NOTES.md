@@ -262,3 +262,8 @@ stalemates were often not about the launch rule but about ships:
   ally_near 6 / 12 (settle within reach of where an ally would): 1v2 vs blitz identical games (no choice
   changed), 2v3 vs blitz +.03 / 0 / +.02 / +.03 (n.s.), 2v2 vs blitz ally_near 12 elim -.11*, vs @v4 2v2 spread
   +.03, ally_near 6 -.04. Not adopted.
+- outpost (a second colony on a free island at 900 / 1500 s: armory, two quarters, a tower; its warriors shipped
+  home by the evac shuttle, which also fetches idle peons stranded on islands no colony runs): founded in ~70 %
+  of 1v1 games. 60 min vs @v4: 1v1 elim -.07 / -.11*, 2v2 -.09* / -.07*; vs blitz 1v1 -.02 / +.04, 2v2 -.04 /
+  -.03. Settlers, escort and a ship leave home while the army would win, and outpost peons take unit slots.
+  180-minute runs and a stalemate-gated variant (outpost_idle 600) next.
