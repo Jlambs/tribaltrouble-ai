@@ -280,3 +280,6 @@ stalemates were often not about the launch rule but about ships:
 - Earlier ships vs blitz (ship_start 150 / 200, and 150 with 6 ships): 1v2 +.02 / +.02 / +.03, 2v3 0 / 0 / -.02
   (kd30 -68* with 6 ships), 1v1 -.02 / -.03 / -.02. 300 s stays. Being outnumbered by the blitz style looks
   structural: nothing in timing, placement, defence or launch rules has moved it.
+- deck_defence (raided, warriors board idle ships docked near the raiders and fight from deck, +10 range, no
+  stun): fires ~37 times per 1v2 game; vs blitz 1v2 0, 2v3 +.04, 1v1 -.01; vs @v4 1v1 -.05 (margin -.06*), 2v2
+  -.02. Not adopted.

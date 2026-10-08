@@ -81,7 +81,8 @@ Outposts (a second colony on a free island, its warriors shipped home; `outpost`
 from enemies or near allies (`spread_open`, `ally_near`), deeper or earlier late drills, tower rushes and
 uncovered-target raids (`tower_rush`, `soft_target`), hiding peons (`shelter`), aid to allies (`ally_aid`),
 stuck-body recovery and evacuation (`unstick`, `evac`), safe building (`safe_build`), early rock axes
-(`rock_until`), more armory workers, a higher launch bar when outnumbered. Each is in `NOTES.md` with its numbers;
+(`rock_until`), more armory workers, a higher launch bar when outnumbered, earlier or later ships, fighting from
+docked decks when raided (`deck_defence`). Each is in `NOTES.md` with its numbers;
 outposts were the closest (180 min vs raid +.067) but cost tempo against everything else.
 
 ## Known limits
