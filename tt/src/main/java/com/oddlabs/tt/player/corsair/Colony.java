@@ -365,6 +365,8 @@ final class Colony {
                 if (pr.site != null && !pr.site.isDead() && second % 5 == 0) {
                     List<Unit> away = new ArrayList<>();
                     for (Unit u : in.peons) {
+                        if (u.isDead())
+                            continue;
                         Controller c = u.getPrimaryController();
                         if (c instanceof RepairController r && r.getBuilding() == pr.site
                                 || c instanceof PlaceBuildingController pb && pb.getBuilding() == pr.site)
@@ -405,7 +407,8 @@ final class Colony {
                     Building st = pr.site;
                     int idle = 0;
                     for (Unit u : in.peons)
-                        if (u.getIslandId() == island && u.getPrimaryController() instanceof IdleController)
+                        if (!u.isDead() && u.getIslandId() == island
+                                && u.getPrimaryController() instanceof IdleController)
                             idle++;
                     int id = idle;
                     ai.log.log("BUILD", () -> "progress " + name(
@@ -443,6 +446,8 @@ final class Colony {
     private int buildersOn(@NonNull Intel in, @NonNull Building site) {
         int n = 0;
         for (Unit u : in.peons) {
+            if (u.isDead())
+                continue;
             Controller c = u.getPrimaryController();
             if (c instanceof RepairController r && r.getBuilding() == site)
                 n++;
@@ -457,7 +462,7 @@ final class Colony {
         List<Unit> idle = new ArrayList<>();
         List<Unit> gather = new ArrayList<>();
         for (Unit u : in.peons) {
-            if (u.getIslandId() != island || ai.reserved(u))
+            if (u.isDead() || u.getIslandId() != island || ai.reserved(u))
                 continue;
             Controller c = u.getPrimaryController();
             if (c instanceof IdleController)
@@ -815,7 +820,8 @@ final class Colony {
     private void assignIdle(@NonNull Intel in, int second) {
         List<Unit> idle = new ArrayList<>();
         for (Unit u : in.peons)
-            if (u.getIslandId() == island && !ai.reserved(u) && u.getPrimaryController() instanceof IdleController)
+            if (!u.isDead() && u.getIslandId() == island && !ai.reserved(u)
+                    && u.getPrimaryController() instanceof IdleController)
                 idle.add(u);
         if (idle.isEmpty())
             return;
