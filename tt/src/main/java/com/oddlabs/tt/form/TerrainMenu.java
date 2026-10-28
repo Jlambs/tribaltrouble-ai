@@ -887,7 +887,7 @@ public final class TerrainMenu extends Group {
                 if (isChosen(difficulty_pulldown_menus[i]))
                     game_network.getClient().getServerInterface().setPlayerSlot(i, PlayerSlot.AI,
                             race_pulldown_menus[i].getChosenItemIndex(), team_pulldown_menus[i].getChosenItemIndex(),
-                            true, difficulty_pulldown_menus[i].getChosenItemIndex());
+                            true, spDifficultyOfIndex(difficulty_pulldown_menus[i].getChosenItemIndex()));
             }
             game_network.getClient().getServerInterface().startServer();
             IO.println("Start server");
@@ -1132,6 +1132,14 @@ public final class TerrainMenu extends Group {
             case 5 -> RosterTemplate.Fill.GAUNTLET_AI;
             default -> RosterTemplate.Fill.OPEN;
         };
+    }
+
+    /**
+     * The AI difficulty of an SP slot menu item: Closed 0, then Easy, Normal and Hard in PlayerSlot order, Gauntlet
+     * last.
+     */
+    private static int spDifficultyOfIndex(int index) {
+        return index == 4 ? PlayerSlot.AI_GAUNTLET : index;
     }
 
     private void applyPreset(@NonNull Preset preset) {
