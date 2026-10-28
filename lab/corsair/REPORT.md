@@ -100,6 +100,12 @@ outposts were the closest (180 min vs raid +.067) but cost tempo against everyth
 - Engine bug on `boats` (outside this branch): a ship whose sailing target lies on an island with no contour
   points crashes the game in `ShipTrajectory.pickTargetPosition` (`pts.get(0)` on an empty list). Seen once in
   100 games of `@v8` vs Hard (`./aisim.sh replay fresh-v8-hard-1v1 s64-0` reproduces it, likely Hard's ship).
+- Engine crash in the drawn game only: a walking unit placed off the height map fails in
+  `HeightMap.getLeafFromCoordinates` (from `Model.getLandscapeError`, which headless games skip). Seen once, 23 game
+  min into a single-player play-test (a human, who played, vs a Corsair AI slot, 2026-10-27). With a check that threw
+  on any model set off the height map, 280 headless games (corsair vs `@v14` 1v1 and 2v2, vs Hard) had none, so
+  neither AI was shown to cause it. The session's event.log is kept in `aisim/playtests/1793165206475/`; an
+  `--eventload` replay of it lost the recording at 488 s, long before the crash.
 
 - Equal opponents: defending an island is far stronger than landing on one, so mirror games end in timeouts (both
   sides hold ~205 iron warriors behind towers and neither attacks). Wins come against weaker or different

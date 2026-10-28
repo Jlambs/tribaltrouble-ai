@@ -283,3 +283,17 @@ stalemates were often not about the launch rule but about ships:
 - deck_defence (raided, warriors board idle ships docked near the raiders and fight from deck, +10 range, no
   stun): fires ~37 times per 1v2 game; vs blitz 1v2 0, 2v3 +.04, 1v1 -.01; vs @v4 1v1 -.05 (margin -.06*), 2v2
   -.02. Not adopted.
+
+### Corsair AI slot and a drawn-game crash (2026-10-27)
+
+- `PlayerSlot.AI_CORSAIR` (10) puts "Corsair AI" after Hard in the create-game dialog and the lobby, for single
+  player and multiplayer (739e8e66). Checked in the game: one CorsairAI and no AdvancedAI in a 1v1 skirmish (jcmd
+  class histogram), opening voyage and first projects under way.
+- The user's play-test with that slot crashed after 23 game min: `ArrayIndexOutOfBoundsException: Index 70 out of
+  bounds for length 64` in `HeightMap.getLeafFromCoordinates` <- `Model.getLandscapeError` <- `Unit.getZError` <-
+  `Model.updateBounds` <- `PathTracker.update` (a walking unit set off the height map). Headless games skip
+  updateBounds, so the harness never saw it. A temporary check in `Model.setPosition` that threw on any registered
+  model off the height map: offmap-1v1 (corsair vs @v14, 100 games), offmap-2v2 (100), offmap-hard (corsair vs
+  hard, normal speed, 80): none, no failed games, no swallowed errors. The play-test had a human who played (the
+  replay places a building), so the walker may have been theirs. `--eventload` of the session's event.log
+  (kept in aisim/playtests/1793165206475/) ran out of logged checksums at tick 122000 (488 s); no repro.
