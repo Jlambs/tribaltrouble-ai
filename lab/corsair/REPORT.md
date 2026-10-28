@@ -6,6 +6,16 @@ trees 10, supplies 10 at ludicrous speed, for any team sizes. Package `tt/src/ma
 `lab/corsair/` (eval.sh, sweep.sh, league.sh, robust.sh, collect.sh, quirks.py, survey.py). The release is the
 branch head, frozen as `@v15` (it plays exactly as `@v14`; params added since are off by default).
 
+## Playing against it
+
+Build the game from this branch (`./gradlew tt:run`, or `./aisim.sh gui SPEC` for a recorded play-test) and pick
+**Corsair AI**, listed after Hard AI, for a slot in the create-game dialog or the lobby. It plays at its default
+params, in single-player skirmishes and in multiplayer. Every machine of a game runs every AI itself (lockstep), so
+in multiplayer **all players must run a build of the same corsair commit**: a different build plays different
+moves and the router kicks the out-of-sync player. A stock or gauntlet build does not know the slot (10) and fails on
+it rather than running another AI there. To the matchmaking server the slot reports as a Hard AI. `./aisim.sh gui
+corsair` also swaps it into the Hard slots, in single-player skirmishes only.
+
 ## How it plays
 
 1. **Opening (Fleet.openingVoyage, Geo, SeaMap).** Resources are counted per island in 8-cell bins; every bin of an

@@ -142,7 +142,8 @@ final class WorldStarter implements LoadCallback {
         return switch (slot.getAIDifficulty()) {
             case PlayerSlot.AI_EASY -> PlayerTypes.AIEasy;
             case PlayerSlot.AI_NORMAL -> PlayerTypes.AINormal;
-            case PlayerSlot.AI_HARD -> PlayerTypes.AIHard;
+            // The matchmaking protocol knows only the stock difficulties; the corsair AI reports as the strongest.
+            case PlayerSlot.AI_HARD, PlayerSlot.AI_CORSAIR -> PlayerTypes.AIHard;
             default -> PlayerTypes.None;
         };
     }
