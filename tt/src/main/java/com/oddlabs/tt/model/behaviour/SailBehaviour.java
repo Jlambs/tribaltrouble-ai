@@ -102,6 +102,10 @@ public final class SailBehaviour implements Behaviour {
                 if (blockingShip.getOwner().getPlayerInfo().getTeam() == ship.getOwner().getPlayerInfo().getTeam()) {
                     stuck = true;
                     ship.reportStuck();
+                } else if (isDockedAtTargetIsland()) {
+                    // Held at the island it sails to, it arrives: units can only leave a ship that ended its trip.
+                    ship.endTrip();
+                    return State.DONE;
                 }
                 return State.INTERRUPTIBLE;
             }
@@ -120,6 +124,12 @@ public final class SailBehaviour implements Behaviour {
         ship.occupy();
 
         return State.UNINTERRUPTIBLE;
+    }
+
+    private boolean isDockedAtTargetIsland() {
+        var entrance = ship.getEntrance();
+        return entrance != ship
+                && entrance.getIslandId() == ship.getUnitGrid().getIslandId(target.getGridX(), target.getGridY());
     }
 
     public final void forceInterrupted() {

@@ -12,6 +12,10 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- A ship held back by an enemy ship at the island you sent it to now stops there, so its crew can land while its deck keeps fighting. It used to row in place for as long as the enemy ship stayed, and nobody could get off.
+
 ## [2.2.207] - 2026-10-31
 
 ### Added
