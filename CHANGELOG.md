@@ -12,6 +12,10 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- A new ship launching next to another ship no longer gets stuck on the shore for the rest of the game. If another ship is in the way, it waits at most a few seconds and then slides into the water.
+
 ## [2.2.207] - 2026-10-31
 
 ### Added

@@ -97,6 +97,7 @@ public class Ship extends Building implements Movable {
     private int build_points = 0;
 
     private boolean slid = false;
+    private float slide_blocked_time = 0;
     private boolean flattened = false;
 
     private Target rally_point = this;
@@ -1063,6 +1064,14 @@ public class Ship extends Building implements Movable {
 
     public boolean slid() {
         return slid;
+    }
+
+    public final float getSlideBlockedTime() {
+        return slide_blocked_time;
+    }
+
+    public final void addSlideBlockedTime(float t) {
+        slide_blocked_time += t;
     }
 
     public final void endSlide() {

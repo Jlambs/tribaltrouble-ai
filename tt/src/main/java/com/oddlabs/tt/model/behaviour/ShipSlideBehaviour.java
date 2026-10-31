@@ -9,6 +9,8 @@ import org.jspecify.annotations.NonNull;
 
 
 public final class ShipSlideBehaviour implements Behaviour {
+    private static final float MAX_BLOCKED_SECONDS = 10f;
+
     private final Ship ship;
     private boolean blocked = false;
     private ShipTrajectoryPoint curr;
@@ -49,7 +51,12 @@ public final class ShipSlideBehaviour implements Behaviour {
 
         ShipTrajectoryPoint next = curr.moved(-1.4f * t);
 
-        if (ShipTrajectory.checkShipsCollision(grid, ship, curr, next.moved(-8)) != null) {
+        // A blocking ship may never move (two launches side by side block each other), so a launch waits for it at
+        // most MAX_BLOCKED_SECONDS in total, counted on the ship because every new order starts a new slide
+        boolean passing = ship.getSlideBlockedTime() >= MAX_BLOCKED_SECONDS;
+        if (!passing && ShipTrajectory.checkShipsCollision(grid, ship, curr, next.moved(-8)) != null) {
+            blocked = true;
+            ship.addSlideBlockedTime(t);
             return State.UNINTERRUPTIBLE;
         }
 
@@ -62,7 +69,11 @@ public final class ShipSlideBehaviour implements Behaviour {
         ship.setGridPosition(curr.gridX, curr.gridY);
         ship.occupy();
 
-        if (grid.isDeepWater(curr.gridX, curr.gridY)) {
+        // A launch passing ships goes on until its hull is clear of them or deep water ends behind it, since a ship
+        // that stops inside another can never sail away
+        if (grid.isDeepWater(curr.gridX, curr.gridY)
+                && (!passing || ShipTrajectory.checkShipsCollision(grid, ship, curr.moved(6), curr.moved(-8)) == null
+                        || ShipTrajectory.checkLandCollision(grid, curr, curr.moved(-8)))) {
             ship.endSlide();
             return State.DONE;
         }
