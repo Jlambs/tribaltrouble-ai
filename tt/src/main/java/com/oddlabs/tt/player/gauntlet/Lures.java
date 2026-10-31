@@ -77,8 +77,8 @@ final class Lures {
         for (Iterator<Lure> it = lures.iterator(); it.hasNext();) {
             Lure l = it.next();
             if (l.peon.isDead()) {
-                boolean home = l.entering && MapAnalysis.dist2(l.peon.getGridX(), l.peon.getGridY(),
-                        l.refuge.getGridX(), l.refuge.getGridY()) <= 6 * 6;
+                // gone in: removed with its hit points (a lure killed at the door has none left)
+                boolean home = l.peon.getHitPoints() > 0;
                 ai.aiLog().count(home ? "lure_home" : "lure_lost");
                 for (int i = 0; i < l.hunters; i++)
                     ai.aiLog().count("lure_hunters");
@@ -368,6 +368,9 @@ final class Lures {
                     && st != PeonState.GATHER_IRON && st != PeonState.TRANSIT && st != PeonState.MOVE)
                 continue;
             if (intel.shepherds.contains(p) || intel.lures.contains(p) || p.isDead() || ai.economy().reservedPlacer(p))
+                continue;
+            // repair_swarm: not its repairers nor its fresh wood transporters
+            if (ai.strategy().repair_swarm && ai.economy().swarmExempt(p))
                 continue;
             int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), x, y);
             if (d >= best_d)

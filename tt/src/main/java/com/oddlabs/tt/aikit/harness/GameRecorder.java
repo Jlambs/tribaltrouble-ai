@@ -5,11 +5,15 @@ import com.oddlabs.tt.aikit.GameTime;
 import com.oddlabs.tt.animation.Animated;
 import com.oddlabs.tt.animation.AnimationManager;
 import com.oddlabs.tt.landscape.World;
+import com.oddlabs.tt.model.DeployContainer;
+import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.LandBuilding;
+import com.oddlabs.tt.model.MountUnitContainer;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.UnitContainer;
 import com.oddlabs.tt.model.behaviour.StunController;
 import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.AI;
@@ -22,6 +26,7 @@ import org.jspecify.annotations.Nullable;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Consumer;
@@ -46,7 +51,21 @@ public final class GameRecorder implements Animated {
     private static final int FLUSH_TICKS = 10 * GameTime.TICKS_PER_SECOND;
     private static final Logger logger = Logger.getLogger(GameRecorder.class.getName());
 
-    private record KnownBuilding(@NonNull LandBuilding building, int kind, boolean complete, int x, int y) {
+    private static final DeployType[] DEPLOY_TYPES = DeployType.values();
+
+    /** A building as seen at the last poll; {@code inside} is kept current every tick ({@link #countInside}). */
+    private record KnownBuilding(@NonNull LandBuilding building, int kind, boolean complete, int x, int y,
+                                 @NonNull Inside inside) {
+    }
+
+    /**
+     * The units a finished quarters, armory or tower holds, by kind ({@link Census#UNIT_KINDS}): a quarters' or
+     * armory's peons inside and those queued to deploy, a tower's gunner. A razed building drops them at once, without
+     * a death the engine counts, so the recorder reads them every tick and reports the count it last read.
+     */
+    private static final class Inside {
+        final int @NonNull [] by_kind = new int[Census.UNIT_KINDS.length];
+        int total;
     }
 
     private record KnownUnit(@NonNull Unit unit, int kind, int x, int y) {
@@ -64,6 +83,8 @@ public final class GameRecorder implements Animated {
         boolean alive = true;
         int magics;
         int stunned_total;
+        /** Units lost inside razed buildings so far (census lostInside). */
+        int lost_inside;
     }
 
     private final @NonNull World world;
@@ -144,6 +165,9 @@ public final class GameRecorder implements Animated {
         try {
             int tick = world.getTick();
             writeHeaderOnce();
+            if (!finished) {
+                countInside();
+            }
             if (!finished && event_clock.due(world)) {
                 pollEvents();
             }
@@ -219,7 +243,8 @@ public final class GameRecorder implements Animated {
     /** The census of {@code slot} now, in {@link Census.Field} order. */
     public int @NonNull [] census(int slot) {
         AiLog log = AiLog.peek(world, slot);
-        return Census.of(world.getPlayers()[slot], seen[slot].stunned_total, log == null ? 0 : log.errors());
+        return Census.of(world.getPlayers()[slot], seen[slot].stunned_total, log == null ? 0 : log.errors(),
+                seen[slot].lost_inside);
     }
 
     /** {@code s} as a JSON string: escapes {@code "}, {@code \} and control characters; non-ASCII stays UTF-8. */
@@ -332,11 +357,54 @@ public final class GameRecorder implements Animated {
 
     // ---------------------------------------------------------------- events
 
+    /**
+     * Every tick: what each building remembered at the last poll holds now. A razed building's count stays as last
+     * read, the tick before it fell, for the razed event of the next poll.
+     */
+    private void countInside() {
+        Player[] players = world.getPlayers();
+        for (int slot = 0; slot < players.length; slot++) {
+            Race race = players[slot].getRace();
+            for (KnownBuilding known : seen[slot].buildings) {
+                countInside(race, known.building(), known.inside());
+            }
+        }
+    }
+
+    /** Fills {@code inside} with what {@code building} holds now, unless it is razed or not finished. */
+    private static void countInside(@NonNull Race race, @NonNull LandBuilding building, @NonNull Inside inside) {
+        if (building.isDead() || !building.isComplete()) {
+            return;
+        }
+        int[] by_kind = inside.by_kind;
+        Arrays.fill(by_kind, 0);
+        UnitContainer container = building.getUnitContainer();
+        if (container instanceof MountUnitContainer mount) {
+            Unit gunner = mount.getUnit();
+            if (gunner != null) {
+                by_kind[Census.kindOf(race, gunner)]++;
+            }
+        } else if (container != null) {
+            by_kind[Race.UNIT_PEON] += container.getNumSupplies();
+        }
+        for (DeployType type : DEPLOY_TYPES) {
+            DeployContainer queue = building.getDeployContainer(type);
+            if (queue != null) {
+                by_kind[Race.UNIT_PEON] += queue.getNumSupplies();
+            }
+        }
+        int total = 0;
+        for (int n : by_kind) {
+            total += n;
+        }
+        inside.total = total;
+    }
+
     /** Diffs one player against the previous poll and writes its events, always in this order. */
     private void pollPlayer(@NonNull Player player, int slot) {
         Seen before = seen[slot];
         Seen now = observe(player);
-        reportBuildings(slot, before, now);
+        now.lost_inside = before.lost_inside + reportBuildings(slot, before, now);
         reportDeaths(slot, before);
         now.stunned_total = before.stunned_total + reportNewStuns(slot, before, now);
         if (now.chief != before.chief) {
@@ -358,8 +426,10 @@ public final class GameRecorder implements Animated {
         for (Selectable<?> s : player.getUnits().getSet()) {
             if (s instanceof LandBuilding building) {
                 int kind = building.getTemplate().getTemplateID();
+                Inside inside = new Inside();
+                countInside(race, building, inside);
                 now.buildings.add(new KnownBuilding(building, kind, building.isComplete(), building.getGridX(),
-                        building.getGridY()));
+                        building.getGridY(), inside));
             } else if (s instanceof Unit unit) {
                 now.units.add(new KnownUnit(unit, Census.kindOf(race, unit), unit.getGridX(), unit.getGridY()));
                 if (unit.getCurrentController() instanceof StunController) {
@@ -373,19 +443,30 @@ public final class GameRecorder implements Animated {
         return now;
     }
 
-    /** New or newly completed buildings, in unit-set order (placed/built), then remembered ones now gone (razed). */
-    private void reportBuildings(int slot, @NonNull Seen before, @NonNull Seen now) {
+    /**
+     * New or newly completed buildings, in unit-set order (placed/built), then remembered ones now gone (razed, with
+     * the units lost inside). Returns how many units were lost inside.
+     */
+    private int reportBuildings(int slot, @NonNull Seen before, @NonNull Seen now) {
         for (KnownBuilding known : now.buildings) {
             KnownBuilding old = findBuilding(before.buildings, known.building());
             if (old == null || (known.complete() && !old.complete())) {
                 buildingEvent(known.complete() ? "built" : "placed", slot, known, "");
             }
         }
+        int lost_inside = 0;
         for (KnownBuilding old : before.buildings) {
             if (old.building().isDead()) {
-                buildingEvent("razed", slot, old, old.complete() ? "" : ",\"site\":1");
+                Inside inside = old.inside();
+                String extra = (old.complete() ? "" : ",\"site\":1") + ",\"inside\":" + inside.total;
+                if (inside.total > 0) {
+                    extra += "," + members(Census.UNIT_KINDS, inside.by_kind);
+                }
+                buildingEvent("razed", slot, old, extra);
+                lost_inside += inside.total;
             }
         }
+        return lost_inside;
     }
 
     /** One deaths event for the remembered units killed since the last poll, by kind, at their mean position. */

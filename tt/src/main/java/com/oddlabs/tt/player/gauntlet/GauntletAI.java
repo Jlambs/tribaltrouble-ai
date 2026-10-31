@@ -60,6 +60,8 @@ public final class GauntletAI extends AI {
     private @Nullable Dodges dodges;
     /** Traffic jams of our units: counters and log lines, and the blocked warriors that unjam acts on. */
     private @Nullable Jams jams;
+    /** Stalled enemy armies and parked enemies (giant_keepout, giant_stun_hold, giant_shred). */
+    private @Nullable Giants giants;
     private @Nullable Freeze freeze;
 
     /** World ticks seen: a cache key and same-tick check only, never a time. */
@@ -158,21 +160,27 @@ public final class GauntletAI extends AI {
             intel.update();
         if (due_intel) {
             next_intel = nextRound(next_intel, INTEL_PERIOD_TICKS);
+            giants().tick();
             military().tick();
             chieftain().tick();
-            shepherd().tick();
+            // last_stand: every unit is the military's
+            if (!military().lastStand())
+                shepherd().tick();
             if (jams != null)
                 jams.tick();
         }
         if (due_economy) {
             next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
-            economy().tick();
-            decoys().tick();
-            freeze().tick();
+            if (!military().lastStand()) {
+                economy().tick();
+                decoys().tick();
+                freeze().tick();
+            }
         }
         if (due_plan) {
             next_plan = nextRound(next_plan, PLAN_PERIOD_TICKS);
-            economy().plan();
+            if (!military().lastStand())
+                economy().plan();
             military().plan();
         }
         if (logging && now >= next_stat) {
@@ -216,6 +224,7 @@ public final class GauntletAI extends AI {
         freeze = new Freeze(this);
         if (freeze.plan(start_field))
             intel.update();
+        giants = new Giants(this);
         economy = new Economy(this);
         military = new Military(this);
         chieftain = new Chieftain(this);
@@ -245,6 +254,23 @@ public final class GauntletAI extends AI {
             ys[i] = starts.get(i)[1];
         }
         return map().computeField(xs, ys, Integer.MAX_VALUE);
+    }
+
+    /**
+     * enter_move: the action of an order meant to put our units into a building of ours. With enter_move a finished
+     * building gets MOVE, which enters it (or walks there while it is full); DEFAULT, the right-click, makes a peon
+     * repair a damaged quarters or tower instead of entering it (Unit.setTarget: canRepair comes before canEnter for
+     * buildings without a stock), so peons sent into a quarters under attack stand outside it repairing. repair_swarm
+     * forces MOVE: its repairers are the only ones it wants, and unfed repairers are what jammed in columns.
+     */
+    @NonNull
+    Action enterAction(@NonNull Building b) {
+        Strategy s = strategy();
+        // shelter_repair: a damaged building of ours under threat is repaired from outside, not entered
+        if (s.shelter_repair && b.isComplete() && b.isDamaged() && military().threatNearEcon(b.getGridX(), b.getGridY(),
+                15))
+            return Action.GATHER_REPAIR;
+        return (s.enter_move || (s.repair_swarm && !s.swarm_default)) && b.isComplete() ? Action.MOVE : Action.DEFAULT;
     }
 
     /** Enemy players still in the game. */
@@ -404,6 +430,12 @@ public final class GauntletAI extends AI {
     Military military() {
         assert military != null;
         return military;
+    }
+
+    @NonNull
+    Giants giants() {
+        assert giants != null;
+        return giants;
     }
 
     @NonNull

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Late-acting arms against the benchmark rows they re-run: python lab/gauntlet/late.py ARM BASE_PREFIX [T]
+"""Late-acting arms against the benchmark rows they re-run: python lab/gauntlet/late.py ARM BASE_PREFIX_OR_RUN [T]
 
 ARM re-plays a subset of the base's games (e.g. the cur7 benchmark games alive at 40 min) with a change that acts only
 from T game seconds (default 2400). BASE_PREFIX names the base runs (cur7-bench-vs14 matches cur7-bench-vs14-a..d);
@@ -41,6 +41,9 @@ def checksum_at(run, key, t):
 
 
 base = {}
+# BASE_PREFIX may also name one run (cand-tsf-vs14)
+if os.path.exists(os.path.join(ROOT, prefix, 'results.jsonl')):
+    base.update(rows(prefix))
 for d in sorted(glob.glob(os.path.join(ROOT, prefix + '-*'))):
     name = os.path.basename(d)
     if os.path.exists(os.path.join(d, 'results.jsonl')) and name[len(prefix) + 1:].isalpha():

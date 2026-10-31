@@ -76,6 +76,134 @@ class Strategy {
     int defense_radius = 150;
     /** Share of the ore gatherers sent for rock, with rock weapons always on order (0: rock only as a fallback). */
     float rock_share = 0f;
+    /**
+     * rock_share_late (-1: off): from rock_late_ticks on, the share of the ore gatherers sent for rock is this instead
+     * of rock_share, so rock can come in late only (rock_share 0), early only (rock_share_late 0) or in two steps.
+     */
+    float rock_share_late = -1f;
+    float rock_late_ticks = 120000f; // 40 min
+    /**
+     * rock_on_fail: an iron pick that finds no iron (all of it near a threat, avoided after stuck gatherers or out of
+     * reach) sends the gatherer for rock instead, and rock axes stay on order for the next 60 s.
+     */
+    boolean rock_on_fail = false;
+    /** rock_on_fail: from this game time on (0: from the start). */
+    float rock_fail_from_ticks = 0f;
+    /**
+     * rock_idle (0: off; cur16: 1 from 20 min): while the main armory holds at most rock_idle_iron iron, this share of
+     * the workers inside
+     * it beyond rock_idle_keep make rock axes on top of the ore gatherers (not out of the iron share): split between
+     * rock
+     * gatherers, forgers staying in and, while its wood stock is under 20, wood gatherers, as the economy's ore model
+     * splits its pool. From rock_idle_ticks on.
+     */
+    float rock_idle = 1f; // cur16
+    /**
+     * away_strike (off): when the usual gate holds the army home, muster on the copy base whose own army is away
+     * (kited by shepherds or stuck in an attack-move): its warriors within away_home_cells count in full, beyond that
+     * its idle ones (a Hard recalls all of them) at away_idle_value and the rest at away_walk_value. From
+     * away_strike_ticks on.
+     */
+    boolean away_strike = false;
+    /**
+     * wedge_real_kills (cur16: on; off as before cur16): the wedge watchdog's kills and losses, and its and the column
+     * march's
+     * "target fell", count only units killed (0 hit points). A unit that walked into a building is removed (dead) with
+     * its hit points: near a live Hard base its peons commute in and out, 10 'kills' in 300 s cleared the strikes and
+     * the watchdog never fired (the dead-vs-killed audit).
+     */
+    boolean wedge_real_kills = true; // cur16
+    /**
+     * gather_kill_zone (off): where gather_kill_n of our peons (shepherds left out) died within gather_kill_cells of
+     * each
+     * other within gather_kill_window_ticks, no supply within gather_kill_cells is picked for gather_kill_ticks after
+     * the last of those deaths (gatherers keep walking into the same parked army). From gather_fixes_ticks on.
+     */
+    boolean gather_kill_zone = false;
+    int gather_kill_n = 3;
+    int gather_kill_cells = 8;
+    float gather_kill_window_ticks = 6000f; // 2 min
+    float gather_kill_ticks = 15000f; // 5 min
+    /**
+     * gather_route_clear (off): a supply pick takes the best of its gather_route_tries cheapest supplies whose straight
+     * walk from the armory keeps gather_route_cells from every enemy warrior (none clear: the cheapest, as without it).
+     * From gather_fixes_ticks.
+     */
+    boolean gather_route_clear = false;
+    int gather_route_cells = 10;
+    int gather_route_tries = 5;
+    float gather_fixes_ticks = 0f;
+    /**
+     * shepherd_stuck_ticks (0: off; cur16 on, with the tight settings below, from 40 min): a shepherd that has not
+     * reached its spot and stood within 6 cells of one point for
+     * this long, not getting 10 cells nearer its spot, goes home; its copy gets no new shepherd for
+     * shepherd_stuck_gap_ticks.
+     */
+    float shepherd_stuck_ticks = 12000f; // cur16: 4 min
+    float shepherd_stuck_gap_ticks = 12000f; // cur16: 4 min
+    /**
+     * shepherd_stuck_base_ticks (0: shepherd_stuck_ticks everywhere): the stuck time for a shepherd standing within
+     * shepherd_stuck_base_cells of one of our buildings (in or by our base, where nothing is drawn).
+     */
+    float shepherd_stuck_base_ticks = 6000f; // cur16: 2 min
+    int shepherd_stuck_base_cells = 28;
+    /** shepherd_gap_ready: a stuck or no-spot release's gap ends as soon as the copy is ready to launch. */
+    boolean shepherd_gap_ready = true; // cur16
+    /**
+     * shepherd_nospot_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has had no spot for this long goes
+     * home; its copy then waits shepherd_stuck_gap_ticks for the next one.
+     */
+    float shepherd_nospot_ticks = 6000f; // cur16: 2 min
+    /**
+     * shepherd_detour (cur16: on): from shepherd_fixes_ticks, a shepherd whose straight walk to its spot would set off
+     * the flee
+     * test walks to a waypoint shepherd_detour_r or half that away whose walk is clear and that gets it nearer.
+     */
+    boolean shepherd_detour = true; // cur16
+    /**
+     * shepherd_gap_backoff: each further stuck, no-progress or no-spot release in a row for a copy doubles its gap,
+     * up to shepherd_gap_max_ticks; a shepherd of the copy reaching its spot, or a wave aimed at a shepherd, resets it.
+     */
+    boolean shepherd_gap_backoff = true; // cur16
+    float shepherd_gap_max_ticks = 48000f; // 16 min
+    /**
+     * shepherd_progress_ticks (0: off): from shepherd_fixes_ticks, a shepherd that has not reached its spot and has not
+     * got 10 cells nearer it (the same spot, within 10 cells) for this long goes home, with the gap as a stuck one.
+     */
+    float shepherd_progress_ticks = 9000f; // cur16: 3 min
+    /**
+     * shepherd_progress_base: shepherd_progress_ticks releases only a shepherd within shepherd_stuck_base_cells of one
+     * of our buildings (one far out is on a long walk to a far copy's spot and still draws its waves: tight2 N=24 s7062
+     * lost its base 81 s after such a release).
+     */
+    boolean shepherd_progress_base = true; // cur16
+    int shepherd_detour_r = 16;
+    /** shepherd_stuck_ticks and shepherd_need act from this game time on. */
+    float shepherd_fixes_ticks = 120000f; // cur16: 40 min
+    /**
+     * shepherd_need (0: off): a copy whose idle warriors are below this share of its wave size, that launched 3 waves
+     * or more and none within shepherd_need_ticks, gets no shepherd, and its shepherd goes home once that has lasted
+     * shepherd_need_ticks.
+     */
+    float shepherd_need = 0f;
+    float shepherd_need_ticks = 30000f;
+    /**
+     * shepherd_recruit_clear: from shepherd_recruit_clear_ticks, a shepherd is recruited only from the up to 5 peons
+     * nearest the origin whose straight walk to the spot starts clear of the flee test.
+     */
+    boolean shepherd_recruit_clear = false;
+    float shepherd_recruit_clear_ticks = 90000f;
+    /** shepherd_coming_stalled (0: off): attack-walkers that moved fewer cells than this in 10 s are not coming. */
+    int shepherd_coming_stalled = 0;
+    /** shepherd_coming_stalled applies from then on. */
+    float shepherd_coming_stalled_ticks = 0f;
+    float away_strike_ticks = 0f;
+    int away_home_cells = 40;
+    float away_idle_value = .5f;
+    float away_walk_value = .15f;
+    float rock_idle_ticks = 60000f; // cur16: 20 min
+    int rock_idle_keep = 4;
+    int rock_idle_iron = 2;
     /** Attack a copy's quarters before its armory: the peons bred inside die with it and chieftain training stops. */
     boolean quarters_first = false;
     /**
@@ -147,8 +275,10 @@ class Strategy {
      * field (Military.setTarget). The engine walks units through a corner cut, so a pocket joined to the map only by
      * one looked sealed: the army stalled 75 s after each launch ("staging cut off") and skipped the region, 24 to
      * 102 times a game, in 6 ludicrous timeouts that were all won positions (s6206 N=6, s6657 x4 and s8462 N=13).
+     * Default since the ludicrous timeout screens (late.py on the games alive at 40 min): with sealed_progress and
+     * dead_region_reach 4, wins +1 / -0 over 654 games of the cand-tsf bases at N=13-15 (s6657 draw -> win at 74 min).
      */
-    boolean corner_fields = false;
+    boolean corner_fields = true;
     /**
      * Cells around a building's centre that the dead-region test looks at (Military.inDeadRegion; units: 2). A
      * quarters' or armory's 7 x 7 footprint covers every cell within 2 of its centre, and no field but its own reaches
@@ -158,7 +288,7 @@ class Strategy {
      * (placing size - 1, at least 2): 4 for a quarters or armory, 2 for a tower, whose 3 x 3 footprint has its ring at
      * 2, so that a tower 2-3 cells past it, across a thin wall from a dead pocket, stays a target.
      */
-    int dead_region_reach = 2;
+    int dead_region_reach = 4;
     /**
      * sealed_progress: while no attacking unit stands where the target's field reaches (no pivot, as for a target in a
      * pocket the field calls sealed), a 20 m gain in straight-line distance from the army's centre to the target counts
@@ -166,7 +296,7 @@ class Strategy {
      * from the target (s8462 N=13: 23 stalls, each ~85 cells short of a lone chieftain in a 15-cell pocket); with it
      * the army walks up to the pocket, where the target may be in throw reach, before the stall.
      */
-    boolean sealed_progress = false;
+    boolean sealed_progress = true;
     /**
      * corner_fields, dead_region_reach and sealed_progress act only from this game tick (0: from the start), so games
      * stay identical up to it (late.py with T = 2400 s).
@@ -185,6 +315,29 @@ class Strategy {
      * our army (0 = off) and targets guarded by other copies' awake warriors (Military.finishTarget).
      */
     boolean finish_skip_out = false;
+    /**
+     * deny_rebuild: a quarters or armory site of a homeless copy (no finished quarters or armory) within
+     * deny_rebuild_cells of the army or staging point is target choice's first pick (Military.rebuildSite), before
+     * finishing or the campaign. 27 % of the copies left homeless rebuilt one (cur13 0/10/10 bases, 6,385 cases, a
+     * median 10.5 min later), and a rebuilt copy killed 2.24 of our units a minute against 0.51 while homeless (2.51
+     * with its first base); 64 % of them fielded a chieftain again. A site has few hit points and only the copy's band
+     * by it.
+     */
+    boolean deny_rebuild = false;
+    /**
+     * late_caution (1 = off): from late_from_ticks, and while at most late_copies copies are still in (0: any number),
+     * every caution threshold of the attack is scaled at once (Military.lateCaution): the muster gate's ratios (attack,
+     * max strength, capped) and the threat at the base that keeps the army home are multiplied by it and divided by
+     * it respectively, the turn-back before contact and the worn retreat by it, the outmatched retreat divided by it.
+     * At .5 the army goes against twice the defense and turns back only twice as outmatched. The thresholds were set
+     * where the opening and the collapse window decide; late, with copies out and the map emptying, they kept the
+     * army home or turned it back (the fighting-at-the-cap and quiet-standoff timeouts).
+     */
+    // .5 since cur14: on E's 375 games alive at 40 min (N=13, 0/10/10) +13 / -9, on cand14's 500 games W 230 -> 234
+    float late_caution = .5f;
+    float late_from_ticks = 120000f; // 40 min
+    int late_copies = 0;
+    int deny_rebuild_cells = 150;
     int finish_units = -1;
     float finish_ratio = 0f;
     /**
@@ -209,6 +362,165 @@ class Strategy {
      * more than 8 units, 35 copies by a site).
      */
     float remnant_ladder_ticks = 0f;
+    /**
+     * mopup: from endgame_from_ticks, while no copy still in has a quarters or armory, finished or placed (a frozen
+     * copy's armory site, Freeze.isFrozenSite, does not count), the remnant ladder runs as with remnant_ladder_ticks
+     * (Military.mopUp). The copies left then cannot train a chieftain, so they never send a wave of 20 or more again,
+     * and cannot replace a unit, so finishing them costs nothing; with bases still standing the ladder traded wins
+     * (+13 / -12 over 654 games alive at 40 min). 12 of the 93 distinct ludicrous timeouts ended with only such bands
+     * left, most of them won positions (margin +0.8 to +0.96).
+     */
+    boolean mopup = false;
+    /**
+     * allin_ticks (game ticks, 0 = off; arm 540000 = 180 min): from this game tick, on a frozen board (no copy out and
+     * no threat at our base, threat level 2, for allin_quiet_ticks) the muster goes for the copy base (a quarters or
+     * armory, finished or placed) with the least defense, by target_defense_weight per unit of defense plus meters from
+     * the staging point, past the gate, and that attack neither turns back before contact nor retreats outmatched
+     * (Military.allIn). A draw counts as a loss, so on a board that has not moved for an hour there is nothing to keep:
+     * 20 of the 93 distinct ludicrous timeouts were such standoffs (no kill in their last hour; nothing changed from
+     * 180 to 360 min in 18), most with the army at home and the gate failing for hours (s6074 N=13: by 3 % for 4.4 h).
+     */
+    float allin_ticks = 0f;
+    /** allin_ticks: game ticks without a copy going out and without a threat at our base that make the board frozen. */
+    float allin_quiet_ticks = 180000f; // 60 min
+    /**
+     * push_ticks (game ticks, 0 = off): from this game tick, once no copy has gone out for push_quiet_ticks, the all-in
+     * muster of allin_ticks (the weakest copy base, past the gate, no turning back) goes whatever stands at our base,
+     * at most once per push_period_ticks (Military.pushDue). The collapse-window campaign is the only push: in 56 of
+     * the 93 distinct ludicrous timeouts the copies still fought at the cap to the end (about 1,000 deaths an hour on
+     * each side) while our army, held home by the threat at the base (plan: considerAttack only below threat level 2
+     * or against a small threat), never went out again.
+     */
+    float push_ticks = 0f;
+    float push_quiet_ticks = 90000f; // 30 min
+    float push_period_ticks = 90000f; // 30 min
+    /**
+     * push_calm: a push musters only while no threat stands at our base (threat level below 2). Over 1,082 games alive
+     * at 40 min the push gained 5 wins and lost 8; 7 of the 8 lost had a push under threat, 3 of the 5 gained none.
+     */
+    boolean push_calm = false;
+    /**
+     * push_soft: a push is the usual muster decision (considerAttack: target choice, the gate, the usual retreats), let
+     * run under a threat at our base too, instead of the all-in muster past the gate: a retrigger for sending the army
+     * out again rather than defending at home for hours.
+     */
+    boolean push_soft = false;
+    /**
+     * last_stand: from endgame_from_ticks, once we have had no finished quarters or armory for last_stand_ticks, every
+     * unit of ours outside a building (warriors, the chieftain, peons) attacks the nearest enemy, again every 30 s, and
+     * the economy, the shepherds, decoys and freeze stand down (GauntletAI.think, Military.lastStand). Such a game is
+     * lost (we never rebuild without a base), and the collapse rule (8 units or fewer, no chieftain, no quarters or
+     * armory built or started) cannot end it while more survive or an unbuilt site stands: s6274 (cur11 N=17) kept 86
+     * homeless warriors to the 360 min limit, a tenth of its block's compute; s6215 (cur12 N=6) 6 peons and 3 tower
+     * gunners, s8389 (cur12 N=15) a peon, a gunner and a site nobody built.
+     */
+    boolean last_stand = false;
+    /**
+     * enter_move: orders that send our units into a finished building of ours (shelter, a quarters to breed or train
+     * in, home) use MOVE instead of DEFAULT, under which a peon repairs a damaged quarters or tower rather than
+     * entering it (GauntletAI.enterAction). Peons sheltering in a quarters under attack then stood outside it as
+     * repairers: s6689 (N=13) had 60-69 peons blocked 40 cells from a quarters they all were "repairing" for 10+
+     * min, s6129 (N=14) a column of them for 10 min; such jams cost up to 45 % of all peon time in the worst games
+     * (median 1 %). Repairs stay manageRepairs' (at most 4 a building, never under threat). On since cur14 (the user's
+     * retune goal: no repairs by accident); alone at N=13 on 0/10/10 it cost wins (219 -> 202 of 500), which
+     * repair_swarm, salvage and shelter_reach more than win back.
+     */
+    boolean enter_move = true;
+    /**
+     * repair_swarm (RepairSwarm, design-2 A): manageRepairs never repairs under threat and sends at most 4 tree
+     * gatherers (who walk for wood), so a quarters or armory under attack falls at the attackers' pace, with the units
+     * inside. The swarm gives each damaged quarters, armory and tower as many repairers as hold its damage,
+     * swarm_margin x the damage rate (Siege: measured, or modelled from the enemy warriors in reach) plus the missing
+     * hit points over swarm_catchup_ticks, at most swarm_ring_qa of the 32 cells around a quarters or armory and
+     * swarm_ring_tower of the 16 around a tower (repairers block the way; the rest stays free for spawns, entries and
+     * a gunner), and at most swarm_peon_share of our peons in all (at least 8). Only peons carrying wood repair (a
+     * piece is 5 HP at
+     * 1 HP/s): carriers nearby; wood transporters out of the armory itself, which keeps 6 workers, its wood reserve
+     * (swarm_wood_reserve and two per iron in stock under attack, swarm_cold_reserve otherwise) and a bank a sortie
+     * could win with (swarm_lee: they walk to the side away from the attackers first); or out of a quiet armory within
+     * swarm_reach cells; and tree gatherers only with a tree within 6 cells. A spent repairer walks into an armory to
+     * be sent out again. swarm_cold: damaged buildings with no threat too (else manageRepairs keeps them). A building
+     * it cannot hold (damage above its ring, falling, below half) is given up for 20 s. Forces enter_move's MOVE: with
+     * DEFAULT, peons sheltering in a damaged quarters stood outside it as unfed repairers. On since cur14: with
+     * enter_move at N=13 on 0/10/10, W 202 -> 219 of 500 (z 1.7, surv60 +1.1 min, z 2.8); with salvage 228.
+     */
+    boolean repair_swarm = true;
+    /**
+     * swarm_default: repair_swarm without its MOVE semantics: orders into our buildings keep DEFAULT, under which a
+     * peon
+     * sent into a damaged quarters or tower repairs it (the accidental repairs, which enter_move alone showed were
+     * worth about 6 points of wins at N=13 on 0/10/10), and the swarm adds its deliberate repairs on top.
+     */
+    boolean swarm_default = false;
+    /**
+     * shelter_repair: an order into a damaged building of ours (quarters, armory, tower) with an enemy within 15 cells
+     * repairs it from outside (GATHER_REPAIR) instead of entering it (GauntletAI.enterAction): the deliberate form of
+     * what the DEFAULT right-click did by accident to quarters and towers (enter_move alone, which removes that, lost
+     * about 6 points of wins at N=13 on 0/10/10), now for armories too, whose occupants vanish when it falls (26 a
+     * razing on average). Meant with enter_move=true, the retune's baseline (no accidental repairs).
+     */
+    boolean shelter_repair = false;
+    /**
+     * quarters_sortie: a quarters holding quarters_sortie_min or more sorties like an armory (Military.sorties: its
+     * peons out onto the attackers when with the defence they reach sortie_ratio of the threat the defence alone does
+     * not hold), instead of keeping them in to vanish if it falls (manageQuarters holds a threatened quarters' peons).
+     */
+    boolean quarters_sortie = false;
+    int quarters_sortie_min = 8;
+    /**
+     * shelter_reach: evacuatePeons shelters peons only in a building with no threat within this many cells (6 before;
+     * attackers hit a quarters or armory from up to ~12 cells, so a shelter with none within 6 is often under fire).
+     * 15 since cur14: with enter_move and repair_swarm at N=13 on 0/10/10, W 219 -> 236 of 500 (z 1.6; 10: 225, 20:
+     * 234), fewer quarters and armories razed (3.81 / 1.80 a game against 4.02 / 1.95); shelter_off: 182 (z -3.4).
+     */
+    int shelter_reach = 15;
+    /**
+     * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
+     * apart).
+     */
+    boolean shelter_off = false;
+    boolean swarm_cold = true;
+    // The design's values (cur14). The aggressive swarm (margin 1.5, rings 28 / 12, share .7, wood reserve 2; the user's
+    // guess that aggressive repairing is best) won at N=13 (230 -> 249 of 500, z 2.1) but lost at N=14 (131 -> 114,
+    // z -2.2) and tied at N=16-17 (with late_caution .5: 21 + 7 against these values' 21 + 9, whose shared wins came
+    // a median 74-83 min instead of 118-128).
+    float swarm_margin = 1.25f;
+    float swarm_catchup_ticks = 1000f; // 20 s
+    int swarm_ring_qa = 20;
+    int swarm_ring_tower = 10;
+    float swarm_peon_share = .5f;
+    int swarm_reach = 40;
+    int swarm_wood_reserve = 6;
+    int swarm_cold_reserve = 20;
+    boolean swarm_lee = true;
+    /**
+     * salvage (Economy.salvage, design-2 B): units inside a razed building vanish with it, uncounted (13 per quarters
+     * razing with enter_move, a median 15 per armory). A quarters or armory holding salvage_min or more (inside and
+     * queued) with salvage_attackers enemy warriors within 12 cells is emptied once it would fall (Siege.timeToFall,
+     * approaching warriors at salvage_approach_weight) before everyone is out plus salvage_margin_ticks, the threat
+     * within 15 cells is salvage_ratio x its defence (at least 1) or more, and no sortie could win with its bank. Each
+     * unit comes out with a rally on our nearest armory, else quarters (undamaged), within salvage_reach cells with no
+     * threat within salvage_safe and at least 8 cells farther from the threat, and walks in without scanning; into an
+     * armory the stock goes along as transporters. It ends when the building falls, after salvage_calm_ticks with no
+     * threat within 15 cells, or after 120 s; a quarters that stood takes free peons back. The old evacuate fired on HP
+     * alone, too late, and let its evacuees out idle by the door or into the attackers. On since cur14: with enter_move
+     * and repair_swarm at N=13 on 0/10/10, W 219 -> 228 of 500 (surv60 +1.06 min, z 3.7; units lost a razed armory 31
+     * -> 20).
+     */
+    boolean salvage = true;
+    float salvage_ratio = 2f;
+    float salvage_margin_ticks = 300f; // 6 s
+    int salvage_min = 4;
+    int salvage_attackers = 2;
+    float salvage_approach_weight = .5f;
+    int salvage_safe = 20;
+    int salvage_reach = 90;
+    float salvage_calm_ticks = 1000f; // 20 s
+    float last_stand_ticks = 15000f; // 300 s
+    /**
+     * mopup and last_stand act only from this game tick (0: from the start; 120000 keeps games identical to 40 min).
+     */
+    float endgame_from_ticks = 120000f; // 40 min
     /**
      * With gate_owner, other copies' warriors and chieftains count in a target's defense, and their chieftains in the
      * gate's chieftain malus, only within this many cells (0: defense_radius, as before; arm 20), from
@@ -531,12 +843,15 @@ class Strategy {
     int unjam_progress = 10;
     float unjam_ticks = 1500f; // 30 s
     /**
-     * unjam acts only from this game time (game ticks). 2400 s (cur8; was 0 with unjam off): from 40 min it only acts
-     * in a jam; on the cur7 benchmark games alive at 40 min it changed nothing but s6028 (N=13, 225 warriors wedged in
-     * a cliff pocket against 3 copies with 3 warriors: draw at 360 -> win), and it freed the same wedge against two
-     * Experts.
+     * unjam acts only from this game time (game ticks). 0 since cur13 (cur8 to cur12: 2400 s, so the late screens
+     * stayed
+     * identical to 40 min): from the start it fired in 6-11 % of games at N=13-15 (81 of 103 column marches got
+     * through),
+     * wins +4 / -2 over 1,424 games (1,362 identical), and it ended s6274 (cur11 N=17: the army jammed in a 1-cell
+     * canyon from 22 min, a 360 min draw) as a loss at 34 min. On the cur7 benchmark games alive at 40 min the late
+     * version changed nothing but s6028 (N=13, 225 warriors wedged in a cliff pocket: draw at 360 -> win).
      */
-    float unjam_from_ticks = 120000f; // 2400 s
+    float unjam_from_ticks = 0f;
     /**
      * bank_guard (late/spec S2): from bank_guard_ticks the main armory keeps only the workers its measured iron income
      * and stock can keep forging (bank_min once it cannot forge for bank_noforge_ticks); the rest wait in the quarters
@@ -1139,9 +1454,11 @@ class Strategy {
      * in the musters' strength and gathering nor in the launches (retreat_stranded_kept, per launch that left some
      * out): counted in, the next attack marched the home army off with the stranded group, its centre between the
      * two, and turned back or was capped again (rep-fix-s6409: three launches within 190 s each, the same group 612 m
-     * away every time). It counts again once home (14 cells) or with the army as a reinforcement.
+     * away every time). It counts again once home (14 cells) or with the army as a reinforcement. Default 6000 since
+     * the
+     * ludicrous timeout screens: wins +1 / -0 over 654 games alive at 40 min (s6192 N=14 draw -> win).
      */
-    float retreat_cap_ticks = 0f;
+    float retreat_cap_ticks = 6000f; // 120 s
     /**
      * stall_cap_keep: the calm stall's retarget (75 s with no gain) no longer restarts the stall_cap clock, nor does
      * the first measure on the new target's field; only a 20 m gain, stall_cap_kills kills, a new field after a
@@ -1150,7 +1467,7 @@ class Strategy {
      * retargets in 222 min; s6036 N=6: 261, both with stall_cap 0). Now strike 1 retargets at 300 s and strike 2
      * walks the army home at 600 s.
      */
-    boolean stall_cap_keep = false;
+    boolean stall_cap_keep = true;
     /** retreat_cap_ticks and stall_cap_keep act only from this game tick (0: from the start). */
     float unlock_from_ticks = 120000f; // 40 min
     /**
@@ -1165,9 +1482,10 @@ class Strategy {
      * left out meanwhile: this does its job on every path and counts kills near the army, where stall_cap counted the
      * player's (tower kills at home restarted it). s6215 (N=15): 216 warriors stood 260 min at a 1-cell pass engaging
      * enemies they could not reach, no stall line and no stall_cap (it comes after the engage return), against five
-     * copies with 0 warriors.
+     * copies with 0 warriors. Default 15000 since the ludicrous timeout screens, as stall_cap_keep: no result changed
+     * over 654 games alive at 40 min (N=13-15) and 438 more (fresh N=14-15, N=16).
      */
-    float stall_engaged_ticks = 0f;
+    float stall_engaged_ticks = 15000f; // 300 s
     /**
      * stall_engaged_ticks: game ticks a wedge the army was walked home from is remembered (0: never). Target choice
      * passes over buildings whose way from the staging point runs within 12 cells of a remembered wedge (a detour
@@ -1233,6 +1551,38 @@ class Strategy {
     int chief_wake_keep = 12;
     /** Hit points at which the chieftain walks home to the armory. */
     int chief_flee_hp = 24;
+    /**
+     * chief_refresh (late): from chief_refresh_from_ticks, a chieftain at chief_refresh_hp or less (parked at the
+     * armory
+     * for good: he never heals, can enter no building, and no other chief trains while he lives) who made no useful
+     * cast (chief_refresh_useful unstunned warriors in reach, or an enemy chief) for chief_refresh_idle_ticks at the
+     * unit
+     * cap (where training costs no births) or chief_refresh_idle_low_ticks below it is killed by our own towers (Attack
+     * and a click on him), or by lent warriors when no tower reaches him, at a calm moment (no awake enemy warrior
+     * within
+     * chief_refresh_clear cells of him, the armory or the trainer), once the trainer quarters holds chief_refresh_hold
+     * peons (or chief_refresh_min_inside after chief_refresh_arm_ticks); a fresh 60-hp chief is trained there at once.
+     */
+    boolean chief_refresh = false;
+    float chief_refresh_from_ticks = 120000f; // 40 min
+    int chief_refresh_hp = 24;
+    float chief_refresh_idle_ticks = 15000f; // 5 min
+    float chief_refresh_idle_low_ticks = 30000f; // 10 min
+    int chief_refresh_useful = 4;
+    int chief_refresh_clear = 30;
+    int chief_refresh_hold = 20;
+    int chief_refresh_min_inside = 8;
+    float chief_refresh_arm_ticks = 3000f; // 60 s
+    float chief_refresh_cull_ticks = 2250f; // 45 s
+    /**
+     * chief_retrain_late: from chief_refresh_from_ticks, at the unit cap (training costs no
+     * births there) a chieftain who died is retrained with one finished quarters and no armory, in a quarters with no
+     * awake enemy warrior within chief_refresh_clear cells; the trainer keeps hold_chieftain peons at the cap too and
+     * is
+     * topped up whenever no threat is within 20 cells of it (s7125: no chief for the last 105 min with 2 quarters and
+     * no armory). Below the cap the old gates hold (smoke: chiefs trained at once in a fight died at once).
+     */
+    boolean chief_retrain_late = false;
 
     /**
      * Judge a threat in the base by everything within this many cells of it, not just what is inside the base: a few
@@ -1277,6 +1627,33 @@ class Strategy {
     int shred_range = 140;
     /** The chieftain never stuns: every charge goes to shred blasts. */
     boolean shred_strict = false;
+    /**
+     * Giants (Giants, late): from giants_from_ticks, stalled blocks of attack-walkers and parked enemies count as
+     * inert.
+     * giant_keepout (cells, 0 = off): a project site, a re-site target or an expansion site with at least giant_min
+     * inert
+     * enemy warriors within it waits (a builder within their 8-cell scan wakes them). giant_stun_hold: the chieftain's
+     * stun leaves inert enemies out of its count unless a tower of ours reaches them (a stun drops their walks, and
+     * their copies relaunch them). giant_shred: the shred mission blasts blocks of at least giant_shred_min inert
+     * warriors within giant_shred_range cells of our buildings or gatherers, from 9 cells (Chebyshev) outside every
+     * enemy,
+     * and with giant_shred_back from behind (away from the members' targets).
+     */
+    float giants_from_ticks = 120000f; // 40 min
+    int giant_keepout = 0;
+    int giant_min = 5;
+    boolean giant_stun_hold = false;
+    boolean giant_shred = false;
+    int giant_shred_min = 40;
+    int giant_shred_range = 45;
+    boolean giant_shred_back = true;
+    /** giant_shred: most units of ours a blast may also catch (within 19 cells of the cast point). */
+    int giant_shred_friends = 2;
+    /**
+     * giant_shred: the chieftain shreds above this many hit points (he never heals; a dead one is trained afresh, and a
+     * blast from out of every scan costs him none).
+     */
+    int giant_shred_min_hp = 0;
     /**
      * Shepherds from 120 s (was 200): vs hard*11 elim +.048 / +.024 on seeds 1..200 / 201..400, W 28 vs 19 over 400,
      * lsr15 +.16 / +.19 (st120b2-vs11-hv, -b); N=8 +.023 (W 118 vs 115). 90 s: same survival, fewer outs; 150 s: less.
@@ -1360,6 +1737,75 @@ class Strategy {
     int shepherd_safe_look = 40;
     int shepherd_safe_clear = 10;
     /**
+     * shepherd_site_origin (0 = off; shepherd spec S1): a copy with no idle warrior and no finished armory has its
+     * spot picked around its first placed armory site (1), else its first finished quarters (2), not left without a
+     * shepherd until the armory is done. Armory sites are placed at about 100 s while recruits came at 162-173 s, and
+     * a shepherd that walks out 50-70 s earlier stands inside a far copy's huge first-wave disc, so a first wave that
+     * went straight at our base is caught (early shepherds pay: shepherd_ticks 240 s instead of 120 s cut N=13 W 45 ->
+     * 19). shepherd_far_first: far copies are tended first (as with shepherd_lead), so their shepherds get the scarce
+     * early peons. A copy the freeze opening froze gets none (its armory site never finishes, Freeze).
+     */
+    int shepherd_site_origin = 0;
+    boolean shepherd_far_first = false;
+    /**
+     * shepherd_calm_peons (Chebyshev cells, 0 = off; S2a): an enemy peon that is neither idle, defending, attacking,
+     * hunting nor walking aggressively counts as a shepherd's flee threat and blocks a spot only within this many
+     * cells (such a peon starts no fight, and one beyond 8 that turns idle still cannot see the shepherd). Meant with
+     * shepherd_all_circles: alone (a 16-seed smoke) it gave more spots but fewer arrivals.
+     */
+    // cur15 (with shepherd_flee_pick, _tether 2, _hunted, _calm_peons 8, _all_circles, _predict), 0/10/10, 500 games
+    // each: N=13 W 234 -> 322 (z 6.9), the flee pick alone 288 (z 4.4); N=14 / N=16 so far 100 -> 142 / 21 -> 44 on the
+    // same seeds; launches at our base 13.0 -> 10.0 % (flee pick, N=13).
+    int shepherd_calm_peons = 8;
+    /**
+     * shepherd_all_circles (S2b): spots and sideways flee points keep DEFENSE_CELLS from every copy's finished quarters
+     * and armories, not only from the shepherd's own copy's buildings (the Hard defends around its first finished
+     * quarters, else its armory; every finished one is a conservative superset).
+     */
+    boolean shepherd_all_circles = true; // cur15
+    /**
+     * shepherd_flee_clear (S2c): a shepherd flees from enemy warriors and peons within this many Chebyshev cells (12
+     * before, a constant): a spot cleared below 12 cells (shepherd_clear) otherwise sets off a flee on arrival.
+     */
+    int shepherd_flee_clear = 12;
+    /**
+     * shepherd_flee_pick (S3): a fleeing shepherd runs to the best of 32 checked points (16 headings, shepherd_flee_r
+     * and 0.6 of it), reachable, clear of enemy warriors along the way and at the end, out of tower reach and defense
+     * circles and 14 cells from every walking wave's target, at least 6 cells farther from the threat; the score adds
+     * shepherd_flee_out per cell gained away from our start and takes off shepherd_tether per cell beyond the copy's
+     * leash disc (0.66 of its origin's distance to our nearest building, minus 2; origins within 150 cells only), and
+     * a pick is held 1.5 s. With no legal point the flee goes as before (shepherd_flee_side, else straight away). The
+     * precedent is shepherd_flee_side (+4.2 pp W at N=13): at launches that hit our base the copy's own shepherd was
+     * away in 62-70 %, three quarters of those after a flee in the 8 s before. shepherd_hunted: an enemy hunting the
+     * shepherd counts as a threat anywhere within 40 cells (not only within the flee box), and holds the walk back to
+     * the spot for 4 s after it was last seen.
+     */
+    boolean shepherd_flee_pick = true; // cur15
+    int shepherd_flee_r = 22;
+    float shepherd_flee_out = .5f;
+    float shepherd_tether = 2f; // cur15
+    boolean shepherd_hunted = true; // cur15
+    /**
+     * shepherd_predict (S4): while a copy's oldest warrior, in its Army order, is out on an attack-move (its last wave
+     * marching, or a hunter walking back), and the copy cannot launch yet (fewer idle warriors than its wave size, or
+     * no chieftain from the third wave on), the spot is picked around that walk's target, where the warrior goes idle
+     * and leads the next launch, not around the current idle leader at home (the spot flipped 30+ cells home and
+     * back, 942 jumps a game at N=13); spots then keep clear of the wave's landing zone and its walk. Only a target
+     * that leashes a spot (our shepherds near it left out) is taken: a wave aimed at our buildings, army or a field
+     * peon fights where it lands, and around its target no spot was found for the whole walk (the first smoke:
+     * shepherd_t_nospot +44 %). It replaces shepherd_follow.
+     */
+    boolean shepherd_predict = true; // cur15
+    /**
+     * shepherd_fallback_r (cells, 0 = off; S5a): when no ring cell up to shepherd_max_r makes a spot, rings 26, 30, ...
+     * up to this (and the leash) are tried, 32 cells to a ring. shepherd_clear_parked (cells, 0 = off; S5b): when those
+     * fail too, a parked enemy warrior (idle on its default controller, blind beyond 8 cells) blocks a ring cell only
+     * within this many cells, and the shepherd on such a spot flees from parked warriors only that near. No spot made
+     * 15-19 % of tends at N=13-17, and its share of base waves grows with N and with hills.
+     */
+    int shepherd_fallback_r = 0;
+    int shepherd_clear_parked = 0;
+    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -1392,6 +1838,16 @@ class Strategy {
         shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
         shred_range = params.getInt("shred_range", shred_range);
         shred_strict = params.getBoolean("shred_strict", shred_strict);
+        giants_from_ticks = (float) params.getDouble("giants_from_ticks", giants_from_ticks);
+        giant_keepout = params.getInt("giant_keepout", giant_keepout);
+        giant_min = params.getInt("giant_min", giant_min);
+        giant_stun_hold = params.getBoolean("giant_stun_hold", giant_stun_hold);
+        giant_shred = params.getBoolean("giant_shred", giant_shred);
+        giant_shred_min = params.getInt("giant_shred_min", giant_shred_min);
+        giant_shred_range = params.getInt("giant_shred_range", giant_shred_range);
+        giant_shred_back = params.getBoolean("giant_shred_back", giant_shred_back);
+        giant_shred_friends = params.getInt("giant_shred_friends", giant_shred_friends);
+        giant_shred_min_hp = params.getInt("giant_shred_min_hp", giant_shred_min_hp);
         shepherd_ticks = (float) params.getDouble("shepherd_ticks", shepherd_ticks);
         shepherd_until_ticks = (float) params.getDouble("shepherd_until_ticks", shepherd_until_ticks);
         shepherd_max_r = params.getInt("shepherd_max_r", shepherd_max_r);
@@ -1417,12 +1873,69 @@ class Strategy {
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
+        shepherd_site_origin = params.getInt("shepherd_site_origin", shepherd_site_origin);
+        shepherd_far_first = params.getBoolean("shepherd_far_first", shepherd_far_first);
+        shepherd_calm_peons = params.getInt("shepherd_calm_peons", shepherd_calm_peons);
+        shepherd_all_circles = params.getBoolean("shepherd_all_circles", shepherd_all_circles);
+        shepherd_flee_clear = params.getInt("shepherd_flee_clear", shepherd_flee_clear);
+        shepherd_flee_pick = params.getBoolean("shepherd_flee_pick", shepherd_flee_pick);
+        shepherd_flee_r = params.getInt("shepherd_flee_r", shepherd_flee_r);
+        shepherd_flee_out = (float) params.getDouble("shepherd_flee_out", shepherd_flee_out);
+        shepherd_tether = (float) params.getDouble("shepherd_tether", shepherd_tether);
+        shepherd_hunted = params.getBoolean("shepherd_hunted", shepherd_hunted);
+        shepherd_predict = params.getBoolean("shepherd_predict", shepherd_predict);
+        shepherd_fallback_r = params.getInt("shepherd_fallback_r", shepherd_fallback_r);
+        shepherd_clear_parked = params.getInt("shepherd_clear_parked", shepherd_clear_parked);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
         front_tower_max = params.getInt("front_tower_max", front_tower_max);
         focus_bonus = (float) params.getDouble("focus_bonus", focus_bonus);
         defense_radius = params.getInt("defense_radius", defense_radius);
         rock_share = (float) params.getDouble("rock_share", rock_share);
+        rock_share_late = (float) params.getDouble("rock_share_late", rock_share_late);
+        rock_late_ticks = (float) params.getDouble("rock_late_ticks", rock_late_ticks);
+        rock_on_fail = params.getBoolean("rock_on_fail", rock_on_fail);
+        rock_fail_from_ticks = (float) params.getDouble("rock_fail_from_ticks", rock_fail_from_ticks);
+        rock_idle = (float) params.getDouble("rock_idle", rock_idle);
+        away_strike = params.getBoolean("away_strike", away_strike);
+        wedge_real_kills = params.getBoolean("wedge_real_kills", wedge_real_kills);
+        gather_kill_zone = params.getBoolean("gather_kill_zone", gather_kill_zone);
+        gather_kill_n = params.getInt("gather_kill_n", gather_kill_n);
+        gather_kill_cells = params.getInt("gather_kill_cells", gather_kill_cells);
+        gather_kill_window_ticks = (float) params.getDouble("gather_kill_window_ticks", gather_kill_window_ticks);
+        gather_kill_ticks = (float) params.getDouble("gather_kill_ticks", gather_kill_ticks);
+        gather_route_clear = params.getBoolean("gather_route_clear", gather_route_clear);
+        gather_route_cells = params.getInt("gather_route_cells", gather_route_cells);
+        gather_route_tries = params.getInt("gather_route_tries", gather_route_tries);
+        gather_fixes_ticks = (float) params.getDouble("gather_fixes_ticks", gather_fixes_ticks);
+        shepherd_stuck_ticks = (float) params.getDouble("shepherd_stuck_ticks", shepherd_stuck_ticks);
+        shepherd_stuck_gap_ticks = (float) params.getDouble("shepherd_stuck_gap_ticks", shepherd_stuck_gap_ticks);
+        shepherd_stuck_base_ticks = (float) params.getDouble("shepherd_stuck_base_ticks", shepherd_stuck_base_ticks);
+        shepherd_stuck_base_cells = params.getInt("shepherd_stuck_base_cells", shepherd_stuck_base_cells);
+        shepherd_gap_ready = params.getBoolean("shepherd_gap_ready", shepherd_gap_ready);
+        shepherd_nospot_ticks = (float) params.getDouble("shepherd_nospot_ticks", shepherd_nospot_ticks);
+        shepherd_detour = params.getBoolean("shepherd_detour", shepherd_detour);
+        shepherd_gap_backoff = params.getBoolean("shepherd_gap_backoff", shepherd_gap_backoff);
+        shepherd_gap_max_ticks = (float) params.getDouble("shepherd_gap_max_ticks", shepherd_gap_max_ticks);
+        shepherd_progress_ticks = (float) params.getDouble("shepherd_progress_ticks", shepherd_progress_ticks);
+        shepherd_progress_base = params.getBoolean("shepherd_progress_base", shepherd_progress_base);
+        shepherd_detour_r = params.getInt("shepherd_detour_r", shepherd_detour_r);
+        shepherd_need = (float) params.getDouble("shepherd_need", shepherd_need);
+        shepherd_fixes_ticks = (float) params.getDouble("shepherd_fixes_ticks", shepherd_fixes_ticks);
+        shepherd_need_ticks = (float) params.getDouble("shepherd_need_ticks", shepherd_need_ticks);
+        shepherd_recruit_clear = params.getBoolean("shepherd_recruit_clear", shepherd_recruit_clear);
+        shepherd_recruit_clear_ticks = (float) params.getDouble("shepherd_recruit_clear_ticks",
+                shepherd_recruit_clear_ticks);
+        shepherd_coming_stalled = params.getInt("shepherd_coming_stalled", shepherd_coming_stalled);
+        shepherd_coming_stalled_ticks = (float) params.getDouble("shepherd_coming_stalled_ticks",
+                shepherd_coming_stalled_ticks);
+        away_strike_ticks = (float) params.getDouble("away_strike_ticks", away_strike_ticks);
+        away_home_cells = params.getInt("away_home_cells", away_home_cells);
+        away_idle_value = (float) params.getDouble("away_idle_value", away_idle_value);
+        away_walk_value = (float) params.getDouble("away_walk_value", away_walk_value);
+        rock_idle_ticks = (float) params.getDouble("rock_idle_ticks", rock_idle_ticks);
+        rock_idle_keep = params.getInt("rock_idle_keep", rock_idle_keep);
+        rock_idle_iron = params.getInt("rock_idle_iron", rock_idle_iron);
         quarters_first = params.getBoolean("quarters_first", quarters_first);
         gate_freeze = params.getBoolean("gate_freeze", gate_freeze);
         decapitate = params.getBoolean("decapitate", decapitate);
@@ -1446,6 +1959,44 @@ class Strategy {
         finish_units = params.getInt("finish_units", finish_units);
         finish_ratio = (float) params.getDouble("finish_ratio", finish_ratio);
         remnant_ladder_ticks = (float) params.getDouble("remnant_ladder_ticks", remnant_ladder_ticks);
+        mopup = params.getBoolean("mopup", mopup);
+        allin_ticks = (float) params.getDouble("allin_ticks", allin_ticks);
+        allin_quiet_ticks = (float) params.getDouble("allin_quiet_ticks", allin_quiet_ticks);
+        push_ticks = (float) params.getDouble("push_ticks", push_ticks);
+        push_quiet_ticks = (float) params.getDouble("push_quiet_ticks", push_quiet_ticks);
+        push_period_ticks = (float) params.getDouble("push_period_ticks", push_period_ticks);
+        push_calm = params.getBoolean("push_calm", push_calm);
+        push_soft = params.getBoolean("push_soft", push_soft);
+        last_stand = params.getBoolean("last_stand", last_stand);
+        enter_move = params.getBoolean("enter_move", enter_move);
+        repair_swarm = params.getBoolean("repair_swarm", repair_swarm);
+        swarm_default = params.getBoolean("swarm_default", swarm_default);
+        shelter_repair = params.getBoolean("shelter_repair", shelter_repair);
+        quarters_sortie = params.getBoolean("quarters_sortie", quarters_sortie);
+        quarters_sortie_min = params.getInt("quarters_sortie_min", quarters_sortie_min);
+        shelter_reach = params.getInt("shelter_reach", shelter_reach);
+        shelter_off = params.getBoolean("shelter_off", shelter_off);
+        swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
+        swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);
+        swarm_catchup_ticks = (float) params.getDouble("swarm_catchup_ticks", swarm_catchup_ticks);
+        swarm_ring_qa = params.getInt("swarm_ring_qa", swarm_ring_qa);
+        swarm_ring_tower = params.getInt("swarm_ring_tower", swarm_ring_tower);
+        swarm_peon_share = (float) params.getDouble("swarm_peon_share", swarm_peon_share);
+        swarm_reach = params.getInt("swarm_reach", swarm_reach);
+        swarm_wood_reserve = params.getInt("swarm_wood_reserve", swarm_wood_reserve);
+        swarm_cold_reserve = params.getInt("swarm_cold_reserve", swarm_cold_reserve);
+        swarm_lee = params.getBoolean("swarm_lee", swarm_lee);
+        salvage = params.getBoolean("salvage", salvage);
+        salvage_ratio = (float) params.getDouble("salvage_ratio", salvage_ratio);
+        salvage_margin_ticks = (float) params.getDouble("salvage_margin_ticks", salvage_margin_ticks);
+        salvage_min = params.getInt("salvage_min", salvage_min);
+        salvage_attackers = params.getInt("salvage_attackers", salvage_attackers);
+        salvage_approach_weight = (float) params.getDouble("salvage_approach_weight", salvage_approach_weight);
+        salvage_safe = params.getInt("salvage_safe", salvage_safe);
+        salvage_reach = params.getInt("salvage_reach", salvage_reach);
+        salvage_calm_ticks = (float) params.getDouble("salvage_calm_ticks", salvage_calm_ticks);
+        last_stand_ticks = (float) params.getDouble("last_stand_ticks", last_stand_ticks);
+        endgame_from_ticks = (float) params.getDouble("endgame_from_ticks", endgame_from_ticks);
         defense_others_radius = params.getInt("defense_others_radius", defense_others_radius);
         defense_others_from_ticks = (float) params.getDouble("defense_others_from_ticks", defense_others_from_ticks);
         chief_hunt = params.getBoolean("chief_hunt", chief_hunt);
@@ -1457,6 +2008,11 @@ class Strategy {
         weapon_sync = params.getBoolean("weapon_sync", weapon_sync);
         weapon_sync_three = params.getBoolean("weapon_sync_three", weapon_sync_three);
         finish_range = params.getInt("finish_range", finish_range);
+        deny_rebuild = params.getBoolean("deny_rebuild", deny_rebuild);
+        late_caution = (float) params.getDouble("late_caution", late_caution);
+        late_from_ticks = (float) params.getDouble("late_from_ticks", late_from_ticks);
+        late_copies = params.getInt("late_copies", late_copies);
+        deny_rebuild_cells = params.getInt("deny_rebuild_cells", deny_rebuild_cells);
         tower_cap = params.getBoolean("tower_cap", tower_cap);
         front_tower_bonus_max = params.getInt("front_tower_bonus_max", front_tower_bonus_max);
         shepherd_range = params.getInt("shepherd_range", shepherd_range);
@@ -1743,6 +2299,19 @@ class Strategy {
         chief_wake_retreat_ticks = (float) params.getDouble("chief_wake_retreat_ticks", chief_wake_retreat_ticks);
         chief_wake_keep = params.getInt("chief_wake_keep", chief_wake_keep);
         chief_flee_hp = params.getInt("chief_flee_hp", chief_flee_hp);
+        chief_refresh = params.getBoolean("chief_refresh", chief_refresh);
+        chief_refresh_from_ticks = (float) params.getDouble("chief_refresh_from_ticks", chief_refresh_from_ticks);
+        chief_refresh_hp = params.getInt("chief_refresh_hp", chief_refresh_hp);
+        chief_refresh_idle_ticks = (float) params.getDouble("chief_refresh_idle_ticks", chief_refresh_idle_ticks);
+        chief_refresh_idle_low_ticks = (float) params.getDouble("chief_refresh_idle_low_ticks",
+                chief_refresh_idle_low_ticks);
+        chief_refresh_useful = params.getInt("chief_refresh_useful", chief_refresh_useful);
+        chief_refresh_clear = params.getInt("chief_refresh_clear", chief_refresh_clear);
+        chief_refresh_hold = params.getInt("chief_refresh_hold", chief_refresh_hold);
+        chief_refresh_min_inside = params.getInt("chief_refresh_min_inside", chief_refresh_min_inside);
+        chief_refresh_arm_ticks = (float) params.getDouble("chief_refresh_arm_ticks", chief_refresh_arm_ticks);
+        chief_refresh_cull_ticks = (float) params.getDouble("chief_refresh_cull_ticks", chief_refresh_cull_ticks);
+        chief_retrain_late = params.getBoolean("chief_retrain_late", chief_retrain_late);
         threat_look = params.getInt("threat_look", threat_look);
         hold_ratio = (float) params.getDouble("hold_ratio", hold_ratio);
         chief_per_hit = params.getBoolean("chief_per_hit", chief_per_hit);

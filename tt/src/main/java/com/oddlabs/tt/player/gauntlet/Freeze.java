@@ -748,7 +748,7 @@ final class Freeze {
             if (home == null)
                 home = MapAnalysis.nearest(intel.quarters_sites, c[0], c[1]);
             if (home != null)
-                ai.owner().setTarget(units, home, Action.DEFAULT, false);
+                ai.owner().setTarget(units, home, ai.enterAction(home), false);
             else
                 ai.landscapeOrder(units, ai.planner().getStartX(), ai.planner().getStartY(), Action.MOVE, false);
             Building h = home;
