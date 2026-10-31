@@ -12,6 +12,10 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- On Archipelago maps, ships, unit placement and computer players no longer treat land that touches an island only at a corner as a separate tiny island, even though units could walk onto it.
+
 ## [2.2.207] - 2026-10-31
 
 ### Added
