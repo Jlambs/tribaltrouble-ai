@@ -12,6 +12,10 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- Sending a ship to some small patches of land on a coast or in a ravine no longer crashes the game for everyone in it. The ship now sails as close to the patch as it can. The same crash could happen when a computer player's ship went after a unit standing on such a patch.
+
 ## [2.2.207] - 2026-10-31
 
 ### Added
