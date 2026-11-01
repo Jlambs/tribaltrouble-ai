@@ -1191,7 +1191,7 @@ public final class Channel {
     }
 
     public @NonNull Channel floodfill(int init_x, int init_y, float value, float tol, int @Nullable [] countResult,
-            int @Nullable [] bounds) {
+            int @Nullable [] bounds, boolean diagonals) {
         assert init_x < width && init_x >= 0 : "x coordinate outside image";
         assert init_y < height && init_y >= 0 : "y coordinate outside image";
         int min_x = init_x;
@@ -1237,6 +1237,20 @@ public final class Channel {
                 marked[x][y + 1] = true;
                 list.add(new int[]{x, y + 1});
                 count++;
+            }
+            if (diagonals) {
+                for (int dy = -1; dy <= 1; dy += 2) {
+                    for (int dx = -1; dx <= 1; dx += 2) {
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (nx >= 0 && nx < width && ny >= 0 && ny < height
+                                && Math.abs(getPixel(nx, ny) - oldval) < tol && !marked[nx][ny]) {
+                            marked[nx][ny] = true;
+                            list.add(new int[]{nx, ny});
+                            count++;
+                        }
+                    }
+                }
             }
         }
         if (bounds != null) {
