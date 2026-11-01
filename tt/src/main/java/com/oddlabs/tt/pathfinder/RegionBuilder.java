@@ -215,7 +215,29 @@ public final class RegionBuilder {
             unit_grid.setRegion(node.getGridX(), node.getGridY(), region, UnitGrid.SEA);
             addNeighboursWater(unit_grid, dir_finder_grid, region_nodes, node);
         }
-        region.setPosition((max_x + min_x) / 2, (max_y + min_y) / 2);
+        int center_x = (max_x + min_x) / 2;
+        int center_y = (max_y + min_y) / 2;
+        // Ships sail through region centres and links need deep water between them, so keep the centre in the region.
+        if (unit_grid.getRegion(center_x, center_y, UnitGrid.SEA) != region) {
+            int best_dist_squared = Integer.MAX_VALUE;
+            int best_x = center_x;
+            int best_y = center_y;
+            for (int y = min_y; y <= max_y; y++) {
+                for (int x = min_x; x <= max_x; x++) {
+                    int dx = x - center_x;
+                    int dy = y - center_y;
+                    int dist_squared = dx * dx + dy * dy;
+                    if (dist_squared < best_dist_squared && unit_grid.getRegion(x, y, UnitGrid.SEA) == region) {
+                        best_dist_squared = dist_squared;
+                        best_x = x;
+                        best_y = y;
+                    }
+                }
+            }
+            center_x = best_x;
+            center_y = best_y;
+        }
+        region.setPosition(center_x, center_y);
     }
 
     private static void addNeighbourWater(@NonNull UnitGrid unit_grid,
