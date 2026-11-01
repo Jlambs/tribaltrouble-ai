@@ -9,7 +9,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class PathFinder {
-    private static final PocketList<@NonNull Node> open_list = new PocketList<>(RegionBuilder.MAX_PATH_COST);
+    // Ship searches swap in their own larger list so land searches keep exactly their old results.
+    private static final PocketList<@NonNull Node> land_open_list = new PocketList<>(RegionBuilder.MAX_PATH_COST);
+    private static final PocketList<@NonNull Node> sea_open_list = new PocketList<>(
+            RegionBuilder.MAX_PATH_COST_WATER);
+    private static PocketList<@NonNull Node> open_list = land_open_list;
     private static final List<@NonNull Node> visited_list = new ArrayList<>();
     public static int stat_pathfinder_per_frame = 0;
 
@@ -18,6 +22,18 @@ public final class PathFinder {
         if (src_region == null || dst_region == null) return null;
         PathFinderAlgorithm finder = new RegionPathFinder(unit_grid, dst_region);
         return (Region) doFindPath(finder, src_region, unit_grid);
+    }
+
+    public static Region findPathRegionWater(@NonNull UnitGrid unit_grid, @NonNull Region src_region,
+            @NonNull Region dst_region) {
+        PathFinderAlgorithm finder = new RegionPathFinder(unit_grid, dst_region,
+                RegionBuilder.MAX_EXAMINED_NODES_PER_PATH_WATER);
+        open_list = sea_open_list;
+        try {
+            return (Region) doFindPath(finder, src_region, unit_grid);
+        } finally {
+            open_list = land_open_list;
+        }
     }
 
     public static Region findPathRegion(@NonNull UnitGrid unit_grid, @NonNull PathFinderAlgorithm finder,

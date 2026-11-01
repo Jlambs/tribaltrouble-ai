@@ -12,6 +12,10 @@ section when a release is cut.
 
 ## [Unreleased]
 
+### Fixed
+
+- Ships sent far across the sea no longer wander around the whole map or refuse to set off. They now take a short route around the islands in their way.
+
 ## [2.2.207] - 2026-10-31
 
 ### Added

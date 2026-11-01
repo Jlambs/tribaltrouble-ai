@@ -66,7 +66,7 @@ public final class ShipTrajectory {
             return null;
         }
 
-        Region path_end = PathFinder.findPathRegion(grid, src_region, dst_region);
+        Region path_end = PathFinder.findPathRegionWater(grid, src_region, dst_region);
         if (path_end == null) {
             return null;
         }

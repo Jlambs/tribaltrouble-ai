@@ -10,9 +10,13 @@ import java.util.*;
 
 public final class RegionBuilder {
     public static final int MAX_EXAMINED_NODES_PER_PATH = 600;
+    // Sea routes span the whole map, so their region count and path costs outgrow the land limits.
+    public static final int MAX_EXAMINED_NODES_PER_PATH_WATER = 4096;
     public static final int REGION_PATH_MAX_COST = 70;
     public static final int REGION_PATH_MAX_COST_WATER = 200;
     public static final int MAX_PATH_COST = 2048;
+    // Costs past an open list's last pocket come out last in, first out, so this must exceed any sea route's cost.
+    public static final int MAX_PATH_COST_WATER = 8192;
     public static final int GRID_SIZE = 128;
 
     public static final int DIAGONAL = 3;

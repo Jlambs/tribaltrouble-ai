@@ -9,17 +9,24 @@ abstract class AStarAlgorithm implements PathFinderAlgorithm {
     private final Region dst_region;
     private final boolean allow_second_best;
     private final @NonNull UnitGrid unit_grid;
+    private final int max_examined_nodes;
 
     private int nodes_visited;
     private int best_dist_squared = Integer.MAX_VALUE;
     private @Nullable Node second_best_node;
 
     protected AStarAlgorithm(@NonNull UnitGrid unit_grid, int dst_x, int dst_y, boolean allow_second_best) {
+        this(unit_grid, dst_x, dst_y, allow_second_best, RegionBuilder.MAX_EXAMINED_NODES_PER_PATH);
+    }
+
+    protected AStarAlgorithm(@NonNull UnitGrid unit_grid, int dst_x, int dst_y, boolean allow_second_best,
+            int max_examined_nodes) {
         this.dst_x = dst_x;
         this.dst_y = dst_y;
         this.dst_region = unit_grid.getRegion(dst_x, dst_y);
         this.allow_second_best = allow_second_best;
         this.unit_grid = unit_grid;
+        this.max_examined_nodes = max_examined_nodes;
     }
 
     protected final @NonNull UnitGrid getUnitGrid() {
@@ -35,7 +42,7 @@ abstract class AStarAlgorithm implements PathFinderAlgorithm {
 
     private @Nullable NodeResult defaultTouchNode() {
         nodes_visited++;
-        if (nodes_visited == RegionBuilder.MAX_EXAMINED_NODES_PER_PATH) {
+        if (nodes_visited == max_examined_nodes) {
             if (allow_second_best) {
                 Node result = second_best_node;
                 second_best_node = null;
