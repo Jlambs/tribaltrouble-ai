@@ -1098,7 +1098,7 @@ final class Campaign {
                 if (!holdFire(ai.intel, s, op, second)) {
                     ai.fleet.landWarriors(s);
                     if (s.getShipHR().hasChieftain())
-                        me.trainChieftain(s, true);
+                        me.deployChieftainFromShip(s);
                 }
             } else if (d.job == Fleet.Job.FAILED)
                 ai.fleet.goHome(s, second);
@@ -1176,7 +1176,7 @@ final class Campaign {
                 empty = false;
             }
             if (s.getShipHR().hasChieftain()) {
-                me.trainChieftain(s, true);
+                me.deployChieftainFromShip(s);
                 empty = false;
             }
         }

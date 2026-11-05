@@ -225,7 +225,7 @@ final class Fleet {
             me.deployUnits(ship, DeployType.PEON, peons);
         landWarriors(ship);
         if (ship.getShipHR().hasChieftain())
-            me.trainChieftain(ship, true);
+            me.deployChieftainFromShip(ship);
     }
 
     void landWarriors(@NonNull Ship ship) {
@@ -420,7 +420,7 @@ final class Fleet {
                             && !ai.expand.owns(ship) && !ai.evac.owns(ship) && !ai.outpost.owns(ship))
                         landPeons(ship, peonsAboard(ship));
                     if (d.op == null && !ship.isMoving() && dockedAt(ship) != 0 && ship.getShipHR().hasChieftain())
-                        me.trainChieftain(ship, true);
+                        me.deployChieftainFromShip(ship);
                     if (d.job == Job.ARRIVED && d.land_all) {
                         int keep = ai.raid.owns(ship) ? ai.params.raid : 0;
                         if (peonsAboard(ship) + warriorsAboard(ship) > keep)
