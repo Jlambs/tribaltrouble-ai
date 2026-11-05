@@ -22,6 +22,7 @@ import com.oddlabs.tt.model.weapon.StunFactory;
 import com.oddlabs.tt.model.weapon.ThrowingFactory;
 import com.oddlabs.tt.model.weapon.WeaponFactory;
 import com.oddlabs.tt.player.NativeChieftainAI;
+import com.oddlabs.tt.player.PlayerSkins;
 import com.oddlabs.tt.player.VikingChieftainAI;
 import com.oddlabs.tt.procedural.GeneratorDamageSmoke;
 import com.oddlabs.tt.procedural.GeneratorHalos;
@@ -40,8 +41,12 @@ import com.oddlabs.tt.util.Utils;
 import org.jspecify.annotations.NonNull;
 import org.lwjgl.opengl.GL11;
 
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Random;
 import java.util.ResourceBundle;
 import java.util.function.Supplier;
@@ -107,6 +112,7 @@ public final class RacesResources {
     private final @NonNull SpriteKey[] wood_fragment_sprites = new SpriteKey[4];
     private final @NonNull SpriteKey[] treasure_sprites = new SpriteKey[6];
     private final @NonNull Race @NonNull [] races;
+    private final @NonNull Map<String, PlayerSkins> skins;
 
     public static boolean isValidRace(int race) {
         return race == RACE_NATIVES || race == RACE_VIKINGS;
@@ -161,6 +167,13 @@ public final class RacesResources {
         SpriteFile building_start = new SpriteFile(start_name,
                 Globals.NO_MIPMAP_CUTOFF,
                 true, false, true, false);
+        SpriteKey built_key = queues.register(building);
+        SpriteKey halfbuilt_key = queues.register(building_halfbuilt);
+        SpriteKey start_key = queues.register(building_start);
+        Map<Building.BuildState, List<SpriteKey>> props = new EnumMap<>(Building.BuildState.class);
+        props.put(Building.BuildState.BUILT, queues.getProps(built_key));
+        props.put(Building.BuildState.HALFBUILT, queues.getProps(halfbuilt_key));
+        props.put(Building.BuildState.START, queues.getProps(start_key));
         return new BuildingTemplate(
                 template_id,
                 type,
@@ -170,13 +183,13 @@ public final class RacesResources {
                 num_fragments,
                 shadow_diameter,
                 shadow_renderer,
-                queues.register(building),
+                built_key,
                 built_selection_radius,
                 built_selection_height,
-                queues.register(building_halfbuilt),
+                halfbuilt_key,
                 halfbuilt_selection_radius,
                 halfbuilt_selection_height,
-                queues.register(building_start),
+                start_key,
                 start_selection_radius,
                 start_selection_height,
                 max_hit_points,
@@ -193,79 +206,18 @@ public final class RacesResources {
                 chimney_y,
                 chimney_z,
                 is_vikings,
-                name);
+                name,
+                props);
     }
 
     public RacesResources(@NonNull RenderQueues queues) {
         int num_progress = 25;
-        SpriteFile native_rock_sprite = new SpriteFile("/geometry/natives/rock_resource.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true, true, true, false);
         ProgressForm.progress(1f / num_progress);
-        SpriteFile native_wood_sprite = new SpriteFile("/geometry/natives/wood_resource.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true, true, true, false);
-        SpriteFile native_rubber_sprite = new SpriteFile("/geometry/natives/rubber_resource.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true, true, true, false);
-        SpriteFile native_right_paddle_sprite = new SpriteFile(
-                "/geometry/natives/right_paddle.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true,
-                true,
-                true,
-                false);
-        SpriteFile native_left_paddle_sprite = new SpriteFile(
-                "/geometry/natives/left_paddle.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true,
-                true,
-                true,
-                false);
+        Map<Class<? extends Supply>, SpriteKey> native_supply_sprite_lists = RegistryItems.carried(queues, "natives");
         ProgressForm.progress(1f / num_progress);
-        Map<Class<? extends Supply>, SpriteKey> native_supply_sprite_lists = Map.of(
-                TreeSupply.class, queues.register(native_wood_sprite),
-                RockSupply.class, queues.register(native_rock_sprite),
-                IronSupply.class, queues.register(native_rock_sprite, 1),
-                RubberSupply.class, queues.register(native_rubber_sprite),
-                LeftPaddle.class, queues.register(native_left_paddle_sprite),
-                RightPaddle.class, queues.register(native_right_paddle_sprite)
-        );
-
-        SpriteFile viking_wood_sprite = new SpriteFile("/geometry/vikings/wood_resource.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true, true, true, false);
-        SpriteFile viking_rubber_sprite = new SpriteFile("/geometry/vikings/rubber_resource.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true, true, true, false);
         ProgressForm.progress(1f / num_progress);
-        SpriteFile viking_rock_sprite = new SpriteFile("/geometry/vikings/rock_resource.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true, true, true, false);
-        SpriteFile viking_right_paddle_sprite = new SpriteFile(
-                "/geometry/vikings/right_paddle.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true,
-                true,
-                true,
-                false);
-        SpriteFile viking_left_paddle_sprite = new SpriteFile(
-                "/geometry/vikings/left_paddle.binsprite",
-                Globals.NO_MIPMAP_CUTOFF,
-                true,
-                true,
-                true,
-                false);
-
+        Map<Class<? extends Supply>, SpriteKey> viking_supply_sprite_lists = RegistryItems.carried(queues, "vikings");
         ProgressForm.progress(1f / num_progress);
-        Map<Class<? extends Supply>, SpriteKey> viking_supply_sprite_lists = Map.of(
-                TreeSupply.class, queues.register(viking_wood_sprite),
-                RockSupply.class, queues.register(viking_rock_sprite),
-                IronSupply.class, queues.register(viking_rock_sprite, 1),
-                RubberSupply.class, queues.register(viking_rubber_sprite),
-                LeftPaddle.class, queues.register(viking_left_paddle_sprite),
-                RightPaddle.class, queues.register(viking_right_paddle_sprite)
-        );
 
         smoke_textures[0] = queues.registerTexture(new GeneratorSmoke(), 0);
         damage_smoke_textures[0] = queues.registerTexture(new GeneratorDamageSmoke(), 0);
@@ -655,7 +607,9 @@ public final class RacesResources {
                 i18n("rock_warrior"),
                 1,
                 0f, 0f, 2f,
-                3);
+                3,
+                RegistryItems.slots(queues, "vikings", "warrior", Race.UNIT_WARRIOR_ROCK),
+                RegistryItems.defaultSlots("vikings", "warrior"));
         UnitTemplate viking_warrior_iron_template = new UnitTemplate(.4f,
                 1.2f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.THROW),
@@ -673,7 +627,9 @@ public final class RacesResources {
                 i18n("iron_warrior"),
                 1,
                 0f, 0f, 2f,
-                5);
+                5,
+                RegistryItems.slots(queues, "vikings", "warrior", Race.UNIT_WARRIOR_IRON),
+                RegistryItems.defaultSlots("vikings", "warrior"));
         UnitTemplate viking_warrior_rubber_template = new UnitTemplate(.4f,
                 1.2f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.THROW),
@@ -691,7 +647,9 @@ public final class RacesResources {
                 i18n("chicken_warrior"),
                 1,
                 0f, 0f, 2f,
-                10);
+                10,
+                RegistryItems.slots(queues, "vikings", "warrior", Race.UNIT_WARRIOR_RUBBER),
+                RegistryItems.defaultSlots("vikings", "warrior"));
         UnitTemplate native_warrior_rock_template = new UnitTemplate(.4f,
                 1.2f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.THROW),
@@ -709,7 +667,9 @@ public final class RacesResources {
                 i18n("rock_warrior"),
                 1,
                 0f, 0f, 2f,
-                3);
+                3,
+                RegistryItems.slots(queues, "natives", "warrior", Race.UNIT_WARRIOR_ROCK),
+                RegistryItems.defaultSlots("natives", "warrior"));
         UnitTemplate native_warrior_iron_template = new UnitTemplate(.4f,
                 1.2f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.THROW),
@@ -727,7 +687,9 @@ public final class RacesResources {
                 i18n("iron_warrior"),
                 1,
                 0f, 0f, 2f,
-                5);
+                5,
+                RegistryItems.slots(queues, "natives", "warrior", Race.UNIT_WARRIOR_IRON),
+                RegistryItems.defaultSlots("natives", "warrior"));
         UnitTemplate native_warrior_rubber_template = new UnitTemplate(.4f,
                 1.2f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.THROW),
@@ -745,7 +707,9 @@ public final class RacesResources {
                 i18n("chicken_warrior"),
                 1,
                 0f, 0f, 2f,
-                10);
+                10,
+                RegistryItems.slots(queues, "natives", "warrior", Race.UNIT_WARRIOR_RUBBER),
+                RegistryItems.defaultSlots("natives", "warrior"));
         UnitTemplate viking_peon_template = new UnitTemplate(.4f,
                 1.1f,
                 new Abilities(Abilities.BUILD | Abilities.HARVEST | Abilities.ATTACK | Abilities.TARGET),
@@ -763,7 +727,9 @@ public final class RacesResources {
                 i18n("peon"),
                 1,
                 .1f, 0f, 1.75f,
-                1);
+                1,
+                RegistryItems.slots(queues, "vikings", "peon", RegistryItems.DEFAULT_TEXTURE),
+                RegistryItems.defaultSlots("vikings", "peon"));
         UnitTemplate native_peon_template = new UnitTemplate(.4f,
                 1.1f,
                 new Abilities(Abilities.BUILD | Abilities.HARVEST | Abilities.ATTACK | Abilities.TARGET),
@@ -781,7 +747,9 @@ public final class RacesResources {
                 i18n("peon"),
                 1,
                 0f, 0f, 1.75f,
-                1);
+                1,
+                RegistryItems.slots(queues, "natives", "peon", RegistryItems.DEFAULT_TEXTURE),
+                RegistryItems.defaultSlots("natives", "peon"));
         UnitTemplate viking_chieftain_template = new UnitTemplate(.4f,
                 1.4f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.MAGIC),
@@ -799,7 +767,9 @@ public final class RacesResources {
                 i18n("chieftain"),
                 VIKING_CHIEFTAIN_HIT_POINTS,
                 -.07f, .312f, 2.7f,
-                40);
+                40,
+                RegistryItems.slots(queues, "vikings", "chieftain", RegistryItems.DEFAULT_TEXTURE),
+                RegistryItems.defaultSlots("vikings", "chieftain"));
         UnitTemplate native_chieftain_template = new UnitTemplate(.4f,
                 1.4f,
                 new Abilities(Abilities.ATTACK | Abilities.TARGET | Abilities.MAGIC),
@@ -817,7 +787,9 @@ public final class RacesResources {
                 i18n("chieftain"),
                 NATIVE_CHIEFTAIN_HIT_POINTS,
                 .878f, .151f, 2.8f,
-                40);
+                40,
+                RegistryItems.slots(queues, "natives", "chieftain", RegistryItems.DEFAULT_TEXTURE),
+                RegistryItems.defaultSlots("natives", "chieftain"));
 
         MagicFactory[] native_magic = new MagicFactory[NUM_MAGIC];
         native_magic[INDEX_MAGIC_POISON] = new PoisonFogFactory(0.9f, 0f, 0.55f, 26f, .5f, 2f, 20f, 10, 5f, 80f / 224f,
@@ -870,6 +842,9 @@ public final class RacesResources {
                 new VikingChieftainAI(),
                 "/music/viking.ogg");
         races = new Race[]{natives_race, vikings_race};
+        Set<SpriteKey> carried = new HashSet<>(native_supply_sprite_lists.values());
+        carried.addAll(viking_supply_sprite_lists.values());
+        skins = RegistryItems.skins(queues, races, carried);
 
         wood_fragment_sprites[0] = queues.register(new SpriteFile("/geometry/misc/wood_2.binsprite",
                 Globals.NO_MIPMAP_CUTOFF,
@@ -986,6 +961,10 @@ public final class RacesResources {
 
     public @NonNull Race getRace(int i) {
         return races[i];
+    }
+
+    public @NonNull PlayerSkins getSkins(@NonNull String name) {
+        return skins.getOrDefault(name, PlayerSkins.NONE);
     }
 
     public static @NonNull String getRaceName(int i) {
