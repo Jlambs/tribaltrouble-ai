@@ -100,6 +100,7 @@ public final class Lint {
             Map.entry("buildWeapons", "getOwner().buildRockWeapons, buildIronWeapons or buildRubberWeapons"),
             Map.entry("exitTower", "getOwner().exitTower(building)"),
             Map.entry("trainChieftain", "getOwner().trainChieftain(building, start)"),
+            Map.entry("deployChieftain", "getOwner().deployChieftainFromShip(ship)"),
             Map.entry("doMagic", "getOwner().doMagic(chieftain, magic)"),
             Map.entry("buildBuilding", "getOwner().placeBuilding(peons, type, x, y); the peons build it"),
             Map.entry("create", "getOwner().placeBuilding, then a builder's PlaceBuildingController.getBuilding()"));

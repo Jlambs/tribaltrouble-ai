@@ -10,6 +10,7 @@ import com.oddlabs.matchmaking.StandardOptions;
 import com.oddlabs.matchmaking.WorldConfig;
 import com.oddlabs.net.NetworkSelector;
 import com.oddlabs.registration.RegistrationKey;
+import com.oddlabs.registration.RegistrationKeyFormatException;
 import com.oddlabs.tt.delegate.Menu;
 import com.oddlabs.tt.event.LocalEventQueue;
 import com.oddlabs.tt.gamemode.PresetLibrary;
@@ -39,6 +40,7 @@ import com.oddlabs.tt.guievent.ItemChosenListener;
 import com.oddlabs.tt.guievent.MouseClickListener;
 import com.oddlabs.tt.guievent.ValueListener;
 import com.oddlabs.tt.landscape.WorldParameters;
+import com.oddlabs.tt.model.GeometryRegistry;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.net.GameNetwork;
 import com.oddlabs.tt.net.Network;
@@ -55,6 +57,7 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.math.BigInteger;
+import java.util.Locale;
 import java.util.Random;
 import java.util.ResourceBundle;
 import java.util.UUID;
@@ -99,6 +102,7 @@ public final class TerrainMenu extends Group {
     private final @NonNull PulldownMenu<Void> pulldown_size;
     private final @NonNull EditLine editline_name;
     private final @NonNull PulldownMenu<Void> pm_terrain_type;
+    private final @NonNull PulldownMenu<Void> pm_time_of_day;
     private final @NonNull Slider slider_hills;
     private final @NonNull Slider slider_vegetation;
     private final @NonNull Slider slider_supplies;
@@ -122,6 +126,8 @@ public final class TerrainMenu extends Group {
     private final @Nullable ModeAndPresetsPanel mode_and_presets;
     private final @NonNull ScrollablePulldownMenu<Void> pulldown_menu_slots;
     private static final int DEFAULT_PLAYER_COUNT = 6;
+    private static final int DAY = 0;
+    private static final int NIGHT = 1;
     private int player_count = DEFAULT_PLAYER_COUNT;
     private int seed;
     private AdvancedSettingsForm.@NonNull Values advanced_settings = AdvancedSettingsForm.Values.defaults();
@@ -276,6 +282,21 @@ public final class TerrainMenu extends Group {
         pm_terrain_type.addItemChosenListener(new PulldownUpdateMapcodeListener());
         group_map_options.addChild(group_terrain_type);
 
+        // time of day
+        Group group_time_of_day = new Group();
+        Label label_time_of_day = new Label(i18n("time_of_day"), Skin.getSkin().getEditFont());
+        group_time_of_day.addChild(label_time_of_day);
+        pm_time_of_day = new PulldownMenu<>();
+        pm_time_of_day.addItem(new PulldownItem<>(i18n("day")));
+        pm_time_of_day.addItem(new PulldownItem<>(i18n("night")));
+        var pb_time_of_day = new PulldownButton<>(gui_root, pm_time_of_day, 0, 150);
+        group_time_of_day.addChild(pb_time_of_day);
+        label_time_of_day.place();
+        pb_time_of_day.place(label_time_of_day, RIGHT_MID);
+        group_time_of_day.compileCanvas();
+        pm_time_of_day.addItemChosenListener((_, _) -> markModified());
+        group_map_options.addChild(group_time_of_day);
+
         Group group_sliders = new Group();
         // hills
         Label label_hills_low = new Label(i18n("min"), Skin.getSkin().getEditFont());
@@ -395,6 +416,7 @@ public final class TerrainMenu extends Group {
             group_size.place();
         }
         group_terrain_type.place(group_size, BOTTOM_RIGHT);
+        group_time_of_day.place(group_terrain_type, BOTTOM_RIGHT);
         group_map_options.compileCanvas();
         standard.addChild(group_map_options);
 
@@ -454,6 +476,8 @@ public final class TerrainMenu extends Group {
         pulldown_size.chooseItem(1);
         if (!Renderer.isRegistered())
             pm_terrain_type.chooseItem(0);
+        if (GeometryRegistry.isEventActive(GeometryRegistry.HALLOWEEN))
+            pm_time_of_day.chooseItem(NIGHT);
 
         cb_rated.addCheckBoxListener(marked -> {
             // Rated games play with the default limits so ratings stay comparable.
@@ -557,24 +581,45 @@ public final class TerrainMenu extends Group {
     }
 
     public void parseMapcode(@NonNull String text) {
-        if (text.indexOf(' ') == -1) {
+        String trimmed = text.trim();
+        if (trimmed.indexOf(' ') == -1) {
             // Legacy letter-based notation
-            String code = text.toUpperCase();
-            BigInteger result = RegistrationKey.parseBits(code);
-            parseBigIntegerLegacy(result);
-            label_mapcode.clear();
-            label_mapcode.append(code);
+            try {
+                String code = trimmed.toUpperCase();
+                BigInteger result = RegistrationKey.parseBits(code);
+                parseBigIntegerLegacy(result);
+                // Letter codes can spell any word, so show the island's word code instead of what was typed.
+                setMapcode();
+            } catch (RegistrationKeyFormatException _) {
+                parseText(trimmed);
+            }
         } else {
             // New word-based notation
             try {
-                BigInteger result = WordsEncoding.decode(text);
+                BigInteger result = WordsEncoding.decode(trimmed);
                 parseBigInteger(result);
                 label_mapcode.clear();
-                label_mapcode.append(text);
+                label_mapcode.append(trimmed);
             } catch (IllegalArgumentException _) {
-                // Invalid word code — ignore
+                parseText(trimmed);
             }
         }
+    }
+
+    /**
+     * Turns text that is not a map code into an island, the same one every time for the same text, and shows that
+     * island's word code so the typed text is never shown to other players.
+     */
+    private void parseText(@NonNull String text) {
+        String normalized = text.replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        Random random = new Random(normalized.hashCode());
+        pulldown_size.chooseItem(random.nextInt(pulldown_size.getSize()));
+        pm_terrain_type.chooseItem(random.nextInt(pm_terrain_type.getSize()));
+        slider_supplies.setValue(random.nextInt(SLIDER_CARDINALITY));
+        slider_vegetation.setValue(random.nextInt(SLIDER_CARDINALITY));
+        slider_hills.setValue(random.nextInt(SLIDER_CARDINALITY));
+        seed = random.nextInt(Integer.parseInt(SEED_CARDINALITY));
+        setMapcode();
     }
 
     private void parseBigInteger(BigInteger result) {
@@ -774,6 +819,10 @@ public final class TerrainMenu extends Group {
         return i == 0 ? 0 : 1;
     }
 
+    private boolean isNight() {
+        return pm_time_of_day.getChosenItemIndex() == NIGHT;
+    }
+
     private boolean isChosen(@NonNull PulldownMenu<Void> menu) {
         return menu.getChosenItemIndex() != 0;
     }
@@ -791,6 +840,7 @@ public final class TerrainMenu extends Group {
         int size = pulldown_size.getChosenItemIndex();
         // Archipelago islands are only reachable by ship, so it always plays with boats.
         boolean ships = Globals.SHIPS_ENABLED && (settings.ships() || ARCHIPELAGO[size]);
+        boolean night = isNight();
         if (multiplayer) {
             String game_name = editline_name.getContents();
             if (game_name.length() < Game.MIN_LENGTH) {
@@ -815,6 +865,7 @@ public final class TerrainMenu extends Group {
                     .initialUnitCount(settings.startingUnits())
                     .maxBuildingCount(settings.maxBuildings())
                     .ships(ships)
+                    .night(night)
                     .build();
             // spotless:on
         } else {
@@ -857,6 +908,7 @@ public final class TerrainMenu extends Group {
                 .mapSize(size)
                 .maxBuildingCount(settings.maxBuildings())
                 .ships(ships)
+                .night(night)
                 .build();
         // spotless:on
         GameNetwork game_network = Menu.startNewGame(network, gui_root,
@@ -1080,6 +1132,7 @@ public final class TerrainMenu extends Group {
                 .startingUnits(advanced_settings.startingUnits())
                 .maxBuildings(advanced_settings.maxBuildings())
                 .ships(advanced_settings.ships())
+                .night(isNight())
                 .build();
         // spotless:on
     }
@@ -1091,6 +1144,7 @@ public final class TerrainMenu extends Group {
         pm_gamespeed.chooseItem(clampIndex(world.getGamespeed(), pm_gamespeed.getSize()));
         pulldown_size.chooseItem(clampIndex(world.getIslandSize(), pulldown_size.getSize()));
         pm_terrain_type.chooseItem(clampIndex(world.getTerrainType(), pm_terrain_type.getSize()));
+        pm_time_of_day.chooseItem(world.isNight() ? 1 : 0);
         slider_hills.setValue(world.getHills());
         slider_vegetation.setValue(world.getVegetation());
         slider_supplies.setValue(world.getSupplies());
@@ -1157,6 +1211,13 @@ public final class TerrainMenu extends Group {
                 team_pulldown_menus[i].chooseItem(slot.getTeam());
             }
         }
+    }
+
+    /** Applies the settings a map code does not hold: the time of day and the advanced settings. */
+    public void applyWorldParameters(@NonNull WorldParameters params) {
+        pm_time_of_day.chooseItem(params.isNight() ? NIGHT : DAY);
+        applyAdvancedSettings(new AdvancedSettingsForm.Values(params.getMaxUnitCount(), params.getInitialUnitCount(),
+                params.getMaxBuildingCount(), params.isShipsEnabled()));
     }
 
     private int fillToDifficultyIndex(RosterTemplate.@NonNull Fill fill, int slot_index) {
