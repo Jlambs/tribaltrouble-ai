@@ -93,9 +93,14 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
         float hills = job.hills() / 10f;
         float trees = job.trees() / 10f;
         float supplies = job.supplies() / 10f;
-        int landscape_seed = job.seed() * job.seed();
+        int landscape_seed = landscapeSeed(job);
         return new Landscape(job.slots(), job.meters(), job.terrainType(), detailAlpha(), hills, trees, supplies,
                 landscape_seed, STARTING_UNITS, 0f, false);
+    }
+
+    /** TerrainMenu's landscape seed: the seed squared. Decorations scatter with it too (IslandGenerator). */
+    private static int landscapeSeed(@NonNull Job job) {
+        return job.seed() * job.seed();
     }
 
     private static @NonNull World newWorld(@NonNull Job job, @NonNull Landscape landscape) {
@@ -107,7 +112,8 @@ record ClientWorld(@NonNull World world, @NonNull Landscape landscape) implement
                 landscape.getHeight(), landscape.getTrees(), landscape.getPalmtrees(), landscape.getRock(),
                 landscape.getIron(), landscape.getPlants(), landscape.getAccessGrid(), landscape.getDockGrid(),
                 landscape.getWaterGrid(), landscape.getBuildGrid(), landscape.getIslandIds(),
-                landscape.getIslandInfos(), landscape.getStartingLocations(), landscape.getBlendInfos());
+                landscape.getIslandInfos(), landscape.getStartingLocations(), landscape.getBlendInfos(),
+                landscape.getGround(), landscapeSeed(job));
         // spotless:off
         WorldParameters parameters = WorldParameters.builder()
                 .initialGameSpeed(job.gameSpeed())
