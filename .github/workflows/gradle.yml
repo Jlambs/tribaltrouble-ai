@@ -24,6 +24,28 @@ jobs:
       - name: Verify code is formatted
         run: ./gradlew spotlessCheck
 
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # generateBuildInfo needs full history to find the bump-commit anchor
+      - name: Set up JDK 26
+        uses: actions/setup-java@v4
+        with:
+          java-version: '26'
+          distribution: 'temurin'
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Run unit tests
+        run: ./gradlew test
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: '*/build/reports/tests/'
+
   api-guard:
     runs-on: ubuntu-latest
     steps:
@@ -72,7 +94,7 @@ jobs:
           exit $failed
 
   version:
-    needs: [api-guard, format-check]
+    needs: [api-guard, format-check, unit-tests]
     runs-on: ubuntu-latest
     outputs:
       full: ${{ steps.compute.outputs.full }}
