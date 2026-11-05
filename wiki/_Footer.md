@@ -1,0 +1,1 @@
+Tribal Trouble is open source under the GPL v2. Game statistics on this wiki are taken from the game's source code; see each page's *Data sources*. Help improve this wiki: [Style Guide](Style-Guide.md) · [Community](Community.md)
