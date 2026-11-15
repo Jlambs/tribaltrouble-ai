@@ -482,6 +482,13 @@ class Strategy {
      */
     int evade_cells = 0;
     /**
+     * iron_real (0 = off): the plan's share of iron gatherers follows the measured gatherer-time per unit of iron (a
+     * running mean of measureYield's 30-s windows) where that is above the modelled trip, up to this multiple of the
+     * model. The model is the walk to the nearest three nodes; the real cost is 2-3 times that from minute 14
+     * (lab/fable/NOTES.md), so the forge's workers wait for iron while the plan thinks the pool balanced.
+     */
+    float iron_real = 0f;
+    /**
      * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
      * apart).
      */
@@ -2009,6 +2016,7 @@ class Strategy {
         quarters_sortie_min = params.getInt("quarters_sortie_min", quarters_sortie_min);
         shelter_reach = params.getInt("shelter_reach", shelter_reach);
         evade_cells = params.getInt("evade_cells", evade_cells);
+        iron_real = (float) params.getDouble("iron_real", iron_real);
         shelter_off = params.getBoolean("shelter_off", shelter_off);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
         swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);

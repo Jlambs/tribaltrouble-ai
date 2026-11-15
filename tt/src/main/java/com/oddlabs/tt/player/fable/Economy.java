@@ -2961,6 +2961,8 @@ final class Economy {
     private float meas_iron_gt;
     private float meas_rock_gt;
     private float iron_ticks = 0f;
+    /** iron_real: a running mean of iron_ticks (0 until the first window). */
+    private float iron_real_ticks = 0f;
     private float rock_ticks = 0f;
     private boolean rock_stream_on;
 
@@ -2987,8 +2989,10 @@ final class Economy {
         int di = owner.getIronHarvested() - meas_iron0;
         iron_rate = .5f * iron_rate + .5f * di / Math.max(50f, now - meas_start);
         int dr = owner.getRockHarvested() - meas_rock0;
-        if (meas_iron_gt >= 3000f) // 60 gatherer-seconds
+        if (meas_iron_gt >= 3000f) { // 60 gatherer-seconds
             iron_ticks = meas_iron_gt / Math.max(.5f, di);
+            iron_real_ticks = iron_real_ticks <= 0f ? iron_ticks : .6f * iron_real_ticks + .4f * iron_ticks;
+        }
         if (meas_rock_gt >= 3000f)
             rock_ticks = meas_rock_gt / Math.max(.5f, dr);
         meas_start = now;
@@ -4919,14 +4923,21 @@ final class Economy {
             want_rock += Math.max(2, armory_workers / st.rock_filler_div);
         pool -= want_chicken + want_rock;
 
-        float per_weapon = work + 2 * tree_cycle + ore_cycle;
+        // iron_real: iron is staffed by what it really costs
+        float real = ai.strategy().iron_real;
+        float plan_cycle = ore_cycle;
+        if (real > 1f && !rock_weapons && iron_real_ticks > ore_cycle) {
+            plan_cycle = Math.min(iron_real_ticks, real * ore_cycle);
+            ai.aiLog().count("iron_real"); // plan ticks (3 s)
+        }
+        float per_weapon = work + 2 * tree_cycle + plan_cycle;
         float x = Math.max(0, pool) / per_weapon;
         int tree_stock = armory.getSupplyContainer(TreeSupply.class).getNumSupplies();
         int ore_stock = armory.getSupplyContainer(rock_weapons ? RockSupply.class : IronSupply.class).getNumSupplies();
         float tree_adj = tree_stock > 40 ? .35f : tree_stock > 20 ? .7f : tree_stock < 6 ? 1.15f : 1f;
         float ore_adj = ore_stock > 20 ? .35f : ore_stock > 10 ? .7f : ore_stock < 3 ? 1.15f : 1f;
         want_tree = Math.round(2 * tree_cycle * x * tree_adj);
-        int want_ore = Math.round(ore_cycle * x * ore_adj);
+        int want_ore = Math.round(plan_cycle * x * ore_adj);
         if (pool >= 3) {
             want_tree = Math.max(1, want_tree);
             want_ore = Math.max(1, want_ore);
