@@ -3851,9 +3851,11 @@ final class Economy {
         if (chicken > 0)
             owner.recallGatherers(armory, RubberSupply.class, chicken);
         int[] w = sat_wants.get(armory);
+        if (w == null)
+            return; // not planned for yet
         int wood = armory.getSupplyContainer(TreeSupply.class).getNumSupplies();
         float adj = wood > 40 ? .35f : wood > 20 ? .7f : wood < 6 ? 1.15f : 1f;
-        int want = w == null ? 0 : Math.round(w[0] * adj);
+        int want = Math.round(w[0] * adj);
         int have = intel.countLinkedGatherers(PeonState.GATHER_TREE, armory);
         int inside = armory.getUnitContainer().getNumSupplies();
         if (have < want && inside > 1
@@ -5017,6 +5019,9 @@ final class Economy {
                 int stock = sat.getSupplyContainer(IronSupply.class).getNumSupplies();
                 float share = iron_all > 0 ? gi / (float) iron_all : 0f;
                 int wood = Math.round(tree_all * share);
+                // iron lying in its stock still wants its two wood each
+                if (2 * stock > sat.getSupplyContainer(TreeSupply.class).getNumSupplies())
+                    wood = Math.max(wood, 2);
                 int keep = gi > 0 || stock > 0 ? Math.max(2, Math.round(workers_all * share)) : 0;
                 sat_wants.put(sat, new int[]{wood, keep});
                 want_tree = Math.max(0, want_tree - wood);
@@ -5938,6 +5943,11 @@ final class Economy {
                 bad_supplies.put(old, now + 6000f); // 120 s
             gather_progress.put(peon, new float[]{amount, now});
             unstuck++;
+            Building works_for = intel.gather_buildings.get(peon);
+            if (type == TreeSupply.class && isSatellite(works_for)) {
+                order(peon, works_for, ai.enterAction(works_for));
+                continue;
+            }
             sendGatherer(peon, type, armory);
         }
         if (unstuck > 0 && now - last_unstuck_log > 3000f) { // 60 s
@@ -6020,6 +6030,8 @@ final class Economy {
             Supply current = gather_targets.get(peon);
             if (!moving_over && current != null && !current.isEmpty())
                 continue;
+            if (sat && current == null)
+                continue; // a harvester the satellite deployed: the engine finds its trees
             if (peon.getSupplyContainer() != null && peon.getSupplyContainer().getNumSupplies() > 0)
                 continue; // let it drop off first
             Class<?> type = switch (s) {

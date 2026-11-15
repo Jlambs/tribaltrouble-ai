@@ -22,6 +22,8 @@ final class TripTrace {
         int retargets;
         @Nullable
         Supply supply;
+        @Nullable
+        Building home;
 
         Trip(float start) {
             this.start = start;
@@ -54,6 +56,9 @@ final class TripTrace {
                 it.remove();
                 continue;
             }
+            Building linked = intel.gather_buildings.get(u);
+            if (linked != null)
+                t.home = linked;
             int d = homeCells(intel, u);
             t.far = Math.max(t.far, d);
             if (u.getPrimaryController() instanceof GatherController<?> gather) {
@@ -80,8 +85,12 @@ final class TripTrace {
     }
 
     private void end(@NonNull String how, @NonNull Unit u, @NonNull Trip t, float now) {
-        ai.log(String.format("gtrip %s after %.0f loaded %b far %d retargets %d at %d,%d", how, FableAI.seconds(
-                now - t.start), t.loaded >= 0f, t.far, t.retargets, u.getGridX(), u.getGridY()));
+        Building home = t.home;
+        ai.log(String.format("gtrip %s after %.0f loaded %b far %d retargets %d at %d,%d %s threat %b level %d %s",
+                how, FableAI.seconds(now - t.start), t.loaded >= 0f, t.far, t.retargets, u.getGridX(), u.getGridY(),
+                u.isDead() ? "-" : u.getPrimaryController().getClass().getSimpleName(), ai.military().threatNear(
+                        u.getGridX(), u.getGridY(), 11), ai.military().baseThreatLevel(),
+                home == null || home.isDead() ? "-" : home == ai.intel().armory() ? "main" : "old"));
     }
 
     private static int homeCells(@NonNull Intel intel, @NonNull Unit u) {
