@@ -5344,6 +5344,10 @@ final class Economy {
                     for (int t = 0; t < 4; t++)
                         relinked_have[t] += intel.countLinkedGatherers(kinds[t], b);
         }
+        // evade: gatherers out of an enemy's way come back to their kind
+        have[0] += ai.military().evading(PeonState.GATHER_TREE);
+        have[1] += ai.military().evading(PeonState.GATHER_IRON);
+        have[2] += ai.military().evading(PeonState.GATHER_ROCK);
         // satellite: the iron gatherers the engine linked to a satellite are gatherers of the plan
         for (Building sat : satellites())
             have[1] += intel.countLinkedGatherers(PeonState.GATHER_IRON, sat);
@@ -5798,6 +5802,14 @@ final class Economy {
             if (!supply.isEmpty())
                 supply_load.merge(supply, 1, Integer::sum);
         }
+    }
+
+    /** evade: a gatherer that stepped out of an enemy's way goes back to gathering what it gathered. */
+    void resumeGatherer(@NonNull Unit peon, @NonNull PeonState kind) {
+        Building armory = ai.intel().armory();
+        if (armory == null || armory.isDead() || armory_field == null)
+            return;
+        sendGatherer(peon, kind == PeonState.GATHER_TREE ? TreeSupply.class : kind == PeonState.GATHER_IRON ? IronSupply.class : RockSupply.class, armory);
     }
 
     private static boolean isGathering(@NonNull PeonState s) {

@@ -38,6 +38,13 @@ for f in sorted(glob.glob(f'aisim/runs/{run}/g/*-ai-s0.log')):
             continue
         d = bins.setdefault(int(float(m.group(1)) // (60 * width)) * width, {})
         how, secs, ctrl, threat, link = m.group(2), int(m.group(3)), m.group(9), m.group(10), m.group(12)
+        if how in ('transit', 'inside') and m.group(4) == 'true':
+            # a loaded gatherer that walks into an armory delivers its load there (EnterController)
+            r = d.setdefault('ok', [0, 0.0, 0.0, 0.0])
+            r[0] += 1
+            r[1] += secs
+            r[3] += max(0, int(m.group(5)))
+            continue
         if how == 'dead':
             k = 'dead'
         elif how in ('transit', 'inside'):

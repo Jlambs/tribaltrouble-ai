@@ -52,7 +52,8 @@ final class TripTrace {
             }
             PeonState state = intel.peon_states.get(u);
             if (state != PeonState.GATHER_IRON) {
-                end(state == null ? "inside" : state.name().toLowerCase(java.util.Locale.ROOT), u, t, now);
+                end(intel.evading.contains(u) ? "evade" : state == null ? "inside" : state.name().toLowerCase(
+                        java.util.Locale.ROOT), u, t, now);
                 it.remove();
                 continue;
             }
@@ -86,11 +87,33 @@ final class TripTrace {
 
     private void end(@NonNull String how, @NonNull Unit u, @NonNull Trip t, float now) {
         Building home = t.home;
-        ai.log(String.format("gtrip %s after %.0f loaded %b far %d retargets %d at %d,%d %s threat %b level %d %s",
+        Intel intel = ai.intel();
+        // the nearest enemy warrior, whether it is parked, how many stand within 14 cells, and the way to the main armory
+        Unit near = null;
+        int near2 = Integer.MAX_VALUE;
+        int around = 0;
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead())
+                continue;
+            int d2 = MapAnalysis.dist2(u.getGridX(), u.getGridY(), e.getGridX(), e.getGridY());
+            if (d2 <= 14 * 14)
+                around++;
+            if (d2 < near2) {
+                near2 = d2;
+                near = e;
+            }
+        }
+        Building main = intel.armory();
+        int shelter = main == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(main.getGridX(), main.getGridY(),
+                u.getGridX(), u.getGridY()));
+        ai.log(String.format(
+                "gtrip %s after %.0f loaded %b far %d retargets %d at %d,%d %s threat %b level %d %s foe %d %s %d main %d",
                 how, FableAI.seconds(now - t.start), t.loaded >= 0f, t.far, t.retargets, u.getGridX(), u.getGridY(),
                 u.isDead() ? "-" : u.getPrimaryController().getClass().getSimpleName(), ai.military().threatNear(
                         u.getGridX(), u.getGridY(), 11), ai.military().baseThreatLevel(),
-                home == null || home.isDead() ? "-" : home == ai.intel().armory() ? "main" : "old"));
+                home == null || home.isDead() ? "-" : home == intel.armory() ? "main" : "old",
+                near == null ? -1 : (int) Math.sqrt(near2), near == null ? "-" : Intel.isParked(near) ? "parked"
+                        : "active", around, shelter));
     }
 
     private static int homeCells(@NonNull Intel intel, @NonNull Unit u) {

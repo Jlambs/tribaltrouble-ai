@@ -475,6 +475,13 @@ class Strategy {
      */
     int shelter_reach = 15;
     /**
+     * evade (cells, 0 = off): a gatherer with a threat within 11 cells and no quarters or armory of ours within this
+     * many cells steps 12 cells out of the enemy's way and goes back to gathering once no enemy warrior is within 14,
+     * instead of walking to shelter and out again (a third to a half of the iron gatherers' time from minute 16:
+     * lab/fable/NOTES.md, the flights). A peon outruns a warrior (5 m/s against 4).
+     */
+    int evade_cells = 0;
+    /**
      * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
      * apart).
      */
@@ -2001,6 +2008,7 @@ class Strategy {
         quarters_sortie = params.getBoolean("quarters_sortie", quarters_sortie);
         quarters_sortie_min = params.getInt("quarters_sortie_min", quarters_sortie_min);
         shelter_reach = params.getInt("shelter_reach", shelter_reach);
+        evade_cells = params.getInt("evade_cells", evade_cells);
         shelter_off = params.getBoolean("shelter_off", shelter_off);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
         swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);

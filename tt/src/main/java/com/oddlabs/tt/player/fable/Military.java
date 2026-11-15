@@ -660,6 +660,7 @@ final class Military {
         provokeProbe();
         updateStaging();
         updateThreat();
+        tendEvaders();
         manTowers();
         // sortie_ratio: before defend, so that its evacuatePeons already leaves the peons coming out alone
         if (ai.strategy().sortie_ratio > 0f)
@@ -1655,6 +1656,125 @@ final class Military {
         }
     }
 
+    /** evade: the gatherers out of an enemy's way: {what each gathered (PeonState ordinal), since, its last step}. */
+    private final Map<@NonNull Unit, float @NonNull []> evaders = new LinkedHashMap<>();
+    private static final int EVADE_STEP_CELLS = 12;
+    private static final int EVADE_CLEAR_CELLS = 14;
+    private static final float EVADE_MAX_TICKS = 1000f; // 20 s
+    /** evade: the step's directions, straight away from the enemy first: cosine and sine of 0, +-40 and +-80 degrees. */
+    private static final float[][] EVADE_TURNS = {{1f, 0f}, {.766f, .643f}, {.766f, -.643f}, {.174f, .985f}, {.174f, -.985f}};
+
+    /** evade: gatherers of a kind that are out of an enemy's way (they still count as gatherers of it). */
+    int evading(@NonNull PeonState kind) {
+        int n = 0;
+        for (float[] v : evaders.values())
+            if ((int) v[0] == kind.ordinal())
+                n++;
+        return n;
+    }
+
+    /** evade: cells to our nearest quarters or armory. */
+    private int shelterCells(@NonNull Unit p) {
+        int best = Integer.MAX_VALUE;
+        for (List<Building> list : List.of(ai.intel().armories, ai.intel().quarters))
+            for (Building b : list)
+                if (!b.isDead())
+                    best = Math.min(best, MapAnalysis.dist2(b.getGridX(), b.getGridY(), p.getGridX(), p.getGridY()));
+        return best == Integer.MAX_VALUE ? best : (int) Math.sqrt(best);
+    }
+
+    /** evade: the nearest living enemy warrior or chieftain within cells of (x, y), or null. */
+    private @Nullable Unit nearestFoe(int x, int y, int cells) {
+        Unit best = null;
+        int best2 = cells * cells + 1;
+        for (List<Unit> group : List.of(ai.intel().enemy_warriors, ai.intel().enemy_chieftains))
+            for (Unit e : group) {
+                if (e.isDead())
+                    continue;
+                int d2 = MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY());
+                if (d2 < best2) {
+                    best2 = d2;
+                    best = e;
+                }
+            }
+        return best;
+    }
+
+    /** evade: walks p EVADE_STEP_CELLS away from foe, to a cell we can reach with no enemy within 11; false if none. */
+    private boolean stepAway(@NonNull Unit p, @NonNull Unit foe) {
+        float dx = p.getGridX() - foe.getGridX();
+        float dy = p.getGridY() - foe.getGridY();
+        float len = (float) Math.sqrt(dx * dx + dy * dy);
+        if (len < .5f) {
+            dx = 1f;
+            dy = 0f;
+            len = 1f;
+        }
+        dx /= len;
+        dy /= len;
+        DistanceField reach = ai.planner().getStartField();
+        for (float[] turn : EVADE_TURNS) {
+            int x = p.getGridX() + Math.round((dx * turn[0] - dy * turn[1]) * EVADE_STEP_CELLS);
+            int y = p.getGridY() + Math.round((dx * turn[1] + dy * turn[0]) * EVADE_STEP_CELLS);
+            if (!reach.reachable(x, y) || nearestFoe(x, y, 11) != null)
+                continue;
+            ai.owner().setLandscapeTarget(Selectable.newArray(p), x, y, Action.MOVE, false);
+            return true;
+        }
+        return false;
+    }
+
+    private boolean startEvading(@NonNull Unit p, @NonNull PeonState kind) {
+        Unit foe = nearestFoe(p.getGridX(), p.getGridY(), EVADE_CLEAR_CELLS);
+        if (foe == null || !stepAway(p, foe))
+            return false;
+        evaders.put(p, new float[]{kind.ordinal(), ai.now(), ai.now()});
+        ai.intel().evading.add(p);
+        ai.intel().peon_states.put(p, PeonState.SHEPHERD);
+        ai.aiLog().count("evade_started");
+        return true;
+    }
+
+    /**
+     * evade: every round an evader goes back to gathering once no enemy is within EVADE_CLEAR_CELLS, steps away again
+     * (once a second) while one is within 11, and after EVADE_MAX_TICKS, or with nowhere to step, is a peon like any
+     * other again, which evacuatePeons shelters.
+     */
+    private void tendEvaders() {
+        if (evaders.isEmpty())
+            return;
+        Intel intel = ai.intel();
+        float now = ai.now();
+        Iterator<Map.Entry<Unit, float[]>> it = evaders.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<Unit, float[]> e = it.next();
+            Unit p = e.getKey();
+            float[] v = e.getValue();
+            if (p.isDead()) {
+                it.remove();
+                intel.evading.remove(p);
+                ai.aiLog().count("evade_died");
+                continue;
+            }
+            Unit foe = nearestFoe(p.getGridX(), p.getGridY(), EVADE_CLEAR_CELLS);
+            if (foe == null) {
+                it.remove();
+                intel.evading.remove(p);
+                ai.economy().resumeGatherer(p, PeonState.values()[(int) v[0]]);
+                ai.aiLog().count("evade_resumed");
+                continue;
+            }
+            boolean close = MapAnalysis.dist2(p.getGridX(), p.getGridY(), foe.getGridX(), foe.getGridY()) <= 11 * 11;
+            if (now - v[1] > EVADE_MAX_TICKS || (close && now - v[2] >= 50f && !stepAway(p, foe))) {
+                it.remove();
+                intel.evading.remove(p);
+                ai.aiLog().count("evade_gave_up");
+            } else if (close && now - v[2] >= 50f) {
+                v[2] = now;
+            }
+        }
+    }
+
     private void evacuatePeons() {
         // shelter_off: nobody is sheltered
         if (ai.strategy().shelter_off)
@@ -1664,6 +1784,7 @@ final class Military {
         Building armory = intel.armory();
         boolean swarm = ai.strategy().repair_swarm;
         boolean salvage = ai.strategy().salvage;
+        int evade = ai.strategy().evade_cells;
         List<Unit> evacuate = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
@@ -1687,6 +1808,10 @@ final class Military {
             // salvage: an evacuee whose spawn scan started a hunt under its rally order is FIGHT, not TRANSIT, while
             // it walks into the refuge: it is on its way into a building of ours already.
             if (salvage && p.getCurrentController() instanceof EnterController)
+                continue;
+            // evade: a gatherer far from every shelter steps out of the way and goes on gathering
+            if (evade > 0 && (s == PeonState.GATHER_TREE || s == PeonState.GATHER_IRON || s == PeonState.GATHER_ROCK)
+                    && shelterCells(p) > evade && startEvading(p, s))
                 continue;
             evacuate.add(p);
         }

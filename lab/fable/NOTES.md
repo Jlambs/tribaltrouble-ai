@@ -368,6 +368,45 @@ and 3.5 towers. A wave that targets a tower of ours loses 26-30 warriors for 2-3
   minute 15 did not rise (2.3 against 6.2). Shepherds from 240 s instead of 120 s cost Gauntlet half its wins, so
   simply letting early waves through is no alternative.
 
+## Third session (2026-11-15/16): the economy after minute 12
+
+Asked to step back from single-parameter screens and look for fundamentals. The first accounting was of peon time.
+
+### The late economy runs at a quarter of its early yield
+
+exam-f2-vs15 (200 games), won / lost: at 25 min we have 57 / 30 warriors and 119 / 108 peons outside buildings plus 40
+inside, the armory holds no iron and no rock, and iron comes in at 11 a minute. Per peon outside, wood + iron + rock
+harvested: 1.55 a minute in minutes 8-10, 0.41 in minutes 20-25. Iron gatherers stay at ~21 from minute 8 to 30 while
+the plan's modelled iron cycle is 37 s at 10 min and 79 s at 20 min; the real cost of a unit of iron per gatherer
+(census harvest over gatherers, 12 logged games) is 42-50 s until minute 10, 85 s at 14, 151 s at 16 and 195-213 s
+from minute 18 to 24: three times the model. Wood stays on its model (31-36 s).
+
+### Where an iron gatherer's time goes (TripTrace, lab/fable/trips.py; 12 logged games, trips2-vs15)
+
+`TripTrace` (log only) times every iron gatherer from order to delivery and records how each trip ends.
+
+| min | trips a game | delivered | recall by the old armory | flight | ordered in, no enemy by | dead | other work |
+|---|---|---|---|---|---|---|---|
+| 4-8 | 60 | 85 % | 0 | 1 % | 3 % | 3 % | 8 % |
+| 8-12 | 112 | 72 % | 4 % | 7 % | 7 % | 3 % | 7 % |
+| 12-16 | 82 | 69 % | 6 % | 8 % | 6 % | 3 % | 9 % |
+| 16-20 | 50 | 40 % | 17 % | 19 % | 12 % | 2 % | 10 % |
+| 20-24 | 57 | 36 % | 10 % | 28 % | 17 % | 2 % | 8 % |
+| 24-28 | 53 | 42 % | 5 % | 29 % | 17 % | 1 % | 5 % |
+
+(Shares of iron gatherer-seconds. A loaded gatherer that walks into an armory delivers there and counts as
+delivered.)
+
+- **The recall loop.** The engine links a gatherer to the armory nearest its supply (Unit.nearestSupplyBuilding),
+  not to the one that sent it. From the expansion armory on (7-8 min, ~100 cells from the first) every supply nearer
+  the first armory links its gatherer there; drainSecondary recalls the old armory's gatherers every 10 s, and
+  allocatePeons, which counts only the main armory's, sends the next peon the same second. 135 such recalls a game in
+  minutes 16-20. Gauntlet's notes knew the loop only as the cause of two 5-hour draws ("real but rare").
+- **Flights.** evacuatePeons sends every peon with a threat within 11 cells to the main armory or a quarters,
+  however far (iron is picked up 49-62 cells out from minute 16). "Ordered in, no enemy by" happens almost only at
+  threat level 1-2 (29 of 1,696 at level 0), so most of it is the same flight seen a second late. Together a third to
+  a half of the gatherers' time from minute 16.
+
 ## Reproduce
 
 ```bash
