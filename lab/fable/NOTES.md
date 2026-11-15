@@ -407,6 +407,40 @@ delivered.)
   threat level 1-2 (29 of 1,696 at level 0), so most of it is the same flight seen a second late. Together a third to
   a half of the gatherers' time from minute 16.
 
+### Three systems for the gatherers (flags, off by default; the default plays `@f2`'s games, 8 of 8, same4-vs15)
+
+- **satellite**: a finished armory that is not the main one keeps working: its iron gatherers stay (the engine links
+  them to it anyway), ore is picked by its walk to the nearest armory, the plan is one pool, and each satellite gets
+  the share of the wood gatherers and forge workers that its share of the iron gatherers asks for (the rest of the
+  quarters' peons walk on to the main armory as before). First version (sat1-vs15): 36 wins against 40 and 3.5
+  fewer warriors at 10 min (z -4.0): the satellite recalled its wood gatherers before its first plan and the main
+  armory's retargeting took the harvesters it deployed. Fixed (sat2-vs15): 35 wins (+11 / -16), minute-20 model -0.6
+  +- 2.6, 2.1 more warriors at 10 min (z 2.9). Recalls 135 -> 4 a game in minutes 16-20, delivered share 57 / 45 / 53 %
+  in minutes 16-28 against 40 / 36 / 42 %, iron by 20 min +3 % (323 / 290 won / lost against 314 / 282).
+- **evade_cells=30**: a gatherer with a threat within 11 cells and no quarters or armory within 30 steps 12 cells out
+  of the enemy's way (straight away first, then +-40 and +-80 degrees, to a reachable cell with no enemy within 11)
+  and gathers again once none is within 14. 432 evasions a game, 336 resumed, 65 given up, 31 died; flights fall
+  from 19-29 % of the gatherers' time to 4-10 %, but every evasion still ends the trip, and iron a minute does not
+  move (12 logged games).
+- **iron_real=3**: the plan staffs iron by the measured gatherer-time per unit (a running mean of the 30-s windows),
+  up to 3 times the modelled trip: 28-38 iron gatherers instead of 21-26, iron a minute 11.0 against 8.5 in minutes
+  16-30 at 150-240 s a unit (12 logged games); in minutes 8-14 the same iron with 4-7 more gatherers.
+- Iron by 20 min in the 12 logged games of each: 286 default, 299 satellite, 284 evade, 302 iron_real, 316 all
+  three. What the gatherers flee from in minutes 16-28 (trips3-vs15): 291 flights a game from a moving enemy within
+  11 cells (131 from a group of 2-5, 91 from a single warrior, 70 from 6 or more), 35 from parked ones; 85 % start
+  more than 20 cells from the main armory. The shepherds are not the cause: of 66 waves a game led to a shepherd in
+  minutes 14-28, 4 end within 60 cells of the newest armory. So the late field is a battlefield whatever the
+  gatherers do, and the three systems together buy about a tenth more iron.
+
+### The opening strike: what the engine allows
+
+A Hard's first quarters stands at 73 / 83 / 110 s (10 / 50 / 90 %, cnt-vs15) and its first armory at 138 / 154 / 208
+s. From our start the nearest copy is 133 m away (straight, median), the second 148 m, the third 264 m, the fourth
+282 m, the fifth 392 m; a peon walks 5 m/s. So path (a) (every peon dead before the quarters stands) is in reach of
+a squad that leaves at once for the four nearest copies, and nothing that leaves later reaches a copy before its
+armory stands. freeze_chain (new, removed: the squad goes on to the next copy without a finished armory) chained
+1.4 times a game and froze 1 copy in 24 games.
+
 ## Reproduce
 
 ```bash
