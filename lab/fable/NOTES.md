@@ -39,10 +39,11 @@ size, both starts 39-0-1; against 6 Hards at normal speed, hills 0..4, 10-2; aga
 Second session (2026-11-15 and 16, "Second session" below): about forty more variants at N=15, none better than
 these defaults, so the result above stands. Natives as opponents are harder (N=14 48 wins of 100 against 58, N=15 27
 against 40). The source differs from `@f2` only in counters and log lines (lost_ROLE, reinforce_sent, the `lost ...`
-lines and two more fields of the battle line): it plays `@f2`'s games (8 of 8 identical checksums, same-check3).
+lines and two more fields of the battle line): it plays `@f2`'s games (8 of 8 identical checksums, same-check3;
+s21005-0 of it replays VERIFIED in a fresh JVM), and `spotlessCheck` passes. Committed on branch `fable` since
+2026-11-16.
 
-Not done: nothing is committed (the package and `lab/fable/` are untracked files of the worktree, branch `fable` off
-`origin/headless`); the game itself was not run (headless games only).
+Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
 
@@ -333,6 +334,10 @@ each, 48 in six quarters, until the cap.
 | snipers=true (Gauntlet's sniper towers) | 36 | +1 / -5 |
 | freeze_cut=false (new: no wait for the armory site when the quarters stood first) | 39 | +0 / -1 over the 9 games it touches |
 | expand_ticks=21000 | 40 | the same games |
+| reinforce_ratio=0.3 (0.5) | 37 | +9 / -12 |
+| chicken_hunters=3 (7) | 36 | +10 / -14 |
+| tower_builders=5 (8) | 37 | +14 / -17; w10 +4.0 (z 3.9), outs@15 +0.21 (z 2.0): the later-towers pattern again |
+| hold_early=2 (4) | 40 | +9 / -9 |
 
 Any change flips 10-13 games of the 100 each way (rally +8 / -11, bypass +11 / -14, later towers +13 / -13): a
 quarter of the maps are decided by small things, and only effects of +10 or more show in 100 games.
