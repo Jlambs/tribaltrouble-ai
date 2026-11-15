@@ -900,6 +900,15 @@ class Strategy {
      */
     boolean relink_guard = false;
     /**
+     * satellite: a finished armory that is not the main one keeps working. The engine delivers a load to the armory
+     * nearest its supply (Unit.nearestSupplyBuilding), so a gatherer sent to ore nearer an old armory is linked to
+     * it; drainSecondary recalled it within 10 s and the plan, which does not count it, sent the next one (from
+     * minute 16 a quarter of the iron gatherers' time ended in a delivered load: lab/fable/NOTES.md, the recall
+     * loop). With it such gatherers stay, ore is picked by its walk to the nearest armory, and the old armory gets
+     * the share of the wood gatherers and workers that its share of the iron gatherers asks for.
+     */
+    boolean satellite = false;
+    /**
      * ore_reach: when rock weapons are wanted but no iron is left within the 400 m field, look for iron in the far
      * field (2 x ore_reach) before settling on rock (rock-only stretches in 73 of 500 ludicrous N=13 games; 3 of the 4
      * logged N=6 losses were iron-window cases).
@@ -2167,6 +2176,7 @@ class Strategy {
         gather_probe = params.getBoolean("gather_probe", gather_probe);
         gather_home = params.getBoolean("gather_home", gather_home);
         relink_guard = params.getBoolean("relink_guard", relink_guard);
+        satellite = params.getBoolean("satellite", satellite);
         ore_iron_first = params.getBoolean("ore_iron_first", ore_iron_first);
         ore_reach_fail = params.getBoolean("ore_reach_fail", ore_reach_fail);
         weapon_reserve = params.getInt("weapon_reserve", weapon_reserve);

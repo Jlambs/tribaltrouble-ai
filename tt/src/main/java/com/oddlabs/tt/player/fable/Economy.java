@@ -103,12 +103,14 @@ final class Economy {
     private final @NonNull Siege siege;
     /** repair_swarm: repairs under attack, fed with wood. */
     private final @NonNull RepairSwarm swarm;
+    private final @NonNull TripTrace trips;
 
     Economy(@NonNull FableAI ai) {
         this.ai = ai;
         retire = new Retire(ai, this);
         siege = new Siege(ai, this);
         swarm = new RepairSwarm(ai, this, siege);
+        trips = new TripTrace(ai);
         openingPlan();
     }
 
@@ -261,6 +263,8 @@ final class Economy {
         if (st.salvage)
             salvage();
         measureYield();
+        if (ai.logging())
+            trips.tick();
         manageQuarters();
         manageArmory();
         guardBank();
@@ -3792,16 +3796,90 @@ final class Economy {
         return false;
     }
 
+    /** satellite: the wood gatherers and the workers each satellite is to have, by the last plan. */
+    private final Map<@NonNull Building, int @NonNull []> sat_wants = new LinkedHashMap<>();
+    /** satellite: each satellite's walking distances, when they were worked out, and when it was last tended. */
+    private final Map<@NonNull Building, DistanceField> sat_fields = new LinkedHashMap<>();
+    private final Map<@NonNull Building, Float> sat_field_times = new LinkedHashMap<>();
+    private final Map<@NonNull Building, Float> sat_tended = new LinkedHashMap<>();
+
+    /** satellite: whether this armory, finished and not the main one, keeps gathering and forging. */
+    private boolean isSatellite(@Nullable Building a) {
+        return ai.strategy().satellite && a != null && !a.isDead() && a.isComplete() && a != ai.intel().armory()
+                && ai.intel().armories.contains(a) && !retire.isDoomed(a) && !evacuating.containsKey(a);
+    }
+
+    private @NonNull List<@NonNull Building> satellites() {
+        List<Building> list = new ArrayList<>();
+        if (ai.strategy().satellite)
+            for (Building a : ai.intel().armories)
+                if (isSatellite(a))
+                    list.add(a);
+        return list;
+    }
+
+    private @NonNull DistanceField satField(@NonNull Building a) {
+        sat_fields.keySet().removeIf(Building::isDead);
+        sat_field_times.keySet().removeIf(Building::isDead);
+        sat_tended.keySet().removeIf(Building::isDead);
+        DistanceField f = sat_fields.get(a);
+        Float t = sat_field_times.get(a);
+        if (f == null || t == null || ai.now() - t > 6000f) { // 120 s
+            f = ai.map().computeField(a.getGridX(), a.getGridY(), 400);
+            sat_fields.put(a, f);
+            sat_field_times.put(a, ai.now());
+        }
+        return f;
+    }
+
+    /**
+     * satellite: every 10 s the satellite's rock and chicken gatherers are recalled (those are the main armory's) and
+     * its wood gatherers are brought to the plan's number, fewer as wood piles up.
+     */
+    private void tendSatellite(@NonNull Building armory) {
+        ai.aiLog().count("sat_ticks"); // economy ticks (1 s) a satellite worked
+        Float last = sat_tended.get(armory);
+        if (last != null && !ai.periodDue(last, 500f)) // 10 s
+            return;
+        sat_tended.put(armory, ai.now());
+        Player owner = ai.owner();
+        Intel intel = ai.intel();
+        int rock = intel.countLinkedGatherers(PeonState.GATHER_ROCK, armory);
+        if (rock > 0)
+            owner.recallGatherers(armory, RockSupply.class, rock);
+        int chicken = intel.countLinkedGatherers(PeonState.GATHER_CHICKEN, armory);
+        if (chicken > 0)
+            owner.recallGatherers(armory, RubberSupply.class, chicken);
+        int[] w = sat_wants.get(armory);
+        int wood = armory.getSupplyContainer(TreeSupply.class).getNumSupplies();
+        float adj = wood > 40 ? .35f : wood > 20 ? .7f : wood < 6 ? 1.15f : 1f;
+        int want = w == null ? 0 : Math.round(w[0] * adj);
+        int have = intel.countLinkedGatherers(PeonState.GATHER_TREE, armory);
+        int inside = armory.getUnitContainer().getNumSupplies();
+        if (have < want && inside > 1
+                && armory.getDeployContainer(DeployType.PEON_HARVEST_TREE).getNumSupplies() == 0) {
+            owner.deployUnits(armory, DeployType.PEON_HARVEST_TREE, Math.min(Math.min(want - have, inside - 1), 4));
+            ai.aiLog().count("sat_wood_sent");
+        } else if (have > want + 1) {
+            owner.recallGatherers(armory, TreeSupply.class, have - want);
+            ai.aiLog().count("sat_wood_recalled");
+        }
+    }
+
     /**
      * An armory that is no longer the main one turns what it has into warriors and then sends its peons over to the
      * main armory.
      */
     private void drainSecondary(@NonNull Building armory) {
         Player owner = ai.owner();
+        // satellite: its gatherers stay, and it keeps the workers the plan gives it
+        boolean sat = isSatellite(armory);
+        if (sat)
+            tendSatellite(armory);
         boolean relink_guard = ai.strategy().relink_guard;
         if (relink_guard)
             syncRelinkPrimary();
-        if (ai.strategy().recall_old_gatherers && ai.periodDue(last_old_recall, 500f)) { // every 10 s
+        if (!sat && ai.strategy().recall_old_gatherers && ai.periodDue(last_old_recall, 500f)) { // every 10 s
             last_old_recall = ai.now();
             // relink_guard: since this armory's last recall under the main armory, and in the last 30 s, the engine
             // linked gatherers we sent for the main armory to it (a load goes to the supply's nearest armory).
@@ -3854,6 +3932,13 @@ final class Economy {
         // reloc_lock: the locked armory's workers wait inside until the new one can forge.
         if (lock_old == armory && lockHold(armory))
             refuge = true;
+        if (sat) {
+            int[] w = sat_wants.get(armory);
+            int keep = w != null ? w[1] : 2;
+            if (left > keep && pending == 0 && !refuge)
+                owner.deployUnits(armory, DeployType.PEON, left - keep);
+            return;
+        }
         if (!can_make && left > 0 && pending == 0 && !refuge)
             owner.deployUnits(armory, DeployType.PEON, left);
     }
@@ -4721,6 +4806,13 @@ final class Economy {
         iron_cycle = SitePlanner.gatherTicks(armory_field, map.getIron(), 30, 10, 400, harvest);
         iron_cycle_armory = armory;
         int iron_left = countReachable(map.getIron(), 400);
+        List<Building> sats = satellites();
+        for (Building sat : sats) {
+            // satellite: iron is as near as its nearest armory
+            DistanceField sf = satField(sat);
+            iron_cycle = Math.min(iron_cycle, SitePlanner.gatherTicks(sf, map.getIron(), 30, 10, 400, harvest));
+            iron_left += countReachable(sf, map.getIron(), 400);
+        }
         // Rock warriors are a poor use of a peon; make them only once iron is out of reach.
         rock_weapons = (iron_left == 0 || iron_cycle > 10000f) // 200 s
                 && armory.getSupplyContainer(IronSupply.class).getNumSupplies() < 2;
@@ -4798,6 +4890,15 @@ final class Economy {
         int g_chicken = intel.countGatherers(PeonState.GATHER_CHICKEN, armory);
         int transit = intel.countPeons(PeonState.TRANSIT);
         int pool = workers + g_tree + g_iron + g_rock + g_chicken + transit;
+        // satellite: their iron and wood gatherers and the workers they keep are part of the one pool
+        int sat_iron = 0;
+        for (Building sat : sats) {
+            int[] w = sat_wants.get(sat);
+            int gi = intel.countLinkedGatherers(PeonState.GATHER_IRON, sat);
+            sat_iron += gi;
+            pool += gi + intel.countLinkedGatherers(PeonState.GATHER_TREE, sat) + Math.min(
+                    sat.getUnitContainer().getNumSupplies(), w != null ? w[1] : 2);
+        }
 
         // Chicken warriors need one chicken, one rock and more work; hunt chickens once the base runs.
         // A chicken warrior is worth two iron ones, so chickens are hunted as soon as there are peons to spare.
@@ -4902,6 +5003,32 @@ final class Economy {
             idle_rock_out = 0;
             idle_wood_out = 0;
             idle_wood = false;
+        }
+        // satellite: each takes the share of the wood gatherers and workers that its share of the iron gatherers asks
+        // for; the main armory plans for the rest (want_iron stays the whole pool's: allocatePeons counts them all)
+        sat_wants.keySet().removeIf(b -> !sats.contains(b));
+        if (!sats.isEmpty()) {
+            int tree_all = want_tree;
+            int workers_all = want_workers;
+            int iron_all = g_iron + sat_iron;
+            StringBuilder sb = new StringBuilder();
+            for (Building sat : sats) {
+                int gi = intel.countLinkedGatherers(PeonState.GATHER_IRON, sat);
+                int stock = sat.getSupplyContainer(IronSupply.class).getNumSupplies();
+                float share = iron_all > 0 ? gi / (float) iron_all : 0f;
+                int wood = Math.round(tree_all * share);
+                int keep = gi > 0 || stock > 0 ? Math.max(2, Math.round(workers_all * share)) : 0;
+                sat_wants.put(sat, new int[]{wood, keep});
+                want_tree = Math.max(0, want_tree - wood);
+                want_workers = Math.max(2, want_workers - keep);
+                if (ai.logging())
+                    sb.append(String.format(" %d,%d: iron %d wood %d/%d workers %d/%d stock %d/%d;", sat.getGridX(),
+                            sat.getGridY(), gi, intel.countLinkedGatherers(PeonState.GATHER_TREE, sat), wood,
+                            sat.getUnitContainer().getNumSupplies(), keep, sat.getSupplyContainer(
+                                    TreeSupply.class).getNumSupplies(), stock));
+            }
+            if (ai.logging() && ai.periodDue(ore_log, 3000f)) // 60 s
+                ai.log("SAT" + sb);
         }
         if (ai.logging() && ai.periodDue(ore_log, 3000f)) { // 60 s
             ore_log = ai.now();
@@ -5212,6 +5339,9 @@ final class Economy {
                     for (int t = 0; t < 4; t++)
                         relinked_have[t] += intel.countLinkedGatherers(kinds[t], b);
         }
+        // satellite: the iron gatherers the engine linked to a satellite are gatherers of the plan
+        for (Building sat : satellites())
+            have[1] += intel.countLinkedGatherers(PeonState.GATHER_IRON, sat);
         int[] want = {want_tree, want_iron, want_rock, want_chicken};
         Class<?>[] types = {TreeSupply.class, IronSupply.class, RockSupply.class, RubberSupply.class};
         rebuildSupplyLoad();
@@ -5691,6 +5821,19 @@ final class Economy {
                 ai.aiLog().count("gather_other_armory");
                 continue;
             }
+            // satellite: iron linked to a satellite is that satellite's; wood and rock are gathered for the main
+            // armory, so such a supply is left alone for a minute
+            if (ai.strategy().satellite && peon.getPrimaryController() instanceof GatherController<?> g) {
+                Building linked = g.getAssignedBuilding();
+                if (linked != armory && isSatellite(linked)) {
+                    if (type != IronSupply.class && attempt < 2) {
+                        other_armory_supplies.put(supply, ai.now() + 3000f); // 60 s
+                        ai.aiLog().count("sat_other_supply");
+                        continue;
+                    }
+                    ai.aiLog().count(type == IronSupply.class ? "sat_iron_sent" : "sat_other_sent");
+                }
+            }
             // relink_guard: the gatherer stays where the engine linked it; drainSecondary leaves that armory's
             // gatherers alone for a while.
             if (ai.strategy().relink_guard && peon.getPrimaryController() instanceof GatherController<?> g) {
@@ -5864,9 +6007,11 @@ final class Economy {
                 continue;
             // Gatherers still working for an armory that is no longer the main one move over to the new one.
             Building works_for = intel.gather_buildings.get(peon);
+            // satellite: its gatherers stay with it, and are sent again only when their supply is gone
+            boolean sat = isSatellite(works_for);
             boolean moving_over = works_for != null && works_for != armory && !works_for.isDead()
-                    && intel.armories.contains(works_for);
-            if (works_for != armory && works_for != null && !moving_over)
+                    && intel.armories.contains(works_for) && !sat;
+            if (works_for != armory && works_for != null && !moving_over && !sat)
                 continue;
             // relink_guard: those of a guarded old armory stay with it (the engine would link most back to it, and
             // each re-send spends this tick's four).
@@ -5969,14 +6114,23 @@ final class Economy {
         Supply[] route_cand = route_on ? new Supply[Math.max(1, gst.gather_route_tries)] : null;
         float[] route_cost = route_on ? new float[route_cand.length] : null;
         int route_n = 0;
+        // satellite: ore goes to its nearest armory, so it is as far as that armory (within the 400 m field of either)
+        List<Building> sats = type == IronSupply.class && field == armory_field ? satellites() : List.of();
         for (Supply s : supplies) {
             if (s.isEmpty())
                 continue;
             int d2 = MapAnalysis.dist2(ax, ay, s.getGridX(), s.getGridY());
-            if (d2 > radius * radius)
+            boolean in = d2 <= radius * radius;
+            int d = !in ? DistanceField.UNREACHABLE : field != null ? field.getAround(s.getGridX(), s.getGridY(),
+                    1) : (int) (Math.sqrt(d2) * 2);
+            for (Building sat : sats)
+                if (MapAnalysis.dist2(sat.getGridX(), sat.getGridY(), s.getGridX(), s.getGridY()) <= radius * radius) {
+                    in = true;
+                    d = Math.min(d, satField(sat).getAround(s.getGridX(), s.getGridY(), 1));
+                }
+            if (!in)
                 continue;
             in_radius++;
-            int d = field != null ? field.getAround(s.getGridX(), s.getGridY(), 1) : (int) (Math.sqrt(d2) * 2);
             if (d == DistanceField.UNREACHABLE) {
                 unreachable++;
                 continue;
