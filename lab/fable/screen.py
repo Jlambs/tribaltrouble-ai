@@ -17,8 +17,8 @@ FACTORS = [
     ('iron_real', '', 'iron_real=3'),
     ('route_clear', '', 'gather_route_clear=true'),
     ('reinforce_multi', '', 'reinforce_multi=true'),
-    ('towers_from_8', '', 'towers_early_ticks=24000'),
-    ('reloc', '', 'reloc=true'),
+    ('capped_min_60', '', 'capped_min_strength=60'),
+    ('worn_ratio_35', '', 'worn_ratio=0.35'),
     ('hold_late_4', '', 'hold_late=4'),
 ]
 SEEDS = '21001..21040'
