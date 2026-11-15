@@ -58,6 +58,8 @@ python lab/fable/proxy.py BASE VARIANT...                      # wins and the mi
 python lab/fable/early.py BASE VARIANT...                      # towers, warriors, copies with a base by minute
 python lab/fable/timeline.py RUN                               # won and lost games side by side
 python lab/fable/towerkills.py RUN                             # what our towers kill, by period
+python lab/fable/trips.py RUN                                  # where the iron gatherers' time goes (logged runs)
+python lab/fable/screen.py plan|read NAME                      # eight params at once in 16 runs (2^(8-4))
 ./lab/fable/queue.sh "NAME|PLAYERS|SEEDS" ...                  # batches one after another
 ```
 
@@ -440,6 +442,35 @@ s. From our start the nearest copy is 133 m away (straight, median), the second 
 a squad that leaves at once for the four nearest copies, and nothing that leaves later reaches a copy before its
 armory stands. freeze_chain (new, removed: the squad goes on to the next copy without a finished armory) chained
 1.4 times a game and froze 1 copy in 24 games.
+
+### Screens of the third session (N=15, dev seeds 21001..21100, default cnt-vs15: 40 wins)
+
+| arm | wins | notes |
+|---|---|---|
+| satellite (first version) | 36 | w10 -3.5 (z -4.0): the wood bug above |
+| satellite | 35 | +11 / -16; model -0.6 +- 2.6; w10 +2.1 (z 2.9) |
+| iron_real=3 | 37 | +15 / -18; model -0.5 +- 2.8 |
+| **satellite + evade_cells=30 + iron_real=3** | **45** | +16 / -11; model +4.1 +- 2.3 (z 1.8); outs@20 +0.22 (z 1.8), outs@30 +0.51 (z 3.8), w10 +2.5 (z 2.6) |
+| freeze_targets=2 (two opening strikes at once) | 31 | +6 / -15 (z -2.0); model -5.8 (z -2.2); 1.72 copies out or frozen by the strikes against 0.86, outs@10 +0.16, but w10 -13.1 (z -7.8): by 10 min the campaign has taken that second copy anyway, and the 6 peons away cost the army of minutes 8-12 |
+| freeze_targets=3 / 4 with freeze_eta2 70 s | stopped after 5 / 6 games | the squads for the third and fourth copy (264 / 282 m) arrive after its quarters stands: 1.4-2.3 strikes given up and 6 peons lost a game |
+| shred=true (Gauntlet's blast mission) | stopped after 27 games | 0.5 blasts a game: the stun in every fight keeps zeroing the shared charge |
+
+Singly the three gatherer systems are within the noise below the default; together they are the first arm above it
+at N=15 (confirmation on fresh maps: below).
+
+Built, checked in logged games and removed:
+
+- **wing** (a second attack force: every other group of reinforcements from 8 min until it has 30-36 warriors, then
+  the nearest copy the main army is not at). With the base's defense at most 0.6 of its strength it never found a
+  target (37 refusals a game). At 1.3 it left 1.8 times a game, lost 31 warriors a game and took no base: 9.75
+  copies with a base at 20 min against 9.00, 72 warriors of ours against 98 (12 logged 25-minute games). A force of
+  25 crossing the map is ground down like the reinforcements are; the single army is not an accident.
+- **freeze_chain** (above).
+
+Where the lost games end (300 default games at N=15): with 10 or more copies still housed in 79 of 189, 7-9 in 99,
+4-6 in 11, never with 3 or fewer; 8 before 25 min, 80 in minutes 25-40, 66 in 40-70, 35 later. Wins end at a median
+of 87 min (10 %: 62, 90 %: 138). So no game is lost close to won: the campaign stalls at 5-8 copies taken, and the
+rest is a long siege of our base.
 
 ## Reproduce
 
