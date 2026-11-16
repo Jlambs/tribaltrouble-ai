@@ -6625,6 +6625,12 @@ final class Military {
             return;
         float away = attackStrength();
         boolean capped = nearUnitCap();
+        // late_reinforce_min: late, only a clump of that strength leaves, at the cap or not
+        float late_min = ai.strategy().late_reinforce_min;
+        if (late_min > 0f && ai.now() >= ai.strategy().late_min_ticks && home < late_min) {
+            ai.aiLog().count("late_reinforce_wait"); // military rounds with a home group below the clump
+            return;
+        }
         // Reinforcements go as a clump: a trickle of a few at a time is picked off on the way.
         float capped_need = capped ? cappedNeed(away) : 12f;
         if (home < Math.max(12f, ai.strategy().reinforce_ratio * away) && !(capped && home >= capped_need)) {

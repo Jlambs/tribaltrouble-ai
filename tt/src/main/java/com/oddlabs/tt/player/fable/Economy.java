@@ -4456,7 +4456,8 @@ final class Economy {
         }
         if (bank_on) {
             String why = stock >= st.bank ? "full" : evacuating.containsKey(armory)
-                    || 2 * armory.getHitPoints() < armory.getTemplate().getMaxHitPoints() ? "the armory is in danger" : !military.atHome() ? "the army is out" : null;
+                    || 2 * armory.getHitPoints() < armory.getTemplate().getMaxHitPoints() ? "the armory is in danger" : !st.bank_always
+                            && !military.atHome() ? "the army is out" : null;
             if (why != null) {
                 bank_on = false;
                 bank_ended = ai.now();
@@ -4465,7 +4466,7 @@ final class Economy {
                     ai.log(String.format("bank: %d weapons come out after %.0f s (%s)", stock, FableAI.seconds(
                             ai.now() - bank_since), why));
             }
-        } else if (military.atHome() && military.fieldStrength() < st.bank_army && stock < st.bank
+        } else if ((st.bank_always || (military.atHome() && military.fieldStrength() < st.bank_army)) && stock < st.bank
                 && ai.now() - bank_ended >= 1500f // 30 s: the warriors let out are still on their way out
                 && !evacuating.containsKey(armory)
                 && 2 * armory.getHitPoints() >= armory.getTemplate().getMaxHitPoints()) {

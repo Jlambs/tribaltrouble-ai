@@ -1033,6 +1033,13 @@ class Strategy {
     float bank_ticks = 90000f; // 30 min
     float bank_army = 25f;
     /**
+     * bank_always: the bank fills whatever the army does, with an attack out too. After the first campaign an attack
+     * is out nearly all the time (see late_reinforce_min), so the bank as built hardly ever starts; and warriors that
+     * wait at home for a clump die there instead (pu1-log-vs15, pu2-log-vs15: 355 and 442 of the home army lost a
+     * game against 270, and no more copies unhoused).
+     */
+    boolean bank_always = false;
+    /**
      * A besieged armory sends its peons out to fight when they can win: at threat level 2, an armory holding 30 or more
      * with a threat within 15 cells, when bank, defenders and towers near it reach sortie_ratio of the threat within 30
      * cells and defenders and towers alone do not, deploys its peons onto the attackers (they vanish uncounted inside a
@@ -1356,6 +1363,14 @@ class Strategy {
      */
     float late_min_strength = 0f;
     float late_min_ticks = 90000f; // 30 min
+    /**
+     * late_reinforce_min (strength, 0 = off): from late_min_ticks the warriors at home join an attack only as a clump
+     * of this strength. At the unit cap, where we are from minute 8, every 12 leave as they are made, so after the
+     * first campaign one attack never ends: s21111 of nd1-log-vs15 keeps 40-50 warriors out for 100 minutes on 12
+     * more every 45 s, loses 15 a minute and leaves seven copies housed throughout; from minute 20 a game unhouses 1.5
+     * copies in ten minutes on 150 warriors where the first campaign takes 4.2 on 135 (lab/fable/rebuild.py).
+     */
+    float late_reinforce_min = 0f;
     /** Retreat when the enemy around the army is this much stronger and the chieftain cannot stun. */
     float retreat_ratio = 1.45f;
     /** Units in the staging army sent to hunt enemy peons when the enemy army is elsewhere, from raid_ticks on. */
@@ -2637,6 +2652,7 @@ class Strategy {
         bank = params.getInt("bank", bank);
         bank_ticks = (float) params.getDouble("bank_ticks", bank_ticks);
         bank_army = (float) params.getDouble("bank_army", bank_army);
+        bank_always = params.getBoolean("bank_always", bank_always);
         weapon_reserve_ticks = (float) params.getDouble("weapon_reserve_ticks", weapon_reserve_ticks);
         sortie_ratio = (float) params.getDouble("sortie_ratio", sortie_ratio);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
@@ -2715,6 +2731,7 @@ class Strategy {
         capped_min_strength = (float) params.getDouble("capped_min_strength", capped_min_strength);
         late_min_strength = (float) params.getDouble("late_min_strength", late_min_strength);
         late_min_ticks = (float) params.getDouble("late_min_ticks", late_min_ticks);
+        late_reinforce_min = (float) params.getDouble("late_reinforce_min", late_reinforce_min);
         retreat_ratio = (float) params.getDouble("retreat_ratio", retreat_ratio);
         raid_size = params.getInt("raid_size", raid_size);
         raid_ticks = (float) params.getDouble("raid_ticks", raid_ticks);

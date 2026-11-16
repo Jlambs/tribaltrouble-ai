@@ -1422,6 +1422,33 @@ Screen `bt2`, on the new default (run 0 is `bt1-06`, 62 wins): wins by run 62 60
 So the options at our base are harmful after all (13.7 casts a game catching 314 instead of 11.8 catching 265, and
 3.4 chieftains lost against 2.7), and stay off with the dodge and the gate bonus.
 
+### After the first campaign under the blast default: one attack that never ends (`lab/fable/rebuild.py`)
+
+The new default on the 16 logged long maps, full length (`nd1-log-vs15`): 11 wins, 4 losses and a draw where the old
+default has 7, 8 and 1; the wins take 70-174 minutes. What a long game looks like now (s21111, won at 174 min): from
+minute 20 to 120 iron comes in at 14-19 a minute, 40-50 warriors are out on an attack that is reinforced with 12
+more every 45 s (at the unit cap every home group of 12 leaves) and loses 13-17 a minute, we kill 42-65 a minute,
+and seven copies stay housed throughout; at minute 120-140 the copies' warriors fall from 250 to 24, our army grows
+to 146 and takes the rest in half an hour at 2 warriors lost a minute.
+
+The pace, over the default's 300 fresh games (`sh6f-vs15`, `sh6g-vs15`; per game still running): in minutes 10-20
+4.2 copies lose their last quarters or armory, from minute 20 on 1.5 in every ten minutes, of which 0.1 have one
+again within five minutes and 0.15-0.4 later. So the copies do not rebuild; the pace is what 15 warriors a minute
+buy, about 100 warriors a copy where the first campaign pays 32.
+
+Massing them does not buy it back (16 logged long maps, 120 minutes each; the default has 7 wins and 4 losses by
+then, and unhouses 1.0-1.45 copies in ten minutes from minute 30):
+
+| | wins / losses by minute 120 | copies unhoused in ten minutes, minutes 30-80 | home army lost in the 120 minutes (the default: 270 in its full games) |
+|---|---|---|---|
+| `late_reinforce_min=50` (from minute 30 the home group joins only as a clump of 50; `pu1-log-vs15`) | 6 / 4 | 0.6-1.2 | 355 |
+| `late_reinforce_min=999,late_min_strength=80` (no reinforcing, launches of 80; `pu2-log-vs15`) | 7 / 4 | 0.6-0.9 | 442 |
+| `bank=80,bank_always=true` (weapons wait in the armory, an attack out or not; `pu3-log-vs15`) | 7 / 6 | 1.0-1.4 | 189 |
+| `bank=120,bank_always=true` (`pu4-log-vs15`) | 6 / 7 | 0.8-1.4 | 183 |
+
+Warriors that wait at home die at home, and weapons that wait in the armory leave the base to the towers and the
+chieftain, which costs two or three more bases. Nothing that waits has paid at N=15, early or late.
+
 ## Reproduce
 
 ```bash
