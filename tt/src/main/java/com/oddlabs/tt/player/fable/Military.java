@@ -45,7 +45,9 @@ final class Military {
         REINFORCE,
         RAID,
         /** chief_hunt squad. */
-        CHASE
+        CHASE,
+        /** split: the second attacking force. */
+        WING
     }
 
     private static final int ENGAGE_RADIUS = 22;
@@ -681,6 +683,10 @@ final class Military {
             case MUSTER -> muster();
             case ATTACK -> attack();
             case RETREAT -> retreat();
+        }
+        if (ai.strategy().split > 0f) {
+            considerSplit();
+            wingTick();
         }
         reinforce();
         raid();
@@ -2832,6 +2838,9 @@ final class Military {
         for (Building b : candidates) {
             if (b.isDead() || (skip_frozen && !quartered.contains(b.getOwner())) || ai.freeze().isFrozenSite(b))
                 continue;
+            // split: the second force's copy is its own
+            if (wing_owner != null && b.getOwner() == wing_owner)
+                continue;
             float line = MapAnalysis.meters(from_x, from_y, b.getGridX(), b.getGridY());
             float d = line;
             if (path != null) {
@@ -4264,6 +4273,280 @@ final class Military {
                 move(p, back[0], back[1]);
         }
     }
+
+    /** split: the second force's target and its copy, the walking field to it, and the march's progress. */
+    private @Nullable Building wing_target;
+    private @Nullable Player wing_owner;
+    private @Nullable DistanceField wing_field;
+    private int wing_best_dist = Integer.MAX_VALUE;
+    private float wing_progress = -5000f;
+    private float wing_since = -5000f;
+    private float wing_ended = -5000f;
+    private float wing_checked = -5000f;
+    private int wing_start_size;
+
+    /** split: whether the army is big and calm enough to send a second force, and sends it. */
+    private void considerSplit() {
+        Strategy strategy = ai.strategy();
+        float now = ai.now();
+        if (mode != Mode.ATTACK || now < strategy.split_from_ticks || !ai.periodDue(wing_checked, 100f))
+            return;
+        wing_checked = now;
+        if (countRole(Role.WING) > 0 || now - wing_ended < strategy.split_cooldown_ticks || all_in || strike)
+            return;
+        Intel intel = ai.intel();
+        List<Unit> army = new ArrayList<>();
+        for (Unit u : withRole(Role.ATTACK)) {
+            WarriorState st = intel.warrior_states.get(u);
+            if (st != WarriorState.STUNNED && st != WarriorState.ENTER)
+                army.add(u);
+        }
+        float total = Combat.total(army);
+        if (total < strategy.split)
+            return;
+        int[] c = MapAnalysis.centroid(army);
+        if (enemyFightersNear(c[0], c[1], ENGAGE_RADIUS + 8) > strategy.split_busy * total) {
+            ai.aiLog().count("split_busy"); // checks (2 s) with the army big enough and an enemy near
+            return;
+        }
+        float force = strategy.split_share * total;
+        Building t = wingTarget(c, target != null && !target.isDead() ? target.getOwner() : null, force,
+                strategy.split_reach, strategy.split_margin);
+        if (t == null) {
+            ai.aiLog().count("split_no_target");
+            return;
+        }
+        DistanceField field = ai.map().computeField(t.getGridX(), t.getGridY(), Integer.MAX_VALUE);
+        if (field.getAround(c[0], c[1], 4) == DistanceField.UNREACHABLE) {
+            stalled_targets.put(t, now);
+            ai.aiLog().count("split_unreachable");
+            return;
+        }
+        army.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), t.getGridX(), t.getGridY()),
+                MapAnalysis.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY())));
+        float sent = 0f;
+        int n = 0;
+        for (Unit u : army) {
+            if (sent >= force)
+                break;
+            roles.put(u, Role.WING);
+            sent += Combat.value(u);
+            n++;
+        }
+        // the main army's own measures of how worn it is start from what stays
+        float kept = Math.max(.1f, 1f - sent / Math.max(1f, total));
+        attack_initial_strength *= kept;
+        worn_peak *= kept;
+        worn_history.clear();
+        wing_target = t;
+        wing_owner = t.getOwner();
+        wing_field = field;
+        wing_best_dist = Integer.MAX_VALUE;
+        wing_progress = now;
+        wing_since = now;
+        wing_start_size = n;
+        ai.aiLog().count("split");
+        ai.log(String.format("split: %d (%.1f) of the army's %.1f go for %s's %s at %d,%d, %d cells out, defense %.1f",
+                n, sent, total, wing_owner.getPlayerInfo().getName(), Intel.kind(t), t.getGridX(), t.getGridY(),
+                (int) Math.sqrt(MapAnalysis.dist2(c[0], c[1], t.getGridX(), t.getGridY())), defenseFor(t)));
+    }
+
+    /**
+     * split: the best quarters or armory within split_reach cells of c for a force of the given strength, scored as
+     * the army scores its own (distance, quarters after the armory, defense), not of the copy the army is at.
+     */
+    private @Nullable Building wingTarget(int @NonNull [] c, @Nullable Player not, float force, int reach,
+            float margin) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        List<Building> candidates = new ArrayList<>(intel.enemy_armories);
+        candidates.addAll(intel.enemy_quarters);
+        int reach2 = reach * reach;
+        Building best = null;
+        float best_score = Float.MAX_VALUE;
+        for (Building b : candidates) {
+            if (b.isDead() || b.getOwner() == not || !b.getOwner().isAlive() || stalled_targets.containsKey(b)
+                    || inDeadRegion(b) || ai.freeze().isFrozenSite(b)
+                    || MapAnalysis.dist2(c[0], c[1], b.getGridX(), b.getGridY()) > reach2)
+                continue;
+            float defense = defenseFor(b);
+            if (margin * defense > force)
+                continue;
+            float priority = (b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY) == (strategy.quarters_first
+                    || strategy.gate_freeze) ? 60f : 0f;
+            float score = MapAnalysis.meters(c[0], c[1], b.getGridX(),
+                    b.getGridY()) + priority + strategy.target_defense_weight * defense;
+            if (score < best_score) {
+                best_score = score;
+                best = b;
+            }
+        }
+        return best;
+    }
+
+    /** split: the nearest building of the second force's copy still worth razing: quarters, armory or their sites. */
+    private @Nullable Building wingNext(int @NonNull [] c) {
+        Building best = null;
+        int best_d = 60 * 60;
+        for (Building b : ai.intel().enemy_buildings) {
+            int id = b.getTemplate().getTemplateID();
+            if (b.isDead() || b.getOwner() != wing_owner || stalled_targets.containsKey(b)
+                    || (id != Race.BUILDING_QUARTERS && id != Race.BUILDING_ARMORY))
+                continue;
+            int d = MapAnalysis.dist2(c[0], c[1], b.getGridX(), b.getGridY());
+            if (d < best_d) {
+                best_d = d;
+                best = b;
+            }
+        }
+        return best;
+    }
+
+    private void wingMerge(@NonNull List<@NonNull Unit> squad, @NonNull String why) {
+        boolean home = mode != Mode.ATTACK;
+        for (Unit u : squad) {
+            // with the army out they walk to it as reinforcements do; else they share its retreat or go home
+            roles.put(u, !home ? Role.REINFORCE : mode == Mode.RETREAT ? Role.ATTACK : Role.ARMY);
+            if (home && mode != Mode.RETREAT)
+                move(u, staging_x, staging_y);
+        }
+        ai.aiLog().count("wing_merge_" + why);
+        ai.log(String.format("wing: %d of %d merge after %.0f s (%s)", squad.size(), wing_start_size,
+                (ai.now() - wing_since) / 50f, why));
+        wing_target = null;
+        wing_owner = null;
+        wing_field = null;
+        wing_ended = ai.now();
+    }
+
+    /** split: the second force's round: its target, whether it goes on, and its fight or march. */
+    private void wingTick() {
+        List<Unit> squad = withRole(Role.WING);
+        if (squad.isEmpty()) {
+            if (wing_owner != null || wing_target != null) {
+                ai.aiLog().count("wing_wiped");
+                ai.log("wing: none left");
+                wing_target = null;
+                wing_owner = null;
+                wing_field = null;
+                wing_ended = ai.now();
+            }
+            return;
+        }
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        float now = ai.now();
+        if (mode != Mode.ATTACK) {
+            wingMerge(squad, "attack_over");
+            return;
+        }
+        int[] c = MapAnalysis.centroid(squad);
+        float ours = Combat.total(squad);
+        if (ours < strategy.split_merge) {
+            wingMerge(squad, "small");
+            return;
+        }
+        float danger = Combat.strengthNear(intel.enemy_warriors, c[0], c[1], 24);
+        for (Unit ch : intel.enemy_chieftains)
+            if (!ch.isDead() && MapAnalysis.dist2(ch.getGridX(), ch.getGridY(), c[0], c[1]) <= 24 * 24)
+                danger += Combat.value(ch);
+        for (Building tw : intel.enemy_towers)
+            if (!tw.isDead() && MapAnalysis.dist2(tw.getGridX(), tw.getGridY(), c[0], c[1]) <= 17 * 17)
+                danger += enemyTowerValue(tw);
+        if (danger > strategy.split_retreat * ours) {
+            wingMerge(squad, "danger");
+            return;
+        }
+        if (wing_target == null || wing_target.isDead()) {
+            if (wing_target != null)
+                ai.aiLog().count("wing_razed");
+            Building next = wing_owner != null ? wingNext(c) : null;
+            if (next == null) {
+                if (wing_owner != null) {
+                    ai.aiLog().count("wing_copy_done");
+                    ai.log(String.format("wing: %s has no quarters or armory left, %.0f s after the split",
+                            wing_owner.getPlayerInfo().getName(), (now - wing_since) / 50f));
+                }
+                Player not = target != null && !target.isDead() ? target.getOwner() : null;
+                next = wingTarget(c, not, ours, strategy.split_reach, strategy.split_margin);
+                if (next == null && strategy.split_far > 1f) {
+                    next = wingTarget(c, not, ours, Math.round(strategy.split_far * strategy.split_reach),
+                            strategy.split_far_margin);
+                    if (next != null)
+                        ai.aiLog().count("wing_far_target");
+                }
+            }
+            if (next == null) {
+                wingMerge(squad, "no_target");
+                return;
+            }
+            DistanceField field = ai.map().computeField(next.getGridX(), next.getGridY(), Integer.MAX_VALUE);
+            wing_target = next;
+            wing_owner = next.getOwner();
+            wing_field = field;
+            wing_best_dist = Integer.MAX_VALUE;
+            wing_progress = now;
+            ai.log(String.format("wing: %d (%.1f) go on to %s's %s at %d,%d", squad.size(), ours,
+                    wing_owner.getPlayerInfo().getName(), Intel.kind(next), next.getGridX(), next.getGridY()));
+        }
+        if (ai.logging() && ai.periodDue(wing_traced, 200f)) {
+            wing_traced = now;
+            ai.log(String.format("wing: %d (%.1f) at %d,%d, %d cells from its target, enemy within 24 cells %.1f",
+                    squad.size(), ours, c[0], c[1], (int) Math.sqrt(MapAnalysis.dist2(c[0], c[1],
+                            wing_target.getGridX(),
+                            wing_target.getGridY())), danger));
+        }
+        // fight what is close, as the army does
+        int[] focus = enemyFocus(c[0], c[1]);
+        if (focus != null) {
+            List<Selectable<?>> fighters = new ArrayList<>();
+            int r2 = (ENGAGE_RADIUS + 8) * (ENGAGE_RADIUS + 8);
+            for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
+                for (Unit e : group)
+                    if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0], c[1]) <= r2)
+                        fighters.add(e);
+            engageSpread(squad, fighters, focus[0], focus[1], true);
+            wing_progress = now;
+            return;
+        }
+        // march as one body along the path, the pivot a third back from the front
+        DistanceField field = wing_field;
+        int tx = wing_target.getGridX();
+        int ty = wing_target.getGridY();
+        int[] waypoint = new int[]{tx, ty};
+        Unit pivot = null;
+        int pivot_dist = DistanceField.UNREACHABLE;
+        if (field != null) {
+            List<Unit> ranked = new ArrayList<>(squad);
+            ranked.removeIf(u -> field.getAround(u.getGridX(), u.getGridY(), 1) == DistanceField.UNREACHABLE);
+            ranked.sort((a, b) -> Integer.compare(field.getAround(a.getGridX(), a.getGridY(), 1), field.getAround(
+                    b.getGridX(), b.getGridY(), 1)));
+            if (!ranked.isEmpty()) {
+                pivot = ranked.get(ranked.size() / 3);
+                pivot_dist = field.getAround(pivot.getGridX(), pivot.getGridY(), 1);
+            }
+        }
+        int lead = 22 + 3 * (int) Math.sqrt(squad.size());
+        if (pivot != null && pivot_dist >= 30)
+            waypoint = field.stepTowardsSource(pivot.getGridX(), pivot.getGridY(), lead);
+        for (Unit u : squad) {
+            int d = field != null ? field.getAround(u.getGridX(), u.getGridY(), 1) : DistanceField.UNREACHABLE;
+            if (pivot != null && d != DistanceField.UNREACHABLE && d < pivot_dist - 24)
+                continue;
+            attackGround(u, waypoint[0], waypoint[1], false);
+        }
+        if (pivot_dist != DistanceField.UNREACHABLE && pivot_dist < wing_best_dist - 20) {
+            wing_best_dist = pivot_dist;
+            wing_progress = now;
+        }
+        if (now - wing_progress > 3750f) { // 75 s without getting nearer or fighting
+            stalled_targets.put(wing_target, now);
+            ai.aiLog().count("wing_stalled");
+            wingMerge(squad, "stalled");
+        }
+    }
+
+    private float wing_traced = -5000f;
 
     /** raze: the building each warrior of the attack is on, and when it was last told so. */
     private final Map<@NonNull Unit, @NonNull Building> raze_assign = new LinkedHashMap<>();
@@ -6251,11 +6534,19 @@ final class Military {
         }
         if (!capped && ai.enemiesAlive() > 1 && !ai.strategy().reinforce_multi)
             return;
+        // split_reinforce: the group goes to the second force when that is the weaker one
+        float wing = ai.strategy().split_reinforce ? Combat.total(withRole(Role.WING)) : 0f;
+        boolean to_wing = wing > 0f && wing < away;
         for (Unit u : group) {
             roles.put(u, Role.REINFORCE);
-            ai.aiLog().count("reinforce_sent");
+            if (to_wing)
+                wing_bound.add(u);
+            ai.aiLog().count(to_wing ? "reinforce_sent_wing" : "reinforce_sent");
         }
-        ai.log(String.format("reinforcing the attack (%.1f) with %.1f", away, home));
+        if (to_wing)
+            ai.log(String.format("reinforcing the second force (%.1f) with %.1f", wing, home));
+        else
+            ai.log(String.format("reinforcing the attack (%.1f) with %.1f", away, home));
     }
 
     /**
@@ -6298,9 +6589,15 @@ final class Military {
         return leave;
     }
 
+    /** split_reinforce: the reinforcements on their way to the second force. */
+    private final java.util.Set<@NonNull Unit> wing_bound = new java.util.LinkedHashSet<>();
+
     /** Marches reinforcements to the attacking army; they join it once close. */
     private void reinforce() {
         int[] front = null;
+        int[] wing_front = null;
+        boolean wing_front_looked = false;
+        wing_bound.removeIf(Unit::isDead);
         boolean intercept = ai.strategy().reinforce_intercept;
         List<Unit> attackers = null;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
@@ -6312,6 +6609,26 @@ final class Military {
             if (front == null) {
                 e.setValue(Role.ARMY);
                 continue;
+            }
+            // split_reinforce: bound for the second force while it lasts
+            if (!wing_bound.isEmpty() && wing_bound.contains(u)) {
+                if (!wing_front_looked) {
+                    wing_front_looked = true;
+                    List<Unit> wing = withRole(Role.WING);
+                    wing_front = wing.isEmpty() ? null : MapAnalysis.centroid(wing);
+                }
+                if (wing_front == null) {
+                    wing_bound.remove(u);
+                } else {
+                    if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), wing_front[0], wing_front[1]) <= 20 * 20) {
+                        e.setValue(Role.WING);
+                        wing_bound.remove(u);
+                        ai.aiLog().count("reinforce_joined_wing");
+                    } else {
+                        attackGround(u, wing_front[0], wing_front[1], false);
+                    }
+                    continue;
+                }
             }
             boolean joined = MapAnalysis.dist2(u.getGridX(), u.getGridY(), front[0], front[1]) <= 20 * 20;
             if (!joined && intercept) {

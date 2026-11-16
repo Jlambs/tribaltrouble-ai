@@ -1979,6 +1979,38 @@ class Strategy {
     boolean raze_towers = true;
     int raze_per = 0;
     /**
+     * split (strength, 0 = off): the copies still housed at minute 20 decide the game, and one army takes a copy
+     * every 108 s, of which the march is 40 and the rest is the copy's own warriors and walls (lab/fable/campaign.py):
+     * only a second force takes more. The wing of the third session was 25 warriors gathered from reinforcements and
+     * was ground down on its way across the map. With split, an attacking army of at least this strength with no
+     * enemy warrior near sends split_share of itself, the warriors nearest to it, at the quarters or armory of
+     * another copy within split_reach cells whose defense is at most the force's strength over split_margin; the
+     * main army leaves that copy alone. The second force marches and fights as the army does, takes that copy's other
+     * buildings and then the next copy in reach; it walks to the main army (as a reinforcement) when it is below
+     * split_merge, when the enemy within 24 cells is over split_retreat of it, when nothing is left in reach, or when
+     * its march stalls. The next split waits split_cooldown_ticks.
+     */
+    float split = 0f;
+    float split_share = .5f;
+    float split_from_ticks = 24000f; // 8 min
+    int split_reach = 110;
+    float split_margin = 1.3f;
+    float split_merge = 20f;
+    float split_retreat = 1.2f;
+    float split_cooldown_ticks = 1500f; // 30 s
+    /**
+     * The first runs (sp1..sp3-log-vs15): while split, the half that stays razes 0.62 quarters and armories a minute
+     * with 54 warriors where the whole army razes 0.81, but the second force only 0.29: its first target is 100 cells
+     * out and it merges as soon as nothing is in reach (no_target, 50 to 86 % of the merges). split_busy: the army
+     * may split with enemy warriors within 30 cells worth up to this share of it. split_far: a second force with no
+     * target looks again this many times farther, at split_far_margin, before it merges. split_reinforce: a group of
+     * reinforcements goes to the second force when that is the weaker of the two.
+     */
+    float split_busy = 0f;
+    float split_far = 1f;
+    float split_far_margin = 1f;
+    boolean split_reinforce = false;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2098,6 +2130,18 @@ class Strategy {
         raze_min = params.getInt("raze_min", raze_min);
         raze_towers = params.getBoolean("raze_towers", raze_towers);
         raze_per = params.getInt("raze_per", raze_per);
+        split = (float) params.getDouble("split", split);
+        split_share = (float) params.getDouble("split_share", split_share);
+        split_from_ticks = (float) params.getDouble("split_from_ticks", split_from_ticks);
+        split_reach = params.getInt("split_reach", split_reach);
+        split_margin = (float) params.getDouble("split_margin", split_margin);
+        split_merge = (float) params.getDouble("split_merge", split_merge);
+        split_retreat = (float) params.getDouble("split_retreat", split_retreat);
+        split_cooldown_ticks = (float) params.getDouble("split_cooldown_ticks", split_cooldown_ticks);
+        split_busy = (float) params.getDouble("split_busy", split_busy);
+        split_far = (float) params.getDouble("split_far", split_far);
+        split_far_margin = (float) params.getDouble("split_far_margin", split_far_margin);
+        split_reinforce = params.getBoolean("split_reinforce", split_reinforce);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
