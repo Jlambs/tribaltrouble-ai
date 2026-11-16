@@ -6045,6 +6045,9 @@ final class Economy {
             if (supply == null)
                 return false;
             ai.owner().setTarget(Selectable.newArray(peon), supply, Action.DEFAULT, false);
+            // a loaded peon next to its armory delivers at once and is inside it now
+            if (peon.isDead())
+                return true;
             // gather_home: the engine delivers to the supply's nearest armory (Unit.nearestSupplyBuilding), not to the
             // one we gather for. A supply nearer an old armory sends its load there, drainSecondary recalls the
             // gatherer every 10 s and sends it back to the main armory, which picks the same supply: peons walk to
