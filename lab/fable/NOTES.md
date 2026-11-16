@@ -756,6 +756,58 @@ little about; an army jammed in the trees sends its head into the towers in ones
 cells back (s21001: 37 warriors in 155 s under two towers with 130 in the army and not one sapper order); and the
 refill takes the gatherers nearest the army, two every 5 to 10 s, which walk to it alone (s21001: 108 peons).
 
+### A breach drill for towers (`breach`, off): three versions, the mechanism never engaged
+
+Logged runs on maps 21001..21012 (40 min), `lab/fable/etowers.py`; `fd0-log-vs15` is the default.
+
+| run | setting | our warriors dead in reach of an enemy tower | peons | first death to raze (10+ towers) |
+|---|---|---|---|---|
+| fd0 | default | 104 | 18 | 41 s |
+| br1 | breach (12 sappers at the army's head, charge on contact, refills walk with reinforcements) | 101 | 45 | 53 s |
+| br2 | + breach_axes=16 (warriors by the tower throw at it) | 92 | 35 | 46 s |
+| bg1 | breach + breach_gate=24 (warriors hold 19+ cells out until assembled, sappers go in alone first) | 100 | 40 | 57 s |
+| bg2 | + breach_axes=40 | 118 | 46 | 52 s |
+| bg3 | gate without the solo | 103 | 44 | 64 s |
+
+A charged tower stands 36 s (4 traced games, 36 towers), of which 22 s pass before anything damages it, and 5.5
+warriors and 2.1 peons die in its reach meanwhile: 0.16 warriors a second. The sappers stand behind a column that is
+jammed in the trees and reach the tower 10 to 30 s after the first warrior; the gate opened "late" (15 s without
+assembly) 8 times a game, "ready" 5 times, and a solo began 3 times. A peon's swing takes 2.2 s, so seven sappers at a
+tower bring it down in 5 s once they are there. Closed as built: the range (15.9 cells against our 6) and the forest
+decide this, not the order of the charge.
+
+### The home army at a tower (`hold_ratio`, `hold_multi`; Gauntlet's flags, never tried at N=15)
+
+Of 122 warriors a game lost on our base ground outside our towers' reach (`sb1-00`), 36 fall 17-22 cells from the
+nearest tower at 3.6 to 1, 44 at 22-30 cells at 2.0 and 37 at 30-45 cells at 1.6: the home army walks out to every
+enemy within 28 cells of a building (`base_radius`). With `hold_multi=true` it meets them at the building nearest
+the threat, a tower if one is close (`ho1`: `hold_ratio=0.3`, `ho2`: 1.5; 12 logged games each): under our towers
+the enemy loses 88 / 344 / 215 in minutes 12-20 / 20-30 / 30-60 against 69 / 251 / 188, we lose 17 / 44 / 28 there
+against 8 / 28 / 25 and 6 / 20 / 12 on the base ground against 10 / 26 / 31. The sum of our losses is the same and
+so is the army (41 / 38 at 25 / 30 min against 50 / 37). Not screened.
+
+### What decides a game: the copies still housed at minute 20 (`lab/fable/pace.py`, the 800 games of `sb1`)
+
+| copies with a quarters or armory at minute 20 | games | won |
+|---|---|---|
+| 7 or fewer | 155 | 73 % |
+| 8 | 222 | 60 % |
+| 9 | 203 | 30 % |
+| 10 | 92 | 15 % |
+| 11 or more | 120 | 2 % |
+
+The mean is 8.9. Games won and games not won part ways from minute 8: 13.6 against 13.8 copies housed at 8 min, 12.7
+/ 13.2 at 10, 11.6 / 12.4 at 12, 9.6 / 10.8 at 16, 7.9 / 9.6 at 20, with 50 / 42 warriors of ours at 8 min, 91 / 76
+at 10 and 139 / 114 at 14. One copy fewer at minute 20 is worth 25 to 30 points.
+
+`lab/fable/campaign.py` (12 logged games, 55 moves from one copy to the next before minute 22): a copy takes the
+army 108 s. 15 s it lingers at the old copy after its last quarters or armory fell, 40 s it marches (68 cells at
+1.7 cells a second, near walking speed), 19 s pass from its arrival to the first raze, and 34 s from there to the
+copy's last quarters or armory. Quarters and armory have 200 hit points each and no defense, so an iron axe does 1.5
+a throw: 270 throws for the two, 9 s for a hundred warriors at a throw every 2 s. But nothing orders a warrior onto
+a building: the army attack-moves, and the engine's scan takes warriors first, then peons, then towers, and quarters
+and armories last.
+
 ## Reproduce
 
 ```bash
