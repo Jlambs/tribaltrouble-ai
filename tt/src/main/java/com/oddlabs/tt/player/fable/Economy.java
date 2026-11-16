@@ -205,6 +205,41 @@ final class Economy {
             if (!builders.isEmpty())
                 place(first, builders);
         }
+        if (ai.logging())
+            logOreMap(ax, ay);
+    }
+
+    /**
+     * Log only: every iron and rock node of the map as x,y,walk from the start,walk from the armory site,the same two
+     * with corner cuts,the walk from the start through the trees (meters, -1: more than 800 m or none), for
+     * lab/fable/oremap.py.
+     */
+    private void logOreMap(int ax, int ay) {
+        DistanceField s_field = ai.planner().getStartField();
+        DistanceField a_field = ai.map().computeField(ax, ay, 800);
+        DistanceField sc_field = ai.map().computeField(ai.planner().getStartX(), ai.planner().getStartY(), 800, true);
+        DistanceField ac_field = ai.map().computeField(ax, ay, 800, true);
+        DistanceField st_field = ai.map().computeCutField(ai.planner().getStartX(), ai.planner().getStartY(), 800, 0);
+        for (int kind = 0; kind < 2; kind++) {
+            StringBuilder sb = new StringBuilder(kind == 0 ? "ore map iron" : "ore map rock");
+            List<? extends Supply> nodes = kind == 0 ? ai.map().getIron() : ai.map().getRocks();
+            for (Supply s : nodes) {
+                if (s.isEmpty())
+                    continue;
+                int ds = s_field.getAround(s.getGridX(), s.getGridY(), 1);
+                int da = a_field.getAround(s.getGridX(), s.getGridY(), 1);
+                int dsc = sc_field.getAround(s.getGridX(), s.getGridY(), 1);
+                int dac = ac_field.getAround(s.getGridX(), s.getGridY(), 1);
+                int dst = st_field.getAround(s.getGridX(), s.getGridY(), 1);
+                sb.append(' ').append(s.getGridX()).append(',').append(s.getGridY()).append(',').append(
+                        ds == DistanceField.UNREACHABLE ? -1 : ds).append(',').append(
+                                da == DistanceField.UNREACHABLE ? -1 : da).append(',').append(
+                                        dsc == DistanceField.UNREACHABLE ? -1 : dsc).append(',').append(
+                                                dac == DistanceField.UNREACHABLE ? -1 : dac).append(',').append(
+                                                        dst == DistanceField.UNREACHABLE ? -1 : dst);
+            }
+            ai.log(sb.toString());
+        }
     }
 
     /**

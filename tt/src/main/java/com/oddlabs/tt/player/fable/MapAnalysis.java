@@ -344,6 +344,62 @@ final class MapAnalysis {
     }
 
     /**
+     * computeField with corner cuts, in which a standing tree may be crossed at tree_cost meters a cell more than open
+     * ground: the walk if a road were cut through the woods. Water, ore and buildings block as before.
+     */
+    @NonNull
+    DistanceField computeCutField(int sx, int sy, int max_cost, int tree_cost) {
+        DistanceField field = new DistanceField(size, sx, sy);
+        if (!inside(sx, sy))
+            return field;
+        int[] cost = field.raw();
+        Occupant source_occupant = grid.getOccupant(sx, sy);
+        if (source_occupant != null && source_occupant.getPenalty() != Occupant.STATIC)
+            source_occupant = null;
+        // entries are cost << 32 | cell
+        java.util.PriorityQueue<Long> queue = new java.util.PriorityQueue<>();
+        cost[sy * size + sx] = 0;
+        queue.add((long) (sy * size + sx));
+        while (!queue.isEmpty()) {
+            long e = queue.poll();
+            int c = (int) (e >>> 32);
+            int index = (int) (e & 0xffffffffL);
+            if (cost[index] != c)
+                continue;
+            if (c > max_cost)
+                break;
+            int x = index % size;
+            int y = index / size;
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dy == 0)
+                        continue;
+                    int step = cutStep(x + dx, y + dy, source_occupant, tree_cost);
+                    if (step < 0)
+                        continue;
+                    int next = c + (dx != 0 && dy != 0 ? 3 : 2) + step;
+                    int ni = (y + dy) * size + x + dx;
+                    if (next < cost[ni]) {
+                        cost[ni] = next;
+                        queue.add(((long) next << 32) | ni);
+                    }
+                }
+            }
+        }
+        return field;
+    }
+
+    /** computeCutField: what entering the cell costs beyond the step (a standing tree: tree_cost), -1 if blocked. */
+    private int cutStep(int x, int y, @Nullable Occupant ignore, int tree_cost) {
+        if (!inside(x, y) || !access[y][x])
+            return -1;
+        Occupant occ = grid.getOccupant(x, y);
+        if (occ == null || occ == ignore || occ instanceof Movable || occ.getPenalty() != Occupant.STATIC)
+            return 0;
+        return occ instanceof TreeSupply ? tree_cost : -1;
+    }
+
+    /**
      * computeField's cache of passable(x, y, ignore): the grid does not change while a field is computed, so each cell
      * is looked up once per call (pass_gen holds the call that filled pass_ok) instead of up to 16 times.
      */
