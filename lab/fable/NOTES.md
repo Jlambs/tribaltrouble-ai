@@ -862,20 +862,32 @@ each walking 12 to 20 cells for a piece; the armory has six too, at 280 to 320 s
 `lab/fable/opening.py`): the sixth quarters stands at 581 s on average with 6 (four maps do not have it by 480 s),
 330 s with 16, 398 s with 20, 401 s with `builders_far=30` (one builder per tree within 30 cells); armory 259 / 244
 / 247 / 251 s; towers at 8 min 1.8 / 3.1 / 2.9 / 2.9; peons 142 / 164 / 156 / 149; warriors and iron at 8 min the
-same. The two normal maps play the same game at every setting. 100 maps: `bfl-16-vs15`, `bfl-12-vs15` (running
-when this was written).
+same. The two normal maps play the same game at every setting.
+
+On 100 maps (`bfl-12-vs15`, `bfl-16-vs15` against `pc1-00`): 38 and 36 wins against 41 (+9 -12, +8 -13; model -2.0
+and -2.6 +- 2.0). The maps with the sixth quarters after 330 s go from 24 to 18 and 15, but on the 15 slowest the
+armory still stands at 292 s (297; 227 on the other maps) and they win 1 game of 15 instead of 0; the 9 next win 3
+/ 3 / 2. The floor also binds after the opening wherever the near trees are cut: 97 of 100 games differ from the
+base, and the 76 normal maps win 34 and 33 against 38. So the floor stays at 6: the sixth quarters was not what
+held those maps back, the armory is, and more hands on the late sites cost gatherers everywhere else.
 
 The far plans are not a mistake to undo: with the five later quarters by the first one whenever the armory site is
 more than 180 m from the start (`opening_near_far`, built and taken out again; `nf0..nf3-log-vs15`, ten far-plan
 maps) the sixth quarters comes later on six maps and sooner on three, and on s21040 the near sites are where the
 neighbour's first warriors walk: 3 peons left at 150 s and no quarters at all.
 
-### Screen `pc1` (running when this was written): raze x breach x hold at a tower, 100 maps each
+### Screen `pc1`: raze x breach x hold at a tower, 100 maps each: nothing
 
 The three drills changed their mechanism little or not at all in 12 logged games, and those games cannot call the
 army or the wins (every variant read 65 to 94 warriors at 20 min against the base's 99, which over 100 maps is 84:
-the one base run was a lucky draw). So they go to 100 maps together: `python lab/fable/screen.py read pc1`, base
+the one base run was a lucky draw). So they went to 100 maps together: `python lab/fable/screen.py read pc1`, base
 `pc1-00` = `sb1-00`.
+
+Wins by run 41 37 39 37 38 38 38 35 (mean 37.9). Main effects: raze -2.2 +- 2.4 (model +0.4 +- 1.7), breach -1.2
++- 2.7 (model -2.0 +- 1.3), hold -1.2 +- 2.7 (model -0.9 +- 1.2). The grounds table moves as the logged games said
+(hold: 258 / 36 under our towers in minutes 20-30 against 231 / 24, 57 / 22 on the base ground against 74 / 31) and
+nothing else does. All three stay off. Over the 16 runs of `sb1` and `pc1` the base's 41 is the second best: the
+default is nearer 39 on these maps than 41.
 
 ## Reproduce
 
