@@ -610,6 +610,28 @@ breed 65 peons a minute when 30-36 units a minute are lost; 2 each would breed 4
 neutral twice (second session, and scr1 above), when the freed peons went to the iron line. `rock_real_peons` caps
 the line at a number of peons, and the screen `rk2` crosses a line of 30 peons with hold_late 3 and tree_real.
 
+### The capped line with a lower hold: nothing (`rk2-00..07`, 100 maps each; `rk2-00` is `def3-vs15`)
+
+| run | hold_late | rock line of 30 peons | tree_real | wins | model at 20 min against the base |
+|---|---|---|---|---|---|
+| rk2-00 | 8 | - | - | 41 | |
+| rk2-01 | 3 | - | - | 38 | +4.8 +- 2.3 |
+| rk2-02 | 8 | yes | - | 45 | +0.1 +- 1.7 |
+| rk2-03 | 3 | yes | - | 41 | +4.2 +- 2.3 |
+| rk2-04 | 8 | - | 2.5 | 36 | +0.5 +- 1.9 |
+| rk2-05 | 3 | - | 2.5 | 41 | +2.1 +- 2.2 |
+| rk2-06 | 8 | yes | 2.5 | 39 | +1.7 +- 2.2 |
+| rk2-07 | 3 | yes | 2.5 | 38 | +2.3 +- 2.2 |
+
+Effects on wins: hold_late 3 -0.8 +- 3.1, the line +1.8 +- 2.3 (z 0.8), tree_real -2.8 +- 2.6. No setting is apart
+from the base. By minute (`flow.py rk2-00 rk2-01 rk2-03`): the lower hold has 91 warriors against 84 at 20 min and 40
+against 45 at 25, 33 against 39 at 30, 48 against 57 at 40: the peons it frees arm the army of minute 20 and are
+missing from the breeding afterwards, which is why the minute-20 model likes it and the wins do not. The capped line
+still takes its iron: 43 warriors (12 rock) against 45 (6) at 25 min, iron 7.7 a minute against 10.7.
+
+The rock line is closed: `rock_real` stays in the code, off. Three sessions and Gauntlet's notes agree that rock
+cannot be added to the iron line by any staffing rule: the weapon pool, not the ore, is what is short.
+
 ## Reproduce
 
 ```bash
