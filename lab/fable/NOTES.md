@@ -1289,6 +1289,139 @@ the late peon deaths are peons walking into a building at home), the armories of
 help alone, 61-63 against 56, and not on top of the step), home warriors that go out one at a time, and games that
 run to the limit against an enemy who can no longer arm.
 
+### Minutes 15-25: the forward armory, the slots, and what does not help (`lab/fable/clusters.py`)
+
+Where the open games part, read in the 16 logged long games of the default (`et1-log-vs15`) and counted in its 300
+fresh games (`et1f-vs15`, `et1g-vs15`: 139 won):
+
+- **The second armory falls at minute 18-22.** In 10 of the 16 logged games the armory built at minute 7-11 on the
+  fresh iron (50-100 cells from the first) is razed between minutes 18.5 and 22.3. In the 300 games an armory falls
+  in minutes 15-25 in 147, and those are won 33 % of the time against 59 % for the other 153; how soon another
+  stands makes no difference (within 5 minutes 3 of 14 won, in 5-10 minutes 8 of 34, later or never 38 of 99).
+- **Iron stops at minute 16-20 in every logged game**, won or lost: 13-16 a minute falls to 2.5-8 when the first
+  waves park at the base (20-80 parked enemy warriors from minute 16-18) while 100-150 of our warriors are 200
+  cells away. The won games have it back by minute 20-24, the lost ones never; s21015 loses 20-57 peons a minute
+  for fifteen minutes for 2-4 iron a minute.
+- **The slots are not it.** The tower target is 14 plus one per enemy beyond the first, 28 against a cap of 20, so
+  the tower planner takes every slot a razed quarters or armory leaves (s21015 at 19.5 min: 5 quarters, 1 armory,
+  14 towers and sites). But games on the cap with an armory missing are won as often as the rest (minute 25: 23 of
+  48); the dying ones have free slots and build nothing (minute 25: no armory to spare and a quarters short with
+  slots free, 71 games, 10 won). `tower_cap=true` (Gauntlet's flag: towers leave room for the quarters, two
+  armories and a spare) scores 46 of the 100 open maps against the default's 52.
+- **Calling the army home does not help**: `recall_ratio` 0.5 and 0.2 (never, since Gauntlet's N=11) score 50 and
+  47 of 100.
+- **The towers stand alone.** At minute 16 three towers of four have no other tower of ours within 10 cells (2593
+  of 3472; a garrison reaches 15.9), and none in 43 % within 14. By design: `findTowerSite` takes 6 off a site for
+  every tower within 16 cells. In the default's games a neighbour shows little (razed by minute 30: 39 % with no
+  tower within 14 cells, 37 % with one, 36 % with two, 18 % with three), but Gauntlet's `tower_mutual=true`
+  (towers 10-13 cells apart, never tried at N=15) scores 57 of 100 (+15 -10) with 12.3 towers razed a game against
+  15.0 and 24 waves reaching the base against 28.
+- **Waves that reach the base** (launch lines of the 16 logged games): in minutes 15-25 a game has 6.0 launches at
+  our buildings and 6.6 at a unit of ours in the field, against 47 at a shepherd. Nearly all of the first kind come
+  from a wave already standing near us while its shepherd is walking or fleeing (the shepherd further from the
+  wave than 0.71 of our building's distance, where the copy picks the building, in 87 of 89).
+
+### The chieftain's blast (`shred`, `shred_strict`; Gauntlet's mission, never run at N=15)
+
+The engine (`SonicBlast`, `RacesResources`): the viking chieftain's second spell reaches 36 m (18 cells) around him
+and hits every unit and building in it, friend and foe, with a chance of 2 to 17 times (1 - defense): certain for
+rock warriors and peons, 0.6 or more for iron warriors; a building takes 30 from four cells out and 150 next to
+him. It needs 70 s of charge against the stun's 40, and a cast empties both. The Hard copies arm mostly rock
+warriors, park their waves in blobs of 20-40, and a parked warrior scans 8 cells and never answers a hit. Our
+chieftain stuns a median of 6 warriors a cast; the stock chieftains blast us 13.5 times a game.
+
+Gauntlet built a mission for it (`shred`: he walks to parked blobs within 140 cells of the armory and blasts them;
+`shred_strict`: he never stuns and waits behind the armory between casts) and left it off. Session 2 stopped
+`shred=true` after 27 games (0.5 blasts a game: every stun zeroes the charge) and never ran the strict form.
+
+On the 100 open maps (default 52):
+
+| | wins | to a win / to a loss | blasts a game, enemy warriors in reach | chieftains lost |
+|---|---|---|---|---|
+| `shred`, `shred_strict` (`bz1-band-vs15`; he stops below 35 hit points) | 53 | +17 -16 | 6.0, 89 | 1.0 |
+| and `shred_min_hp=0` (`bz2-band-vs15`) | 59 | +18 -11 | 12.9, 205 | 2.0 |
+| `blast=true` (he blasts instead of stunning when 12 of theirs stand by 6 times ours; `bz3-band-vs15`) | 56 | +5 -1 | 94 games identical | 1.8 |
+| `blast`, `blast_save`, `blast_defense` (`bz4-band-vs15`) | 46.5 | | | 2.0 |
+
+What the strict mission does in a game, and what was broken in it (16 logged long maps, 70 minutes each,
+`bz2-log-vs15` and on; the scripts are in the session's scratchpad, the counters in the summaries):
+
+- **He blasts from the blob's edge.** Every cast is made "from where he stands" as soon as `shred_min` (8) warriors
+  are in reach, on his way to the cast point: 10 of a blob of 40 (s21318). 13-19 in reach a cast, and no cast at
+  all from a cast point. `shred_fill=0.8`: he blasts on the way only once that catches 0.8 of what the cast point
+  would, unless an awake warrior is within 9 cells: 20-24 in reach a cast.
+- **He walks home after every cast.** Charged, with a blob 33-50 cells away, in half of the 20 s samples of minutes
+  10-40; 3 casts in ten minutes where the charge allows 8. `shred_lurk=28`: while charging he waits 28-40 cells from
+  the next blob's centre, 11 cells (Chebyshev) from every enemy warrior. He then becomes the launch target of the
+  blob's copy (a copy launches at our unit nearest its first idle warrior): 7.6 of 10.3 casts a game are made with
+  awake warriors at him.
+- **A dead chieftain is away for 400 s** (median, with or without shred; the default loses 1.8 a game). Training
+  takes 40 breed ticks of the quarters, 440 / n^(1/3) s with n peons inside, and `holdFor` keeps none inside at
+  the unit cap, where we are from minute 8; nor is the trainer topped up under a base threat. Gauntlet's
+  `chief_topup_any=true` brings it to 214 s (`bz8-log-vs15`), with `hold_chieftain=40` to 160 s, but 40 peons in
+  the first chieftain's quarters cost the opening (136 warriors at minute 15 against 145). On the default
+  `chief_topup_any` alone is 50 of 100 against 52 (+8 -10).
+- **Where a charged chieftain's time goes** (`shred_t_*` counters, half-second rounds, `bz10-log-vs15`): of a
+  70-minute game 857 s charging, and charged 727 s with no blob, 704 s walking to a cast point (1.4 cells a second,
+  50-100 cells) and 332 s with an awake warrior within 9 cells. `shred_ahead` (with no blob he waits where the
+  biggest walking wave will park) and a wider `shred_range=220,shred_min=6` cut the time without a blob to 136 s
+  and add it to the walking: 10-11 casts a game either way.
+- **Blasting at our own base** (`shred_base`: warriors within 20 cells of our buildings are a blob; `shred_bait`: he
+  stands for a group instead of backing off; `shred_buildings=99`: any number of our buildings in reach as long as
+  each outlasts it): 13.6 casts a game catching 314 against 205. In the 16 logged games it looked harmful (12.4
+  towers razed a game against 9.4, 5 games lost within 70 minutes against 2), on the 100 open maps it is 56 with
+  13.5 towers razed against the default's 15.0 (`bz6-band-vs15`): the 16 maps misled.
+- **What it buys**: launches at our buildings fall from 22.6 a game to 16.6-18.4 in the first 70 minutes of the 16
+  logged maps, launches at our units in the field from 30 to 24: a blob killed near the base is a wave that does
+  not relaunch into it. The copies re-arm what dies (their warriors at minute 30: 1717 against 1684), and without
+  his stun and his bonus in the muster's gate the first campaign is a little slower (0.12 copies fewer out at
+  minute 15).
+
+Screen `bt1` (`lab/fable/screen.py`; four factors in eight runs of the 100 open maps, the default 52): wins by run
+52 46 56 58 51 55 62 61.
+
+| factor | wins of 100 | state model at minute 30 |
+|---|---|---|
+| the mission (`shred`, `shred_strict`, `shred_min_hp=0`, `shred_fill=0.8`, `shred_lurk=28`) | +8.2 +- 2.9 | +6.1 +- 1.9 |
+| `chief_topup_any` | +4.2 +- 2.7 | +3.4 +- 1.8 |
+| `tower_mutual` | -0.2 +- 2.9 | -3.0 +- 2.0 |
+| `armory_cover=3` | -3.2 +- 3.0 | -1.1 +- 2.0 |
+
+On the 300 fresh maps (the default wins 139: `et1f-vs15`, `et1g-vs15`):
+
+| | 21301..21450 (default 68) | 21451..21600 (default 71) | all 300 | to a win / to a loss |
+|---|---|---|---|---|
+| the mission (`sh5f-vs15`, `sh5g-vs15`) | 75 | 76, 1 draw | 151 | +36 -24 |
+| and `chief_topup_any` (`sh6f-vs15`, `sh6g-vs15`) | 84, 1 draw | 74, 1 draw | 158 | +44 -25 |
+
+With the mission the base holds through the minutes in which it used to break (first 150 fresh maps, games still
+running, the mission against the default): armories at minutes 20 / 25 / 30 1.89 / 1.58 / 1.40 against 1.75 / 1.42 /
+1.29, quarters 5.73 / 5.16 / 4.73 against 5.55 / 4.96 / 4.42, iron a minute 15.5 / 12.6 / 14.3 against 14.5 / 11.1
+/ 12.0; the campaign is a little slower (8.99 copies housed at minute 20 against 8.76). By the default's copies
+housed at minute 30 the gain is in the open games (6-9 copies: 53 -> 58 of 105) and in three of the 18 maps with ten
+or more, which the default never wins.
+
+**The mission and the full trainer are the default since** (`Strategy.forGame`: `shred`, `shred_strict`,
+`shred_min_hp` 0, `shred_fill` 0.8, `shred_lurk` 28, `chief_topup_any`): it plays `sh6f-vs15`'s games (`fix-m`, 8
+of 8) and with those six set back the games of before (`fix-n`, 8 of 8). On the fresh maps that is 158 of 300 at
+N=15 (52.7 %, two draws); no exam seeds were spent.
+
+The three draws are a new kind of game: the base stands for six hours with 0-30 warriors against 7-12 housed
+copies and 500-1700 warriors (s21339, s21556, and s21064 with the options at our base). The default lost such maps
+within the hour; now nothing converts them: iron comes in at 10 a minute and every weapon goes out as it is made.
+
+Screen `bt2`, on the new default (run 0 is `bt1-06`, 62 wins): wins by run 62 60 59 55 67 51 58 57.
+
+| factor | wins of 100 | state model at minute 30 |
+|---|---|---|
+| at our base (`shred_base`, `shred_bait`, `shred_buildings=99`) | -5.8 +- 2.7 | -3.4 +- 1.4 |
+| `chief_dodge` (he steps towards a tower from warriors hunting him) | -2.8 +- 2.3 | -2.5 +- 1.8 |
+| `shred_gate` (the muster's gate counts him as if he marched along) | -0.8 +- 2.2 | -1.8 +- 1.2 |
+| `chieftain_ticks=24000` (the first chieftain from 480 s, not 300) | +4.2 +- 4.2 | +2.5 +- 2.9 |
+
+So the options at our base are harmful after all (13.7 casts a game catching 314 instead of 11.8 catching 265, and
+3.4 chieftains lost against 2.7), and stay off with the dodge and the gate bonus.
+
 ## Reproduce
 
 ```bash
