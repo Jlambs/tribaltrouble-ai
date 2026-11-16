@@ -853,6 +853,23 @@ Two kinds of slow opening among the 24 maps past 330 s (six replayed with logs, 
 
 One map (s21088) starts 8 cells from an enemy and loses its 18 builders in the first minute.
 
+Why a near site crawls (log-only `site trace` lines, `op1-log-vs15` s21012): `buildersWanted` allows four builders
+per tree within 12 cells of the site and never fewer than six, "more only get in each other's way". The five trees
+within 16 cells are gone by 150 s, so the quarters placed at 21 s has no builder until 150 s and six from then on,
+each walking 12 to 20 cells for a piece; the armory has six too, at 280 to 320 s, while 40 to 64 peons are idle.
+
+`builders_floor` (the six, as a param) on ten slow maps and two normal ones, first 8 minutes (`bf0..bf3-log-vs15`,
+`lab/fable/opening.py`): the sixth quarters stands at 581 s on average with 6 (four maps do not have it by 480 s),
+330 s with 16, 398 s with 20, 401 s with `builders_far=30` (one builder per tree within 30 cells); armory 259 / 244
+/ 247 / 251 s; towers at 8 min 1.8 / 3.1 / 2.9 / 2.9; peons 142 / 164 / 156 / 149; warriors and iron at 8 min the
+same. The two normal maps play the same game at every setting. 100 maps: `bfl-16-vs15`, `bfl-12-vs15` (running
+when this was written).
+
+The far plans are not a mistake to undo: with the five later quarters by the first one whenever the armory site is
+more than 180 m from the start (`opening_near_far`, built and taken out again; `nf0..nf3-log-vs15`, ten far-plan
+maps) the sixth quarters comes later on six maps and sooner on three, and on s21040 the near sites are where the
+neighbour's first warriors walk: 3 peons left at 150 s and no quarters at all.
+
 ### Screen `pc1` (running when this was written): raze x breach x hold at a tower, 100 maps each
 
 The three drills changed their mechanism little or not at all in 12 logged games, and those games cannot call the
