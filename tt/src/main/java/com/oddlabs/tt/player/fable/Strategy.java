@@ -1921,6 +1921,26 @@ class Strategy {
     int bastion_cells = 50;
     boolean feed_bastion = false;
     /**
+     * breach: the attack's sappers as a standing squad. Without it they trail six cells behind the army's centre, go
+     * only for a tower within 18 cells of that centre with little around it, and are replaced two at a time by
+     * gatherers that walk to the army alone: an army jammed in the trees feeds its head to towers the sappers never
+     * come near (fd0-log-vs15 s21001: 37 warriors in 155 s under two towers), a manned tower kills a warrior every four
+     * seconds it has one in reach (lab/fable/etowers.py: 0.26 a second, 148 warriors a game in sb1-00), and razing one
+     * costs nine warriors although 17 swings of a peon bring it down. With breach: breach_sappers peons while a manned
+     * enemy tower stands, topped up every breach_refill_ticks when breach_refill_min are missing; they stand with the
+     * army's head (the warriors farthest along its path), and all within breach_charge_cells go for a manned tower as
+     * soon as breach_contact warriors of the attack are within its reach. A sapper far from the army waits at the
+     * staging point and walks out with a reinforcement group. breach_axes: this many warriors by such a tower with no
+     * enemy warrior within throwing reach throw at it too.
+     */
+    boolean breach = false;
+    int breach_sappers = 12;
+    float breach_refill_ticks = 1000f; // 20 s
+    int breach_refill_min = 3;
+    int breach_contact = 1;
+    int breach_charge_cells = 45;
+    int breach_axes = 0;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2025,6 +2045,13 @@ class Strategy {
         bastion_from_ticks = (float) params.getDouble("bastion_from_ticks", bastion_from_ticks);
         bastion_cells = params.getInt("bastion_cells", bastion_cells);
         feed_bastion = params.getBoolean("feed_bastion", feed_bastion);
+        breach = params.getBoolean("breach", breach);
+        breach_sappers = params.getInt("breach_sappers", breach_sappers);
+        breach_refill_ticks = (float) params.getDouble("breach_refill_ticks", breach_refill_ticks);
+        breach_refill_min = params.getInt("breach_refill_min", breach_refill_min);
+        breach_contact = params.getInt("breach_contact", breach_contact);
+        breach_charge_cells = params.getInt("breach_charge_cells", breach_charge_cells);
+        breach_axes = params.getInt("breach_axes", breach_axes);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);

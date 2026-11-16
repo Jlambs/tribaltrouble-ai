@@ -688,8 +688,13 @@ final class Military {
         peonRush();
         restoreDodge();
         towerFire();
-        refillSappers();
-        sapperTick();
+        if (ai.strategy().breach) {
+            breachRefill();
+            breachTick();
+        } else {
+            refillSappers();
+            sapperTick();
+        }
         flushOrders();
     }
 
@@ -4122,7 +4127,7 @@ final class Military {
      */
     private void recruitSappers(int x, int y) {
         Intel intel = ai.intel();
-        if (!ai.strategy().sappers || !intel.sappers.isEmpty())
+        if (!ai.strategy().sappers || !intel.sappers.isEmpty() || ai.strategy().breach)
             return;
         int towers = 0;
         for (Building t : intel.enemy_towers)
@@ -4256,6 +4261,240 @@ final class Military {
                 ai.owner().setTarget(Selectable.newArray(p), site, Action.DEFAULT, false);
             else if (site == null && MapAnalysis.dist2(p.getGridX(), p.getGridY(), back[0], back[1]) > 6 * 6)
                 move(p, back[0], back[1]);
+        }
+    }
+
+    /** breach: a tower's garrison reaches this far (15.9 cells), and a sapper this near the army is with it. */
+    private static final int BREACH_REACH = 17;
+    private static final int BREACH_WITH_ARMY = 35;
+    /** breach: the tower each sapper or axe is on, and when each tower's charge began. */
+    private final Map<@NonNull Unit, @NonNull Building> breach_assign = new LinkedHashMap<>();
+    private final Map<@NonNull Building, Float> breach_started = new LinkedHashMap<>();
+
+    /** breach: tops the squad up from the peons nearest the staging point while a manned enemy tower stands. */
+    private void breachRefill() {
+        Strategy s = ai.strategy();
+        if (!s.sappers || mode != Mode.ATTACK || !ai.periodDue(last_sapper_refill, s.breach_refill_ticks))
+            return;
+        Intel intel = ai.intel();
+        intel.sappers.removeIf(Unit::isDead);
+        int need = s.breach_sappers - intel.sappers.size();
+        if (need < s.breach_refill_min)
+            return;
+        boolean manned = false;
+        for (Building t : intel.enemy_towers)
+            manned |= Intel.isTowerManned(t);
+        if (!manned)
+            return;
+        last_sapper_refill = ai.now();
+        List<Unit> pool = new ArrayList<>();
+        for (Unit p : intel.peons) {
+            PeonState st = intel.peon_states.get(p);
+            if ((st == PeonState.IDLE || st == PeonState.GATHER_TREE || st == PeonState.GATHER_ROCK
+                    || st == PeonState.GATHER_IRON || st == PeonState.MOVE) && !ai.economy().reservedPlacer(p)
+                    && !(s.repair_swarm && ai.economy().swarmExempt(p)))
+                pool.add(p);
+        }
+        if (pool.size() < need + 15)
+            return;
+        int[] c = attackCenter();
+        // near the army they walk to it; far from it they gather at the staging point for an escort
+        boolean near = c != null && MapAnalysis.dist2(c[0], c[1], staging_x, staging_y) <= 70 * 70;
+        int fx = near ? c[0] : staging_x;
+        int fy = near ? c[1] : staging_y;
+        pool.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), fx, fy),
+                MapAnalysis.dist2(b.getGridX(), b.getGridY(), fx, fy)));
+        for (Unit p : pool.subList(0, need)) {
+            intel.sappers.add(p);
+            intel.peon_states.put(p, PeonState.SAPPER);
+            ai.aiLog().count("breach_recruit");
+        }
+        ai.log("breach: " + need + " more sappers (" + intel.sappers.size() + ")");
+    }
+
+    /**
+     * breach: the army's head, where the sappers stand: the fifth of the attackers farthest along the path to the
+     * target (the nearest in a straight line without a path), so one runner ahead of the rest does not lead them.
+     */
+    private int @Nullable [] breachHead(@NonNull List<@NonNull Unit> army) {
+        if (army.isEmpty())
+            return null;
+        DistanceField field = target_field;
+        List<Unit> ranked = new ArrayList<>(army);
+        if (field != null) {
+            ranked.removeIf(u -> field.getAround(u.getGridX(), u.getGridY(), 1) == DistanceField.UNREACHABLE);
+            ranked.sort((a, b) -> Integer.compare(field.getAround(a.getGridX(), a.getGridY(), 1),
+                    field.getAround(b.getGridX(), b.getGridY(), 1)));
+        }
+        if (ranked.isEmpty()) {
+            ranked = new ArrayList<>(army);
+            ranked.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), target_x, target_y),
+                    MapAnalysis.dist2(b.getGridX(), b.getGridY(), target_x, target_y)));
+        }
+        Unit head = ranked.get(Math.min(4, ranked.size() / 4));
+        return new int[]{head.getGridX(), head.getGridY()};
+    }
+
+    /** breach: the sappers charge towers in contact, stand with the army's head, or come out with an escort. */
+    private void breachTick() {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        intel.sappers.removeIf(Unit::isDead);
+        sapper_orders.keySet().removeIf(Unit::isDead);
+        breach_assign.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead());
+        for (Iterator<Map.Entry<Building, Float>> it = breach_started.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, Float> e = it.next();
+            if (!e.getKey().isDead())
+                continue;
+            ai.aiLog().count("breach_tower_down");
+            ai.log(String.format("breach: tower at %d,%d down %.0f s after the charge began", e.getKey().getGridX(),
+                    e.getKey().getGridY(), (ai.now() - e.getValue()) / 50f));
+            it.remove();
+        }
+        List<Unit> army = withRole(Role.ATTACK);
+        int[] c = mode == Mode.ATTACK && !army.isEmpty() ? MapAnalysis.centroid(army) : null;
+        if (c == null) {
+            if (intel.sappers.isEmpty())
+                return;
+            Building home = ai.economy().homeFor(intel.armory());
+            for (Unit p : intel.sappers)
+                if (home != null && home.getUnitContainer() != null)
+                    ai.owner().setTarget(Selectable.newArray(p), home, ai.enterAction(home), false);
+            ai.log(intel.sappers.size() + " sappers go home");
+            intel.sappers.clear();
+            breach_assign.clear();
+            breach_started.clear();
+            return;
+        }
+        // towers in contact: manned, with warriors of the attack in reach
+        List<Building> contact = new ArrayList<>();
+        int r2 = BREACH_REACH * BREACH_REACH;
+        for (Building t : intel.enemy_towers) {
+            if (!Intel.isTowerManned(t))
+                continue;
+            int exposed = 0;
+            for (Unit u : army)
+                if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY()) <= r2)
+                    exposed++;
+            if (exposed >= strategy.breach_contact) {
+                contact.add(t);
+                ai.aiLog().count("breach_contact_ticks"); // military rounds (0.5 s) a tower has our warriors in reach
+            }
+        }
+        if (strategy.breach_axes > 0)
+            breachAxes(army, contact);
+        if (intel.sappers.isEmpty())
+            return;
+        int[] head = breachHead(army);
+        List<Unit> escorts = null;
+        int charge2 = strategy.breach_charge_cells * strategy.breach_charge_cells;
+        for (Unit p : intel.sappers) {
+            int px = p.getGridX();
+            int py = p.getGridY();
+            Building tower = null;
+            int best = charge2;
+            for (Building t : contact) {
+                int d = MapAnalysis.dist2(px, py, t.getGridX(), t.getGridY());
+                if (d <= best) {
+                    best = d;
+                    tower = t;
+                }
+            }
+            if (tower != null) {
+                boolean swinging = breach_assign.get(p) == tower
+                        && p.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.AttackController;
+                Float last = sapper_orders.get(p);
+                if (swinging || (breach_assign.get(p) == tower && last != null && !ai.periodDue(last, 150f)))
+                    continue;
+                if (breach_assign.put(p, tower) != tower)
+                    ai.aiLog().count("breach_charge");
+                if (!breach_started.containsKey(tower)) {
+                    breach_started.put(tower, ai.now());
+                    ai.log(String.format("breach: sappers charge the tower at %d,%d", tower.getGridX(),
+                            tower.getGridY()));
+                }
+                sapper_orders.put(p, ai.now());
+                ai.owner().setTarget(Selectable.newArray(p), tower, Action.ATTACK, true);
+                continue;
+            }
+            breach_assign.remove(p);
+            Float last = sapper_orders.get(p);
+            if (last != null && !ai.periodDue(last, 100f))
+                continue;
+            int gx;
+            int gy;
+            if (MapAnalysis.dist2(px, py, c[0], c[1]) <= BREACH_WITH_ARMY * BREACH_WITH_ARMY
+                    || MapAnalysis.dist2(c[0], c[1], staging_x, staging_y) <= 70 * 70) {
+                gx = head != null ? head[0] : c[0];
+                gy = head != null ? head[1] : c[1];
+            } else {
+                // far from the army: with the nearest warrior on its way out, else wait at the staging point
+                if (escorts == null) {
+                    escorts = withRole(Role.REINFORCE);
+                    escorts.addAll(army);
+                }
+                Unit escort = null;
+                int near = 16 * 16;
+                for (Unit w : escorts) {
+                    int d = MapAnalysis.dist2(px, py, w.getGridX(), w.getGridY());
+                    if (d <= near) {
+                        near = d;
+                        escort = w;
+                    }
+                }
+                gx = escort != null ? escort.getGridX() : staging_x;
+                gy = escort != null ? escort.getGridY() : staging_y;
+                ai.aiLog().count(escort != null ? "breach_escorted" : "breach_waiting"); // sapper orders (2 s)
+            }
+            if (MapAnalysis.dist2(px, py, gx, gy) > 5 * 5) {
+                sapper_orders.put(p, ai.now());
+                move(p, gx, gy);
+            }
+        }
+    }
+
+    /**
+     * breach_axes: by each tower in contact, the warriors within 11 cells of it that have no enemy warrior within
+     * throwing reach throw at the tower (the engine's own choice is any enemy peon first); micro_targets takes them
+     * back as soon as an enemy warrior comes into reach.
+     */
+    private void breachAxes(@NonNull List<@NonNull Unit> army, @NonNull List<@NonNull Building> contact) {
+        Intel intel = ai.intel();
+        int reach2 = THROW_CELLS * THROW_CELLS;
+        for (Building t : contact) {
+            List<Unit> near = new ArrayList<>();
+            int on = 0;
+            for (Unit u : army) {
+                if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY()) > 11 * 11
+                        || Intel.isStunned(u))
+                    continue;
+                if (breach_assign.get(u) == t && u.getCurrentController() instanceof HuntController) {
+                    on++;
+                    continue;
+                }
+                boolean foe = false;
+                for (Unit e : intel.enemy_warriors)
+                    if (!e.isDead()
+                            && MapAnalysis.dist2(u.getGridX(), u.getGridY(), e.getGridX(), e.getGridY()) <= reach2) {
+                                foe = true;
+                                break;
+                            }
+                if (!foe)
+                    near.add(u);
+            }
+            near.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), t.getGridX(),
+                    t.getGridY()), MapAnalysis.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY())));
+            List<Unit> squad = new ArrayList<>();
+            for (Unit u : near) {
+                if (on + squad.size() >= ai.strategy().breach_axes)
+                    break;
+                breach_assign.put(u, t);
+                last_order.put(u, ai.now());
+                squad.add(u);
+                ai.aiLog().count("breach_axe");
+            }
+            if (!squad.isEmpty())
+                ai.owner().setTarget(squad.toArray(new Selectable<?>[0]), t, Action.ATTACK, false);
         }
     }
 
