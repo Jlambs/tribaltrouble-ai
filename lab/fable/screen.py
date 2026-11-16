@@ -76,6 +76,13 @@ SCREENS = {
         ('gate_bonus', '', 'shred_gate=true'),
         ('chief_480s', '', 'chieftain_ticks=24000'),
     ], '@band30-100.txt'),
+    # the long game again, on the default with the blast mission (lg2-00 is bt1-06, 62 wins): now that the base
+    # stands, weapons that wait for an army and a floor under late launches
+    'lg2': ([
+        ('bank_80', '', 'bank=80'),
+        ('late_floor_50', '', 'late_min_strength=50'),
+        ('chief_480s', '', 'chieftain_ticks=24000'),
+    ], '@band30-100.txt'),
 }
 # Screens that use the other half of the four-factor design (D = not ABC), and runs played under another name.
 ODD_HALF = {'lg1'}
@@ -83,6 +90,7 @@ RUN_NAMES = {
     'lg1': {0: 'xt1-band-vs15', 1: 'sb2-band-vs15', 2: 'hm1-band-vs15', 4: 'lc1-band-vs15'},
     'bt1': {0: 'et1-band-vs15'},
     'bt2': {0: 'bt1-06'},
+    'lg2': {0: 'bt1-06'},
 }
 FACTORS, SEEDS = SCREENS['scr1']
 NAME = 'scr1'
