@@ -1748,6 +1748,29 @@ final class Military {
         }
         dx /= len;
         dy /= len;
+        // evade_tower: towards our nearest manned tower, unless that leads at the enemy
+        int tower_cells = ai.strategy().evade_tower;
+        if (tower_cells > 0) {
+            Building tower = null;
+            int best = tower_cells * tower_cells + 1;
+            for (Building t : ai.intel().towers) {
+                int d2 = MapAnalysis.dist2(t.getGridX(), t.getGridY(), p.getGridX(), p.getGridY());
+                if (d2 < best && Intel.isTowerActive(t)) {
+                    best = d2;
+                    tower = t;
+                }
+            }
+            if (tower != null && best > 6 * 6) {
+                float tl = (float) Math.sqrt(best);
+                float tx = (tower.getGridX() - p.getGridX()) / tl;
+                float ty = (tower.getGridY() - p.getGridY()) / tl;
+                if (tx * dx + ty * dy >= -.5f) {
+                    dx = tx;
+                    dy = ty;
+                    ai.aiLog().count("evade_tower");
+                }
+            }
+        }
         DistanceField reach = ai.planner().getStartField();
         for (float[] turn : EVADE_TURNS) {
             int x = p.getGridX() + Math.round((dx * turn[0] - dy * turn[1]) * EVADE_STEP_CELLS);

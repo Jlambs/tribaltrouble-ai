@@ -491,6 +491,14 @@ class Strategy {
      */
     int evade_cells = 0;
     /**
+     * evade_tower (cells, 0 = off): the step out of an enemy's way goes towards our nearest manned tower within this
+     * many cells, unless that leads at the enemy (the tower more than 120 degrees off the way straight from him). A
+     * Hard warrior that hunts a peon walks without scanning and never answers a hit (Lures), so the tower shoots it;
+     * stepping straight away the gatherer drags it along and steps away again 69 times a minute a game from minute
+     * 30, 42 % of the times within 3 s of setting out again (16 long games, eg2-log-vs15).
+     */
+    int evade_tower = 0;
+    /**
      * iron_real (0 = off): the plan's share of iron gatherers follows the measured gatherer-time per unit of iron (a
      * running mean of measureYield's 30-s windows) where that is above the modelled trip, up to this multiple of the
      * model. The model is the walk to the nearest three nodes; the real cost is 2-3 times that from minute 14
@@ -2344,6 +2352,7 @@ class Strategy {
         quarters_sortie_min = params.getInt("quarters_sortie_min", quarters_sortie_min);
         shelter_reach = params.getInt("shelter_reach", shelter_reach);
         evade_cells = params.getInt("evade_cells", evade_cells);
+        evade_tower = params.getInt("evade_tower", evade_tower);
         iron_real = (float) params.getDouble("iron_real", iron_real);
         tree_real = (float) params.getDouble("tree_real", tree_real);
         rock_real = (float) params.getDouble("rock_real", rock_real);
