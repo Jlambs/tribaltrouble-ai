@@ -60,9 +60,22 @@ stuns for the army. He keeps away from it, waits by the enemy's parked waves and
 home, and his training quarters is kept full at the unit cap), and the first one is trained from 480 s instead of
 300. On the 300 fresh development maps at N=15: 158 wins with the mission against 139 (+44 -25), 171 with the later
 chieftain too (57 %), and on 300 more that chose nothing 174 against 134 (58 % against 45 %, +64 -24). The base
-now holds through minutes 15-30, where it used to lose its second armory and its iron. No exam seeds were spent,
-so the exam table above is still `@f2`'s and these are development figures. Against sixteen the same 300 maps give
-124 wins (41.5 %).
+now holds through minutes 15-30, where it used to lose its second armory and its iron. Against sixteen the same 300
+maps give 124 wins (41.5 %).
+
+Exam of the fourth session's default (2026-11-16): frozen tag `@f3` (the source at commit afccc03c; it plays the
+source's games, `f3-check` 8 of 8), seeds 36501..36700, never used for any decision, 200 games each, none failed, no
+swallowed errors:
+
+| N | `@f3` | `@f2` on the same seeds | paired, `@f3` against `@f2` |
+|---|---|---|---|
+| 15 | 102 / 200 = 51.0 % [44.1, 57.8] | 74 / 200 = 37.0 % [30.6, 43.9] | +43 / -15 (z 3.7) |
+| 16 | 68 / 200 = 34.0 % [27.8, 40.8] | | |
+
+So the highest N beaten at 50 % or more is now 15, again right at the line: the point estimate is above 50 %, the
+interval reaches below it. `@f2` scores on these seeds as on its first exam (37.0 % against 35.2 %), so they are no
+easier; the development maps said 58 % for `@f3`, 7 points higher than its exam (about 1.5 standard errors of the
+difference). Exam seeds used so far: 36001..36700.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -1501,6 +1514,10 @@ a floor under late launches, `late_min_strength=50`, -0.5 +- 1.3. Both off.
 EXAM=1 ./lab/fable/dev.sh exam-f2-vs14 "@f2 vs hard*14" 36001..36200
 EXAM=1 ./lab/fable/dev.sh exam-g16-vs14 "@g16 vs hard*14" 36001..36200   # Gauntlet: freeze g16 from its branch first
 python lab/fable/stats.py --pair exam-g16-vs14 exam-f2-vs14
+./aisim.sh freeze f3 fable                     # the fourth session's default, at commit afccc03c
+EXAM=1 ./lab/fable/dev.sh exam-f3-vs15 "@f3 vs hard*15" 36501..36700
+EXAM=1 ./lab/fable/dev.sh exam-f2-vs15-c "@f2 vs hard*15" 36501..36700
+python lab/fable/stats.py --pair exam-f2-vs15-c exam-f3-vs15
 ```
 
 Gauntlet for the baseline: `git archive origin/gauntlet tt/src/main/java/com/oddlabs/tt/player/gauntlet | tar -x`,
