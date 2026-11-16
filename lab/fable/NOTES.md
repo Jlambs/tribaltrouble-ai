@@ -61,7 +61,8 @@ home, and his training quarters is kept full at the unit cap), and the first one
 300. On the 300 fresh development maps at N=15: 158 wins with the mission against 139 (+44 -25), 171 with the later
 chieftain too (57 %), and on 300 more that chose nothing 174 against 134 (58 % against 45 %, +64 -24). The base
 now holds through minutes 15-30, where it used to lose its second armory and its iron. No exam seeds were spent,
-so the exam table above is still `@f2`'s and these are development figures.
+so the exam table above is still `@f2`'s and these are development figures. Against sixteen the same 300 maps give
+124 wins (41.5 %).
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -1452,6 +1453,9 @@ default of the morning (the mission, the full trainer and the later chieftain of
 with 10.8 more warriors at minute 10 and 0.2 more copies out at minutes 10, 15 and 30. Also played with no failed
 game and no swallowed error: 20 of 20 against one Hard, 12 of 12 against six, 19 of 20 against ten (large maps,
 `rb1-vs1`, `rb6-vs6`, `rb10-vs10`).
+
+Against sixteen on the same 300 maps (`nd2h-vs16`): 124 wins (41.5 % [36.1, 47.1], one draw). So on development
+maps the default stands at 58 % against fifteen and 41.5 % against sixteen.
 
 Screen `bt3` around the default (run 0 is `lg2-04`, 64 wins of the 100 open maps; wins by run 64 63 61 65 66 61 64
 64): `hold_chieftain_again=40` (the trainer of a chieftain after the first keeps 40 peons, 129 s of training) -0.5
