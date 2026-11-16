@@ -129,14 +129,51 @@ final class SitePlanner {
 
     @Nullable
     Site findArmorySite(@NonNull List<@NonNull Site> reserved) {
+        return findArmorySite(reserved, strategy.armory_iron_need, strategy.armory_iron_far);
+    }
+
+    /**
+     * The first armory's search with sites charged for the iron nodes they lack of {@code need} within
+     * armory_iron_reach (0: not charged): armory_iron_need's, and expansion_iron_need's for a second armory. While the
+     * best site is short the search widens to twice max_armory_distance and then to {@code far} m from the start.
+     */
+    @Nullable
+    Site findArmorySite(@NonNull List<@NonNull Site> reserved, int need, int far) {
+        iron_need = need;
+        iron_far = far;
+        iron_scored = need > 0;
         Site best = findArmorySite(reserved, strategy.max_armory_distance, start_field);
         // A start boxed in by cliffs may have nothing worth building on nearby; look further before settling.
-        if (best == null || -best.score > strategy.armory_far_cost_ticks) {
+        if (best == null || -best.score > strategy.armory_far_cost_ticks || shortOfIron(best)) {
             Site further = findArmorySite(reserved, strategy.max_armory_distance * 2, start_field);
             if (further != null && (best == null || further.score > best.score))
                 best = further;
         }
+        if (iron_scored && iron_far > 2 * strategy.max_armory_distance && (best == null || shortOfIron(best))) {
+            Site further = findArmorySite(reserved, iron_far, start_field);
+            if (further != null && (best == null || further.score > best.score))
+                best = further;
+        }
+        iron_scored = false;
         return best;
+    }
+
+    /** armory_iron_need: whether the search under way charges sites for the iron they lack, of how many nodes. */
+    private boolean iron_scored;
+    private int iron_need;
+    private int iron_far;
+
+    private boolean shortOfIron(@NonNull Site site) {
+        return iron_scored && site.iron >= 0 && site.iron < iron_need;
+    }
+
+    /** Standing iron nodes within `reach` meters of walking from the field's source. */
+    static int ironWithin(@NonNull DistanceField field, @NonNull List<? extends Supply> iron, int reach) {
+        int n = 0;
+        for (Supply s : iron)
+            if (!s.isEmpty() && field.getAround(s.getGridX(), s.getGridY(), 1) <= reach)
+                n++;
+        return n;
     }
 
     /**
@@ -232,6 +269,22 @@ final class SitePlanner {
             int sx = from_field.getSourceX();
             int sy = from_field.getSourceY();
             List<IronSupply> iron = map.getIron();
+            // armory_iron_need: each node's cell and its walk from the field's source
+            int[] node_x = new int[iron_scored ? iron.size() : 0];
+            int[] node_y = new int[node_x.length];
+            int[] node_d = new int[node_x.length];
+            int nodes = 0;
+            if (iron_scored)
+                for (IronSupply s : iron) {
+                    int nd = s.isEmpty() ? DistanceField.UNREACHABLE : from_field.getAround(s.getGridX(), s.getGridY(),
+                            1);
+                    if (nd == DistanceField.UNREACHABLE)
+                        continue;
+                    node_x[nodes] = s.getGridX();
+                    node_y[nodes] = s.getGridY();
+                    node_d[nodes++] = nd;
+                }
+            int reach = strategy.armory_iron_reach;
             for (int y = 2; y < size - 2; y += 2) {
                 for (int x = 2; x < size - 2; x += 2) {
                     int d = from_field.get(x, y);
@@ -249,6 +302,16 @@ final class SitePlanner {
                             1.25f * map.averageTreeDistance(x, y, 30, 60, 150f) - 5f);
                     float quick = 2 * tree_cycle + iron_cycle + strategy.armory_delay_weight * d * WALK_TICKS_PER_METER + strategy.armory_distance_weight_ticks * d + threat_weight * Math.max(
                             0f, exposure(x, y) - .42f);
+                    if (iron_scored) {
+                        // No more than the nodes in reach: a walk between two cells is at least the straight line
+                        // and at least the difference of their walks from the source.
+                        int near = 0;
+                        for (int i = 0; i < nodes; i++)
+                            if (Math.abs(node_d[i] - d) <= reach && 4 * MapAnalysis.dist2(x, y, node_x[i],
+                                    node_y[i]) <= reach * reach)
+                                near++;
+                        quick += strategy.armory_iron_short_ticks * Math.max(0, iron_need - near);
+                    }
                     candidates.add(new Site(x, y, -quick));
                 }
             }
@@ -322,6 +385,12 @@ final class SitePlanner {
             // no rock within 45 cells: 200 game ticks (4 s) more
             float cost = gather + delay + strategy.armory_distance_weight_ticks * d + threat + (hasNear(map.getRocks(),
                     c.x, c.y, 45) ? 0f : 200f);
+            int iron_near = -1;
+            if (iron_scored) {
+                iron_near = ironWithin(map.computeField(c.x, c.y, strategy.armory_iron_reach), map.getIron(),
+                        strategy.armory_iron_reach);
+                cost += strategy.armory_iron_short_ticks * Math.max(0, iron_need - iron_near);
+            }
             if (max_tree > 0f && tree >= max_tree) {
                 tree_failed++;
                 continue;
@@ -329,6 +398,7 @@ final class SitePlanner {
             if (cost < best_cost) {
                 best_cost = cost;
                 best = new Site(c.x, c.y, -cost);
+                best.iron = iron_near;
             }
         }
         return best;
@@ -597,6 +667,8 @@ final class SitePlanner {
         final int y;
         final float score;
         int half = RaceSizes.QUARTERS;
+        /** armory_iron_need: the iron nodes within armory_iron_reach m of walking, -1 if not counted. */
+        int iron = -1;
 
         Site(int x, int y, float score) {
             this.x = x;

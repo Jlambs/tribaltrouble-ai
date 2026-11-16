@@ -1377,6 +1377,46 @@ class Strategy {
      * per warrior).
      */
     float armory_far_cost_ticks = 8500f; // 170 s
+    /**
+     * armory_iron_need (iron nodes, 0 = off): the first armory's site is scored on its nearest 15 iron nodes, so a
+     * site with a handful of nodes and water behind them looks as good as one in a field of 60. Of 300 default games
+     * (pc1-00, def4-fresh-vs15; lab/fable/oremap.py) the 37 whose site had fewer than 30 nodes within 300 m of
+     * walking won 2 and the 18 with 30 to 40 won 7, the others 45 %; on the maps whose 20th node is more than 300 m
+     * from the start the sites with under 20 nodes won 0 of 26, the others 11 of 45. With armory_iron_need a site
+     * with fewer than this many nodes within armory_iron_reach m of walking costs armory_iron_short_ticks more per
+     * missing node, and while the best site is short the search widens to twice max_armory_distance and then to
+     * armory_iron_far m of walking from the start (0: no further).
+     */
+    int armory_iron_need = 0;
+    int armory_iron_reach = 300;
+    float armory_iron_short_ticks = 200f; // 4 s a node
+    int armory_iron_far = 0;
+    /**
+     * opening_move_m (meters of walking, 0 = off): with the armory site this far from the start or farther, the first
+     * quarters goes up by the armory site like the others, so the whole tribe walks there first. With the first
+     * quarters by the start and the rest far (fo1-log-vs15, 16 maps with the armory 320 to 520 m out) the armory
+     * stands at 333 s and the sixth quarters at 501 s, there are 82 peons at 8 min against 168, and the peons bred by
+     * the start walk to the base past a neighbour's quarters, where they are killed one by one (s21142, s21061).
+     */
+    int opening_move_m = 0;
+    /**
+     * expansion_iron_need (iron nodes, 0 = off): the opening stays by the start, and when the first armory stands with
+     * fewer than this many nodes within armory_iron_reach m of walking, a second one is planned at once (not before
+     * expansion_iron_ticks) on the site the first-armory search finds when it charges for missing iron, up to
+     * expansion_iron_far m of walking from the start. With the whole base at such a site (armory_iron_need 40,
+     * in40-vs15: 21 maps with the armory 350 m and more out) the armory stands 95 s later and there are 101 units at
+     * 8 min against 193; 2 of 21 games are won against 0.
+     */
+    int expansion_iron_need = 0;
+    float expansion_iron_ticks = 0f;
+    int expansion_iron_far = 800;
+    /**
+     * expansion_iron_crew: this many peons walk out with the placer of that second armory (idle ones, tree and rock
+     * gatherers), so they arrive with the site. With the placer alone (fo3-log-vs15 s21036) the site 519 m out is
+     * planned at 231 s, placed at 334 s and stands at 466 s: its builders set out when it is placed and each carries
+     * a piece of wood cut by the start.
+     */
+    int expansion_iron_crew = 1;
 
     /**
      * Fight raiding enemy peons with our own peons when no warriors are at hand to do it, until militia_ticks. Off:
@@ -2540,6 +2580,15 @@ class Strategy {
         desperate_expansion = (float) params.getDouble("desperate_expansion", desperate_expansion);
         desperate_iron_cycle_ticks = (float) params.getDouble("desperate_iron_cycle_ticks", desperate_iron_cycle_ticks);
         armory_far_cost_ticks = (float) params.getDouble("armory_far_cost_ticks", armory_far_cost_ticks);
+        armory_iron_need = params.getInt("armory_iron_need", armory_iron_need);
+        armory_iron_reach = params.getInt("armory_iron_reach", armory_iron_reach);
+        armory_iron_short_ticks = (float) params.getDouble("armory_iron_short_ticks", armory_iron_short_ticks);
+        armory_iron_far = params.getInt("armory_iron_far", armory_iron_far);
+        opening_move_m = params.getInt("opening_move_m", opening_move_m);
+        expansion_iron_need = params.getInt("expansion_iron_need", expansion_iron_need);
+        expansion_iron_ticks = (float) params.getDouble("expansion_iron_ticks", expansion_iron_ticks);
+        expansion_iron_far = params.getInt("expansion_iron_far", expansion_iron_far);
+        expansion_iron_crew = params.getInt("expansion_iron_crew", expansion_iron_crew);
         peon_militia = params.getBoolean("peon_militia", peon_militia);
         militia_ticks = (float) params.getDouble("militia_ticks", militia_ticks);
         peon_rush = params.getBoolean("peon_rush", peon_rush);

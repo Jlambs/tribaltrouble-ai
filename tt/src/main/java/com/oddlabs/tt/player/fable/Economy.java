@@ -132,12 +132,23 @@ final class Economy {
 
         // The freeze squad (Freeze) walks off at the start: it builds nothing until the strike ends.
         int first_builders = Math.max(1, intel.peons.size() - strategy.scouts - intel.strikers.size());
+        DistanceField a_field = armory_site != null ? ai.map().computeField(ax, ay, 240) : null;
+        // opening_move_m: the armory is far, so the whole tribe walks there first and opens by it
+        Site q1 = null;
+        if (strategy.opening_move_m > 0 && a_field != null && planner.getStartField().get(ax,
+                ay) >= strategy.opening_move_m) {
+            q1 = planner.findQuartersSite(reserved, ax, ay, 80, a_field, sx, sy, first_builders, 12.5f, 1f);
+            if (q1 != null)
+                ai.aiLog().count("opening_moved");
+        }
+        boolean moved = q1 != null;
         // The walk weights are in game ticks per meter (.2 and .06 s here, .25 and .02 s below).
-        Site q1 = planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), ax, ay, first_builders,
-                10f, 3f);
+        if (!moved)
+            q1 = planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), ax, ay, first_builders, 10f,
+                    3f);
         // The score is minus the game ticks until the quarters stands; when that is poor nearby, a walk to better
         // ground pays off, and the walk is already part of the score.
-        if (q1 == null || -q1.score > 5500f) { // 110 s
+        if (!moved && (q1 == null || -q1.score > 5500f)) { // 110 s
             Site further = planner.findQuartersSite(reserved, sx, sy, 400, planner.getStartField(), ax, ay,
                     first_builders, 10f, 3f);
             if (further != null && (q1 == null || further.score > q1.score))
@@ -164,7 +175,6 @@ final class Economy {
             Project p = addProject(Race.BUILDING_ARMORY, armory_site, armory_priority);
             p.use_scout = true;
         }
-        DistanceField a_field = armory_site != null ? ai.map().computeField(ax, ay, 240) : null;
         for (int i = 1; i < strategy.initial_quarters; i++) {
             Site q;
             if (strategy.opening_near_start && q1 != null)
@@ -1212,6 +1222,8 @@ final class Economy {
         int priority;
         boolean first;
         boolean use_scout;
+        /** expansion_iron_crew: peons that walk out with the placer, itself included (0: the placer alone). */
+        int crew;
         /** A tower out by the enemy's gatherers, built under the army's cover. */
         boolean forward;
         /** A sniper tower next to idle enemies parked by our base (planSniper). */
@@ -1373,10 +1385,26 @@ final class Economy {
                 }
                 continue;
             }
-            place(p, List.of(placer));
-            if (p.building != null)
-                intel.builder_sites.put(placer, p.building);
-            intel.peon_states.put(placer, PeonState.BUILD);
+            List<Unit> crew = new ArrayList<>();
+            crew.add(placer);
+            if (p.crew > 1) {
+                // expansion_iron_crew: the builders walk out with the placer
+                List<Unit> pool = new ArrayList<>();
+                for (Unit peon : intel.peons) {
+                    PeonState s = intel.peon_states.get(peon);
+                    if (peon != placer && peon != scout && (s == PeonState.IDLE || s == PeonState.TRANSIT
+                            || s == PeonState.GATHER_TREE || s == PeonState.GATHER_ROCK))
+                        pool.add(peon);
+                }
+                takeNearest(pool, crew, p.crew - 1, placer.getGridX(), placer.getGridY());
+                ai.log("crew of " + crew.size() + " walks out for " + p.describe());
+            }
+            place(p, crew);
+            for (Unit u : crew) {
+                if (p.building != null)
+                    intel.builder_sites.put(u, p.building);
+                intel.peon_states.put(u, PeonState.BUILD);
+            }
             if ((ai.strategy().rearm_placer || p.lock) && p.type == Race.BUILDING_ARMORY && p.building != null)
                 p.placer = placer;
         }
@@ -3226,6 +3254,9 @@ final class Economy {
         meas_rock_gt = 0f;
     }
 
+    /** expansion_iron_need: whether the first armory's iron has been looked at. */
+    private boolean iron_expansion_checked;
+
     /**
      * Opens a second armory next to fresh iron once the first one's surroundings are mined out, when the walk saved
      * on every future warrior is worth the forty pieces of wood. Only one expansion at a time; the old armory keeps
@@ -3234,6 +3265,28 @@ final class Economy {
     private void considerExpansion() {
         Intel intel = ai.intel();
         Building armory = intel.armory();
+        Strategy st = ai.strategy();
+        // expansion_iron_need: a first armory short of iron gets its second one as soon as it stands
+        if (st.expansion_iron_need > 0 && !iron_expansion_checked && armory != null && armory_field != null
+                && ai.now() >= st.expansion_iron_ticks && countProjects(Race.BUILDING_ARMORY, false) == 0
+                && ai.owner().canBuild(Race.BUILDING_ARMORY)) {
+            iron_expansion_checked = true;
+            int near = SitePlanner.ironWithin(armory_field, ai.map().getIron(), st.armory_iron_reach);
+            if (near < st.expansion_iron_need) {
+                Site site = ai.planner().findArmorySite(reservedSites(null), st.expansion_iron_need,
+                        st.expansion_iron_far);
+                ai.log(String.format("iron expansion: %d nodes within %d m of the armory, best site %s", near,
+                        st.armory_iron_reach, site == null ? "none" : site.x + "," + site.y + " with " + site.iron));
+                if (site != null && site.iron >= st.expansion_iron_need) {
+                    Project p = addProject(Race.BUILDING_ARMORY, site, 1);
+                    p.crew = st.expansion_iron_crew;
+                    expansion_project = p;
+                    ai.aiLog().count("expansion_iron");
+                    return;
+                }
+                ai.aiLog().count("expansion_iron_none");
+            }
+        }
         // from 300 s, every 30 s
         if (armory == null || armory_field == null || ai.now() < 15000f || !ai.periodDue(last_expansion_check, 1500f)
                 || !ai.strategy().expansion)
