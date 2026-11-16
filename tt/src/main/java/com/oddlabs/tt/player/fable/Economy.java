@@ -5058,6 +5058,8 @@ final class Economy {
         rock_real_forge = 0;
         if (rock_real_on) {
             float share = rock_real_now;
+            if (st.rock_real_peons > 0 && pool > 0)
+                share = Math.min(share, st.rock_real_peons / (float) pool);
             // staffed by rock's measured trip, up to three times the model's
             if (line_fresh)
                 line_c = Math.min(Math.max(line_c, rock_ticks), 3f * line_c);

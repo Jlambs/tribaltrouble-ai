@@ -570,6 +570,46 @@ With value 0.9 and a share up to 0.85 one game reached 177 warriors (46 rock) at
 peons left, and iron fell to under 4 a minute: the settings trade iron for bodies, which is what the screen below
 is for.
 
+### The rock line's screen: it trades iron warriors for rock ones (`rk1-00..07`, 100 maps each)
+
+Base: the fixed defaults on the same maps, `def3-vs15`, 41 wins (the run with the assertion bug had 45: +3 / -7,
+model -0.2 +- 0.9, so the fix itself is neutral).
+
+| run | value | most share | tree_real | iron_real | wins | model at 20 min against the base |
+|---|---|---|---|---|---|---|
+| rk1-00 | 0.6 | 0.55 | - | 3 | 41 | +1.1 +- 1.6 |
+| rk1-01 | 0.9 | 0.55 | - | 0 | 31 | -2.5 +- 2.3 |
+| rk1-02 | 0.6 | 0.85 | - | 0 | 34 | -3.2 +- 2.6 |
+| rk1-03 | 0.9 | 0.85 | - | 3 | 31 | -3.9 +- 1.9 |
+| rk1-04 | 0.6 | 0.55 | 2.5 | 0 | 38 | -1.1 +- 2.5 |
+| rk1-05 | 0.9 | 0.55 | 2.5 | 3 | 35 | -4.5 +- 2.1 |
+| rk1-06 | 0.6 | 0.85 | 2.5 | 3 | 37 | +0.1 +- 2.2 |
+| rk1-07 | 0.9 | 0.85 | 2.5 | 0 | 34 | -4.4 +- 2.4 |
+
+Effects on wins, paired by map: value 0.9 -4.8 +- 2.5 (z -1.9), share 0.85 -2.2 +- 1.9, tree_real +1.8 +- 2.2,
+iron_real off -1.8 +- 3.3. The mildest line equals the base; every bolder one is below it.
+
+Why (`lab/fable/flow.py def3-vs15 rk1-00 rk1-03`, means over the games alive in all runs):
+
+| at 25 min | warriors (rock) | iron + rock a minute | peons |
+|---|---|---|---|
+| base | 45 (6) | 10.7 + 3.7 | 157 |
+| rk1-00 | 53 (19) | 7.3 + 9.9 | 144 |
+| rk1-03 | 52 (32) | 2.8 + 14.6 | 137 |
+
+Weapons a minute go from 14.4 to 17.3, a fifth more, while iron falls by a third to three quarters. At Combat's 0.6
+for a rock warrior the strength made a minute is 12.9, 13.2 and 11.6: flat or down. The average cost of iron (five
+to seven times rock's) overstated what moving a peon buys: the pool that makes weapons is about 90 of the 140
+peons, a rock axe still costs 2 wood at 52-100 gatherer-seconds each, and iron given up was not as dear at the
+margin as the 12-game sample suggested. And a rock warrior is worth less than 0.6 to the campaign, which lives on
+damage: at an even strength the rock-heavy runs kill and raze less.
+
+So the line pays only if it is additive: fed by peons that make nothing now, with the iron line left alone. The
+candidates are the peons the quarters hold: from 70 % of the cap on a quarters holds 8 (hold_late), 40 in all, to
+breed 65 peons a minute when 30-36 units a minute are lost; 2 each would breed 41. Lowering the hold alone was
+neutral twice (second session, and scr1 above), when the freed peons went to the iron line. `rock_real_peons` caps
+the line at a number of peons, and the screen `rk2` crosses a line of 30 peons with hold_late 3 and tree_real.
+
 ## Reproduce
 
 ```bash

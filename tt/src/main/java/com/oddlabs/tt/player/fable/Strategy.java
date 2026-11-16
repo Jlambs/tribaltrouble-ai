@@ -518,6 +518,12 @@ class Strategy {
      * peons run short before the ore does (rk-smoke: 39 of 44 peons held, one forger, 20 rock in stock).
      */
     int rock_real_hold = 2;
+    /**
+     * rock_real_peons (0 = no limit): the line takes at most this many peons of the pool, whatever its share. The
+     * screen rk1 (lab/fable/NOTES.md) showed the line trading iron warriors for rock ones one for one at an even
+     * strength; with a limit it can be sized to the peons another change frees (a lower hold_late, say).
+     */
+    int rock_real_peons = 0;
     float rock_real_ticks = 42000f; // 14 min
     /**
      * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
@@ -2053,6 +2059,7 @@ class Strategy {
         rock_real_share = (float) params.getDouble("rock_real_share", rock_real_share);
         rock_real_iron_first = params.getInt("rock_real_iron_first", rock_real_iron_first);
         rock_real_hold = params.getInt("rock_real_hold", rock_real_hold);
+        rock_real_peons = params.getInt("rock_real_peons", rock_real_peons);
         rock_real_ticks = (float) params.getDouble("rock_real_ticks", rock_real_ticks);
         shelter_off = params.getBoolean("shelter_off", shelter_off);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);

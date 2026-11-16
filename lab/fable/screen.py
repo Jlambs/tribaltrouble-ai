@@ -33,6 +33,12 @@ SCREENS = {
         ('tree_real', '', 'tree_real=2.5'),
         ('iron_real_off', '', 'iron_real=0'),
     ], '21001..21100'),
+    # a rock line of the peons a lower hold frees; three factors make the full 8 runs (rk2-00 is the default)
+    'rk2': ([
+        ('hold_late_3', '', 'hold_late=3'),
+        ('rock_line_30', '', 'rock_real=0.6,rock_real_share=0.55,rock_real_peons=30'),
+        ('tree_real', '', 'tree_real=2.5'),
+    ], '21001..21100'),
 }
 FACTORS, SEEDS = SCREENS['scr1']
 ENEMIES = 15
@@ -42,6 +48,8 @@ def design():
     """The runs' levels: a full design in the first factors, the others their products."""
     k = len(FACTORS)
     runs = []
+    if k == 3:
+        return [[(i >> n) & 1 for n in range(3)] for i in range(8)]
     if k == 4:
         for i in range(8):
             a, b, c = [(i >> n) & 1 for n in range(3)]
