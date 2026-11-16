@@ -1190,6 +1190,57 @@ Three games in about a thousand with these variants ran to the 360-minute limit,
 (we have 44 warriors and 249 units), `L1f-vs15` s21400 with seven warriors of ours against 163 after six hours. An
 enemy that cannot arm any more is not hunted down.
 
+**On fresh maps the late fixes are worth nothing.** All 300 of 21301..21600, where the default wins 126
+(`in50f-vs15` on the 102 maps whose armory the iron need moves, `def6f-vs15` on the other 198):
+
+| | wins | to a win / to a loss | by the default's copies housed at minute 30: 5 or fewer (47 maps, default 43) / 6-9 (188, 83) / 10+ (44, 0) |
+|---|---|---|---|
+| staffing, late caution 1.0, expansion under threat (`L1f-vs15`) | 126, 2 draws | +38 -38 | 36 / 88 / 2 |
+| and the lure and the chieftain's refresh from minute 30 (`L2f-vs15`) | 127 | +38 -37 | 36 / 87 / 4 |
+
+So the breakdowns of the long game are real and their repairs do what they were built for, but who wins is settled
+before they act. All of them stay off.
+
+### Where the open games part: the armories of minutes 15-35 (`lab/fable/armories.py`)
+
+787 games (the 589 and `def6f-vs15`), those with 6-9 copies housed at minute 30, by our own state then:
+
+| our warriors | under 20 | 20-40 | 40-60 | 60-90 | 90+ |
+|---|---|---|---|---|---|
+| won / games | 31/189 | 41/104 | 42/80 | 41/62 | 40/44 |
+
+| iron a minute over minutes 25-30 | under 6 | 6-10 | 10-14 | 14-18 | 18+ |
+|---|---|---|---|---|---|
+| won / games | 21/133 | 17/64 | 29/76 | 25/58 | 103/148 |
+
+The iron is two-humped, and the two ends were the same game ten minutes earlier:
+
+| | iron a minute, warriors, towers, armories at minute 15 | 20 | 25 | 30 |
+|---|---|---|---|---|
+| under 6 at minute 30 (133 games, 21 won) | 22.5, 129, 11.7, 1.9 | 13.3, 88, 11.4, 1.8 | 6.5, 33, 10.1, 1.3 | 2.4, 12, 8.8, 1.0 |
+| 18+ at minute 30 (148 games, 103 won) | 23.5, 141, 11.9, 2.0 | 14.5, 96, 11.7, 1.8 | 15.1, 44, 12.0, 1.6 | 23.0, 64, 12.4, 1.6 |
+
+One group loses its armories and the other gets a new one onto fresh iron. Why that is luck:
+
+- **The building cap is 20 and we are on it from minute 15** (181 of 198 games of `def6f-vs15` have exactly 20
+  buildings and sites at minute 15: 6 quarters, 2 armories, 12 towers). An armory needs a slot, a moment with no
+  threat at the base (`considerExpansion`) and to get there before the tower planner retakes the slot. Armories
+  built a game per five minutes (300 fresh games, won / lost): 0.99 / 0.87 in minutes 0-5, 0.73 / 0.80 in 5-10,
+  0.25 / 0.21 in 10-15, then 0.00 / 0.01, 0.03 / 0.07 and 0.06 / 0.13 up to minute 30. Razed in those three
+  windows: 0.13 / 0.23, 0.29 / 0.54, 0.16 / 0.54.
+- **The armory that falls is the one without towers.** Towers anchor on the primary armory, the exposed quarters
+  and the building nearest each enemy, never on the other armory. Of the armories razed in minutes 15-35 and those
+  that stood through, by our towers within 15 cells: none 49 razed and 7 stood (12 % stood), one 62 and 13 (17 %),
+  two 60 and 47 (44 %), three or more 163 and 215 (57 %); the razed ones stand a median 101 cells from our start,
+  the others 75.
+
+Built for it: `armory_cover` (the next tower goes by a finished armory with fewer than that many towers within 15
+cells) and `bank` (from minute 30, while the army is home and under 25 strong, weapons stay in the armory until
+there are that many: with 60 the armory fills in 200-360 s and lets out an army of about 47 to the muster; 16
+logged games `bk1-log-vs15`). Gauntlet's own answer to the cap is a family that was only ever tried one flag at a
+time (`reloc` alone: 39 of 100, "rarely fires"): `reloc` (a hop to fresh iron with no threat gate), `reloc_slot`
+(the next free slot is kept for it) and `retire` (a building of ours is razed for the slot).
+
 ## Reproduce
 
 ```bash

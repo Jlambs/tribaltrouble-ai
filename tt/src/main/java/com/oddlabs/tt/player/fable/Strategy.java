@@ -1880,6 +1880,17 @@ class Strategy {
     /** Every third tower covers the most exposed quarters; false: it anchors on the home armory (K8). */
     boolean tower_q_anchor = true;
     /**
+     * armory_cover (towers, 0 = off): while a finished armory has fewer towers than this within 15 cells (standing,
+     * sites and planned), the next tower goes by it, the armory with the fewest first, before the turn of the
+     * primary armory, the exposed quarters or a front. Towers anchor on the primary armory and on the building
+     * nearest each enemy, so the other armory has what the fronts gave it; the 20-building cap is reached by minute
+     * 15 in nine games of ten, after which no armory is built until one is lost (0.01-0.13 built a game per five
+     * minutes between minutes 15 and 30, 0.6 razed in the games won and 1.3 in the others), and of the armories
+     * razed in minutes 15-35 those with no tower within 15 cells stood in 12 % of the cases, with one in 17 %, with
+     * two in 44 %, with three or more in 57 % (lab/fable/armories.py in50f-vs15 def6f-vs15).
+     */
+    int armory_cover = 0;
+    /**
      * The copies odd front towers face in turn (Economy.enemyFront; maxn K9): 0 in slot order, 1 farthest start first,
      * 2 most base-bound waves first (Shepherd), ties farthest first.
      */
@@ -2203,6 +2214,7 @@ class Strategy {
         tower_face_place = params.getBoolean("tower_face_place", tower_face_place);
         tower_home_anchor = params.getBoolean("tower_home_anchor", tower_home_anchor);
         tower_q_anchor = params.getBoolean("tower_q_anchor", tower_q_anchor);
+        armory_cover = params.getInt("armory_cover", armory_cover);
         front_order = params.getInt("front_order", front_order);
         tower_min_quarters = params.getInt("tower_min_quarters", tower_min_quarters);
         shepherd_patience_ticks = (float) params.getDouble("shepherd_patience_ticks", shepherd_patience_ticks);

@@ -1786,6 +1786,32 @@ final class Economy {
                 }
     }
 
+    /**
+     * armory_cover: the finished armory with the fewest towers within 15 cells (standing, sites and planned), if
+     * that is fewer than armory_cover; null when every armory has them.
+     */
+    private int @Nullable [] bareArmory(@NonNull List<int @NonNull []> existing) {
+        Building worst = null;
+        int fewest = ai.strategy().armory_cover;
+        for (Building a : ai.intel().armories) {
+            if (a.isDead() || !a.isComplete() || retire.isDoomed(a) || evacuating.containsKey(a))
+                continue;
+            int n = 0;
+            for (int[] t : existing)
+                if (MapAnalysis.dist2(t[0], t[1], a.getGridX(), a.getGridY()) <= 15 * 15)
+                    n++;
+            for (Project p : projects)
+                if (p.type == Race.BUILDING_TOWER && !p.isPlaced()
+                        && MapAnalysis.dist2(p.site.x, p.site.y, a.getGridX(), a.getGridY()) <= 15 * 15)
+                    n++;
+            if (n < fewest) {
+                fewest = n;
+                worst = a;
+            }
+        }
+        return worst == null ? null : new int[]{worst.getGridX(), worst.getGridY()};
+    }
+
     private @NonNull List<int @NonNull []> existingTowers() {
         Intel intel = ai.intel();
         List<int[]> existing = new ArrayList<>();
@@ -2480,6 +2506,15 @@ final class Economy {
             }
             if (live != null)
                 ai.aiLog().count("tower_face_place");
+            // armory_cover: an armory short of towers comes before the turn's anchor
+            int[] bare = strategy.armory_cover > 0 ? bareArmory(existing) : null;
+            if (bare != null) {
+                center = bare;
+                face = new int[]{ai.planner().getEnemyX(), ai.planner().getEnemyY()};
+                min_cells = 7;
+                max_cells = 15;
+                ai.aiLog().count("armory_cover");
+            }
             // bastion: its towers before the base's
             Site site = bastionSite(existing);
             if (site == null)
