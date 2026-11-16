@@ -300,7 +300,8 @@ final class Economy {
             int far = 0;
             long sum = 0;
             for (Unit u : intel.peons) {
-                if (!(u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.RepairController rc)
+                if (u.isDead()
+                        || !(u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.RepairController rc)
                         || rc.getBuilding() != b)
                     continue;
                 builders++;
