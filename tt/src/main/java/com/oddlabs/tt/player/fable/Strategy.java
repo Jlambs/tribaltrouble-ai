@@ -1941,6 +1941,20 @@ class Strategy {
     int breach_charge_cells = 45;
     int breach_axes = 0;
     /**
+     * breach_gate (warriors, 0 = off): the sappers of br1-log-vs15 reached a charged tower 10 to 30 s after the first
+     * warrior did (they stand behind a column jammed in the trees), and the warriors walked into its reach one by one
+     * meanwhile. With the gate the attack's warriors stay 19 cells or more from a manned, awake enemy tower (those
+     * inside with no enemy warrior in throwing reach step out) until this many of them (or six tenths of the army)
+     * stand within 26 cells of it and six sappers within 30, or breach_gate_ticks have passed since the first of them
+     * came within 34 cells, or eight are inside anyway. breach_solo: while the gate is shut and at most
+     * breach_solo_foes enemy warriors stand within 12 cells of the tower, the sappers go in alone for up to 15 s, so
+     * the garrison throws at peons.
+     */
+    int breach_gate = 0;
+    float breach_gate_ticks = 750f; // 15 s
+    boolean breach_solo = true;
+    int breach_solo_foes = 2;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2052,6 +2066,10 @@ class Strategy {
         breach_contact = params.getInt("breach_contact", breach_contact);
         breach_charge_cells = params.getInt("breach_charge_cells", breach_charge_cells);
         breach_axes = params.getInt("breach_axes", breach_axes);
+        breach_gate = params.getInt("breach_gate", breach_gate);
+        breach_gate_ticks = (float) params.getDouble("breach_gate_ticks", breach_gate_ticks);
+        breach_solo = params.getBoolean("breach_solo", breach_solo);
+        breach_solo_foes = params.getInt("breach_solo_foes", breach_solo_foes);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);

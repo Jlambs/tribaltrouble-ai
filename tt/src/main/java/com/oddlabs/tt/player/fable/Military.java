@@ -4335,6 +4335,141 @@ final class Military {
         return new int[]{head.getGridX(), head.getGridY()};
     }
 
+    private float breach_traced = -5000f;
+    /**
+     * breach_gate: warriors hold GATE_HOLD cells from a shut tower, those within GATE_IN step out, GATE_RING is near.
+     */
+    private static final int GATE_IN = 19;
+    private static final int GATE_HOLD = 21;
+    private static final int GATE_RING = 34;
+    /** breach_gate: per tower with warriors near, when the first came, when it opened (-1: shut), the solo's end. */
+    private final Map<@NonNull Building, float @NonNull []> breach_gates = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, Float> gate_orders = new LinkedHashMap<>();
+
+    /**
+     * breach_gate: whether the gate on this manned, awake tower is open; while it is shut the warriors near it are
+     * held outside its reach (their orders of this round are dropped), and a solo of the sappers may begin.
+     */
+    private boolean breachGate(@NonNull Building t, @NonNull List<@NonNull Unit> army, int exposed) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        float now = ai.now();
+        float[] gate = breach_gates.get(t);
+        if (gate == null) {
+            gate = new float[]{now, -1f, -1f};
+            breach_gates.put(t, gate);
+        }
+        if (gate[1] >= 0f)
+            return true;
+        int tx = t.getGridX();
+        int ty = t.getGridY();
+        int near = 0;
+        for (Unit u : army)
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), tx, ty) <= 26 * 26)
+                near++;
+        int saps = 0;
+        for (Unit p : intel.sappers)
+            if (!p.isDead() && MapAnalysis.dist2(p.getGridX(), p.getGridY(), tx, ty) <= 30 * 30)
+                saps++;
+        int foes = 0;
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), tx, ty) <= 12 * 12)
+                foes++;
+        boolean ready = near >= Math.min(strategy.breach_gate, Math.max(6, army.size() * 6 / 10))
+                && saps >= Math.min(6, intel.sappers.size());
+        boolean late = now - gate[0] >= strategy.breach_gate_ticks && now >= gate[2];
+        boolean melee = exposed >= 8;
+        if (ready || late || melee) {
+            gate[1] = now;
+            ai.aiLog().count(ready ? "breach_gate_ready" : late ? "breach_gate_late" : "breach_gate_melee");
+            ai.log(String.format(
+                    "breach: gate on the tower at %d,%d opens after %.0f s (%s): %d warriors near, %d in reach, %d sappers, %d enemy warriors by it",
+                    tx, ty, (now - gate[0]) / 50f, ready ? "ready" : late ? "late" : "melee", near, exposed, saps,
+                    foes));
+            return true;
+        }
+        if (strategy.breach_solo && gate[2] < 0f && saps >= 6 && foes <= strategy.breach_solo_foes) {
+            gate[2] = now + 750f; // 15 s
+            ai.aiLog().count("breach_solo");
+            ai.log(String.format("breach: %d sappers go in alone on the tower at %d,%d (%d enemy warriors by it)", saps,
+                    tx, ty, foes));
+        }
+        int throw2 = THROW_CELLS * THROW_CELLS;
+        for (Unit u : army) {
+            int ux = u.getGridX();
+            int uy = u.getGridY();
+            int d2 = MapAnalysis.dist2(ux, uy, tx, ty);
+            if (d2 > GATE_RING * GATE_RING)
+                continue;
+            WarriorState st = intel.warrior_states.get(u);
+            if (st == WarriorState.STUNNED || st == WarriorState.ENTER)
+                continue;
+            boolean foe = false;
+            for (Unit e : intel.enemy_warriors)
+                if (!e.isDead() && MapAnalysis.dist2(ux, uy, e.getGridX(), e.getGridY()) <= throw2) {
+                    foe = true;
+                    break;
+                }
+            if (foe)
+                continue; // it fights on where it stands
+            for (List<Unit> pending : pending_orders.values())
+                pending.remove(u);
+            Float last = gate_orders.get(u);
+            if (last != null && !ai.periodDue(last, 100f))
+                continue;
+            float len = Math.max(1f, (float) Math.sqrt(d2));
+            int hx = Math.clamp(tx + Math.round((ux - tx) / len * GATE_HOLD), 0, ai.map().getSize() - 1);
+            int hy = Math.clamp(ty + Math.round((uy - ty) / len * GATE_HOLD), 0, ai.map().getSize() - 1);
+            if (d2 <= GATE_IN * GATE_IN) {
+                gate_orders.put(u, now);
+                move(u, hx, hy);
+                ai.aiLog().count("breach_gate_out");
+            } else if (d2 > 24 * 24) {
+                gate_orders.put(u, now);
+                queueOrder(u, hx, hy, true);
+            } else if (st != WarriorState.IDLE) {
+                gate_orders.put(u, now);
+                queueOrder(u, ux, uy, true);
+            }
+        }
+        return false;
+    }
+
+    /** breach: one log line on a charged tower: its hit points, its sappers by distance, and who stands around it. */
+    private void traceBreach(@NonNull Building t, @NonNull List<@NonNull Unit> army) {
+        Intel intel = ai.intel();
+        int on = 0;
+        int at = 0;
+        int far = 0;
+        int swinging = 0;
+        for (Map.Entry<Unit, Building> e : breach_assign.entrySet()) {
+            Unit p = e.getKey();
+            if (e.getValue() != t || !intel.sappers.contains(p))
+                continue;
+            on++;
+            int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), t.getGridX(), t.getGridY());
+            if (d <= 4 * 4)
+                at++;
+            else if (d > BREACH_REACH * BREACH_REACH)
+                far++;
+            if (p.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.AttackController)
+                swinging++;
+        }
+        int exposed = 0;
+        for (Unit u : army)
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(),
+                    t.getGridY()) <= BREACH_REACH * BREACH_REACH)
+                exposed++;
+        int foes = 0;
+        for (Unit e : intel.enemy_warriors)
+            if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), t.getGridX(), t.getGridY()) <= 12 * 12)
+                foes++;
+        ai.log(String.format(
+                "breach trace: tower at %d,%d hp %d manned %b awake %b; sappers %d on it (%d at it, %d out of reach, %d swinging) of %d; %d warriors in reach, %d enemy warriors within 12",
+                t.getGridX(), t.getGridY(), t.getHitPoints(), Intel.isTowerManned(t), Intel.isTowerActive(t), on, at,
+                far, swinging, intel.sappers.size(), exposed, foes));
+    }
+
     /** breach: the sappers charge towers in contact, stand with the army's head, or come out with an escort. */
     private void breachTick() {
         Intel intel = ai.intel();
@@ -4368,21 +4503,57 @@ final class Military {
         }
         // towers in contact: manned, with warriors of the attack in reach
         List<Building> contact = new ArrayList<>();
+        List<Building> open = new ArrayList<>();
         int r2 = BREACH_REACH * BREACH_REACH;
+        breach_gates.keySet().removeIf(Building::isDead);
+        gate_orders.keySet().removeIf(Unit::isDead);
         for (Building t : intel.enemy_towers) {
             if (!Intel.isTowerManned(t))
                 continue;
             int exposed = 0;
-            for (Unit u : army)
-                if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY()) <= r2)
+            int ring = 0;
+            for (Unit u : army) {
+                int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY());
+                if (d <= r2)
                     exposed++;
-            if (exposed >= strategy.breach_contact) {
-                contact.add(t);
+                if (d <= GATE_RING * GATE_RING)
+                    ring++;
+            }
+            if (exposed >= strategy.breach_contact)
                 ai.aiLog().count("breach_contact_ticks"); // military rounds (0.5 s) a tower has our warriors in reach
+            if (strategy.breach_gate <= 0) {
+                if (exposed >= strategy.breach_contact) {
+                    contact.add(t);
+                    open.add(t);
+                }
+                continue;
+            }
+            if (ring == 0) {
+                breach_gates.remove(t);
+                continue;
+            }
+            if (!Intel.isTowerActive(t)) {
+                // a stunned garrison: free to pull down
+                contact.add(t);
+                open.add(t);
+                continue;
+            }
+            if (breachGate(t, army, exposed)) {
+                contact.add(t);
+                open.add(t);
+            } else {
+                float[] gate = breach_gates.get(t);
+                if (gate != null && ai.now() < gate[2])
+                    contact.add(t); // the sappers alone
             }
         }
         if (strategy.breach_axes > 0)
-            breachAxes(army, contact);
+            breachAxes(army, open);
+        if (ai.logging() && ai.periodDue(breach_traced, 100f) && !breach_started.isEmpty()) {
+            breach_traced = ai.now();
+            for (Building t : breach_started.keySet())
+                traceBreach(t, army);
+        }
         if (intel.sappers.isEmpty())
             return;
         int[] head = breachHead(army);
