@@ -2017,6 +2017,12 @@ class Strategy {
      */
     float split_worn = 0f;
     /**
+     * split_share_max (0 = split_share): with targets only within 80 cells the second force razes as fast as the main
+     * army (sr2-log-vs15: 0.62 a minute against 0.58), but the army finds no such target on 158 of its checks a game.
+     * Up to this share of the army goes when the target's defense times split_margin asks for more than split_share.
+     */
+    float split_share_max = 0f;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2149,6 +2155,7 @@ class Strategy {
         split_far_margin = (float) params.getDouble("split_far_margin", split_far_margin);
         split_reinforce = params.getBoolean("split_reinforce", split_reinforce);
         split_worn = (float) params.getDouble("split_worn", split_worn);
+        split_share_max = (float) params.getDouble("split_share_max", split_share_max);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);

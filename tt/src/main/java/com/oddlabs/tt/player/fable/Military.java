@@ -4311,11 +4311,18 @@ final class Military {
             return;
         }
         float force = strategy.split_share * total;
-        Building t = wingTarget(c, target != null && !target.isDead() ? target.getOwner() : null, force,
+        float most = Math.max(strategy.split_share, strategy.split_share_max) * total;
+        Building t = wingTarget(c, target != null && !target.isDead() ? target.getOwner() : null, most,
                 strategy.split_reach, strategy.split_margin);
         if (t == null) {
             ai.aiLog().count("split_no_target");
             return;
+        }
+        // split_share_max: as many as the target asks for
+        float asked = strategy.split_margin * defenseFor(t);
+        if (asked > force) {
+            force = Math.min(most, asked);
+            ai.aiLog().count("split_bigger");
         }
         DistanceField field = ai.map().computeField(t.getGridX(), t.getGridY(), Integer.MAX_VALUE);
         if (field.getAround(c[0], c[1], 4) == DistanceField.UNREACHABLE) {
