@@ -2023,6 +2023,13 @@ class Strategy {
      */
     float split_share_max = 0f;
     /**
+     * split_promote (ratio, 0 = off): the reinforcements go to the weaker force, so the second one can outgrow the
+     * main army (sq4-log-vs15 s21001: 36 at the split, 82 four minutes later), and when the main army then ends its
+     * attack the second force goes home with it. With split_promote a second force this many times the main army's
+     * strength becomes the main army: its target is the attack's, and what is left of the old main army walks to it.
+     */
+    float split_promote = 0f;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2156,6 +2163,7 @@ class Strategy {
         split_reinforce = params.getBoolean("split_reinforce", split_reinforce);
         split_worn = (float) params.getDouble("split_worn", split_worn);
         split_share_max = (float) params.getDouble("split_share_max", split_share_max);
+        split_promote = (float) params.getDouble("split_promote", split_promote);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);

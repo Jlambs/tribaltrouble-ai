@@ -4451,6 +4451,28 @@ final class Military {
         }
         int[] c = MapAnalysis.centroid(squad);
         float ours = Combat.total(squad);
+        if (strategy.split_promote > 0f && ours >= strategy.split_merge && wing_target != null && !wing_target.isDead()
+                && ours > strategy.split_promote * attackStrength()) {
+            // the second force is the army now
+            for (Map.Entry<Unit, Role> e : roles.entrySet())
+                if (e.getValue() == Role.ATTACK)
+                    e.setValue(Role.REINFORCE);
+            for (Unit u : squad)
+                roles.put(u, Role.ATTACK);
+            Building t = wing_target;
+            wing_target = null;
+            wing_owner = null;
+            wing_field = null;
+            wing_ended = now;
+            setTarget(t);
+            attack_initial_strength = ours;
+            worn_peak = ours;
+            worn_history.clear();
+            ai.aiLog().count("wing_promoted");
+            ai.log(String.format("wing: %d (%.1f) are the army now, for %s's %s at %d,%d", squad.size(), ours,
+                    t.getOwner().getPlayerInfo().getName(), Intel.kind(t), t.getGridX(), t.getGridY()));
+            return;
+        }
         if (ours < strategy.split_merge) {
             wingMerge(squad, "small");
             return;
