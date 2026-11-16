@@ -1901,6 +1901,26 @@ class Strategy {
      */
     int feed_quarters_clear = 0;
     /**
+     * shepherd_army_weight (0 = off): a spot scores this per cell from what the attack is fighting for (its target,
+     * else its centre), up to shepherd_army_cells, on top of the cells from our start; the flee half of it per cell
+     * gained. Away from our start is towards the far copies, where the army goes next: beyond 200 cells from our
+     * start it kills 1.7 warriors for one of ours (3.6 in the middle, lab/fable/zones.py fd0-log-vs15), and 59-80 % of
+     * the warriors it kills from minute 15 belong to copies it is not attacking.
+     */
+    float shepherd_army_weight = 0f;
+    int shepherd_army_cells = 120;
+    /**
+     * bastion (0 = off): from bastion_from_ticks, this many of our towers stand together about bastion_cells from the
+     * home armory on the enemy's side, 40 cells or more from every quarters and armory of ours (Economy.bastionSite);
+     * a tower that falls there is the next one built. feed_bastion: fed waves are led only there (feed_towers then
+     * counts the manned towers of the bastion), so they die away from the peons, quarters and armories that the
+     * waves fed into the base cost (fd4..fd7-log-vs15).
+     */
+    int bastion = 0;
+    float bastion_from_ticks = 24000f; // 8 min
+    int bastion_cells = 50;
+    boolean feed_bastion = false;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -1999,6 +2019,12 @@ class Strategy {
         feed_busy = params.getInt("feed_busy", feed_busy);
         feed_commit = params.getInt("feed_commit", feed_commit);
         feed_quarters_clear = params.getInt("feed_quarters_clear", feed_quarters_clear);
+        shepherd_army_weight = (float) params.getDouble("shepherd_army_weight", shepherd_army_weight);
+        shepherd_army_cells = params.getInt("shepherd_army_cells", shepherd_army_cells);
+        bastion = params.getInt("bastion", bastion);
+        bastion_from_ticks = (float) params.getDouble("bastion_from_ticks", bastion_from_ticks);
+        bastion_cells = params.getInt("bastion_cells", bastion_cells);
+        feed_bastion = params.getBoolean("feed_bastion", feed_bastion);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);

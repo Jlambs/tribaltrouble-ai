@@ -1562,6 +1562,109 @@ final class Economy {
     }
 
     /** Our towers and tower sites, as {x, y}. */
+    /** bastion: its towers stand within this many cells of its point, sited within BASTION_SITE_CELLS of it. */
+    static final int BASTION_CELLS = 16;
+    private static final int BASTION_SITE_CELLS = 11;
+    /** bastion: its point keeps this many cells from every quarters and armory of ours, and twice from the enemy's. */
+    private static final int BASTION_CLEAR_CELLS = 40;
+    /** bastion: the point (-1 before one is found) and when it was last looked for. */
+    private int bastion_x = -1;
+    private int bastion_y = -1;
+    private float bastion_at = -5000f;
+
+    /** bastion: its point, null before one is found. */
+    int @Nullable [] bastion() {
+        return bastion_x < 0 ? null : new int[]{bastion_x, bastion_y};
+    }
+
+    /**
+     * bastion: the site of the next bastion tower while fewer than strategy.bastion stand, are being built or are
+     * planned there; null otherwise, and when the disc has no site left.
+     */
+    private @Nullable Site bastionSite(@NonNull List<int @NonNull []> existing) {
+        Strategy strategy = ai.strategy();
+        if (strategy.bastion <= 0 || ai.now() < strategy.bastion_from_ticks)
+            return null;
+        if (bastion_x < 0) {
+            if (!ai.periodDue(bastion_at, 500f)) // 10 s
+                return null;
+            bastion_at = ai.now();
+            pickBastion();
+            if (bastion_x < 0) {
+                ai.aiLog().count("bastion_nopoint");
+                return null;
+            }
+            ai.log("bastion at " + bastion_x + "," + bastion_y);
+        }
+        int n = 0;
+        for (int[] t : existing)
+            if (MapAnalysis.dist2(t[0], t[1], bastion_x, bastion_y) <= BASTION_CELLS * BASTION_CELLS)
+                n++;
+        for (Project q : projects)
+            if (q.type == Race.BUILDING_TOWER && !q.isPlaced() && MapAnalysis.dist2(q.site.x, q.site.y, bastion_x,
+                    bastion_y) <= BASTION_CELLS * BASTION_CELLS)
+                n++;
+        if (n >= strategy.bastion)
+            return null;
+        Site site = ai.planner().findTowerSite(reservedSites(null), bastion_x, bastion_y, 0, BASTION_SITE_CELLS,
+                existing, ai.planner().getEnemyX(), ai.planner().getEnemyY());
+        ai.aiLog().count(site != null ? "bastion_tower" : "bastion_nosite");
+        return site;
+    }
+
+    /**
+     * bastion: the point bastion_cells (or 8 or 16 more) from the home armory towards the living enemies' centre, or
+     * 25, 50 or 75 degrees to either side of that, the smallest turn first: reachable, a tower fits on it, and it
+     * keeps BASTION_CLEAR_CELLS from our quarters, armories and their sites and twice that from the enemy's
+     * buildings.
+     */
+    private void pickBastion() {
+        Intel intel = ai.intel();
+        Building primary = intel.armory();
+        if (primary == null)
+            return;
+        Building home = homeArmory(primary);
+        float[] live = ai.liveEnemyCenter();
+        float ex = live != null ? live[0] : ai.planner().getEnemyX();
+        float ey = live != null ? live[1] : ai.planner().getEnemyY();
+        double facing = Math.atan2(ey - home.getGridY(), ex - home.getGridX());
+        com.oddlabs.tt.model.BuildingTemplate tower = ai.owner().getRace().getBuildingTemplate(Race.BUILDING_TOWER);
+        List<Building> ours = new ArrayList<>();
+        ours.addAll(intel.quarters);
+        ours.addAll(intel.quarters_sites);
+        ours.addAll(intel.armories);
+        ours.addAll(intel.armory_sites);
+        List<Building> theirs = new ArrayList<>();
+        theirs.addAll(intel.enemy_quarters);
+        theirs.addAll(intel.enemy_armories);
+        theirs.addAll(intel.enemy_towers);
+        for (int turn = 0; turn <= 3; turn++)
+            for (int side = 1; side >= (turn == 0 ? 1 : -1); side -= 2)
+                for (int more = 0; more <= 16; more += 8) {
+                    double ang = facing + side * turn * Math.toRadians(25);
+                    int d = ai.strategy().bastion_cells + more;
+                    int x = home.getGridX() + (int) Math.round(d * Math.cos(ang));
+                    int y = home.getGridY() + (int) Math.round(d * Math.sin(ang));
+                    if (!ai.map().inside(x, y) || !ai.planner().getStartField().reachable(x, y)
+                            || !ai.map().canPlace(tower, x, y))
+                        continue;
+                    boolean ok = true;
+                    for (Building b : ours)
+                        if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), x,
+                                y) < BASTION_CLEAR_CELLS * BASTION_CLEAR_CELLS)
+                            ok = false;
+                    for (Building b : theirs)
+                        if (!b.isDead() && MapAnalysis.dist2(b.getGridX(), b.getGridY(), x,
+                                y) < 4 * BASTION_CLEAR_CELLS * BASTION_CLEAR_CELLS)
+                            ok = false;
+                    if (ok) {
+                        bastion_x = x;
+                        bastion_y = y;
+                        return;
+                    }
+                }
+    }
+
     private @NonNull List<int @NonNull []> existingTowers() {
         Intel intel = ai.intel();
         List<int[]> existing = new ArrayList<>();
@@ -2252,8 +2355,11 @@ final class Economy {
             }
             if (live != null)
                 ai.aiLog().count("tower_face_place");
-            Site site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
-                    existing, face[0], face[1]);
+            // bastion: its towers before the base's
+            Site site = bastionSite(existing);
+            if (site == null)
+                site = ai.planner().findTowerSite(reservedSites(null), center[0], center[1], min_cells, max_cells,
+                        existing, face[0], face[1]);
             if (site == null) {
                 ai.aiLog().count("tower_nosite"); // plan ticks with room for a tower and no site on its ring
                 if (strategy.tower_site_fallback && nextDue(fallback_next)) {

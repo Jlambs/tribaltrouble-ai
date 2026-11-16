@@ -285,6 +285,15 @@ final class Shepherd {
     private float feed_at = -5000f;
     private final List<@NonNull Building> feed_towers = new ArrayList<>();
     private @Nullable Building score_feed;
+    /** shepherd_army_weight: what the attack is fighting for at this tick, null without an attack (or the weight). */
+    private int @Nullable [] army_focus;
+
+    /** shepherd_army_weight: the cells from (x, y) to the attack's focus, at most shepherd_army_cells. */
+    private float fromArmy(int x, int y) {
+        assert army_focus != null;
+        return Math.min(ai.strategy().shepherd_army_cells, (float) Math.sqrt(MapAnalysis.dist2(x, y, army_focus[0],
+                army_focus[1])));
+    }
 
     /** shepherd_feed: every 2 s, which copies' waves are led to our towers. */
     private void planFeed(@NonNull Intel intel) {
@@ -294,6 +303,12 @@ final class Shepherd {
         for (Building t : intel.towers)
             if (!t.isDead() && t.getUnitContainer() != null && t.getUnitContainer().getNumSupplies() > 0)
                 manned.add(t);
+        if (strategy.feed_bastion) {
+            // feed_bastion: only the bastion's towers take fed waves
+            int[] b = ai.economy().bastion();
+            manned.removeIf(t -> b == null || MapAnalysis.dist2(t.getGridX(), t.getGridY(), b[0],
+                    b[1]) > Economy.BASTION_CELLS * Economy.BASTION_CELLS);
+        }
         feed_towers.clear();
         if (ai.now() >= strategy.feed_from_ticks && manned.size() >= strategy.feed_towers)
             for (Building t : manned) {
@@ -439,6 +454,7 @@ final class Shepherd {
         }
         if (strategy.shepherd_feed && ai.periodDue(feed_at, 100f))
             planFeed(intel);
+        army_focus = strategy.shepherd_army_weight > 0f ? ai.military().attackFocus() : null;
         List<Player> fresh = new ArrayList<>();
         for (Player p : ai.owner().getWorld().getPlayers())
             if (ai.owner().isEnemy(p) && p.isAlive() && flockOf(p) == null)
@@ -1552,6 +1568,8 @@ final class Shepherd {
                     continue;
                 float score = gain + (feed != null ? strategy.feed_flee_in * (from_f - dist(x, y, feed.getGridX(),
                         feed.getGridY())) : strategy.shepherd_flee_out * (dist(x, y, bx, by) - from_b));
+                if (feed == null && army_focus != null)
+                    score += .5f * strategy.shepherd_army_weight * (fromArmy(x, y) - fromArmy(sx, sy));
                 int turn = Math.floorMod(h - f.pick_head, 16);
                 if (keep && (turn <= 1 || turn == 15))
                     score += PICK_KEEP;
@@ -1918,6 +1936,8 @@ final class Shepherd {
         if (score_feed != null)
             return -(float) Math.sqrt(MapAnalysis.dist2(x, y, score_feed.getGridX(), score_feed.getGridY()));
         float score = (float) Math.sqrt(MapAnalysis.dist2(x, y, bx, by)) - r * .5f;
+        if (army_focus != null)
+            score += ai.strategy().shepherd_army_weight * fromArmy(x, y);
         float home_weight = ai.strategy().shepherd_home_weight;
         if (home_weight > 0f && !guarded.isEmpty()) {
             int home = Integer.MAX_VALUE;

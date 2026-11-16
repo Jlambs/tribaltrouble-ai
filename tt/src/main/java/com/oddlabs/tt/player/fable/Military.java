@@ -6953,6 +6953,15 @@ final class Military {
         return false;
     }
 
+    /** shepherd_army_weight: the cell the attack is fighting for (its target, else its middle), null at home. */
+    int @Nullable [] attackFocus() {
+        if (mode != Mode.ATTACK)
+            return null;
+        if (target != null && !target.isDead())
+            return new int[]{target.getGridX(), target.getGridY()};
+        return attackCenter();
+    }
+
     /** Middle of the attacking army, or null when it is at home. */
     int @Nullable [] attackCenter() {
         List<Unit> army = withRole(Role.ATTACK);
