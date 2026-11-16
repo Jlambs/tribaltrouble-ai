@@ -489,16 +489,35 @@ class Strategy {
      */
     float iron_real = 0f;
     /**
-     * rock_real (seconds, 0 = off): a rock line next to the iron one. From rock_real_ticks on, while a unit of iron
-     * really costs more gatherer-seconds than this (Economy.measureYield's running mean) and rock is within a 100 s
-     * trip, rock_real_share of the armory's pool makes rock axes: rock gatherers, the wood for them and the forgers,
-     * balanced by rock's own trip (a rock axe: 2 wood, 1 rock, 40 man-s, 0.6 of an iron warrior), and its gatherers
-     * go out before the iron ones. From 20 min iron is 140-170 m away with 16-43 nodes left and rock 45-110 m with
-     * 120-180 (ORE lines of all1-trips-vs15), the cap is filled with peons that have nothing to forge, and the rock
-     * gatherers rock_idle asks for never go out: peons are handed out wood, iron, rock, and iron is never full.
+     * tree_real (0 = off): the plan takes a unit of wood at what it really costs (Economy.measureYield's running
+     * mean of gatherer-ticks per unit), up to this many times its modelled trip. From 14 min a unit costs 52-70
+     * gatherer-seconds against a model of 33-39 (lab/fable/cost.py), and with a rock line the armory holds 10-16 iron
+     * and 1-3 wood.
+     */
+    float tree_real = 0f;
+    /**
+     * rock_real (0 = off): a rock line next to the iron one, sized by what a warrior of each kind really costs. The
+     * value is what a rock warrior is worth against an iron one (Combat counts 0.6). From rock_real_ticks on, at
+     * every yield measurement (30 s) the line's share of the armory's pool goes up a step while
+     * rock_real x (80 s + 2 wood + a unit of iron as measured) / (40 s + 2 wood + a unit of rock as measured) is above
+     * 1.1 and down a step below 0.9, between 0 and rock_real_share. The line is rock gatherers (by rock's measured
+     * trip), the wood for them and the forgers; its gatherers go out before the iron ones, and iron is forged first:
+     * no rock axe is on order while the armory holds rock_real_iron_first iron (the forge splits its work evenly
+     * between the kinds it can make). Measured in 12 logged N=15 games (all1-trips-vs15, lab/fable/NOTES.md): a unit of
+     * iron costs 113 gatherer-seconds in minutes 10-14, 191 in 14-18 and 330-437 in 18-30, a unit of rock 48-66; the
+     * cap is filled with peons that have nothing to forge, and the rock gatherers rock_idle asks for never go out
+     * (peons are handed out wood, iron, rock, and iron is never full).
      */
     float rock_real = 0f;
-    float rock_real_share = .5f;
+    float rock_real_share = .7f;
+    int rock_real_iron_first = 3;
+    /**
+     * rock_real_hold (-1 = off): while the rock line is on and the main armory could forge six weapons from its
+     * stock, a quarters holds at most this many peons. A held peon beyond the second breeds under 1.4 peons a minute
+     * (n^(1/3) / 11 a second for n inside); a forger with ore makes 1.5 rock axes a minute, and with the line on the
+     * peons run short before the ore does (rk-smoke: 39 of 44 peons held, one forger, 20 rock in stock).
+     */
+    int rock_real_hold = 2;
     float rock_real_ticks = 42000f; // 14 min
     /**
      * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
@@ -2029,8 +2048,11 @@ class Strategy {
         shelter_reach = params.getInt("shelter_reach", shelter_reach);
         evade_cells = params.getInt("evade_cells", evade_cells);
         iron_real = (float) params.getDouble("iron_real", iron_real);
+        tree_real = (float) params.getDouble("tree_real", tree_real);
         rock_real = (float) params.getDouble("rock_real", rock_real);
         rock_real_share = (float) params.getDouble("rock_real_share", rock_real_share);
+        rock_real_iron_first = params.getInt("rock_real_iron_first", rock_real_iron_first);
+        rock_real_hold = params.getInt("rock_real_hold", rock_real_hold);
         rock_real_ticks = (float) params.getDouble("rock_real_ticks", rock_real_ticks);
         shelter_off = params.getBoolean("shelter_off", shelter_off);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);

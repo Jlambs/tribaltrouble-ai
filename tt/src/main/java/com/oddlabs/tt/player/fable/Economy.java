@@ -2689,6 +2689,9 @@ final class Economy {
             hold = strategy.hold_early;
             ai.aiLog().count("hold_backlog_ticks");
         }
+        // rock_real_hold: ore waits for forgers
+        if (rock_real_backlog && strategy.rock_real_hold >= 0 && hold > strategy.rock_real_hold)
+            hold = strategy.rock_real_hold;
         return hold;
     }
 
@@ -2959,11 +2962,18 @@ final class Economy {
     private int meas_iron0;
     private int meas_rock0;
     private float meas_iron_gt;
+    private float meas_tree_gt;
+    private int meas_tree0;
+    /** tree_real: the running mean of the gatherer-ticks a unit of wood cost (0 until measured). */
+    private float tree_real_ticks = 0f;
     private float meas_rock_gt;
     private float iron_ticks = 0f;
     /** iron_real: a running mean of iron_ticks (0 until the first window). */
     private float iron_real_ticks = 0f;
     private float rock_ticks = 0f;
+    /** When rock_ticks was last measured, and the count of yield measurements so far. */
+    private float rock_ticks_time = -1f;
+    private int meas_seq;
     private boolean rock_stream_on;
 
     /**
@@ -2978,11 +2988,13 @@ final class Economy {
             meas_start = now;
             meas_iron0 = owner.getIronHarvested();
             meas_rock0 = owner.getRockHarvested();
+            meas_tree0 = owner.getTreeHarvested();
         }
         float dt = meas_last < 0f ? 50f : now - meas_last;
         meas_last = now;
         Intel intel = ai.intel();
         meas_iron_gt += dt * intel.countPeons(PeonState.GATHER_IRON);
+        meas_tree_gt += dt * intel.countPeons(PeonState.GATHER_TREE);
         meas_rock_gt += dt * intel.countPeons(PeonState.GATHER_ROCK);
         if (!ai.periodDue(meas_start, 1500f)) // 30 s
             return;
@@ -2993,8 +3005,17 @@ final class Economy {
             iron_ticks = meas_iron_gt / Math.max(.5f, di);
             iron_real_ticks = iron_real_ticks <= 0f ? iron_ticks : .6f * iron_real_ticks + .4f * iron_ticks;
         }
-        if (meas_rock_gt >= 3000f)
+        if (meas_rock_gt >= 3000f) {
             rock_ticks = meas_rock_gt / Math.max(.5f, dr);
+            rock_ticks_time = now;
+        }
+        if (meas_tree_gt >= 3000f) {
+            float tree_ticks = meas_tree_gt / Math.max(.5f, owner.getTreeHarvested() - meas_tree0);
+            tree_real_ticks = tree_real_ticks <= 0f ? tree_ticks : .6f * tree_real_ticks + .4f * tree_ticks;
+        }
+        meas_tree0 = owner.getTreeHarvested();
+        meas_tree_gt = 0f;
+        meas_seq++;
         meas_start = now;
         meas_iron0 = owner.getIronHarvested();
         meas_rock0 = owner.getRockHarvested();
@@ -3967,6 +3988,11 @@ final class Economy {
             owner.buildRubberWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         int rock_orders = armory.getBuildSupplyContainer(RockAxeWeapon.class).getNumSupplies();
         boolean make_rock = wantsRockWeapons();
+        // rock_real: iron is forged first (the forge splits its work evenly between the kinds it can make)
+        int first = ai.strategy().rock_real_iron_first;
+        if (make_rock && rock_real_on && first > 0 && stock(armory, IronSupply.class) >= first
+                && stock(armory, TreeSupply.class) >= 2)
+            make_rock = false;
         if (make_rock && rock_orders == 0 && !(synced && sync_paused[SYNC_ROCK]))
             owner.buildRockWeapons(armory, BuildSpinner.INFINITE_LIMIT, true);
         else if (!make_rock && rock_orders > 0 && !(synced && (sync_helping & 1 << SYNC_ROCK) != 0))
@@ -3980,6 +4006,12 @@ final class Economy {
 
     /** rock_real: whether the rock line is on, and the wood gatherers and forgers the plan gave it. */
     private boolean rock_real_on;
+    /** rock_real: the line's share of the pool, and the yield measurement it was last set at. */
+    private float rock_real_now;
+    private int rock_real_seq = -1;
+    private static final float ROCK_REAL_STEP = .15f;
+    /** rock_real_hold: the rock line is on and the main armory could forge six weapons from its stock. */
+    private boolean rock_real_backlog;
     private int rock_real_wood;
     private int rock_real_forge;
 
@@ -4814,6 +4846,13 @@ final class Economy {
             tree_cycle = SitePlanner.gatherTicks(armory_field, map.getTrees(), 60, 10, 2 * reach, harvest);
             ai.aiLog().count("wood_starved"); // plan ticks (3 s)
         }
+        // tree_real: wood is staffed by what a unit really costs, as iron is
+        float wood_cycle = tree_cycle;
+        float wood_real = ai.strategy().tree_real;
+        if (wood_real > 1f && tree_real_ticks > tree_cycle) {
+            wood_cycle = Math.min(tree_real_ticks, wood_real * tree_cycle);
+            ai.aiLog().count("tree_real"); // plan ticks (3 s)
+        }
         iron_cycle = SitePlanner.gatherTicks(armory_field, map.getIron(), 30, 10, 400, harvest);
         iron_cycle_armory = armory;
         int iron_left = countReachable(map.getIron(), 400);
@@ -4935,13 +4974,13 @@ final class Economy {
             plan_cycle = Math.min(iron_real_ticks, real * ore_cycle);
             ai.aiLog().count("iron_real"); // plan ticks (3 s)
         }
-        float per_weapon = work + 2 * tree_cycle + plan_cycle;
+        float per_weapon = work + 2 * wood_cycle + plan_cycle;
         float x = Math.max(0, pool) / per_weapon;
         int tree_stock = armory.getSupplyContainer(TreeSupply.class).getNumSupplies();
         int ore_stock = armory.getSupplyContainer(rock_weapons ? RockSupply.class : IronSupply.class).getNumSupplies();
         float tree_adj = tree_stock > 40 ? .35f : tree_stock > 20 ? .7f : tree_stock < 6 ? 1.15f : 1f;
         float ore_adj = ore_stock > 20 ? .35f : ore_stock > 10 ? .7f : ore_stock < 3 ? 1.15f : 1f;
-        want_tree = Math.round(2 * tree_cycle * x * tree_adj);
+        want_tree = Math.round(2 * wood_cycle * x * tree_adj);
         int want_ore = Math.round(plan_cycle * x * ore_adj);
         if (pool >= 3) {
             want_tree = Math.max(1, want_tree);
@@ -4988,19 +5027,44 @@ final class Economy {
                 want_workers -= filler;
             }
         }
-        // rock_real: a share of the pool makes rock axes while a unit of iron really costs more than rock_real
-        // seconds; it goes off only once iron is a fifth cheaper than that
+        // rock_real: a share of the pool makes rock axes, more of it while a rock warrior is the better buy in peon
+        // time as measured and less while an iron one is
         float line_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
-        rock_real_on = st.rock_real > 0f && ai.now() >= st.rock_real_ticks && !rock_weapons && line_c < 5000f // 100 s
-                && iron_real_ticks > (rock_real_on ? .8f : 1f) * st.rock_real * FableAI.TICKS_PER_SECOND;
+        boolean line_fresh = rock_ticks > 0f && ai.now() - rock_ticks_time <= 4500f; // 90 s
+        if (st.rock_real <= 0f || ai.now() < st.rock_real_ticks || rock_weapons || line_c >= 5000f) { // 100 s
+            rock_real_now = 0f;
+            rock_real_seq = -1;
+        } else if (rock_real_seq != meas_seq) {
+            rock_real_seq = meas_seq;
+            // an unmeasured trip takes about 1.6 times the model's (48-66 s against 30-40 with two or three gatherers)
+            float rock_c = line_fresh ? Math.max(line_c, rock_ticks) : 1.6f * line_c;
+            float iron_cost = IRON_WORK_TICKS + 2 * wood_cycle + Math.max(ore_cycle, iron_real_ticks);
+            float rock_cost = IRON_WORK_TICKS / 2 + 2 * wood_cycle + rock_c;
+            float gain = st.rock_real * iron_cost / rock_cost;
+            if (gain > 1.1f)
+                rock_real_now = Math.min(st.rock_real_share, rock_real_now + ROCK_REAL_STEP);
+            else if (gain < .9f)
+                rock_real_now = Math.max(0f, rock_real_now - ROCK_REAL_STEP);
+            if (ai.logging())
+                ai.log(String.format("rock line: share %.2f, a unit of iron %.0f s, of rock %.0f s%s, gain %.2f",
+                        rock_real_now, FableAI.seconds(Math.max(ore_cycle, iron_real_ticks)), FableAI.seconds(rock_c),
+                        line_fresh ? "" : " (modelled)", gain));
+        }
+        rock_real_on = rock_real_now > 0f;
+        rock_real_backlog = rock_real_on && Math.min(iron_stock + rock_stock, tree_stock / 2) >= 6;
+        if (rock_real_backlog)
+            ai.aiLog().count("rock_real_backlog"); // plan ticks (3 s)
         rock_real_wood = 0;
         rock_real_forge = 0;
         if (rock_real_on) {
-            float share = st.rock_real_share;
-            float xl = Math.max(0, pool) * share / (IRON_WORK_TICKS / 2 + line_c + 2 * tree_cycle);
+            float share = rock_real_now;
+            // staffed by rock's measured trip, up to three times the model's
+            if (line_fresh)
+                line_c = Math.min(Math.max(line_c, rock_ticks), 3f * line_c);
+            float xl = Math.max(0, pool) * share / (IRON_WORK_TICKS / 2 + line_c + 2 * wood_cycle);
             float line_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
             int line_rock = Math.round(line_c * xl * line_adj);
-            rock_real_wood = Math.round(2 * tree_cycle * xl * tree_adj);
+            rock_real_wood = Math.round(2 * wood_cycle * xl * tree_adj);
             rock_real_forge = Math.round(IRON_WORK_TICKS / 2 * xl);
             want_iron = Math.round(want_iron * (1f - share));
             want_tree = Math.round(want_tree * (1f - share)) + rock_real_wood;
@@ -5024,7 +5088,7 @@ final class Economy {
             float spare = Math.max(0, armory_workers + out - st.rock_idle_keep) * st.rock_idle;
             float rock_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
             idle_wood = tree_stock < (idle_wood ? 30 : 20);
-            float wood_c = idle_wood ? 2 * tree_cycle : 0f;
+            float wood_c = idle_wood ? 2 * wood_cycle : 0f;
             float xr = spare / (IRON_WORK_TICKS / 2 + rock_c + wood_c);
             float rock_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
             int rock_g = Math.round(rock_c * xr * rock_adj);
@@ -5858,6 +5922,9 @@ final class Economy {
     }
 
     private boolean sendGatherer(@NonNull Unit peon, @NonNull Class<?> type, @NonNull Building armory) {
+        // an order earlier in this tick may have sent the peon into a building next to it
+        if (peon.isDead())
+            return false;
         boolean home = ai.strategy().gather_home && type != RubberSupply.class;
         // relink_guard: the armory the peon gathered for before this order. The engine links a re-sent gatherer of an
         // old armory straight back to it when that is the supply's nearest, which is no new re-link.
