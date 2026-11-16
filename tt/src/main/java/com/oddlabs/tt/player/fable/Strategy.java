@@ -489,6 +489,18 @@ class Strategy {
      */
     float iron_real = 0f;
     /**
+     * rock_real (seconds, 0 = off): a rock line next to the iron one. From rock_real_ticks on, while a unit of iron
+     * really costs more gatherer-seconds than this (Economy.measureYield's running mean) and rock is within a 100 s
+     * trip, rock_real_share of the armory's pool makes rock axes: rock gatherers, the wood for them and the forgers,
+     * balanced by rock's own trip (a rock axe: 2 wood, 1 rock, 40 man-s, 0.6 of an iron warrior), and its gatherers
+     * go out before the iron ones. From 20 min iron is 140-170 m away with 16-43 nodes left and rock 45-110 m with
+     * 120-180 (ORE lines of all1-trips-vs15), the cap is filled with peons that have nothing to forge, and the rock
+     * gatherers rock_idle asks for never go out: peons are handed out wood, iron, rock, and iron is never full.
+     */
+    float rock_real = 0f;
+    float rock_real_share = .5f;
+    float rock_real_ticks = 42000f; // 14 min
+    /**
      * shelter_off: evacuatePeons shelters nobody: threatened peons keep at their work (repairs, salvage, sorties
      * apart).
      */
@@ -2017,6 +2029,9 @@ class Strategy {
         shelter_reach = params.getInt("shelter_reach", shelter_reach);
         evade_cells = params.getInt("evade_cells", evade_cells);
         iron_real = (float) params.getDouble("iron_real", iron_real);
+        rock_real = (float) params.getDouble("rock_real", rock_real);
+        rock_real_share = (float) params.getDouble("rock_real_share", rock_real_share);
+        rock_real_ticks = (float) params.getDouble("rock_real_ticks", rock_real_ticks);
         shelter_off = params.getBoolean("shelter_off", shelter_off);
         swarm_cold = params.getBoolean("swarm_cold", swarm_cold);
         swarm_margin = (float) params.getDouble("swarm_margin", swarm_margin);
@@ -2419,6 +2434,13 @@ class Strategy {
             strategy.initial_quarters = 6;
             strategy.max_quarters = 6;
             strategy.hold_mid = 4;
+            // The gatherers after minute 12 (lab/fable/NOTES.md, third session): the old armory keeps working, far
+            // gatherers step aside from a passing enemy, and iron is staffed by what it really costs. Together at
+            // N=15: 45 wins against 40 on the dev seeds and 81 against 72 of 200 on fresh ones (sei-b-vs15; the
+            // minute-20 state model +7.9 points, z 4.3); singly neutral.
+            strategy.satellite = true;
+            strategy.evade_cells = 30;
+            strategy.iron_real = 3f;
         }
         return strategy;
     }

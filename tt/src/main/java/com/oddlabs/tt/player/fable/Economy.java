@@ -3952,7 +3952,7 @@ final class Economy {
     /** Whether an armory's stock pays for a weapon: two wood and an iron, or a rock while rock axes are made. */
     private boolean canForge(@NonNull Building armory) {
         return stock(armory, TreeSupply.class) >= 2 && (stock(armory, IronSupply.class) >= 1
-                || ((rock_weapons || rock_filler) && stock(armory, RockSupply.class) >= 1));
+                || ((rock_weapons || rock_filler || rock_real_on) && stock(armory, RockSupply.class) >= 1));
     }
 
     private void orderWeapons(@NonNull Building armory) {
@@ -3975,8 +3975,13 @@ final class Economy {
 
     private boolean wantsRockWeapons() {
         return rock_weapons || rock_filler || rockShare() > 0f || rock_stream_on || ai.now() < rock_fail_until
-                || rock_idle_on;
+                || rock_idle_on || rock_real_on;
     }
+
+    /** rock_real: whether the rock line is on, and the wood gatherers and forgers the plan gave it. */
+    private boolean rock_real_on;
+    private int rock_real_wood;
+    private int rock_real_forge;
 
     /** rock_idle: whether this plan tick sends the armory's idle workers for rock. */
     private boolean rock_idle_on;
@@ -4983,13 +4988,33 @@ final class Economy {
                 want_workers -= filler;
             }
         }
+        // rock_real: a share of the pool makes rock axes while a unit of iron really costs more than rock_real
+        // seconds; it goes off only once iron is a fifth cheaper than that
+        float line_c = SitePlanner.gatherTicks(armory_field, map.getRocks(), 30, 10, 240, harvest);
+        rock_real_on = st.rock_real > 0f && ai.now() >= st.rock_real_ticks && !rock_weapons && line_c < 5000f // 100 s
+                && iron_real_ticks > (rock_real_on ? .8f : 1f) * st.rock_real * FableAI.TICKS_PER_SECOND;
+        rock_real_wood = 0;
+        rock_real_forge = 0;
+        if (rock_real_on) {
+            float share = st.rock_real_share;
+            float xl = Math.max(0, pool) * share / (IRON_WORK_TICKS / 2 + line_c + 2 * tree_cycle);
+            float line_adj = rock_stock > 20 ? .35f : rock_stock > 10 ? .7f : 1f;
+            int line_rock = Math.round(line_c * xl * line_adj);
+            rock_real_wood = Math.round(2 * tree_cycle * xl * tree_adj);
+            rock_real_forge = Math.round(IRON_WORK_TICKS / 2 * xl);
+            want_iron = Math.round(want_iron * (1f - share));
+            want_tree = Math.round(want_tree * (1f - share)) + rock_real_wood;
+            want_rock += line_rock;
+            want_workers = Math.max(2, pool - want_tree - want_iron - line_rock);
+            ai.aiLog().count("rock_real"); // plan ticks (3 s)
+        }
         // rock_idle: while the armory waits for iron, rock_idle of its idle workers beyond rock_idle_keep make rock
         // axes: split, as the ore share above, between rock gatherers, forgers (half an iron axe's work) and, while
         // its wood runs low, wood gatherers, with fewer gatherers as rock piles up unforged
         // It goes off only once the armory holds 3 iron more than that (a burst of iron deliveries does not recall
         // its gatherers for one plan tick), and the wood share likewise once the wood stock is back to 30.
         boolean idle_was = rock_idle_on;
-        rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons
+        rock_idle_on = st.rock_idle > 0f && ai.now() >= st.rock_idle_ticks && !rock_weapons && !rock_real_on
                 && iron_stock <= st.rock_idle_iron + (idle_was ? 3 : 0);
         if (rock_idle_on) {
             // The workers actually inside (those the plan sends for iron often cannot go: no iron pick), plus the
@@ -5021,8 +5046,9 @@ final class Economy {
         // for; the main armory plans for the rest (want_iron stays the whole pool's: allocatePeons counts them all)
         sat_wants.keySet().removeIf(b -> !sats.contains(b));
         if (!sats.isEmpty()) {
-            int tree_all = want_tree;
-            int workers_all = want_workers;
+            // rock_real: the rock line's wood gatherers and forgers are the main armory's
+            int tree_all = Math.max(0, want_tree - rock_real_wood);
+            int workers_all = Math.max(2, want_workers - rock_real_forge);
             int iron_all = g_iron + sat_iron;
             StringBuilder sb = new StringBuilder();
             for (Building sat : sats) {
@@ -5051,7 +5077,8 @@ final class Economy {
             ai.log(String.format(
                     "ORE iron %s | rock %s | %s weapons%s%s, stock iron %d rock %d, gatherers iron %d rock %d (want %d/%d)," + " armory workers %d, iron cycle %.0f s, iron in the 400 m field %d",
                     oreCensus(map.getIron(), armory), oreCensus(map.getRocks(), armory),
-                    rock_weapons ? "rock" : "iron", rock_filler ? " + rock filler" : "", ore_far ? ", far ore" : "",
+                    rock_weapons ? "rock" : "iron", rock_real_on ? " + rock line" : rock_filler ? " + rock filler" : "",
+                    ore_far ? ", far ore" : "",
                     iron_stock, rock_stock, g_iron, g_rock, want_iron, want_rock, armory_workers,
                     FableAI.seconds(iron_cycle), iron_left));
             ai.log("ORE threats " + oreThreats(armory));
@@ -5369,7 +5396,9 @@ final class Economy {
         // raid_evac: no gatherer goes out for an armory emptied ahead of a wave (its evacuees would walk back to it).
         boolean raid_out = raidEvacuating(armory);
         boolean probe = ai.strategy().gather_probe;
-        for (int t = 0; t < 4; t++) {
+        // rock_real: the rock line's gatherers go out before the iron ones (iron is never fully staffed late)
+        int[] order = rock_real_on ? new int[]{0, 2, 1, 3} : new int[]{0, 1, 2, 3};
+        for (int t : order) {
             int need = danger || raid_out ? 0 : want[t] - have[t] - relinked_have[t];
             while (need > 0) {
                 boolean from_transit = false;

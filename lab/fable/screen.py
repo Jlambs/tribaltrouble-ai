@@ -3,6 +3,7 @@ confounded with a two-factor interaction), every run on the same maps.
 
     python lab/fable/screen.py plan NAME                # prints the 16 queue jobs (NAME-00 .. NAME-15)
     python lab/fable/screen.py read NAME                # each factor's effect on wins, paired by map
+    python lab/fable/screen.py model NAME [MINUTE]      # the same on proxy.py's win chance at MINUTE (20)
 
 Edit FACTORS for another screen: (label, the spec fragment of the low level or '', of the high level).
 """
@@ -47,6 +48,9 @@ def main():
         for i, levels in enumerate(runs):
             print(f'"{name}-{i:02d}|{spec(levels)} vs hard*{ENEMIES}|{SEEDS}"')
         return
+    if cmd == 'model':
+        model_read(name, runs, int(sys.argv[3]) if len(sys.argv) > 3 else 20)
+        return
     wins = {}
     for i in range(16):
         p = f'aisim/runs/{name}-{i:02d}/results.jsonl'
@@ -72,6 +76,34 @@ def main():
         sd = math.sqrt(sum((d - mean) ** 2 for d in diffs) / max(1, n - 1)) if n > 1 else 0.0
         se = sd / math.sqrt(max(1, n))
         print(f'{f[0]:16s} wins {100 * mean:+5.1f} +- {100 * se:.1f}  (z {mean / se if se else 0:+.1f})')
+
+
+def model_read(name, runs, minute):
+    """Each factor's effect on the state model's win chance at the minute (a game lost by then counts 0)."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import proxy
+
+    model, n, acc = proxy.fit(['exam-f2-vs15', 'cnt-vs15'], minute)
+    print(f'model at minute {minute}: {n} games, accuracy {acc:.2f}')
+    chance = {}
+    for i in range(16):
+        for k, (feats, _) in proxy.load(f'{name}-{i:02d}', minute).items():
+            chance[(i, k)] = proxy.chance(model, feats)
+    keys = sorted({k for _, k in chance})
+    full = [k for k in keys if all((i, k) in chance for i in range(16))]
+    per_run = [sum(chance[(i, k)] for k in full) / max(1, len(full)) for i in range(16)]
+    print(f'{len(full)} maps; model by run: ' + ' '.join(f'{100 * w:.0f}' for w in per_run))
+    for j, f in enumerate(FACTORS):
+        diffs = []
+        for k in full:
+            hi = sum(chance[(i, k)] for i in range(16) if runs[i][j]) / 8
+            lo = sum(chance[(i, k)] for i in range(16) if not runs[i][j]) / 8
+            diffs.append(hi - lo)
+        n = len(diffs)
+        mean = sum(diffs) / max(1, n)
+        sd = math.sqrt(sum((d - mean) ** 2 for d in diffs) / max(1, n - 1)) if n > 1 else 0.0
+        se = sd / math.sqrt(max(1, n))
+        print(f'{f[0]:16s} model {100 * mean:+5.1f} +- {100 * se:.1f}  (z {mean / se if se else 0:+.1f})')
 
 
 main()
