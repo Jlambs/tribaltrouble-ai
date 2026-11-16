@@ -979,6 +979,70 @@ losses, so past 55 warriors at a copy every further warrior buys little razing a
 the copies made homeless by minute 30 do not depend on how the army is divided. The army's budget of warriors sets
 how many copies fall; dividing it only moves when.
 
+### The slow openings are iron behind water (`lab/fable/openwin.py`, `oremap.py`, `plans.py`)
+
+The 300 default games on maps 21001..21300 (`pc1-00`, `def4-fresh-vs15`: 119 won) by the opening's milestones: every
+milestone's worst fifth wins 15 to 23 % and the other four fifths 35 to 55 % with no order among them, so the
+opening does not grade a game, it breaks it or not. The strongest early readings are the iron by 8 min (worst fifth
+12 %), the iron by 12 min (7 %) and the warriors at 12 min (under 90: 12 of 59 games; 110 and more: 96 of 186).
+
+By where the armory stands: within 25 cells of the start 2 of 19 games are won, 25 to 40 cells 22 of 62, 40 to 55
+cells 39 of 75, farther 56 of 144. The near armories are not slow (armory at 227 s, 207 units at 8 min); their iron
+stops. Logged (`near1-log-vs15`, eight of them): the iron trip goes from 26-60 s at 5 min to 110-200 s at 7 to 9
+min, with 4 to 33 iron nodes in the armory's 400 m field.
+
+Every map's ore, logged at the start (`ore map` lines; `ore1-log-vs15`, a minute of each map): the iron nodes
+within 300 m of walking from the armory site decide.
+
+| iron nodes within 300 m of the armory site | games | won |
+|---|---|---|
+| under 20 | 26 | 0 |
+| 20-29 | 11 | 2 |
+| 30-39 | 18 | 7 |
+| 40-64 | 108 | 47 |
+| 65 and more | 137 | 63 |
+
+The planner scores a site on its nearest 15 nodes, so it cannot tell 15 nodes from 60. But the short sites are not
+its mistake alone: on those maps the nodes are 120 to 170 m away as the crow flies and 570 to 680 m to walk
+(s21142), with corner cuts or without, and through the trees as well (`MapAnalysis.computeCutField`, trees free):
+the barrier is water. By the walk from the start to the 20th nearest node: under 250 m 109 maps and 51 % won, 250
+to 300 m 120 and 42 %, 300 to 350 m 42 and 24 %, 350 to 400 m 17 and 18 %, beyond 12 and none.
+
+Three ways to the far iron, all behind flags, all off:
+
+- `armory_iron_need` (the first armory's site pays 200 game ticks for every node it lacks of 40 within 300 m, and
+  the search widens while the best site is short): 52 of the 300 armories move, 17 of them more than 400 m from the
+  start, and the sites under 40 nodes go from 55 to 8 (`pl1-log-vs15`). The other 248 maps play the same games. On
+  the 52: 11 wins against 9 (`in40-vs15`; +5 -3). With a need of 50 and the search out to 800 m 85 move: 28 against
+  23 (`in50-vs15`; +12 -7). The 26 sites that had under 20 nodes win 3 instead of 0, but their armory stands at
+  329 s instead of 225 and they have 109 units at 8 min instead of 208: the first quarters is by the start, the rest
+  400 m away, and where the way there passes a neighbour's quarters the peons bred by the start are killed on it
+  one by one (s21142, s21061: the stock AI sends everything it has at any unit within 30 m of its first quarters
+  or armory).
+- `opening_move_m` (with the armory that far, the first quarters goes up by it too: the whole tribe walks first):
+  on 16 such maps the first quarters stands at 142 s, the armory at 361 s against 333 and the units at 8 min are 67
+  against 82 (`fo2-log-vs15` against `fo1`); two tribes are killed on the way.
+- `expansion_iron_need` (the opening stays by the start; a first armory with under 40 nodes gets a second one on the
+  iron as soon as it stands, with a crew that walks out with the placer, `expansion_iron_crew`): the far armory
+  stands at 6 to 8 min, the iron trip drops to 21 s, and the iron by 15 min is the same 174 as the default's 176 on
+  16 maps (`fo3`, `fo4` against `fo0b-log-vs15`). On the 55 maps with a short first site: 5 wins against 9
+  (`xi40-vs15`; +2 -6).
+
+So nothing here turns the maps with the iron behind water: staying starves, moving costs 100 s and half the
+peons, and a second base on the iron is fed by a road through the neighbours.
+
+What `armory_iron_need` does win is the middle: sites with 20 to 50 nodes that have a fuller one 40 to 150 m
+farther out. On fresh maps (21301..21600; `ore2-log-vs15` and `pl5-log-vs15` for the plans, 102 of 300 armories
+move with a need of 50): 34 wins against the default's 23 on those 102 maps (`in50f-vs15`, `def5f-vs15`; +18 -7).
+By how far the armory moved out: under 100 m 61 maps, 16 -> 24 won; 100 to 200 m 23 maps, 6 -> 8; 200 m and more
+18 maps, 1 -> 2. At 12 min the moved games have less, not more (armory 16 s later, 110 warriors against 116, iron
+195 against 201): the gain comes after, when the default's field is mined out. Both sets together: +30 -14 over
+600 maps (z 2.4), 2.7 points.
+
+`lab/fable/planwins.py` adds a plan's wins over a set of maps from games already played: a game depends on the
+armory search's parameters only through the site, so a map's result under a plan is that of any game with that
+site.
+
 ## Reproduce
 
 ```bash
