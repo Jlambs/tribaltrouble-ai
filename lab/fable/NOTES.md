@@ -59,9 +59,9 @@ stuns for the army. He keeps away from it, waits by the enemy's parked waves and
 (Gauntlet's shred mission, repaired: he blasts from the blob's cast point, waits by the next blob instead of walking
 home, and his training quarters is kept full at the unit cap), and the first one is trained from 480 s instead of
 300. On the 300 fresh development maps at N=15: 158 wins with the mission against 139 (+44 -25), 171 with the later
-chieftain too (57 %). The base now holds through minutes 15-30, where it used to lose its second armory and its
-iron. No exam seeds were spent, and the steps were chosen on these maps, so the exam table above is still `@f2`'s
-and 57 % is a development figure.
+chieftain too (57 %), and on 300 more that chose nothing 174 against 134 (58 % against 45 %, +64 -24). The base
+now holds through minutes 15-30, where it used to lose its second armory and its iron. No exam seeds were spent,
+so the exam table above is still `@f2`'s and these are development figures.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -1445,6 +1445,13 @@ On the 100 open maps it shows less: +4.2 +- 4.2 in `bt2`, 0.0 +- 5.7 in `lg2` (b
 both worse than 300 s: his stun was part of the first campaign.) **480 s is the default since** (`fix-o`: the
 default plays `ct8f-vs15`'s games, 8 of 8; with `chieftain_ticks=15000` `sh6f-vs15`'s, `fix-p`, 8 of 8): 171 of 300
 on the fresh maps at N=15 (57 %), the least certain of the three steps.
+
+**An independent block.** The three steps were chosen on maps 21301..21600, so 57 % flatters them. Maps
+21601..21900, never used before: the default wins 174 of 300 (58.0 % [52.5, 63.6], one draw; `nd2h-vs15`), the
+default of the morning (the mission, the full trainer and the later chieftain off; `et1h-vs15`) 134: +64 -24, z 4.3,
+with 10.8 more warriors at minute 10 and 0.2 more copies out at minutes 10, 15 and 30. Also played with no failed
+game and no swallowed error: 20 of 20 against one Hard, 12 of 12 against six, 19 of 20 against ten (large maps,
+`rb1-vs1`, `rb6-vs6`, `rb10-vs10`).
 
 ### After the first campaign under the blast default: one attack that never ends (`lab/fable/rebuild.py`)
 
