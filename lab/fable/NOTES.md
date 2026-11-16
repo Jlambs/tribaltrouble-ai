@@ -946,8 +946,25 @@ While split the two forces now raze 1.06 to 1.19 quarters and armories a minute 
 army, for 11 to 14 warriors a minute against 11 to 13. But the army is split only 2 to 4 of the eight minutes that
 count: on 88 to 158 of its 2 s checks a game it is big enough and finds no copy near and weak enough. Over the ten
 runs sq1..sr6 the copies housed read 8.75 / 7.78 / 7.18 at 20 / 25 / 30 min against the base's 8.93 / 7.9 / 7.3: a
-sixth of a copy, with armies of 93 / 45 / 44 against 94 / 47 / 39. 100 maps: `sx1..sx4-vs15` (sq4, sq1, sq4 with
-margin 2.0, sq4 with split_merge=30) and `sy1`, `sy2-vs15` (sr2, sr5), against `pc1-00`.
+sixth of a copy, with armies of 93 / 45 / 44 against 94 / 47 / 39.
+
+On 100 maps (21001..21100, base `pc1-00`: 41 wins; all with split=80, busy .15, far 1.6, reinforce):
+
+| run | setting | wins | changed games | model | splits a game | warriors lost in the second force | copies housed at 20 / 25 / 30 (base 9.0 / 8.1 / 7.6) |
+|---|---|---|---|---|---|---|---|
+| sx1 | share .4 | 43 | +8 -6 | +0.6 +- 1.6 | 1.1 | 22 | 8.8 / 8.1 / 7.7 |
+| sx2 | share .5 | 44 | +10 -7 | -0.4 +- 1.8 | 1.3 | 32 | 8.8 / 8.0 / 7.6 |
+| sx3 | share .4, margin 2.0 | 38 | +4 -7 | 0.0 +- 1.2 | 0.5 | 8 | 8.9 / 8.2 / 7.7 |
+| sx4 | share .4, split_merge=30 | 44 | +7 -4 | +0.8 +- 1.6 | 1.4 | 15 | 8.8 / 8.1 / 7.6 |
+| sy1 | share .4, worn .75, reach 80 | 45 | +8 -4 | +1.4 +- 1.4 | 0.9 | 12 | 8.9 / 8.2 / 7.7 |
+| sy2 | the same, share to .55, margin 1.0 | 42 | +8 -7 | -1.0 +- 1.9 | 1.8 | 27 | 8.9 / 8.2 / 7.6 |
+
+Five of the six split about once a game and all five are at or above the base (43.6 on average; +41 -28 changed
+games over their 500, z 1.6); the one that splits half as often is below it. The effect is early and small: a fifth
+of a copy fewer housed at 20 min, nothing at 25 and 30, and the copies made homeless by minute 30 are 6.6 a game with
+or without it (as are the 0.6 that stand housed again): the split takes the same copies sooner, it does not take
+more. The default's games are unchanged with split off (`fix-f`, 8 of 8). sy1 goes to 200 fresh maps:
+`sy1-fresh-vs15` against `def4-fresh-vs15` (21101..21300).
 
 ## Reproduce
 
