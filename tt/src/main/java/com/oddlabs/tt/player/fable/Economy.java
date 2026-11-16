@@ -3429,6 +3429,9 @@ final class Economy {
         for (Building a : intel.armories) {
             if (a == primary || a.isDead())
                 continue;
+            // reloc_sat: a satellite keeps working and is never drained
+            if (ai.strategy().reloc_sat && isSatellite(a))
+                continue;
             boolean d = drained(a);
             Boolean before = was_drained.put(a, d);
             if (before != null && before && !d)

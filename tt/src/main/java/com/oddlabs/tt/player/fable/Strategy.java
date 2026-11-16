@@ -1087,6 +1087,13 @@ class Strategy {
      * (critique hop.py), and expansion=false cost surv60 -1.3 min (z -3.0).
      */
     boolean reloc = false;
+    /**
+     * reloc_sat: the hop's gate does not wait for a satellite to be drained. The gate wants every other armory
+     * drained (nobody inside, no stock, no gatherers), and a satellite never is: with satellite on, the gate was shut
+     * for 653 plan ticks a game (33 min; RL1f-vs15, reloc with reloc_slot and retire on 150 fresh maps, 0.86 hops
+     * completed a game).
+     */
+    boolean reloc_sat = false;
     float reloc_ticks = 30000f; // 600 s
     float reloc_gap_ticks = 6000f; // 120 s
     int reloc_reach = 260;
@@ -2577,6 +2584,7 @@ class Strategy {
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);
         rearm_reach = params.getInt("rearm_reach", rearm_reach);
         reloc = params.getBoolean("reloc", reloc);
+        reloc_sat = params.getBoolean("reloc_sat", reloc_sat);
         reloc_ticks = (float) params.getDouble("reloc_ticks", reloc_ticks);
         reloc_gap_ticks = (float) params.getDouble("reloc_gap_ticks", reloc_gap_ticks);
         reloc_reach = params.getInt("reloc_reach", reloc_reach);
