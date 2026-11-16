@@ -963,8 +963,21 @@ Five of the six split about once a game and all five are at or above the base (4
 games over their 500, z 1.6); the one that splits half as often is below it. The effect is early and small: a fifth
 of a copy fewer housed at 20 min, nothing at 25 and 30, and the copies made homeless by minute 30 are 6.6 a game with
 or without it (as are the 0.6 that stand housed again): the split takes the same copies sooner, it does not take
-more. The default's games are unchanged with split off (`fix-f`, 8 of 8). sy1 goes to 200 fresh maps:
-`sy1-fresh-vs15` against `def4-fresh-vs15` (21101..21300).
+more. The default's games are unchanged with split off (`fix-f`, 8 of 8).
+
+sy1 on 200 fresh maps (21101..21300): 80 wins against the default's 78 (`sy1-fresh-vs15`, `def4-fresh-vs15`; +11
+-9; model -1.5 +- 1.0), 0.9 splits and 11 warriors lost in the second force a game, the copies housed the same at
+every minute (8.8 at 20, 8.0 at 25) and the army 85 / 43 / 35 against 88 / 44 / 39 at 20 / 25 / 30 min. Over the 700
+games of the five variants and this run the split is +52 -37 (z 1.6): a point or two at most, and not the fifth of
+a copy the screening maps showed. It stays off.
+
+`split_promote` (a second force 1.5 times the main army becomes the army) never fires with the worn rule on
+(`st1`, `st2-log-vs15` play sr2's and sr1's games).
+
+What the split leaves behind: the half that stays razes three quarters as fast as the whole army for half the
+losses, so past 55 warriors at a copy every further warrior buys little razing and costs as much as the first; and
+the copies made homeless by minute 30 do not depend on how the army is divided. The army's budget of warriors sets
+how many copies fall; dividing it only moves when.
 
 ## Reproduce
 
