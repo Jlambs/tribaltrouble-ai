@@ -825,6 +825,34 @@ order is three to five warriors: the army is still walking in and fighting the c
 at the base). What the raze saves, the peons left alive cost in lingering. The cycle is about what walking and the
 copy's own warriors make it; the order of the throws is a tenth of it.
 
+### The map decides a third of the games, and the opening's speed is how (the 800 games of `sb1`)
+
+The eight runs of `sb1` play the same opening on each map, so the first five minutes are the map's: of the 100 maps
+32 are never won in 8 runs, 16 once or twice, 24 three to five times, 28 six to eight times. Correlation with winning
+(800 games): our towers at 7 min +0.39, wood cut by 12 min +0.39 (-0.71 with the copies housed at 20 min), by 5 min
++0.26 (-0.52), iron by 8 min +0.34, quarters at 5 min +0.27; the distance to the nearest enemies and to the map's
+edge: nothing.
+
+| sixth quarters finished | maps | wins of 8 | first quarters | armory |
+|---|---|---|---|---|
+| before 260 s | 23 | 3.9 | 49 s | 206 s |
+| 260-290 s | 32 | 4.0 | 49 s | 230 s |
+| 290-330 s | 21 | 3.4 | 50 s | 244 s |
+| 330-400 s | 9 | 2.6 | 57 s | 268 s |
+| after 400 s | 15 | 0.7 | 126 s | 324 s |
+
+Two kinds of slow opening among the 24 maps past 330 s (six replayed with logs, `op0-log-vs15`):
+
+- the base is planned far from the start: armory 83 to 169 cells away (s21040: quarters 186 to 287 m of walking,
+  the first one done at 136 s; s21054: armory at 465 m), about ten maps;
+- the sites are near but some stand unfinished for minutes: s21012 has all seven within 100 m, yet the armory
+  takes 306 s and one quarters 376 s while 54 of 82 peons are idle at 300 s. A building is made of wood (40 pieces
+  for 200 hit points, each chopped at a tree near the site and carried in), and those sites have two or three
+  trees around them where a normal one has four to ten. About a dozen maps (s21021, s21073, s21061, s21049 finish
+  the sixth quarters after 520 s with the first two on time).
+
+One map (s21088) starts 8 cells from an enemy and loses its 18 builders in the first minute.
+
 ### Screen `pc1` (running when this was written): raze x breach x hold at a tower, 100 maps each
 
 The three drills changed their mechanism little or not at all in 12 logged games, and those games cannot call the
