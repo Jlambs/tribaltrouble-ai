@@ -2823,6 +2823,10 @@ class Strategy {
             strategy.satellite = true;
             strategy.evade_cells = 30;
             strategy.iron_real = 3f;
+            // The step out of an enemy's way goes towards a manned tower (lab/fable/NOTES.md, the long game): at N=15
+            // 139 wins against 126 on 300 fresh maps (et1f-vs15, et1g-vs15: +28 -15) and 52 of the 100 maps still
+            // open at minute 30 against 44 and 47 in the default's two draws there.
+            strategy.evade_tower = 45;
         }
         return strategy;
     }

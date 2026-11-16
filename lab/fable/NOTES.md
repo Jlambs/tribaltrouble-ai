@@ -48,6 +48,12 @@ the iron it lacks within reach (`armory_iron_need` 50, `armory_iron_far` 800, th
 maps at N=15 the maps whose armory moves win 34 against 23 of 102 (fresh maps 21301..21600) and 28 against 23 of 85
 (21001..21300, 124 of 300 against 119); no exam seeds were spent on it, so the exam table above is still `@f2`'s.
 
+Third session, the long game ("The long game" and "Where the open games part" below): a gatherer that steps out
+of an enemy's way now steps towards our nearest manned tower (`evade_tower` 45, the default since): 139 wins against
+126 on 300 fresh development maps at N=15 (46 %), all of the gain in games still open at minute 30. Seven other
+repairs of late breakdowns (idle forgers, unstaffed satellites, small late launches, the spent chieftain, the
+expansion's threat gate, a weapon bank, lures) are built and neutral, and stay off. No exam seeds were spent.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -1240,6 +1246,48 @@ there are that many: with 60 the armory fills in 200-360 s and lets out an army 
 logged games `bk1-log-vs15`). Gauntlet's own answer to the cap is a family that was only ever tried one flag at a
 time (`reloc` alone: 39 of 100, "rarely fires"): `reloc` (a hop to fresh iron with no threat gate), `reloc_slot`
 (the next free slot is kept for it) and `retire` (a building of ours is razed for the slot).
+
+On the 100 open maps (default 44 and 47 in its two draws): `bank=60` 45 (+6 -5 against the first draw),
+`evade_tower=45` 52 (+16 -8).
+
+**On 150 fresh maps** (21301..21450, all of them, not only the open ones; the default wins 56):
+
+| | wins | to a win / to a loss | armories standing at minutes 25 / 30 (default 1.47 / 1.28) | iron a minute at 30 (12.7) |
+|---|---|---|---|---|
+| `reloc`, `reloc_slot`, `retire` (`RL1f`) | 61 | +9 -4 | 1.64 / 1.44 | 13.7 |
+| and `retire_any_tower`, `expand_under_threat` (`RL2f`) | 61 | +11 -6 | 1.68 / 1.51 | 13.9 |
+| and `reloc_sat` (`RL3f`) | 56 | +20 -20 | 1.78 / 1.68 | 14.9 |
+| `armory_cover=3` (`ac3f`) | 63 | +28 -21 | 1.50 / 1.44 | 13.6 |
+| `evade_tower=45` (`et1f`) | 68 | +21 -9 | 1.43 / 1.33 | 12.4 |
+
+The hop fires 0.9-1.1 times a game in the first two (its gate wants every other armory drained and a satellite
+never is: shut for 653 plan ticks a game) and 3.1 times with `reloc_sat`, which also razes 2.4 towers and 0.6
+quarters of ours a game for the slots: more armories and iron, fewer towers, the same wins. The step towards a tower
+is the one result here that stands on two sets of maps.
+
+Confirmation of the step towards a tower, and what stacks on it (the default wins 70 of 21451..21600):
+
+| | maps | wins against the default | to a win / to a loss |
+|---|---|---|---|
+| `evade_tower=45` (`et1g-vs15`) | 21451..21600 | 71 against 70 | +7 -6 |
+| `evade_tower=45`, both halves | all 300 | 139 against 126 | +28 -15 |
+| and `armory_cover=3` (`ea1f-vs15`) | 21301..21450 | 68 against 56, 2 draws | +29 -17 |
+| and `reloc`, `reloc_slot`, `retire` (`ear1f-vs15`) | 21301..21450 | 66 against 56, 1 draw | +29 -19 |
+
+By the default's copies housed at minute 30 the step's gain on the first half is all in the open games (6-9 copies:
+38 -> 49 of 99; 5 or fewer 18 -> 18; 10 or more 0 -> 1) with the same state up to minute 30, and on the 16 logged
+long maps iron comes in at 12.0 a minute against 9.8. Armory cover and the hop add nothing on top of it on these
+150 maps (68 and 66 against 68), so they stay off.
+
+**`evade_tower=45` is the default since** (`Strategy.forGame`; +28 -15 on fresh maps and 52 of the 100 open maps
+against 44 and 47, z about 2.2 together): it plays `et1f-vs15`'s and `et1g-vs15`'s games (`fix-j`, 8 of 8) and with
+`evade_tower=0` the games of before (`fix-k`, 8 of 8). On the fresh maps that is 139 of 300 (46 %) at N=15; no exam
+seeds were spent.
+
+Open: the reach (45 cells was the only value tried), the same step for peons within 30 cells of a shelter (21 % of
+the late peon deaths are peons walking into a building at home), the armories of minutes 15-35 (cover and hop each
+help alone, 61-63 against 56, and not on top of the step), home warriors that go out one at a time, and games that
+run to the limit against an enemy who can no longer arm.
 
 ## Reproduce
 
