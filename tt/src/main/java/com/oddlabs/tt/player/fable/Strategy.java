@@ -2885,6 +2885,17 @@ class Strategy {
             // 139 wins against 126 on 300 fresh maps (et1f-vs15, et1g-vs15: +28 -15) and 52 of the 100 maps still
             // open at minute 30 against 44 and 47 in the default's two draws there.
             strategy.evade_tower = 45;
+            // The chieftain blasts instead of stunning (lab/fable/NOTES.md, the chieftain's blast): he keeps away
+            // from the army, waits by parked enemy blobs and blows the sonic blast from their cast point, and his
+            // training quarters is kept full at the unit cap. At N=15 158 wins against 139 on 300 fresh maps
+            // (sh6f-vs15, sh6g-vs15: +44 -25) and +8.2 +- 2.9 and +4.2 +- 2.7 wins of 100 for the mission and the
+            // trainer in the screen on the open maps (bt1).
+            strategy.shred = true;
+            strategy.shred_strict = true;
+            strategy.shred_min_hp = 0;
+            strategy.shred_fill = .8f;
+            strategy.shred_lurk = 28;
+            strategy.chief_topup_any = true;
         }
         return strategy;
     }
