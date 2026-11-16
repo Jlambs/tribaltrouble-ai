@@ -67,6 +67,7 @@ public final class FableAI extends AI {
     private @Nullable Dodges dodges;
     /** Traffic jams of our units: counters and log lines, and the blocked warriors that unjam acts on. */
     private @Nullable Jams jams;
+    private @Nullable PeonLedger ledger;
     /** Stalled enemy armies and parked enemies (giant_keepout, giant_stun_hold, giant_shred). */
     private @Nullable Giants giants;
     private @Nullable Freeze freeze;
@@ -175,6 +176,8 @@ public final class FableAI extends AI {
                 shepherd().tick();
             if (jams != null)
                 jams.tick();
+            if (ledger != null)
+                ledger.tick();
         }
         if (due_economy) {
             next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
@@ -240,6 +243,7 @@ public final class FableAI extends AI {
         lures = new Lures(this);
         dodges = new Dodges(this);
         jams = new Jams(this);
+        ledger = new PeonLedger(this);
         intel.decoys = decoys;
     }
 
