@@ -1226,6 +1226,12 @@ class Strategy {
     boolean retire_any_tower = false;
     /** Peons kept in the quarters that trains the chieftain, to finish him sooner. */
     int hold_chieftain = 14;
+    /**
+     * hold_chieftain_again (0: hold_chieftain): the peons kept in the trainer of a chieftain after the first. Training
+     * takes 440 / n^(1/3) s with n inside: 183 s with 14, 129 s with 40. For the first one 40 cost the opening nine
+     * warriors at minute 15 (bz9-log-vs15); later ones are trained at the unit cap with a hundred peons about.
+     */
+    int hold_chieftain_again = 0;
 
     /**
      * Hold the stun until it catches most of the enemies closing in, and longer while an enemy chieftain with his
@@ -2682,6 +2688,7 @@ class Strategy {
         hold_late = params.getInt("hold_late", hold_late);
         hold_mid_ticks = (float) params.getDouble("hold_mid_ticks", hold_mid_ticks);
         hold_chieftain = params.getInt("hold_chieftain", hold_chieftain);
+        hold_chieftain_again = params.getInt("hold_chieftain_again", hold_chieftain_again);
         stun_patience = params.getBoolean("stun_patience", stun_patience);
         exploit_stun = params.getBoolean("exploit_stun", exploit_stun);
         charge_mixed = params.getBoolean("charge_mixed", charge_mixed);
@@ -2913,6 +2920,11 @@ class Strategy {
             strategy.shred_fill = .8f;
             strategy.shred_lurk = 28;
             strategy.chief_topup_any = true;
+            // With the mission the first chieftain has nothing to do before the first waves park, and his training
+            // takes 40 births of a quarters out of the opening: from 480 s, at the unit cap, instead of 300 s we have
+            // 9 more warriors at minute 10 and 0.2 more copies out at minute 15, and win 171 against 158 on the 300
+            // fresh maps (ct8f-vs15, ct8g-vs15: +46 -33). 600 s scored 53 of the 100 open maps against 62.
+            strategy.chieftain_ticks = 24000f; // 480 s
         }
         return strategy;
     }

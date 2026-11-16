@@ -2918,6 +2918,13 @@ final class Economy {
     // ------------------------------------------------------------------------------------------------------------
     // Quarters
 
+    /** The peons the chieftain's trainer keeps: hold_chieftain, or hold_chieftain_again for one after the first. */
+    private int trainerHold() {
+        Strategy st = ai.strategy();
+        return st.hold_chieftain_again > 0
+                && ai.chieftain().chiefsSeen() > 0 ? st.hold_chieftain_again : st.hold_chieftain;
+    }
+
     /** Peons a quarters should keep inside right now. */
     int holdFor(@NonNull Building quarters) {
         Strategy strategy = ai.strategy();
@@ -2930,11 +2937,11 @@ final class Economy {
             return Math.max(strategy.chief_refresh_hold, strategy.hold_chieftain);
         // Training takes 40 breed ticks of the trainer, 440 / n^(1/3) s with n inside, and goes on at the unit cap.
         if (training && (strategy.chief_topup_any || ai.chieftain().retrainLate()))
-            return strategy.hold_chieftain;
+            return trainerHold();
         if (pop >= max - 2)
             return 0;
         if (training)
-            return strategy.hold_chieftain;
+            return trainerHold();
         if (ai.intel().armories.isEmpty() && !ai.intel().quarters.isEmpty() && needsBuilders())
             return Math.min(2, strategy.hold_early);
         int hold;
@@ -5793,7 +5800,7 @@ final class Economy {
             boolean near = ai.strategy().chief_trainer_near;
             int heading = near ? countSentTo(trainer) : countHeadingTo(trainer);
             int hold = refresh != null ? Math.max(ai.strategy().chief_refresh_hold,
-                    ai.strategy().hold_chieftain) : ai.strategy().hold_chieftain;
+                    ai.strategy().hold_chieftain) : trainerHold();
             int need = hold - trainer.getUnitContainer().getNumSupplies() - heading;
             if (need > 0) {
                 List<Unit> chosen = new ArrayList<>();

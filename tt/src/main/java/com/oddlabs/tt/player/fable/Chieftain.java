@@ -1352,6 +1352,11 @@ final class Chieftain {
     private float hp_trace = -50000f;
 
     /** chief_retrain_late: the late retrain rules apply now. */
+    /** Chieftains we have had so far. */
+    int chiefsSeen() {
+        return chiefs_seen;
+    }
+
     boolean retrainLate() {
         Strategy st = ai.strategy();
         return st.chief_retrain_late && ai.now() >= st.chief_refresh_from_ticks;
