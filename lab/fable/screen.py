@@ -60,11 +60,29 @@ SCREENS = {
         ('late_caution_1', '', 'late_caution=1.0'),
         ('expand_threat', '', 'expand_under_threat=true'),
     ], '@band30-100.txt'),
+    # the chieftain's blast and the towers (2026-11-16), on the same 100 maps with evade_tower=45 the default
+    # (bt1-00 is et1-band-vs15: 52 wins)
+    'bt1': ([
+        ('tower_mutual', '', 'tower_mutual=true'),
+        ('shred', '', 'shred=true,shred_strict=true,shred_min_hp=0,shred_fill=0.8,shred_lurk=28'),
+        ('chief_topup', '', 'chief_topup_any=true'),
+        ('armory_cover', '', 'armory_cover=3'),
+    ], '@band30-100.txt'),
+    # the strict shred mission's options, every run with the mission and the trainer's top-up on (bt2-00 is
+    # bt1-06: 62 wins)
+    'bt2': ([
+        ('at_base', 'shred=true,shred_strict=true,shred_min_hp=0,shred_fill=0.8,shred_lurk=28,chief_topup_any=true', 'shred=true,shred_strict=true,shred_min_hp=0,shred_fill=0.8,shred_lurk=28,chief_topup_any=true,shred_buildings=99,shred_base=true,shred_bait=true'),
+        ('chief_dodge', '', 'chief_dodge=true'),
+        ('gate_bonus', '', 'shred_gate=true'),
+        ('chief_480s', '', 'chieftain_ticks=24000'),
+    ], '@band30-100.txt'),
 }
 # Screens that use the other half of the four-factor design (D = not ABC), and runs played under another name.
 ODD_HALF = {'lg1'}
 RUN_NAMES = {
     'lg1': {0: 'xt1-band-vs15', 1: 'sb2-band-vs15', 2: 'hm1-band-vs15', 4: 'lc1-band-vs15'},
+    'bt1': {0: 'et1-band-vs15'},
+    'bt2': {0: 'bt1-06'},
 }
 FACTORS, SEEDS = SCREENS['scr1']
 NAME = 'scr1'

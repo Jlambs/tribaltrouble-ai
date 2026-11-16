@@ -1865,6 +1865,18 @@ class Strategy {
      */
     int shred_lurk = 0;
     /**
+     * shred_ahead: with shred_lurk and no blob, he waits by the target of the biggest group of enemy warriors on one
+     * attack-move (shred_min or more, the target within shred_range of our armory): where they will stand parked.
+     * With the blast charged he has no blob in 730 s of a 70-minute game and walks to cast points for 700 s, at 1.4
+     * cells a second from 50-100 cells away (bz10-log-vs15: 10 casts a game where the charge allows 40).
+     */
+    boolean shred_ahead = false;
+    /**
+     * shred_gate: the muster's gate counts a strict chieftain as if he marched along. Without his bonus the gate
+     * asks for 40 % more army and the campaign starts later: 0.12 copies fewer out at minute 15 (bz2-band-vs15).
+     */
+    boolean shred_gate = false;
+    /**
      * Giants (Giants, late): from giants_from_ticks, stalled blocks of attack-walkers and parked enemies count as
      * inert.
      * giant_keepout (cells, 0 = off): a project site, a re-site target or an expansion site with at least giant_min
@@ -2244,6 +2256,8 @@ class Strategy {
         shred_bait = params.getBoolean("shred_bait", shred_bait);
         shred_from_ticks = (float) params.getDouble("shred_from_ticks", shred_from_ticks);
         shred_lurk = params.getInt("shred_lurk", shred_lurk);
+        shred_ahead = params.getBoolean("shred_ahead", shred_ahead);
+        shred_gate = params.getBoolean("shred_gate", shred_gate);
         giants_from_ticks = (float) params.getDouble("giants_from_ticks", giants_from_ticks);
         giant_keepout = params.getInt("giant_keepout", giant_keepout);
         giant_min = params.getInt("giant_min", giant_min);

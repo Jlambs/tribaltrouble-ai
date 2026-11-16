@@ -237,6 +237,11 @@ final class Chieftain {
         boolean lurking = false;
         if (lurk > 0) {
             int[] blob = findBlob(chief.getGridX(), chief.getGridY());
+            if (blob == null && ai.strategy().shred_ahead) {
+                blob = incoming(chief.getGridX(), chief.getGridY());
+                if (blob != null)
+                    ai.aiLog().count("shred_ahead"); // chieftain move rounds (1.5 s)
+            }
             int[] wait = blob != null ? lurkPoint(blob, chief.getGridX(), chief.getGridY(), lurk) : null;
             if (wait != null) {
                 tx = wait[0];
@@ -335,6 +340,48 @@ final class Chieftain {
     /** shred_bait: set while blastHere values the chieftain's own cell with awake warriors at him. */
     private boolean cast_hunted;
 
+    /**
+     * shred_ahead: where the biggest wave on its way will stand: {x, y, 0, warriors}, the target that the most enemy
+     * warriors on an attack-move share (in 4-cell buckets) per cell of the chieftain's walk there, as findBlob scores
+     * blobs; at least shred_min of them, the target within shred_range cells of our armory and 22 from enemy towers.
+     */
+    private int @Nullable [] incoming(int cx, int cy) {
+        Intel intel = ai.intel();
+        Strategy strategy = ai.strategy();
+        Building armory = intel.armory();
+        int hx = armory != null ? armory.getGridX() : ai.planner().getStartX();
+        int hy = armory != null ? armory.getGridY() : ai.planner().getStartY();
+        int range2 = strategy.shred_range * strategy.shred_range;
+        java.util.Map<Integer, int[]> groups = new java.util.LinkedHashMap<>();
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead() || !(e.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.WalkController w)
+                    || !w.isAgressive())
+                continue;
+            int tx = w.getTarget().getGridX();
+            int ty = w.getTarget().getGridY();
+            if (MapAnalysis.dist2(tx, ty, hx, hy) > range2)
+                continue;
+            groups.computeIfAbsent((tx >> 2) * 4096 + (ty >> 2), k -> new int[]{tx, ty, 0, 0})[3]++;
+        }
+        int[] best = null;
+        float best_score = 0f;
+        for (int[] g : groups.values()) {
+            if (g[3] < strategy.shred_min)
+                continue;
+            float score = g[3] / (30f + (float) Math.sqrt(MapAnalysis.dist2(cx, cy, g[0], g[1])));
+            if (score <= best_score)
+                continue;
+            boolean towered = false;
+            for (Building t : intel.enemy_towers)
+                towered |= MapAnalysis.dist2(g[0], g[1], t.getGridX(), t.getGridY()) <= 22 * 22;
+            if (towered)
+                continue;
+            best = g;
+            best_score = score;
+        }
+        return best;
+    }
+
     /** Cells to the nearest enemy warrior that is neither parked nor stunned, or a large number. */
     private int nearestAwakeDistance(int x, int y) {
         int best = Integer.MAX_VALUE;
@@ -377,6 +424,8 @@ final class Chieftain {
                     b == null ? "none" : b[3] + " at " + b[0] + "," + b[1] + " nearest " + b[2]));
         }
         if (!charged || chief.getHitPoints() <= strategy.shred_min_hp) {
+            // shred_t_*: the mission's rounds by what he does in them
+            ai.aiLog().count(charged ? "shred_t_weak" : "shred_t_charging");
             shred_target = null;
             return false;
         }
@@ -392,12 +441,14 @@ final class Chieftain {
             if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= abort * abort) {
                 if (shred_target != null)
                     ai.aiLog().count("shred_abort");
+                ai.aiLog().count("shred_t_awake");
                 shred_target = null;
                 return false;
             }
         }
         int[] blob = findBlob(cx, cy);
         if (blob == null) {
+            ai.aiLog().count("shred_t_noblob");
             shred_target = null;
             return false;
         }
@@ -436,6 +487,7 @@ final class Chieftain {
                 ai.aiLog().count("shred_nopoint");
                 return false;
             }
+            ai.aiLog().count("shred_t_walk");
             if (MapAnalysis.dist2(cx, cy, at[0], at[1]) <= 1 && at[2] >= strategy.shred_min) {
                 ai.log(String.format("chieftain blasts a parked blob at %d,%d from %d,%d (%d in reach)", blob[0],
                         blob[1], cx, cy, at[2]));

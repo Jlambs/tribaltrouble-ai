@@ -3970,7 +3970,7 @@ final class Military {
         Intel intel = ai.intel();
         Strategy strategy = ai.strategy();
         boolean chief = intel.chieftain != null && intel.chieftain.getHitPoints() > 30
-                && !ai.chieftain().strictShred(); // strict shred keeps him home
+                && (!ai.chieftain().strictShred() || strategy.shred_gate); // strict shred keeps him home
         boolean enemy_chief = false;
         int cr2 = others * others;
         for (Unit c : intel.enemy_chieftains)
