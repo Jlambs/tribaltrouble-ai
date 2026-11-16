@@ -3944,7 +3944,7 @@ final class Economy {
     private void manageArmory() {
         Intel intel = ai.intel();
         Building primary = intel.armory();
-        if (ai.strategy().weapon_reserve > 0)
+        if (ai.strategy().weapon_reserve > 0 || ai.strategy().bank > 0)
             settleReserve(primary);
         if (primary == null)
             return;
@@ -4373,7 +4373,7 @@ final class Economy {
             what = "lost with the armory";
         } else if (a != primary) {
             what = "left to the drain of the old main armory";
-        } else if (ai.military().baseThreatLevel() >= 2) {
+        } else if (ai.military().baseThreatLevel() >= 2 && !bank_on) {
             for (int i = 0; i < held; i++)
                 ai.aiLog().count("weapon_reserve_released"); // weapons let out at threat 2
             what = "released at threat 2";
@@ -4398,9 +4398,49 @@ final class Economy {
      * (none, another armory, or the base threat at 2, which releases them).
      */
     int @Nullable [] weaponReserve(@NonNull Building armory) {
-        if (armory != reserve_armory || reserve_held == 0 || ai.military().baseThreatLevel() >= 2)
+        if (armory != reserve_armory || reserve_held == 0 || (ai.military().baseThreatLevel() >= 2 && !bank_on))
             return null;
         return new int[]{reserve_chicken, reserve_iron, reserve_rock};
+    }
+
+    /** bank: whether the main armory is keeping its weapons now, and since when. */
+    private boolean bank_on;
+    private float bank_since;
+    private float bank_ended = -50000f;
+
+    /** bank: whether the armory keeps its weapons this tick (Strategy.bank); starts and ends the keeping. */
+    private boolean banking(@NonNull Building armory, int stock) {
+        Strategy st = ai.strategy();
+        Military military = ai.military();
+        if (st.bank <= 0 || ai.now() < st.bank_ticks) {
+            bank_on = false;
+            return false;
+        }
+        if (bank_on) {
+            String why = stock >= st.bank ? "full" : evacuating.containsKey(armory)
+                    || 2 * armory.getHitPoints() < armory.getTemplate().getMaxHitPoints() ? "the armory is in danger" : !military.atHome() ? "the army is out" : null;
+            if (why != null) {
+                bank_on = false;
+                bank_ended = ai.now();
+                ai.aiLog().count(stock >= st.bank ? "bank_full" : "bank_broken");
+                if (ai.logging())
+                    ai.log(String.format("bank: %d weapons come out after %.0f s (%s)", stock, FableAI.seconds(
+                            ai.now() - bank_since), why));
+            }
+        } else if (military.atHome() && military.fieldStrength() < st.bank_army && stock < st.bank
+                && ai.now() - bank_ended >= 1500f // 30 s: the warriors let out are still on their way out
+                && !evacuating.containsKey(armory)
+                && 2 * armory.getHitPoints() >= armory.getTemplate().getMaxHitPoints()) {
+                    bank_on = true;
+                    bank_since = ai.now();
+                    ai.aiLog().count("bank_start");
+                    if (ai.logging())
+                        ai.log(String.format("bank: weapons stay in the armory from now on (army %.1f, %d in stock)",
+                                military.fieldStrength(), stock));
+                }
+        if (bank_on)
+            ai.aiLog().count("bank_ticks"); // economy ticks (1 s)
+        return bank_on;
     }
 
     private void deployFromPrimary(@NonNull Building armory) {
@@ -4410,6 +4450,8 @@ final class Economy {
         int chicken = armory.getSupplyContainer(RubberAxeWeapon.class).getNumSupplies();
         int rock = armory.getSupplyContainer(RockAxeWeapon.class).getNumSupplies();
         int stock = iron + chicken + rock;
+        // bank: late, with no army out, the weapons wait until they make one
+        boolean banked = banking(armory, stock);
         if (stock == 0 || workers == 0)
             return;
 
@@ -4426,6 +4468,13 @@ final class Economy {
                 && !evacuating.containsKey(armory)) {
             seats = Math.min(chicken, military.towerSeatsFree());
             hold = Math.min(st.weapon_reserve, stock - seats);
+        }
+        // bank: everything but a warrior for each empty tower
+        int bank_seats = 0;
+        if (banked) {
+            bank_seats = Math.min(stock, military.towerSeatsFree());
+            seats = bank_seats;
+            hold = stock - bank_seats;
         }
         int deploy;
         if (military.wantsEverything() || capped) {
@@ -4445,6 +4494,8 @@ final class Economy {
                 deploy = Math.max(deploy, stock - 12);
         }
         int keep = military.wantsEverything() ? 0 : Math.min(2, workers);
+        if (banked)
+            deploy = Math.max(deploy, bank_seats);
         // weapon_reserve: iron axes held first, then rock, then chicken; workers to arm them stay in, after those for
         // the free tower seats.
         int hold_iron = Math.min(hold, iron);

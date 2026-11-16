@@ -1056,6 +1056,140 @@ Open: need 70 on fresh maps; and the far plans' own opening (38 of 300 armories 
 than 400 m): after the first quarters the builders wait for the scout to place the far sites and then carry a piece
 of wood cut by the start the whole way at 4 m/s.
 
+### The long game: what breaks after the first campaign (`lab/fable/endgame.py`, `late.py`, `band.py`, `launches.py`)
+
+The user's lead (2026-11-16): look for behaviour that is plainly broken, above all late in the game, where
+Gauntlet's development had few signals. 589 games at N=15 (`def4-fresh-vs15`, `pc1-00`, `in50-vs15`, `in50f-vs15`,
+`def5f-vs15`; 204 won): no game is won before minute 40, half of all games last more than an hour, and the lost ones
+end at 30-50 min or drag on. Share won by the copies still housed (a quarters or an armory) at a minute, games still
+running then:
+
+| minute | 0-3 | 4 | 5 | 6 | 7 | 8 | 9 | 10+ |
+|---|---|---|---|---|---|---|---|---|
+| 20 | | | | 8/8 | 82/106 | 78/146 | 27/127 | 9/185 |
+| 30 | 8/8 | 19/20 | 42/48 | 50/73 | 44/95 | 29/101 | 12/81 | 0/105 |
+| 40 | 50/50 | 32/34 | 39/41 | 31/49 | 29/61 | 12/78 | 11/55 | 0/49 |
+| 60 | 99/99 | 19/19 | 23/29 | 21/28 | 8/31 | 14/48 | 3/18 | 0/10 |
+
+Finishing is not the leak: with five copies or fewer at minute 30 we win 69 of 76. The open games are those with 6-9 copies at
+minute 30 (135 won of 350), and 117 of the 385 lost games had the enemy down to seven copies or fewer at some point.
+The state by minute in the games still running (the 589 games; iron over the five minutes before):
+
+| | our warriors at 30 / 40 / 60 / 100 min | peons | quarters | towers | iron a minute | copies housed | their warriors |
+|---|---|---|---|---|---|---|---|
+| won | 60 / 68 / 98 / 86 | 112 / 109 / 94 / 98 | 5.0 / 4.9 / 4.8 / 4.3 | 12.6 / 12.9 / 13.4 / 14.1 | 16 / 16 / 14 / 13 | 6.2 / 5.0 / 3.1 / 3.1 | 363 / 305 / 195 / 206 |
+| lost | 20 / 14 / 11 / 6 | 101 / 90 / 96 / 103 | 3.9 / 3.3 / 3.2 / 2.6 | 9.5 / 9.0 / 10.2 / 9.2 | 8 / 7 / 8 / 4.5 | 8.8 / 8.4 / 7.8 / 7.4 | 556 / 501 / 451 / 427 |
+
+Sixteen games were logged at full length for the reading below (`eg0-log-vs15`, `eg2-log-vs15` with the peon
+ledger: twelve lost games in which the enemy had been down to 4-6 copies, and the four longest wins, 184-217 min;
+`late.py` prints a game by ten-minute windows from its STAT lines and census).
+
+A long game is a siege of our base: we kill 33-45 units a minute, nearly all at our towers, and the copies replace
+them while their ore lasts; the four long wins are games in which the base stood for two hours with 6-19 warriors
+until the enemy's warriors had halved (367 to 174). In between nothing is built up: every weapon is spent at once. What is broken in that phase,
+each read in the logs and then counted:
+
+1. **The forge waits for wood with its workers idle.** A weapon is two wood and an iron, and everyone inside the
+   armory forges (`WeaponsProducer`: man-seconds = workers x time). From minute 20 the main armory has under two wood
+   and iron in stock in 22-38 % of the half-minute samples (55-67 % past minute 90), with 11-40 iron and 31-60
+   workers inside and the wood gatherers 20 short of the plan's number: when iron piles up the plan cuts the iron
+   gatherers (`ore_adj` .7 / .35) and counts the peons freed as forgers (s21327 at 43 min: 77 inside, 88 wanted, one
+   wood, 19 iron).
+2. **A satellite armory is never staffed.** Its workers and wood gatherers come out of the peons inside it, and only
+   gatherers it recalls go in. s21194, minutes 60-90: the satellite has 45 iron gatherers, 36 iron and 17 wood in
+   stock, one worker and one wood gatherer of 26 wanted; the main armory 50 cells away holds 45-130 workers, 45 rock
+   and one wood; no weapon is made for half an hour (army 0-12). s21589's satellite holds 139 iron and one wood.
+   Satellites stand in 13 % of the late minutes and are starved in 45 % of those.
+3. **Lone enemy warriors keep the gatherers from gathering.** `PeonLedger` (new; counts every peon killed outside a
+   building by its job): after minute 30 we lose 16 peons a minute, 27 % of them gatherers out of an enemy's way
+   (`evade`), 21 % walking into a building at home, 14 % shepherds. An iron gatherer steps out of an enemy's way 69
+   times a minute a game, half of the times from a single warrior, 42 % within 3 s of setting out again, and 15-29 %
+   of the gatherers' time ends in a delivered load. The cause is in the defence: an enemy away from the base is a
+   threat only while a peon is within 12 cells of it, the peon steps away, the threat is over within a second or two
+   and the warriors sent at it stop (s21327 logs a new threat of one or two warriors every 1-2 s for minutes). A
+   hunting Hard warrior never answers a hit (Lures' notes), so it would be a free kill.
+4. **The late launches are too small.** `launches.py` (337 attacks of 48 logged long games): launched after minute 30
+   with 12-25 warriors an attack razes 0.15-0.30 buildings per ten warriors it loses, with 45 or more 0.5-1.0, and
+   the small ones are the most frequent. `late_caution` 0.5 halves the gate's ratios (and the retreat's) from minute
+   40.
+5. **No expansion while a threat stands, and one always does.** s21194 checks no site between minutes 59 and 152,
+   with the nearest free iron 160-245 m from the armory; the armory built at minute 152 brings iron from 5 to 23 a
+   minute and the game is won.
+6. **The chieftain is spent.** He never heals, so below 24 hp he stands by the armory for good: 85 % of his log lines
+   after minute 30, 2.3-3.8 casts per ten minutes against 5.7 before minute 20 (`chief_refresh`, Gauntlet's and off,
+   kills and retrains him).
+7. **Home warriors die one at a time.** 4 a minute after minute 30, a median 20 cells from our nearest building
+   (outside every tower's reach), 43 % with two mates or fewer within 12 cells, 52 % outnumbered three to one where
+   they fall: each new warrior walks from the armory to the threat on its own. Not addressed yet.
+
+**The test set.** A change that acts only late leaves a game identical until then, so it can only turn games that
+are still open: `band.py` lists the maps with 6-9 copies housed at minute 30 under the default (177 of 21001..21300;
+the default wins 80 of them, 44 of the first 100, `lab/fable/band30-100.txt`) and compares a variant's games with
+the default's there. Late-gated variants do play the same games up to their gate (the columns at minutes 30 and 40
+are equal to the digit).
+
+**What was built** (all behind flags, off unless said otherwise below):
+
+- `stock_balance` (1): each plan tick with four or more wood missing (two per iron in stock) and four or more
+  workers inside beyond the plan's own forgers, three more are wanted as wood gatherers, up to the wood missing and
+  40; three fewer when the wood is there. In 16 logged games (`sb1-log-vs15`, with `sat_staff`) the forge waits for
+  wood in 3-12 % of the samples of minutes 20-60 against 22-33 %.
+- `sat_staff` (2): a satellite is to have a forger for every weapon its stock pays for and a wood gatherer for
+  every four wood its iron lacks (at most 12 each); free peons and then the main armory's spare workers walk over,
+  and it keeps the ones meant for its wood.
+- `harass_memory_ticks` (3): an enemy warrior that came at our peons away from the base stays a threat for this
+  long after the last peon was near it. With 30 s the gatherers step aside 41 times a minute against 77 (16 logged
+  games, `hm1-log-vs15`).
+- `evade_tower` (3): the step out of an enemy's way goes towards our nearest manned tower within this many cells,
+  unless that leads at the enemy, so that the tower shoots the pursuer. With 45 cells on the 16 logged maps
+  (`et1-log-vs15`): 46 steps a minute against 77, iron 12.0 a minute against 9.8 (up on 11 of the 16 maps).
+- `late_min_strength` (4): no muster below it from minute 30 while the enemy's warriors are worth twice as much.
+- Already there and never screened at N=15: `late_caution=1.0` (4: no halving of the gate late),
+  `expand_under_threat` (5: an expansion while a threat stands, if no enemy is within 30 cells of the site or 12 of
+  the way), `chief_refresh` with `chief_retrain_late` (6), and `lure` (idle peons bait parked groups past a tower),
+  here from minute 30 (`lure_ticks=90000`).
+
+**On the 100 open maps** (`band30-100.txt`). The default's own game wins 44 of them; a second draw of the default
+(`null1-band-vs15`: a harasser memory of 0.6 s, which changes nothing but the games' course) wins 47 (+12 -9), so the
+default is about 45.5 there and every comparison with the single draw of 44 flatters by one or two. The same replay
+also shows 60 warriors against 51 and 5.0 copies against 5.7 at minute 50 in the games running in both: for a
+variant that changes the game before minute 30 the state columns of `band.py --against` are biased by that much
+(the maps were chosen by the default's own state at minute 30), and only late-gated variants compare cleanly.
+
+| variant | wins | to a win / to a loss | |
+|---|---|---|---|
+| `late_caution=1.0` (`lc1`) | 49 | +8 -3 | the same games until minute 40 |
+| and `capped_min_strength=40` (`cm1`) | 45 | +6 -5 | |
+| and `late_min_strength=45` (`lm1`) | 45 | +6 -5 | the warriors kept home die at home: 354 lost in the home army a game against 307, 418 in attacks against 460 |
+| `expand_under_threat` (`xt1`) | 48 | +9 -5 | one such expansion a game, 22 checks stopped by the site test |
+| `sat_staff`, `stock_balance` (`sb2`) | 54 | +21 -11 | |
+| `harass_memory_ticks=1500` (`hm1`) | 47 | +11 -8 | |
+| staffing and memory (`sh2`) | 46 | +17 -15 | |
+| `lure` from minute 30 (`lu1`) | 51 | +9 -2 | 86 lures a game, 136 hunters pulled past a tower, 19 lure peons lost |
+| `chief_refresh`, `chief_retrain_late` from minute 30 (`cr1`) | 49 | +8 -3 | one cull a game |
+
+Screen `lg1` (`screen.py`; staffing x memory x late caution x expansion under threat, the half fraction with D = not
+ABC, whose single-factor runs are `xt1`, `sb2`, `hm1`, `lc1`; `lg1-03/05/06/07` the three-factor ones): wins by run
+48 54 47 47 49 53 51 47, every run above the default. Contrasts inside the screen, on wins and on the state model's
+win chance at minutes 40 / 50 / 60 (`screen.py model`):
+
+| factor | wins | model at 40 | at 50 | at 60 |
+|---|---|---|---|---|
+| staffing | +1.5 +- 3.9 | +3.7 +- 3.2 | +3.3 +- 3.5 | +0.7 +- 4.1 |
+| harasser memory 30 s | -3.0 +- 2.7 | -1.0 +- 2.0 | -2.8 +- 2.3 | -4.1 +- 2.4 |
+| late caution 1.0 | +1.0 +- 1.8 | +0.8 +- 1.0 | +0.6 +- 1.4 | +0.7 +- 1.6 |
+| expansion under threat | +0.5 +- 2.0 | +3.1 +- 1.1 | +2.2 +- 1.3 | +2.2 +- 1.4 |
+
+No factor is settled by 800 games: a late fix is worth a few points on these maps at most, and a 100-map run has
+an error of four or five. The memory halves the steps aside and still costs (the home army walks out after
+harassers up to 120 cells from home); it stays off. Staffing, caution and expansion together (`lg1-05`) are the best
+run by wins (53) and by the model at every minute (53, 55, 50).
+
+Three games in about a thousand with these variants ran to the 360-minute limit, which the default never did:
+`xt1-band-vs15` s21056 ends with all nine living copies without a single building and 371 warriors standing idle
+(we have 44 warriors and 249 units), `L1f-vs15` s21400 with seven warriors of ours against 163 after six hours. An
+enemy that cannot arm any more is not hunted down.
+
 ## Reproduce
 
 ```bash

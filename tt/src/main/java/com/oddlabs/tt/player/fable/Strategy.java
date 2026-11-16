@@ -1020,6 +1020,19 @@ class Strategy {
     int weapon_reserve = 0;
     float weapon_reserve_ticks = 30000f;
     /**
+     * bank (weapons, 0 = off): from bank_ticks, while the army is home and worth less than bank_army, the main armory
+     * lets out only the warriors its empty towers need and keeps every other weapon, with a worker for each, until
+     * it holds this many; then all come out at once and the muster's gate has an army to send. It also lets them
+     * out when the armory is below half its hit points or is being emptied. After the first campaign every weapon
+     * is spent as it is made: the home army loses four warriors a minute, 43 % of them with two mates or fewer
+     * around, and attacks go out 12-25 strong, which raze 0.15-0.30 buildings per ten warriors lost against 0.5-1.0
+     * for 45 or more (lab/fable/launches.py); xt1-band-vs15 s21056 makes about 15 weapons a minute for three hours
+     * while the enemy's 22 buildings stand.
+     */
+    int bank = 0;
+    float bank_ticks = 90000f; // 30 min
+    float bank_army = 25f;
+    /**
      * A besieged armory sends its peons out to fight when they can win: at threat level 2, an armory holding 30 or more
      * with a threat within 15 cells, when bank, defenders and towers near it reach sortie_ratio of the threat within 30
      * cells and defenders and towers alone do not, deploys its peons onto the attackers (they vanish uncounted inside a
@@ -2544,6 +2557,9 @@ class Strategy {
         ore_iron_first = params.getBoolean("ore_iron_first", ore_iron_first);
         ore_reach_fail = params.getBoolean("ore_reach_fail", ore_reach_fail);
         weapon_reserve = params.getInt("weapon_reserve", weapon_reserve);
+        bank = params.getInt("bank", bank);
+        bank_ticks = (float) params.getDouble("bank_ticks", bank_ticks);
+        bank_army = (float) params.getDouble("bank_army", bank_army);
         weapon_reserve_ticks = (float) params.getDouble("weapon_reserve_ticks", weapon_reserve_ticks);
         sortie_ratio = (float) params.getDouble("sortie_ratio", sortie_ratio);
         rearm_placer = params.getBoolean("rearm_placer", rearm_placer);

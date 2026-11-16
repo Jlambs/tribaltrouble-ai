@@ -562,6 +562,15 @@ final class Military {
         return threat_level >= 2 || mode == Mode.MUSTER;
     }
 
+    /** bank: whether the army is home, and what it is worth with the warriors still out on an attack. */
+    boolean atHome() {
+        return mode == Mode.HOME;
+    }
+
+    float fieldStrength() {
+        return armyStrength() + attackStrength();
+    }
+
     int towerSeatsFree() {
         int n = 0;
         for (Building t : ai.intel().towers)
