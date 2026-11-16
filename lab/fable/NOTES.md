@@ -54,6 +54,15 @@ of an enemy's way now steps towards our nearest manned tower (`evade_tower` 45, 
 repairs of late breakdowns (idle forgers, unstaffed satellites, small late launches, the spent chieftain, the
 expansion's threat gate, a weapon bank, lures) are built and neutral, and stay off. No exam seeds were spent.
 
+Fourth session, the chieftain's blast ("Minutes 15-25" and "The chieftain's blast" below): the chieftain no longer
+stuns for the army. He keeps away from it, waits by the enemy's parked waves and blows the sonic blast into them
+(Gauntlet's shred mission, repaired: he blasts from the blob's cast point, waits by the next blob instead of walking
+home, and his training quarters is kept full at the unit cap), and the first one is trained from 480 s instead of
+300. On the 300 fresh development maps at N=15: 158 wins with the mission against 139 (+44 -25), 171 with the later
+chieftain too (57 %). The base now holds through minutes 15-30, where it used to lose its second armory and its
+iron. No exam seeds were spent, and the steps were chosen on these maps, so the exam table above is still `@f2`'s
+and 57 % is a development figure.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -1422,6 +1431,21 @@ Screen `bt2`, on the new default (run 0 is `bt1-06`, 62 wins): wins by run 62 60
 So the options at our base are harmful after all (13.7 casts a game catching 314 instead of 11.8 catching 265, and
 3.4 chieftains lost against 2.7), and stay off with the dodge and the gate bonus.
 
+**A later first chieftain.** With the mission he has nothing to blast before the first waves park, and his
+training takes 40 births of a quarters out of the opening. `chieftain_ticks=24000` (480 s, when we are at the unit
+cap, instead of 300 s) on the 300 fresh maps (`ct8f-vs15`, `ct8g-vs15`):
+
+| | 21301..21450 | 21451..21600 | all 300 | to a win / to a loss | warriors at minute 10 | copies out at minutes 10 / 15 |
+|---|---|---|---|---|---|---|
+| the mission and the full trainer, chieftain from 300 s | 84 | 74 | 158 | | | |
+| chieftain from 480 s | 87 | 84 | 171 | +46 -33 | +8.6 and +9.6 (z 9) | +0.25 / +0.19 (z 5 and 2-3) |
+
+On the 100 open maps it shows less: +4.2 +- 4.2 in `bt2`, 0.0 +- 5.7 in `lg2` (below), 64 alone against 62; from
+600 s 53 (`ct10-band-vs15`), from 720 s 58 and a draw (`ct12-band-vs15`). (Before the mission 240 s and 420 s were
+both worse than 300 s: his stun was part of the first campaign.) **480 s is the default since** (`fix-o`: the
+default plays `ct8f-vs15`'s games, 8 of 8; with `chieftain_ticks=15000` `sh6f-vs15`'s, `fix-p`, 8 of 8): 171 of 300
+on the fresh maps at N=15 (57 %), the least certain of the three steps.
+
 ### After the first campaign under the blast default: one attack that never ends (`lab/fable/rebuild.py`)
 
 The new default on the 16 logged long maps, full length (`nd1-log-vs15`): 11 wins, 4 losses and a draw where the old
@@ -1448,6 +1472,10 @@ then, and unhouses 1.0-1.45 copies in ten minutes from minute 30):
 
 Warriors that wait at home die at home, and weapons that wait in the armory leave the base to the towers and the
 chieftain, which costs two or three more bases. Nothing that waits has paid at N=15, early or late.
+
+Screen `lg2` on the 100 open maps (run 0 is `bt1-06`, 62 wins; wins by run 62 65 63 64 64 64 64 62): the bank as
+first built, `bank=80`, +0.5 +- 1.7 (it starts twice a game and fills 0.4 times: an attack is out nearly always),
+a floor under late launches, `late_min_strength=50`, -0.5 +- 1.3. Both off.
 
 ## Reproduce
 

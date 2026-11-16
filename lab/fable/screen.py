@@ -83,6 +83,13 @@ SCREENS = {
         ('late_floor_50', '', 'late_min_strength=50'),
         ('chief_480s', '', 'chieftain_ticks=24000'),
     ], '@band30-100.txt'),
+    # the mission's settings on the default with the first chieftain from 480 s (bt3-00 is lg2-04, 64 wins)
+    'bt3': ([
+        ('trainer_40', '', 'hold_chieftain_again=40'),
+        ('evade_tower_70', '', 'evade_tower=70'),
+        ('shred_range_200', '', 'shred_range=200'),
+        ('shred_min_6', '', 'shred_min=6'),
+    ], '@band30-100.txt'),
 }
 # Screens that use the other half of the four-factor design (D = not ABC), and runs played under another name.
 ODD_HALF = {'lg1'}
@@ -91,6 +98,7 @@ RUN_NAMES = {
     'bt1': {0: 'et1-band-vs15'},
     'bt2': {0: 'bt1-06'},
     'lg2': {0: 'bt1-06'},
+    'bt3': {0: 'lg2-04'},
 }
 FACTORS, SEEDS = SCREENS['scr1']
 NAME = 'scr1'
