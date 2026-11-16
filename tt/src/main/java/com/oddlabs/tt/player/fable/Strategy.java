@@ -1386,11 +1386,17 @@ class Strategy {
      * with fewer than this many nodes within armory_iron_reach m of walking costs armory_iron_short_ticks more per
      * missing node, and while the best site is short the search widens to twice max_armory_distance and then to
      * armory_iron_far m of walking from the start (0: no further).
+     *
+     * Default 50 and 800 since the fresh maps 21301..21600: 102 of 300 armories move and those maps win 34
+     * against 23 (in50f-vs15, def5f-vs15; +18 -7); on 21001..21300 85 move, 28 against 23 (in50-vs15; +12 -7).
+     * The gain is in the moves of under 100 m to a fuller field (16 -> 24 of 61 on the fresh maps); the moves
+     * of 200 m and more win 2 of 18 and 4 of 31 against 1 and 1. Needs of 40, 60 and 70 on 21001..21300: 121,
+     * 121 and 128 wins of 300 against 124 and the old 119 (lab/fable/planwins.py).
      */
-    int armory_iron_need = 0;
+    int armory_iron_need = 50;
     int armory_iron_reach = 300;
     float armory_iron_short_ticks = 200f; // 4 s a node
-    int armory_iron_far = 0;
+    int armory_iron_far = 800;
     /**
      * opening_move_m (meters of walking, 0 = off): with the armory site this far from the start or farther, the first
      * quarters goes up by the armory site like the others, so the whole tribe walks there first. With the first

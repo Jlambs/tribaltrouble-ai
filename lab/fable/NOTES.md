@@ -43,6 +43,11 @@ lines and two more fields of the battle line): it plays `@f2`'s games (8 of 8 id
 s21005-0 of it replays VERIFIED in a fresh JVM), and `spotlessCheck` passes. Committed on branch `fable` since
 2026-11-16.
 
+Third session, the opening ("The slow openings are iron behind water" below): the first armory's site now pays for
+the iron it lacks within reach (`armory_iron_need` 50, `armory_iron_far` 800, the default since). On development
+maps at N=15 the maps whose armory moves win 34 against 23 of 102 (fresh maps 21301..21600) and 28 against 23 of 85
+(21001..21300, 124 of 300 against 119); no exam seeds were spent on it, so the exam table above is still `@f2`'s.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -1041,7 +1046,15 @@ By how far the armory moved out: under 100 m 61 maps, 16 -> 24 won; 100 to 200 m
 
 `lab/fable/planwins.py` adds a plan's wins over a set of maps from games already played: a game depends on the
 armory search's parameters only through the site, so a map's result under a plan is that of any game with that
-site.
+site. On 21001..21300 (default 119 of 300): need 40 121 (52 armories move, +5 -3), need 50 124 (85, +12 -7), need 60
+121 (140, +20 -18), need 70 128 (184, +30 -21; `in60-vs15`, `in70-vs15`); a 400 m reach with need 50 moves 21
+(+3 -0), 400 ticks a node moves 83 (+10 -7). No order among the needs, so the default is the one played on fresh
+maps: need 50, out to 800 m. It plays `in50-vs15`'s games where the site moves and the old ones elsewhere (`fix-h`,
+8 of 8 at 10 min); with the flag at 0 the old default's (`fix-g`, 8 of 8).
+
+Open: need 70 on fresh maps; and the far plans' own opening (38 of 300 armories are now more than 260 m out, 19 more
+than 400 m): after the first quarters the builders wait for the scout to place the far sites and then carry a piece
+of wood cut by the start the whole way at 4 m/s.
 
 ## Reproduce
 
