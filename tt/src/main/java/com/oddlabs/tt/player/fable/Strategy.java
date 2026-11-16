@@ -1318,6 +1318,16 @@ class Strategy {
      * weapon, for 45 s at a time (Military.considerAttack).
      */
     float capped_min_strength = 0f;
+    /**
+     * late_min_strength (0 = off): from late_min_ticks, while the enemy's warriors are worth twice this or more, no
+     * muster with less army and stock than this. After the first campaign the gate lets 12-25 warriors go at a
+     * building whose own guard is weak, and they meet the other copies' waves on the way: in 337 attacks of 48 long
+     * games (lab/fable/launches.py eg2-log-vs15 hm1-log-vs15 sb1-log-vs15) an attack launched after minute 30 with
+     * 12-25 razes 0.15-0.30 buildings per ten warriors it loses, one with 45 or more 0.5-1.0, and the small ones are
+     * the most frequent (18-24 per window against 2-19).
+     */
+    float late_min_strength = 0f;
+    float late_min_ticks = 90000f; // 30 min
     /** Retreat when the enemy around the army is this much stronger and the chieftain cannot stun. */
     float retreat_ratio = 1.45f;
     /** Units in the staging army sent to hunt enemy peons when the enemy army is elsewhere, from raid_ticks on. */
@@ -2600,6 +2610,8 @@ class Strategy {
         attack_max_strength = (float) params.getDouble("attack_max_strength", attack_max_strength);
         capped_ratio = (float) params.getDouble("capped_ratio", capped_ratio);
         capped_min_strength = (float) params.getDouble("capped_min_strength", capped_min_strength);
+        late_min_strength = (float) params.getDouble("late_min_strength", late_min_strength);
+        late_min_ticks = (float) params.getDouble("late_min_ticks", late_min_ticks);
         retreat_ratio = (float) params.getDouble("retreat_ratio", retreat_ratio);
         raid_size = params.getInt("raid_size", raid_size);
         raid_ticks = (float) params.getDouble("raid_ticks", raid_ticks);

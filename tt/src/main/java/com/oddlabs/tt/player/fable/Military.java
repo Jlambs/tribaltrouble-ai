@@ -3953,6 +3953,14 @@ final class Military {
                 && potential * bonus >= strategy.attack_ratio * caution * defense;
         go |= potential >= strategy.attack_max_strength * caution && potential * bonus >= .8f * caution * defense;
         boolean capped_go = capped && potential * bonus >= strategy.capped_ratio * caution * defense;
+        // late_min_strength: no small musters late while the enemy still has an army
+        if ((go || capped_go) && strategy.late_min_strength > 0f && ai.now() >= strategy.late_min_ticks
+                && potential < strategy.late_min_strength
+                && Combat.total(intel.enemy_warriors) >= 2f * strategy.late_min_strength) {
+            if (count)
+                ai.aiLog().count("late_min_blocked");
+            return false;
+        }
         if (capped_go && potential < strategy.capped_min_strength) {
             capped_go = false;
             if (!go && count)
