@@ -1661,7 +1661,9 @@ final class Military {
     private static final int EVADE_STEP_CELLS = 12;
     private static final int EVADE_CLEAR_CELLS = 14;
     private static final float EVADE_MAX_TICKS = 1000f; // 20 s
-    /** evade: the step's directions, straight away from the enemy first: cosine and sine of 0, +-40 and +-80 degrees. */
+    /**
+     * evade: the step's directions, straight away from the enemy first: cosine and sine of 0, +-40 and +-80 degrees.
+     */
     private static final float[][] EVADE_TURNS = {{1f, 0f}, {.766f, .643f}, {.766f, -.643f}, {.174f, .985f}, {.174f, -.985f}};
 
     /** evade: gatherers of a kind that are out of an enemy's way (they still count as gatherers of it). */

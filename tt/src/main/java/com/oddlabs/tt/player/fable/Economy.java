@@ -5915,7 +5915,9 @@ final class Economy {
         Building armory = ai.intel().armory();
         if (armory == null || armory.isDead() || armory_field == null)
             return;
-        sendGatherer(peon, kind == PeonState.GATHER_TREE ? TreeSupply.class : kind == PeonState.GATHER_IRON ? IronSupply.class : RockSupply.class, armory);
+        sendGatherer(peon,
+                kind == PeonState.GATHER_TREE ? TreeSupply.class : kind == PeonState.GATHER_IRON ? IronSupply.class : RockSupply.class,
+                armory);
     }
 
     private static boolean isGathering(@NonNull PeonState s) {

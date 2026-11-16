@@ -112,8 +112,8 @@ final class TripTrace {
                 u.isDead() ? "-" : u.getPrimaryController().getClass().getSimpleName(), ai.military().threatNear(
                         u.getGridX(), u.getGridY(), 11), ai.military().baseThreatLevel(),
                 home == null || home.isDead() ? "-" : home == intel.armory() ? "main" : "old",
-                near == null ? -1 : (int) Math.sqrt(near2), near == null ? "-" : Intel.isParked(near) ? "parked"
-                        : "active", around, shelter));
+                near == null ? -1 : (int) Math.sqrt(near2), near == null ? "-" : Intel.isParked(
+                        near) ? "parked" : "active", around, shelter));
     }
 
     private static int homeCells(@NonNull Intel intel, @NonNull Unit u) {
