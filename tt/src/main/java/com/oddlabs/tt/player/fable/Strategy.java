@@ -2011,6 +2011,12 @@ class Strategy {
     float split_far_margin = 1f;
     boolean split_reinforce = false;
     /**
+     * split_worn (share, 0 = off): a second force down to this share of the most it ever had while still more than
+     * 30 cells from its target merges at once (sq4-log-vs15 s21003: 37 went, 28 were left 57 cells out, 19 turned
+     * back at 37 cells; and 44 went, 18 turned back at the target).
+     */
+    float split_worn = 0f;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2142,6 +2148,7 @@ class Strategy {
         split_far = (float) params.getDouble("split_far", split_far);
         split_far_margin = (float) params.getDouble("split_far_margin", split_far_margin);
         split_reinforce = params.getBoolean("split_reinforce", split_reinforce);
+        split_worn = (float) params.getDouble("split_worn", split_worn);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);

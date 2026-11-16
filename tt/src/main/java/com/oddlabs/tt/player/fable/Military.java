@@ -4284,6 +4284,7 @@ final class Military {
     private float wing_ended = -5000f;
     private float wing_checked = -5000f;
     private int wing_start_size;
+    private float wing_peak;
 
     /** split: whether the army is big and calm enough to send a second force, and sends it. */
     private void considerSplit() {
@@ -4345,6 +4346,7 @@ final class Military {
         wing_progress = now;
         wing_since = now;
         wing_start_size = n;
+        wing_peak = sent;
         ai.aiLog().count("split");
         ai.log(String.format("split: %d (%.1f) of the army's %.1f go for %s's %s at %d,%d, %d cells out, defense %.1f",
                 n, sent, total, wing_owner.getPlayerInfo().getName(), Intel.kind(t), t.getGridX(), t.getGridY(),
@@ -4444,6 +4446,13 @@ final class Military {
         float ours = Combat.total(squad);
         if (ours < strategy.split_merge) {
             wingMerge(squad, "small");
+            return;
+        }
+        wing_peak = Math.max(wing_peak, ours);
+        if (strategy.split_worn > 0f && ours < strategy.split_worn * wing_peak && wing_target != null
+                && !wing_target.isDead() && MapAnalysis.dist2(c[0], c[1], wing_target.getGridX(),
+                        wing_target.getGridY()) > 30 * 30) {
+            wingMerge(squad, "worn");
             return;
         }
         float danger = Combat.strengthNear(intel.enemy_warriors, c[0], c[1], 24);
