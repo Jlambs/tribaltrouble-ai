@@ -1453,6 +1453,11 @@ with 10.8 more warriors at minute 10 and 0.2 more copies out at minutes 10, 15 a
 game and no swallowed error: 20 of 20 against one Hard, 12 of 12 against six, 19 of 20 against ten (large maps,
 `rb1-vs1`, `rb6-vs6`, `rb10-vs10`).
 
+Screen `bt3` around the default (run 0 is `lg2-04`, 64 wins of the 100 open maps; wins by run 64 63 61 65 66 61 64
+64): `hold_chieftain_again=40` (the trainer of a chieftain after the first keeps 40 peons, 129 s of training) -0.5
++- 1.8, `evade_tower=70` 0.0 +- 2.4 (so the reach of the step towards a tower, open since the morning, is flat),
+`shred_range=200` +0.5 +- 3.2, `shred_min=6` 0.0 +- 2.9. The mission's settings are flat around the default.
+
 ### After the first campaign under the blast default: one attack that never ends (`lab/fable/rebuild.py`)
 
 The new default on the 16 logged long maps, full length (`nd1-log-vs15`): 11 wins, 4 losses and a draw where the old
