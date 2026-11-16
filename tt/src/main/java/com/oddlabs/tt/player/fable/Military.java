@@ -688,6 +688,7 @@ final class Military {
         peonRush();
         restoreDodge();
         towerFire();
+        razeTick();
         if (ai.strategy().breach) {
             breachRefill();
             breachTick();
@@ -4261,6 +4262,126 @@ final class Military {
                 ai.owner().setTarget(Selectable.newArray(p), site, Action.DEFAULT, false);
             else if (site == null && MapAnalysis.dist2(p.getGridX(), p.getGridY(), back[0], back[1]) > 6 * 6)
                 move(p, back[0], back[1]);
+        }
+    }
+
+    /** raze: the building each warrior of the attack is on, and when it was last told so. */
+    private final Map<@NonNull Unit, @NonNull Building> raze_assign = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, Float> raze_orders = new LinkedHashMap<>();
+    private final Map<@NonNull Building, Float> raze_started = new LinkedHashMap<>();
+
+    /** raze: puts the attack's warriors by an enemy building on that building (Strategy.raze). */
+    private void razeTick() {
+        Strategy strategy = ai.strategy();
+        if (strategy.raze <= 0)
+            return;
+        raze_assign.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead());
+        raze_orders.keySet().removeIf(Unit::isDead);
+        for (Iterator<Map.Entry<Building, Float>> it = raze_started.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, Float> e = it.next();
+            if (!e.getKey().isDead())
+                continue;
+            ai.aiLog().count("raze_down");
+            ai.log(String.format("raze: %s at %d,%d down %.0f s after the first order", Intel.kind(e.getKey()),
+                    e.getKey().getGridX(), e.getKey().getGridY(), (ai.now() - e.getValue()) / 50f));
+            it.remove();
+        }
+        if (mode != Mode.ATTACK) {
+            raze_assign.clear();
+            return;
+        }
+        Intel intel = ai.intel();
+        List<Unit> army = withRole(Role.ATTACK);
+        if (army.isEmpty())
+            return;
+        int[] c = MapAnalysis.centroid(army);
+        int r2 = strategy.raze * strategy.raze;
+        // the buildings worth throwing at: all but unmanned towers, with enough of the attack near
+        List<Building> goals = new ArrayList<>();
+        for (Building b : intel.enemy_buildings) {
+            if (b.isDead() || MapAnalysis.dist2(b.getGridX(), b.getGridY(), c[0], c[1]) > 70 * 70)
+                continue;
+            boolean tower = b.getTemplate().getTemplateID() == Race.BUILDING_TOWER;
+            if (tower && b.isComplete() && (!strategy.raze_towers || !Intel.isTowerManned(b)))
+                continue;
+            int near = 0;
+            for (Unit u : army)
+                if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), b.getGridX(), b.getGridY()) <= r2)
+                    near++;
+            if (near >= strategy.raze_min)
+                goals.add(b);
+        }
+        if (goals.isEmpty()) {
+            raze_assign.clear();
+            return;
+        }
+        List<Unit> foes = new ArrayList<>();
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
+            for (Unit e : group)
+                if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0], c[1]) <= 90 * 90)
+                    foes.add(e);
+        int throw2 = THROW_CELLS * THROW_CELLS;
+        Map<Building, List<Unit>> squads = new LinkedHashMap<>();
+        Map<Building, Integer> on = new LinkedHashMap<>();
+        if (strategy.raze_per > 0)
+            for (Building b : raze_assign.values())
+                on.merge(b, 1, Integer::sum);
+        for (Unit u : army) {
+            WarriorState st = intel.warrior_states.get(u);
+            if (st == WarriorState.STUNNED || st == WarriorState.ENTER)
+                continue;
+            int ux = u.getGridX();
+            int uy = u.getGridY();
+            Building goal = null;
+            int best = r2;
+            for (Building b : goals) {
+                int d = MapAnalysis.dist2(ux, uy, b.getGridX(), b.getGridY());
+                if (d <= best) {
+                    best = d;
+                    goal = b;
+                }
+            }
+            if (goal == null) {
+                raze_assign.remove(u);
+                continue;
+            }
+            boolean foe = false;
+            for (Unit e : foes)
+                if (!e.isDead() && MapAnalysis.dist2(ux, uy, e.getGridX(), e.getGridY()) <= throw2) {
+                    foe = true;
+                    break;
+                }
+            if (foe) {
+                raze_assign.remove(u);
+                continue;
+            }
+            Building was = raze_assign.get(u);
+            if (strategy.raze_per > 0 && was != goal && on.getOrDefault(goal, 0) >= strategy.raze_per)
+                continue;
+            // its order of this round would walk it off the building
+            for (List<Unit> pending : pending_orders.values())
+                pending.remove(u);
+            boolean throwing = u.getCurrentController() instanceof HuntController hunt && hunt.getTarget() == goal;
+            Float last = raze_orders.get(u);
+            if (throwing || (was == goal && last != null && !ai.periodDue(last, 150f)))
+                continue;
+            if (was != goal && strategy.raze_per > 0)
+                on.merge(goal, 1, Integer::sum);
+            raze_assign.put(u, goal);
+            raze_orders.put(u, ai.now());
+            last_order.put(u, ai.now());
+            squads.computeIfAbsent(goal, k -> new ArrayList<>()).add(u);
+        }
+        for (Map.Entry<Building, List<Unit>> e : squads.entrySet()) {
+            Building b = e.getKey();
+            if (!raze_started.containsKey(b)) {
+                raze_started.put(b, ai.now());
+                ai.log(String.format("raze: %d warriors on the %s at %d,%d (%d hp)", e.getValue().size(), Intel.kind(b),
+                        b.getGridX(), b.getGridY(), b.getHitPoints()));
+            }
+            for (int k = 0; k < e.getValue().size(); k++)
+                ai.aiLog().count("raze_order");
+            ai.owner().setTarget(e.getValue().toArray(new Selectable<?>[0]), b, Action.ATTACK, false);
         }
     }
 

@@ -1955,6 +1955,21 @@ class Strategy {
     boolean breach_solo = true;
     int breach_solo_foes = 2;
     /**
+     * raze (cells, 0 = off): the copies still housed at minute 20 decide the game (800 games of sb1: 8 or fewer 60 to
+     * 88 % won, 9 30 %, 10 15 %, 11 or more 2 %), and a copy takes the army 108 s, of which 40 are the march
+     * (fd0-log-vs15: 15 s lingering, 40 marching, 19 from arrival to the first raze, 34 razing). At the base nothing
+     * orders a warrior onto a building: the army attack-moves, and the engine's scan picks warriors, then peons, then
+     * towers, and quarters and armories last, so the 400 throws the buildings need come after every peon in sight.
+     * With raze the attack's warriors within this many cells of an enemy quarters, armory, site or manned tower (when
+     * raze_towers) throw at the nearest of them, once raze_min of them are that near; a warrior with an enemy warrior
+     * or chieftain in throwing reach fights that instead (micro_targets). raze_per (0 = all) caps the warriors on one
+     * building.
+     */
+    int raze = 0;
+    int raze_min = 6;
+    boolean raze_towers = true;
+    int raze_per = 0;
+    /**
      * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
      * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
      * goes where he stands, not where his spot is: fd2-log-vs15).
@@ -2070,6 +2085,10 @@ class Strategy {
         breach_gate_ticks = (float) params.getDouble("breach_gate_ticks", breach_gate_ticks);
         breach_solo = params.getBoolean("breach_solo", breach_solo);
         breach_solo_foes = params.getInt("breach_solo_foes", breach_solo_foes);
+        raze = params.getInt("raze", raze);
+        raze_min = params.getInt("raze_min", raze_min);
+        raze_towers = params.getBoolean("raze_towers", raze_towers);
+        raze_per = params.getInt("raze_per", raze_per);
         feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
