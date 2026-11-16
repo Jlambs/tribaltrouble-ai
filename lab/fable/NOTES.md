@@ -708,12 +708,53 @@ in the far zone 181 (weight 2) and 172 (weight 5) against 174, enemy warriors de
 warriors at 20 / 25 / 30 / 35 min 84 / 44 / 33 / 31 and 106 / 57 / 30 / 65 against 99 / 46 / 37 / 52. No effect that
 twelve games can show: the far fights are not made of the groups the shepherds park.
 
-### Screen `sb1` (running when this was written): bastion x army weight x tower rebuilding, 100 maps each
+### Screen `sb1`: bastion x army weight x tower rebuilding, 100 maps each: nothing
 
 Bastion alone and the weight of 5 were the two arms the logged games could not call (iron and tower kills up with
-the bastion, the army up at three of four minutes with the weight), so they go to 100 maps with
+the bastion, the army up at three of four minutes with the weight), so they went to 100 maps with
 `tower_parallel_late=3` (three tower sites at a time from 10 min, for the towers the bastion loses):
 `python lab/fable/screen.py read sb1`, base `sb1-00` = `def3-vs15`.
+
+Wins by run 41 37 43 40 39 38 45 41 (mean 40.5). Main effects: bastion -3.0 +- 2.6, army weight +3.5 +- 3.1, three
+tower sites +0.5 +- 2.4; the minute-20 model sees the weight at -2.3 and -1.2 in the two runs that won most, so the
++3.5 is noise. All three stay off.
+
+Five of the seven runs had one game with a swallowed `AssertionError` (1 to 3 times, 52 to 99 minutes in):
+`sendGatherer` asked a peon for its controller after a gather order that a loaded peon standing by its armory
+answers by delivering at once, so it was inside the building. Fixed (f1736088); the default's games are unchanged
+(8 of 8, `fix-d`).
+
+### On whose ground warriors die (`lab/fable/ground.py`; any run, no logs needed)
+
+`sb1-00` (the defaults, 100 maps), warriors dead a game, enemy / ours = exchange:
+
+| minutes | our towers (17 cells) | our base (40 cells) | the field | their base (30 cells) | their towers (17 cells) |
+|---|---|---|---|---|---|
+| 12-20 | 53 / 8 = 7.0 | 24 / 12 = 2.0 | 98 / 68 = 1.5 | 50 / 23 = 2.2 | 52 / 36 = 1.5 |
+| 20-30 | 231 / 24 = 9.5 | 74 / 31 = 2.4 | 66 / 61 = 1.1 | 26 / 13 = 2.0 | 33 / 20 = 1.6 |
+| 30-60 | 428 / 39 = 11.0 | 142 / 60 = 2.4 | 108 / 73 = 1.5 | 41 / 19 = 2.1 | 36 / 27 = 1.3 |
+
+Of about 510 warriors we lose a game from minute 12, 200 fall in the field at 1.1 to 1.5 and 83 under enemy towers at
+1.3 to 1.6. `lab/fable/lostfar.py` (logged games) splits the losses by role and company: under their towers it is the
+attack in a big group (60 of 80 with 31+ mates within 12 cells) with few enemy warriors about (52 of 80 with at most
+three within 14 cells): the garrison's work. In the field it is the attack (72: half in real battles against ten or
+more), reinforcements on their way (33, two thirds alone or in small groups against ten or more) and the home army (14).
+
+### What a throw is worth, and what a tower is
+
+Read in the engine (`RacesResources`, `WeaponFactory`, `InstantHitFactory`): a throw hits with (weapon + terrain)
+x (1 - the target's defense): iron axe .75, rock .5, rubber .95; defense iron warrior .7, rock warrior .5, peon 0,
+building 0, stunned unit 0. So iron on iron is .225 a throw, on a stunned warrior .75, and a tower's garrison (three
+times the chance) .675: one manned tower is three iron warriors that take 133 axe throws (100 hit points at .75 a
+throw) instead of 4.4 each. A peon's or a chieftain's swing at a tower always does 6: 17 swings.
+
+`lab/fable/etowers.py` on `sb1-00`: 25.6 enemy towers a game, 15.7 razed; 148 of our warriors die within 17 cells of
+one (deaths in reach of two count twice), in 565 s of dying: 0.26 a second, 9.4 warriors a razed tower. The 5.6 towers
+a game with ten or more dead hold 64 % of them and stand a median 63 s after the first death. Why (logged games):
+the sappers trail six cells behind the army's centre and go only for a tower within 18 cells of that centre with
+little about; an army jammed in the trees sends its head into the towers in ones and twos while its centre stands 25
+cells back (s21001: 37 warriors in 155 s under two towers with 130 in the army and not one sapper order); and the
+refill takes the gatherers nearest the army, two every 5 to 10 s, which walk to it alone (s21001: 108 peons).
 
 ## Reproduce
 
