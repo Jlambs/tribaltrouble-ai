@@ -46,6 +46,15 @@ class Strategy {
     int quarters_builders = 12;
     int tower_builders = 8;
     /**
+     * builders_floor: a site gets at most four builders per tree within 12 cells of it, but never fewer than this.
+     * At 6 a site whose near trees are cut (or that never had many) is built by six peons that walk 12 to 20 cells for
+     * every piece while dozens stand idle (op1-log-vs15 s21012: armory after 306 s, 54 of 82 peons idle at 300 s); on
+     * the 24 screening maps whose sixth quarters stands after 330 s the default wins one game in eight.
+     * builders_far (cells, 0 = off): the site may also have one builder per tree within this many cells.
+     */
+    int builders_floor = 6;
+    int builders_far = 0;
+    /**
      * tower_wood_drop: a placed tower site with at most tower_wood_trees trees within 7 cells gets its wood carried
      * from the nearest complete armory within tower_wood_reach cells that can spare it (the armory's transport-wood
      * deploy, 1 piece of 5 HP per peon), at most tower_wood_max pieces per project, while the armory keeps
@@ -2322,6 +2331,8 @@ class Strategy {
         scouts = params.getInt("scouts", scouts);
         armory_builders = params.getInt("armory_builders", armory_builders);
         quarters_builders = params.getInt("quarters_builders", quarters_builders);
+        builders_floor = params.getInt("builders_floor", builders_floor);
+        builders_far = params.getInt("builders_far", builders_far);
         tower_builders = params.getInt("tower_builders", tower_builders);
         tower_wood_drop = params.getBoolean("tower_wood_drop", tower_wood_drop);
         tower_wood_trees = params.getInt("tower_wood_trees", tower_wood_trees);

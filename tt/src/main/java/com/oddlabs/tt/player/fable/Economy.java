@@ -274,6 +274,63 @@ final class Economy {
             swarm.tick();
         allocatePeons();
         manageRepairs();
+        if (ai.logging() && ai.now() < 24000f && ai.periodDue(site_traced, 500f)) { // 8 min, every 10 s
+            site_traced = ai.now();
+            traceSites();
+        }
+    }
+
+    private float site_traced = -5000f;
+
+    /**
+     * Log only: for every building going up, its hit points and where its builders are: carrying wood, at the site
+     * (within 4 cells), or chopping and how far from it, with the trees left within 8 and 16 cells of the site.
+     */
+    private void traceSites() {
+        Intel intel = ai.intel();
+        int idle = intel.countPeons(PeonState.IDLE);
+        for (Project p : projects) {
+            Building b = p.building;
+            if (b == null || b.isDead() || !b.isPlaced() || b.isComplete())
+                continue;
+            int builders = 0;
+            int loaded = 0;
+            int at = 0;
+            int chopping = 0;
+            int far = 0;
+            long sum = 0;
+            for (Unit u : intel.peons) {
+                if (!(u.getPrimaryController() instanceof com.oddlabs.tt.model.behaviour.RepairController rc)
+                        || rc.getBuilding() != b)
+                    continue;
+                builders++;
+                int d = (int) Math.sqrt(MapAnalysis.dist2(u.getGridX(), u.getGridY(), b.getGridX(), b.getGridY()));
+                sum += d;
+                far = Math.max(far, d);
+                if (u.getSupplyContainer().getNumSupplies() > 0)
+                    loaded++;
+                if (d <= 4)
+                    at++;
+                if (u.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.HarvestController)
+                    chopping++;
+            }
+            int trees8 = 0;
+            int trees16 = 0;
+            for (TreeSupply t : ai.map().getTrees()) {
+                if (t.isEmpty())
+                    continue;
+                int d2 = MapAnalysis.dist2(t.getGridX(), t.getGridY(), b.getGridX(), b.getGridY());
+                if (d2 <= 8 * 8)
+                    trees8++;
+                if (d2 <= 16 * 16)
+                    trees16++;
+            }
+            ai.log(String.format(
+                    "site trace: %s#%d at %d,%d hp %d, placed %.0f s ago: %d builders (%d loaded, %d within 4 cells, %d chopping; mean %d cells away, farthest %d); trees within 8 cells %d, within 16 %d; idle peons %d",
+                    Intel.kind(b), p.id, b.getGridX(), b.getGridY(), b.getHitPoints(),
+                    p.placed_time < 0f ? -1f : (ai.now() - p.placed_time) / 50f, builders, loaded, at, chopping,
+                    builders == 0 ? 0 : (int) (sum / builders), far, trees8, trees16, idle));
+        }
     }
 
     /**
@@ -2136,7 +2193,11 @@ final class Economy {
             return 0; // nothing may take the first quarters' builders
         // More builders than the trees nearby can feed only get in each other's way.
         int trees = ai.map().treesAround(p.site.x, p.site.y, 12);
-        int feedable = Math.max(6, 4 * trees);
+        int feedable = Math.max(strategy.builders_floor, 4 * trees);
+        // builders_far: trees farther out feed builders too, one each; a trip only takes longer
+        if (strategy.builders_far > 0)
+            feedable = Math.max(feedable, Math.min(MAX_BUILDERS, ai.map().treesAround(p.site.x, p.site.y,
+                    strategy.builders_far)));
         int cap = switch (p.type) {
             case Race.BUILDING_ARMORY -> have_armory ? 12 : MAX_BUILDERS;
             case Race.BUILDING_QUARTERS -> armsRace() ? 3 : have_armory ? strategy.quarters_builders : MAX_BUILDERS;
