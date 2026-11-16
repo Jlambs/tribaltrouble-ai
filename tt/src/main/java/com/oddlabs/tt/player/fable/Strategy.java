@@ -969,6 +969,27 @@ class Strategy {
      */
     boolean satellite = false;
     /**
+     * sat_staff: a satellite gets the peons its stock can use. Its workers and wood gatherers come out of the peons
+     * inside it, and only gatherers it recalls ever go in, so a satellite the iron gatherers were linked to sat on
+     * its iron: eg0-log-vs15 s21194, minutes 60-90, 45 iron gatherers, 36 iron and 17 wood in stock, 1 worker
+     * inside and 1 wood gatherer of 26 wanted, while the main armory 50 cells away held 45-130 idle workers and no
+     * weapon was made; s21589's held 139 iron and 1 wood. With it a satellite is to have a forger for every weapon
+     * its stock pays for and a wood gatherer for every four wood its iron lacks (at most SAT_STAFF_MAX each), free
+     * peons and then the main armory's spare workers walk over, and it keeps the ones meant for its wood.
+     */
+    boolean sat_staff = false;
+    /**
+     * stock_balance: workers the main armory's stock cannot employ go for the wood its iron waits for. The plan
+     * splits the pool by the trips' model, and when iron piles up it cuts the iron gatherers and counts the peons
+     * freed as forgers, who have no wood to forge with: from minute 20 the armory has under two wood and iron in
+     * stock in 22-38 % of the half-minute samples of 16 long games (eg0-log-vs15), with 11-40 iron and 31-60 workers
+     * inside. Each plan tick with four or more wood missing (two per iron in stock) and four or more workers
+     * inside beyond the forgers the plan's rate of weapons needs (the forge works with everyone inside, so those
+     * stay), three more are wanted as wood gatherers, up to the wood missing and STOCK_BALANCE_MAX; three fewer when
+     * the wood is there.
+     */
+    boolean stock_balance = false;
+    /**
      * ore_reach: when rock weapons are wanted but no iron is left within the 400 m field, look for iron in the far
      * field (2 x ore_reach) before settling on rock (rock-only stretches in 73 of 500 ludicrous N=13 games; 3 of the 4
      * logged N=6 losses were iron-window cases).
@@ -1343,6 +1364,18 @@ class Strategy {
     float defend_hysteresis = .15f;
     /** Answer harassment away from the base with this many times its strength, not the whole army; 0 sends all. */
     float response_ratio = 2f;
+    /**
+     * harass_memory_ticks (game ticks, 0 = off): an enemy warrior away from the base is a threat only while a peon of
+     * ours is within 12 cells of it, and peons step away from it (evade) or run home, so the threat ends within a
+     * second or two, the warriors sent at it stop, and it is there again when the peons come back: eg2-log-vs15
+     * s21327 logs a new threat of one or two warriors every 1-2 s for minutes, and from minute 30 an iron gatherer
+     * steps out of an enemy's way 69 times a minute a game (16 long games), half of the times from a single warrior
+     * and 42 % within 3 s of setting out again; 15-29 % of the gatherers' time ends in a delivered load. With it such
+     * a warrior stays a threat for this long after the last peon was near it, while it is within
+     * harass_memory_cells of a quarters or armory of ours.
+     */
+    float harass_memory_ticks = 0f;
+    int harass_memory_cells = 120;
 
     /**
      * Against several enemies, keep gathering away from the enemies while the base is threatened but the armory
@@ -2487,6 +2520,8 @@ class Strategy {
         gather_home = params.getBoolean("gather_home", gather_home);
         relink_guard = params.getBoolean("relink_guard", relink_guard);
         satellite = params.getBoolean("satellite", satellite);
+        sat_staff = params.getBoolean("sat_staff", sat_staff);
+        stock_balance = params.getBoolean("stock_balance", stock_balance);
         ore_iron_first = params.getBoolean("ore_iron_first", ore_iron_first);
         ore_reach_fail = params.getBoolean("ore_reach_fail", ore_reach_fail);
         weapon_reserve = params.getInt("weapon_reserve", weapon_reserve);
@@ -2577,6 +2612,8 @@ class Strategy {
         forward_ratio = (float) params.getDouble("forward_ratio", forward_ratio);
         defend_hysteresis = (float) params.getDouble("defend_hysteresis", defend_hysteresis);
         response_ratio = (float) params.getDouble("response_ratio", response_ratio);
+        harass_memory_ticks = (float) params.getDouble("harass_memory_ticks", harass_memory_ticks);
+        harass_memory_cells = params.getInt("harass_memory_cells", harass_memory_cells);
         gather_under_threat = params.getBoolean("gather_under_threat", gather_under_threat);
         gather_threat_1v1 = params.getBoolean("gather_threat_1v1", gather_threat_1v1);
         stuck_trip_factor = (float) params.getDouble("stuck_trip_factor", stuck_trip_factor);

@@ -4084,6 +4084,58 @@ final class Economy {
     private final Map<@NonNull Building, Float> sat_field_times = new LinkedHashMap<>();
     private final Map<@NonNull Building, Float> sat_tended = new LinkedHashMap<>();
 
+    /** sat_staff: the most forgers, and the most wood gatherers, a satellite is given for its stock. */
+    private static final int SAT_STAFF_MAX = 12;
+    /** sat_staff: the peons walking over to each satellite, and when the main armory last let workers out for one. */
+    private final Map<@NonNull Unit, @NonNull Building> sat_inbound = new LinkedHashMap<>();
+    private float sat_feed_last = -50000f;
+    /** stock_balance: the most workers it sends for wood, and how many it wants out now. */
+    private static final int STOCK_BALANCE_MAX = 40;
+    private int balance_wood;
+
+    /**
+     * sat_staff: free peons, and then workers the main armory can spare, walk to each satellite that has fewer
+     * peons inside and on the way than its workers and its missing wood gatherers ask for.
+     */
+    private void feedSatellites(@NonNull List<@NonNull Unit> free, @NonNull Building armory) {
+        Intel intel = ai.intel();
+        sat_inbound.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead()
+                || intel.peon_states.get(e.getKey()) != PeonState.TRANSIT);
+        int spare = armory.getUnitContainer().getNumSupplies() - armory.getDeployContainer(
+                DeployType.PEON).getNumSupplies() - Math.max(want_workers, 3);
+        for (Building sat : satellites()) {
+            int[] w = sat_wants.get(sat);
+            if (w == null || ai.military().threatNearEcon(sat.getGridX(), sat.getGridY(), 16))
+                continue;
+            int inbound = 0;
+            for (Building b : sat_inbound.values())
+                if (b == sat)
+                    inbound++;
+            int need = w[1] + Math.max(0, w[0] - intel.countLinkedGatherers(PeonState.GATHER_TREE,
+                    sat)) - sat.getUnitContainer().getNumSupplies() - inbound;
+            if (need <= 0)
+                continue;
+            List<Unit> chosen = new ArrayList<>();
+            takeNearest(free, chosen, need, sat.getGridX(), sat.getGridY());
+            for (Unit u : chosen) {
+                order(u, sat, ai.enterAction(sat));
+                sat_inbound.put(u, sat);
+                ai.aiLog().count("sat_staff_sent");
+            }
+            need -= chosen.size();
+            if (need > 0 && spare > 0 && armory.getDeployContainer(DeployType.PEON).getNumSupplies() == 0
+                    && ai.periodDue(sat_feed_last, 250f)) { // 5 s
+                int n = Math.min(need, spare);
+                ai.owner().deployUnits(armory, DeployType.PEON, n);
+                spare -= n;
+                sat_feed_last = ai.now();
+                ai.aiLog().count("sat_staff_deploy");
+                if (ai.logging())
+                    ai.log("sat_staff: " + n + " workers leave the main armory for the satellite at " + sat.getGridX() + "," + sat.getGridY() + " (" + sat.getUnitContainer().getNumSupplies() + " inside, " + inbound + " on the way, to have " + w[1] + " workers and " + w[0] + " wood gatherers)");
+            }
+        }
+    }
+
     /** satellite: whether this armory, finished and not the main one, keeps gathering and forging. */
     private boolean isSatellite(@Nullable Building a) {
         return ai.strategy().satellite && a != null && !a.isDead() && a.isComplete() && a != ai.intel().armory()
@@ -4218,6 +4270,9 @@ final class Economy {
         if (sat) {
             int[] w = sat_wants.get(armory);
             int keep = w != null ? w[1] : 2;
+            // sat_staff: and the peons that are to go out for its wood
+            if (ai.strategy().sat_staff && w != null)
+                keep += Math.max(0, w[0] - ai.intel().countLinkedGatherers(PeonState.GATHER_TREE, armory));
             if (left > keep && pending == 0 && !refuge)
                 owner.deployUnits(armory, DeployType.PEON, left - keep);
             return;
@@ -5256,6 +5311,23 @@ final class Economy {
             want_iron = want_ore;
         }
         want_workers = Math.max(2, pool - want_tree - want_ore);
+        // stock_balance: workers the stock cannot employ go for the wood its iron waits for
+        if (st.stock_balance && !rock_weapons) {
+            int missing = 2 * iron_stock - tree_stock;
+            // the forge works with everyone inside (WeaponsProducer), so the plan's own share of forgers stays in
+            int idle = armory_workers - Math.max(6, Math.round(work * x));
+            if (missing >= 4 && idle >= 4)
+                balance_wood = Math.min(Math.min(balance_wood + 3, missing), STOCK_BALANCE_MAX);
+            else if (missing < 4)
+                balance_wood = Math.max(0, balance_wood - 3);
+            if (balance_wood > 0) {
+                want_tree += balance_wood;
+                want_workers = Math.max(2, want_workers - balance_wood);
+                ai.aiLog().count("stock_balance"); // plan ticks (3 s)
+            }
+        } else {
+            balance_wood = 0;
+        }
         // rock_stream: once a unit of iron costs more gatherer-ticks than rock_stream_iron_ticks (measured, not
         // modelled: the model's iron cycle is 1.5-5 times too optimistic after 10 min), the armory's waiting workers
         // go for rock and the wood it needs (a rock axe: 2 wood, 1 rock, 40 man-s, 0.6 of an iron warrior); beyond
@@ -5369,7 +5441,8 @@ final class Economy {
         sat_wants.keySet().removeIf(b -> !sats.contains(b));
         if (!sats.isEmpty()) {
             // rock_real: the rock line's wood gatherers and forgers are the main armory's
-            int tree_all = Math.max(0, want_tree - rock_real_wood);
+            // stock_balance: and so are the wood gatherers out for the main armory's own stock
+            int tree_all = Math.max(0, want_tree - rock_real_wood - balance_wood);
             int workers_all = Math.max(2, want_workers - rock_real_forge);
             int iron_all = g_iron + sat_iron;
             StringBuilder sb = new StringBuilder();
@@ -5382,9 +5455,16 @@ final class Economy {
                 if (2 * stock > sat.getSupplyContainer(TreeSupply.class).getNumSupplies())
                     wood = Math.max(wood, 2);
                 int keep = gi > 0 || stock > 0 ? Math.max(2, Math.round(workers_all * share)) : 0;
-                sat_wants.put(sat, new int[]{wood, keep});
                 want_tree = Math.max(0, want_tree - wood);
                 want_workers = Math.max(2, want_workers - keep);
+                if (st.sat_staff) {
+                    // a forger for every weapon its stock pays for, a wood gatherer for every four wood its iron lacks
+                    int sat_wood = sat.getSupplyContainer(TreeSupply.class).getNumSupplies();
+                    keep = Math.max(keep, Math.min(SAT_STAFF_MAX, Math.min(stock, sat_wood / 2)));
+                    if (2 * stock > sat_wood)
+                        wood = Math.max(wood, Math.min(SAT_STAFF_MAX, (2 * stock - sat_wood + 3) / 4));
+                }
+                sat_wants.put(sat, new int[]{wood, keep});
                 if (ai.logging())
                     sb.append(String.format(" %d,%d: iron %d wood %d/%d workers %d/%d stock %d/%d;", sat.getGridX(),
                             sat.getGridY(), gi, intel.countLinkedGatherers(PeonState.GATHER_TREE, sat), wood,
@@ -5828,6 +5908,9 @@ final class Economy {
             }
             return;
         }
+        // sat_staff: a satellite short of peons comes before the main armory's bench
+        if (ai.strategy().sat_staff && work == armory && !danger)
+            feedSatellites(free, armory);
         if (work != null)
             for (Unit u : free)
                 order(u, work, Action.DEFAULT);

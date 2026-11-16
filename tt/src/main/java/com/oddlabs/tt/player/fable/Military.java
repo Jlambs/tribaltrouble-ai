@@ -71,6 +71,8 @@ final class Military {
 
     // Threat to the base, recomputed every tick.
     private final List<@NonNull Unit> threats = new ArrayList<>();
+    /** harass_memory_ticks: the enemy warriors that came at our peons away from the base, and when last. */
+    private final Map<@NonNull Unit, Float> harassers = new LinkedHashMap<>();
     /** Enemy peons raiding the base, kept apart from the threats so that they do not draw the army about. */
     private final List<@NonNull Unit> raiders = new ArrayList<>();
     private float threat_strength;
@@ -905,6 +907,11 @@ final class Military {
             pxs[np] = p.getGridX();
             pys[np++] = p.getGridY();
         }
+        float memory = ai.strategy().harass_memory_ticks;
+        float now = ai.now();
+        if (memory > 0f)
+            harassers.entrySet().removeIf(h -> h.getKey().isDead() || now - h.getValue() > memory);
+        int mc = ai.strategy().harass_memory_cells;
         for (Unit e : enemies) {
             if (ai.decoys().caged(e))
                 continue;
@@ -941,6 +948,11 @@ final class Military {
                 at_base.add(e);
             } else if (near_peons) {
                 threats.add(e);
+                if (memory > 0f)
+                    harassers.put(e, now);
+            } else if (memory > 0f && harassers.containsKey(e) && homeCells(e) <= mc) {
+                threats.add(e);
+                ai.aiLog().count("harass_remembered"); // threat-ticks (0.5 s)
             } else if (exempt) {
                 ai.aiLog().count("parked_exempt");
             }
@@ -1027,6 +1039,16 @@ final class Military {
         threat_level = base_threat_strength >= 3f || at_armory ? 2 : 1;
         if (threat_level == 2)
             last_base_threat = ai.now();
+    }
+
+    /** harass_memory_ticks: cells from the unit to our nearest quarters or armory. */
+    private int homeCells(@NonNull Unit u) {
+        int best = Integer.MAX_VALUE;
+        for (List<Building> list : List.of(ai.intel().armories, ai.intel().quarters))
+            for (Building b : list)
+                if (!b.isDead())
+                    best = Math.min(best, MapAnalysis.dist2(b.getGridX(), b.getGridY(), u.getGridX(), u.getGridY()));
+        return best == Integer.MAX_VALUE ? best : (int) Math.sqrt(best);
     }
 
     private void defend() {
