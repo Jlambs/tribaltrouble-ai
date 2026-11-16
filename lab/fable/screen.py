@@ -45,6 +45,12 @@ SCREENS = {
         ('army_weight_5', '', 'shepherd_army_weight=5'),
         ('tower_parallel_3', '', 'tower_parallel_late=3'),
     ], '21001..21100'),
+    # the three drills of the pace work, which 12 logged games each could not call (pc1-00 is the default)
+    'pc1': ([
+        ('raze_12', '', 'raze=12'),
+        ('breach', '', 'breach=true'),
+        ('hold_multi', '', 'hold_ratio=0.3,hold_multi=true'),
+    ], '21001..21100'),
 }
 FACTORS, SEEDS = SCREENS['scr1']
 ENEMIES = 15
