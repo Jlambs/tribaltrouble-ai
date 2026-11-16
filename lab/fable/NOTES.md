@@ -472,6 +472,104 @@ Where the lost games end (300 default games at N=15): with 10 or more copies sti
 of 87 min (10 %: 62, 90 %: 138). So no game is lost close to won: the campaign stalls at 5-8 copies taken, and the
 rest is a long siege of our base.
 
+### The three systems confirmed, and made the default
+
+On 200 fresh maps (dev seeds 21101..21300, `base-b-vs15` against `sei-b-vs15`): 72 wins against 81 (+32 / -23,
+z 1.2); the state model at minute 20 +7.9 +- 1.8 points (z 4.3), at minute 30 +8.3 +- 2.5 (z 3.3); survival +1.5 min
+(z 2.0). With the 100 screening maps: 112 of 300 against 126 (+48 / -34, z 1.55). So the gain is about 4-5 points
+of wins, not more. They are fable's defaults since `58a2e74b` (`same5-vs15`: 8 of 8 games identical to the arm's).
+
+What they change, by minute (`lab/fable/flow.py base-b-vs15 sei-b-vs15`): 3-4 more iron a minute from minute 20
+(12.2 against 8.8 at 25 min) and 3-4 less rock, the same number of warriors (43 and 43 at 25 min, 38 and 38 at 30)
+with 7 more iron and 7 fewer rock ones among them. The larger iron staffing took the rock gatherers' peons.
+
+A bug of the satellite code rode along in all of those runs: `sendGatherer` read the controller of a peon that an
+order earlier in the tick had already sent into a building, the assertion was swallowed, and the rest of that
+economy tick was lost: 818 times in 170 of the 200 `sei-b-vs15` games. Fixed in `5a59bf3f` (a smoke game: none).
+
+### The eight-factor screen (`lab/fable/screen.py`, runs `scr1-00..15`, 40 maps each, on the old defaults)
+
+| factor | wins | model at 20 min | model at 30 min |
+|---|---|---|---|
+| satellite | +5.3 +- 3.6 | +3.3 +- 1.6 (z 2.1) | +1.9 +- 1.9 |
+| evade_cells=30 | -0.9 +- 2.3 | -1.3 +- 0.9 | +0.2 +- 1.3 |
+| iron_real=3 | -2.2 +- 3.9 | -1.6 +- 1.8 | -1.4 +- 2.3 |
+| gather_route_clear | +0.3 +- 1.8 | +0.8 +- 1.1 | +0.3 +- 1.2 |
+| reinforce_multi | +5.3 +- 3.5 | 0.0 +- 1.2 | +1.5 +- 2.1 |
+| capped_min_strength=60 | -2.2 +- 2.9 | -1.6 +- 1.0 | +1.1 +- 1.8 |
+| worn_ratio=0.35 | -0.9 +- 2.4 | -1.5 +- 0.9 | +0.6 +- 1.6 |
+| hold_late=4 | +0.3 +- 2.8 | +3.0 +- 1.7 | +1.2 +- 2.0 |
+
+Forty maps are too few: a factor's effect on wins has a standard error of 2.3-3.9 points, so only the satellite
+stands out, and only in the model. The late launch thresholds do nothing. The three worst runs (25, 25 and 28 %)
+are the three with changes but neither the satellite nor reinforce_multi; that pair's interaction is aliased with
+three others in this design and was not followed up. Later screens use 8 runs of 100 maps.
+
+### The army by minute: it melts from minute 15 and is not rebuilt
+
+Medians over the 200 `base-b-vs15` games (won 72, lost 127):
+
+| minute | our warriors (won / lost) | our peons | copies housed | enemy warriors, all | per copy (median / largest) |
+|---|---|---|---|---|---|
+| 8 | 49 / 44 | 167 / 164 | 14 | 250 | 20 / 25 |
+| 12 | 124 / 112 | 108 / 122 | 12 | 318-344 | 30 / 36-40 |
+| 15 | 146 / 126 | 86 / 101 | 10-11 | 377-408 | 38-40 / 51-53 |
+| 20 | 102 / 78 | 118 / 140 | 8-9 | 392-483 | 49-51 / 78-80 |
+| 25 | 50 / 30 | 164 / 158 | 7-9 | 363-524 | 48-60 / 80-92 |
+| 30 | 58 / 14 | 150 / 145 | 6-9 | 398-530 | 55-60 / 88-100 |
+| 40 | 62 / 4 | 149 / 124 | 5-9 | 350-502 | 56-57 / 94-107 |
+
+The unit cap is 240 for warriors and peons together. From minute 15 we lose 30-39 units a minute and arm 6-17: iron
+comes in at 21-25 a minute until minute 15 and at 12-14 (won) or 6-7 (lost) after minute 20, and nothing is ever in
+stock. The cap fills up with peons. A lost game is 10-20 minutes with 4-14 warriors, ten towers and 140 peons.
+
+### What a unit of each ore really costs (`lab/fable/cost.py`, 12 logged games, `all1-trips-vs15`)
+
+| minutes | iron gatherers | gatherer-seconds per iron | rock gatherers | per rock | per wood |
+|---|---|---|---|---|---|
+| 10-14 | 49 | 113 | 2.4 | 48 | 33 |
+| 14-18 | 45 | 191 | 2.7 | 56 | 60 |
+| 18-22 | 51 | 330 | 2.8 | 66 | 53 |
+| 22-26 | 55 | 437 | 3.9 | 59 | 52 |
+| 26-30 | 63 | 423 | 4.6 | 64 | 70 |
+| 30-36 | 58 | 314 | 4.1 | 99 | 77 |
+
+A node holds 10 units, so the near iron is gone by minute 15: the ORE lines show 16-43 iron nodes left in reach
+with the nearest 140-170 m away, and 120-180 rock nodes with the nearest 45-110 m away. From minute 18 a unit of
+iron costs five to seven times a unit of rock, and iron's returns fall with every gatherer: halving the iron
+gatherers (rr1) lowered the cost to 250-310 s, so the second half of them brought a unit per 690 gatherer-seconds.
+An iron warrior then costs about 570 peon-seconds (80 forging, 2 wood, the iron) and a rock one 220 (40, 2 wood,
+the rock) for 0.6 of its strength (rock axes hit for 1, iron for 2; the same hit points).
+
+The plan could not see it: its iron trip is the walk to the nearest three nodes (70-80 s), which is why the first
+session's "rock only while it is the cheaper line" fired in 20 of 100 games for 0.3 min. And the rock gatherers that
+`rock_idle` asks for from minute 20 never went out: peons are handed out wood, iron, rock in that order, and iron
+is never fully staffed late.
+
+### A rock line (`rock_real`, off by default)
+
+From 14 min, at every yield measurement (30 s), the line's share of the armory's pool goes up 0.15 while
+`rock_real x (80 s + 2 wood + iron as measured) / (40 s + 2 wood + rock as measured)` is above 1.1 and down below
+0.9, up to `rock_real_share`. The share is rock gatherers (by rock's measured trip), their wood and their forgers;
+they are staffed before the iron gatherers; iron is forged first (`rock_real_iron_first`: no rock axe on order
+while 3 iron are in stock, as the forge splits its work evenly between the kinds it can make); and while six
+weapons could be forged from the stock a quarters holds 2 peons, not 8 (`rock_real_hold`: a held peon beyond the
+second breeds under 1.4 peons a minute, a forger with ore makes 1.5 rock axes). `tree_real` staffs wood by its
+measured cost in the same way as `iron_real` does iron (with the line on, the armory held 10-22 rock and 1-3 wood).
+
+Twelve logged games each (`lab/fable/flow.py`; maps 21001..21012, means over the games alive at that minute in
+all three runs):
+
+| | warriors (rock) at 25 min | at 30 | at 40 | iron + rock a minute at 30 | copies housed at 40 |
+|---|---|---|---|---|---|
+| no line (`all1-trips-vs15`) | 53 (7) | 35 (5) | 50 (4) | 9.7 + 5.1 | 6.0 |
+| first version: half the pool once iron costs 120 s (`rr1`) | 58 (11) | 45 (20) | 66 (29) | 6.9 + 11.2 | 4.9 |
+| share by measured costs, value 0.6, at most 0.7 (`rr3`) | 68 (20) | 55 (18) | 60 (24) | 6.3 + 9.2 | 5.1 |
+
+With value 0.9 and a share up to 0.85 one game reached 177 warriors (46 rock) at 20 min against about 100, with 60
+peons left, and iron fell to under 4 a minute: the settings trade iron for bodies, which is what the screen below
+is for.
+
 ## Reproduce
 
 ```bash
