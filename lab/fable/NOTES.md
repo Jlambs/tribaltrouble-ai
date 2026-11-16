@@ -871,6 +871,15 @@ armory still stands at 292 s (297; 227 on the other maps) and they win 1 game of
 base, and the 76 normal maps win 34 and 33 against 38. So the floor stays at 6: the sixth quarters was not what
 held those maps back, the armory is, and more hands on the late sites cost gatherers everywhere else.
 
+What holds the armory back on the 24 slow maps (`op2-log-vs15`, 7 minutes with the site trace, six normal maps
+beside them): nothing single. On average its site is placed at 62 s against 42, its first builder comes at 198 s
+against 182 (the fourth quarters stands later), and it is built in 81 s against 54 by 11.0 builders fetching wood
+17 cells away against 13.6 at 14 cells. By map: seven far plans whose builders chop 24 to 39 cells from the site
+(s21008, s21011, s21028, s21037, s21094, s21096, s21097), three with half their peons dead by 2 min (s21021, s21040,
+s21089: 11 to 21 peons at 120 s against 24), three wood-poor sites at the floor of six builders (s21012, s21058,
+s21049), and the rest within 30 s of normal. `quarters_before_armory` 1, 2 and 5 were screened in the first session
+(worse or equal), so the order itself is not the lever.
+
 The far plans are not a mistake to undo: with the five later quarters by the first one whenever the armory site is
 more than 180 m from the start (`opening_near_far`, built and taken out again; `nf0..nf3-log-vs15`, ten far-plan
 maps) the sixth quarters comes later on six maps and sooner on three, and on s21040 the near sites are where the
