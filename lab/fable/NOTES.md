@@ -682,8 +682,38 @@ nearest the nearest manned tower that has another within 14 cells, and the flee 
   stand. A killing ground away from the economy has to be built for the purpose.
 
 So the mechanism is real and its price is the economy at home. Not screened on 100 maps: every version is behind
-the defaults in the 12 logged games. Next: a bastion (four or five towers 10-13 cells apart, 45 cells or more from
-every quarters and armory, on the enemy's side) as the only place waves are fed to.
+the defaults in the 12 logged games.
+
+A bastion (`bastion=5`, off): from 8 min five of our towers stand together about 50 cells from the home armory on
+the enemy's side, 40 cells or more from every quarters and armory, and a tower that falls there is the next one
+built (map 21001: the point at 200,305, 66 cells from the home armory and 50 from the forward one; five towers
+within 12 cells of it between 8:38 and 10:58). `feed_bastion` leads fed waves only there.
+
+| run | tower kills 15-20 / 20-25 / 25-30 min | our warriors dead (home / middle / far) | towers razed | our peons dead at home | iron a minute at 20 / 25 min | warriors at 20 / 25 / 30 min | lost by 40 min |
+|---|---|---|---|---|---|---|---|
+| fd0, defaults | 68 / 136 / 118 | 19 / 186 / 174 | 10.4 | 45 | 12.5 / 8.3 | 99 / 46 / 37 | 3 |
+| fb1, bastion alone | 59 / 182 / 161 | 16 / 184 / 181 | 15.2 | 73 | 14.2 / 11.8 | 87 / 42 / 40 | 5 |
+| fb2, all waves fed to it | 145 / 197 / 109 | 20 / 153 / 146 | 17.8 | 75 | 8.5 / 5.6 | 80 / 38 / 29 | 5 |
+
+The bastion takes the waves (5-6 of its towers fall in each of minutes 15-25) and the attack loses 57 warriors
+fewer a game, but iron still falls by a third to a half in minutes 20-25: the fed waves cross the ground the
+gatherers work on their way in. Feeding is closed as built: what it saves the army in the field, it costs the
+economy, wherever the waves are sent. Both stay in the code, off.
+
+### Waves led away from the attack (`shepherd_army_weight`, off; `sa1`, `sa2-log-vs15`)
+
+"Away from our start" is towards the far copies, where the army goes next and trades at 1.7. With the weight a spot
+also scores its cells from what the attack is fighting for (up to 120). Twelve logged games each: our warriors dead
+in the far zone 181 (weight 2) and 172 (weight 5) against 174, enemy warriors dead there 287 and 302 against 294;
+warriors at 20 / 25 / 30 / 35 min 84 / 44 / 33 / 31 and 106 / 57 / 30 / 65 against 99 / 46 / 37 / 52. No effect that
+twelve games can show: the far fights are not made of the groups the shepherds park.
+
+### Screen `sb1` (running when this was written): bastion x army weight x tower rebuilding, 100 maps each
+
+Bastion alone and the weight of 5 were the two arms the logged games could not call (iron and tower kills up with
+the bastion, the army up at three of four minutes with the weight), so they go to 100 maps with
+`tower_parallel_late=3` (three tower sites at a time from 10 min, for the towers the bastion loses):
+`python lab/fable/screen.py read sb1`, base `sb1-00` = `def3-vs15`.
 
 ## Reproduce
 

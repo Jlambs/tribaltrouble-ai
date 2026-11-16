@@ -39,6 +39,12 @@ SCREENS = {
         ('rock_line_30', '', 'rock_real=0.6,rock_real_share=0.55,rock_real_peons=30'),
         ('tree_real', '', 'tree_real=2.5'),
     ], '21001..21100'),
+    # the towers' place and the shepherds' direction: 12 logged games each could not tell (sb1-00 is the default)
+    'sb1': ([
+        ('bastion_5', '', 'bastion=5'),
+        ('army_weight_5', '', 'shepherd_army_weight=5'),
+        ('tower_parallel_3', '', 'tower_parallel_late=3'),
+    ], '21001..21100'),
 }
 FACTORS, SEEDS = SCREENS['scr1']
 ENEMIES = 15
