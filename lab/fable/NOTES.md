@@ -808,6 +808,30 @@ a throw: 270 throws for the two, 9 s for a hundred warriors at a throw every 2 s
 a building: the army attack-moves, and the engine's scan takes warriors first, then peons, then towers, and quarters
 and armories last.
 
+### A raze drill (`raze`, off): the buildings fall a little sooner, the cycle is the same
+
+With `raze` the attack's warriors within that many cells of an enemy quarters, armory, site or manned tower throw
+at it unless an enemy warrior is in throwing reach. 12 logged games each, `lab/fable/campaign.py 22`:
+
+| run | copies razed by 22 min | lingering | march | arrival to first raze | the raze | median (mean) s |
+|---|---|---|---|---|---|---|
+| fd0 (default) | 5.67 | 15 (16) | 40 (54) | 19 (20) | 34 (42) | |
+| rz1 raze=12 | 5.92 | 21 (20) | 40 (52) | 16 (17) | 31 (32) | |
+| rz2 raze=18 | 5.58 | 24 (27) | 36 (51) | 15 (15) | 29 (35) | |
+| rz3 raze=12, raze_towers=false | 5.50 | 19 (20) | 44 (59) | 17 (17) | 28 (29) | |
+
+A building stands 14 to 23 s after its first order (tower 14, quarters 20, armory 21 at raze=12), because the first
+order is three to five warriors: the army is still walking in and fighting the copy's warriors (s21004: 22 of them
+at the base). What the raze saves, the peons left alive cost in lingering. The cycle is about what walking and the
+copy's own warriors make it; the order of the throws is a tenth of it.
+
+### Screen `pc1` (running when this was written): raze x breach x hold at a tower, 100 maps each
+
+The three drills changed their mechanism little or not at all in 12 logged games, and those games cannot call the
+army or the wins (every variant read 65 to 94 warriors at 20 min against the base's 99, which over 100 maps is 84:
+the one base run was a lucky draw). So they go to 100 maps together: `python lab/fable/screen.py read pc1`, base
+`pc1-00` = `sb1-00`.
+
 ## Reproduce
 
 ```bash
