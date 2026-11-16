@@ -1827,6 +1827,44 @@ class Strategy {
     /** The chieftain never stuns: every charge goes to shred blasts. */
     boolean shred_strict = false;
     /**
+     * shred_fill (share, 0 = off): the strict mission blasts from where the chieftain stands only once that catches
+     * this share of what the blob's cast point would, unless an awake enemy warrior is within 9 cells of him. Without
+     * it he blasts at the first shred_min in reach, from the blob's edge: 10 of a blob of 40 (bz2-log-vs15 s21318),
+     * and never from a cast point (0.0 of 12 casts a game).
+     */
+    float shred_fill = 0f;
+    /**
+     * shred_buildings: the most buildings of ours a shred blast may reach (18 cells). At 2 none of them may be below
+     * 40 hit points, as before; above 2 each finished one must outlast what the blast takes at its distance (30 from
+     * four cells out, 150 at the caster) by 10. The old rule shuts the blast out of our own base, where the waves
+     * are: bz5-log-vs15 s21318, minutes 20-24, charged for 200 s with blobs of 17-42 within 15-28 cells of him.
+     */
+    int shred_buildings = 2;
+    /**
+     * shred_base: enemy warriors within 20 cells of a finished building of ours count as blob members, awake or not.
+     */
+    boolean shred_base = false;
+    /**
+     * shred_bait: with the blast charged the strict chieftain stands still for shred_min awake enemy warriors within
+     * 24 cells instead of backing off, and with one of them within 9 cells he blasts whatever is in reach, however
+     * near they stand. A copy launches at our unit nearest its first idle warrior, so a blob he waits by comes to
+     * him (bz5-log-vs15: 7.6 of 10.3 casts a game are made with awake warriors at him).
+     */
+    boolean shred_bait = false;
+    /**
+     * shred_from_ticks (game ticks): the shred mission, strict or not, starts then; before it the chieftain marches
+     * and stuns with the army as without shred, and counts in the muster's gate. A strict chieftain from the start
+     * costs the first campaign its stun and the gate its bonus: 0.12 copies fewer out at minute 15 (bz2-band-vs15).
+     */
+    float shred_from_ticks = 0f;
+    /**
+     * shred_lurk (cells, 0 = off): while the blast charges, the strict chieftain waits this far from the centre of
+     * the next blob, out of every enemy warrior's scan, instead of behind the armory. His walks home and back took
+     * most of a charge: in minutes 10-40 of bz2-log-vs15 he stands charged with a blob 33-50 cells away in half of
+     * the 20 s samples and casts 3 times in ten minutes of 8 possible.
+     */
+    int shred_lurk = 0;
+    /**
      * Giants (Giants, late): from giants_from_ticks, stalled blocks of attack-walkers and parked enemies count as
      * inert.
      * giant_keepout (cells, 0 = off): a project site, a re-site target or an expansion site with at least giant_min
@@ -2200,6 +2238,12 @@ class Strategy {
         shred_min_hp = params.getInt("shred_min_hp", shred_min_hp);
         shred_range = params.getInt("shred_range", shred_range);
         shred_strict = params.getBoolean("shred_strict", shred_strict);
+        shred_fill = (float) params.getDouble("shred_fill", shred_fill);
+        shred_buildings = params.getInt("shred_buildings", shred_buildings);
+        shred_base = params.getBoolean("shred_base", shred_base);
+        shred_bait = params.getBoolean("shred_bait", shred_bait);
+        shred_from_ticks = (float) params.getDouble("shred_from_ticks", shred_from_ticks);
+        shred_lurk = params.getInt("shred_lurk", shred_lurk);
         giants_from_ticks = (float) params.getDouble("giants_from_ticks", giants_from_ticks);
         giant_keepout = params.getInt("giant_keepout", giant_keepout);
         giant_min = params.getInt("giant_min", giant_min);
