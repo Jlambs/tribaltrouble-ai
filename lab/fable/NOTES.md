@@ -898,6 +898,37 @@ Wins by run 41 37 39 37 38 38 38 35 (mean 37.9). Main effects: raze -2.2 +- 2.4 
 nothing else does. All three stay off. Over the 16 runs of `sb1` and `pc1` the base's 41 is the second best: the
 default is nearer 39 on these maps than 41.
 
+### Two attacking forces (`split`, off; `lab/fable/wing.py`, logged runs on maps 21001..21012, 40 min)
+
+With `split` an attacking army of that strength sends `split_share` of itself, the warriors nearest to it, at the
+quarters or armory of another copy within 110 cells whose defense it beats by `split_margin` (1.3); the main army
+leaves that copy alone. The second force (role WING) marches and fights by the army's rules, takes the copy's other
+buildings and the next copy in reach, and walks to the main army as a reinforcement when it is under 20, outmatched,
+stalled or without a target.
+
+A steadier base for these twelve maps than one logged run: over seventeen near-default 100-map runs they read 12.2 /
+10.8 / 9.6 / 8.9 / 8.5 / 7.9 / 7.3 copies housed and 111 / 128 / 116 / 94 / 72 / 47 / 39 warriors of ours at 12 / 15
+/ 18 / 20 / 22 / 25 / 30 min; one run of the twelve varies by 0.28 copies and 8 warriors at 20 min.
+
+| run | setting | splits a game | while split, a minute: second force razes / loses | main army | unsplit | copies housed at 20 / 25 / 30 min | our warriors |
+|---|---|---|---|---|---|---|---|
+| sp1 | split=100 | 0.5 | 0.29 / 7.2 (sp1..3 together) | 0.62 / 6.8 | 0.81 / 11.8 | 9.2 / 8.2 / 7.5 | 90 / 42 / 40 |
+| sp2 | split=80 | 0.6 | 0.36 / 7.0 | 0.57 / 6.0 | 0.80 / 12.1 | 9.2 / 7.8 / 7.3 | 89 / 41 / 34 |
+| sp3 | split=100, margin 1.0, reach 140 | 0.9 | | | | 9.0 / 8.2 / 8.0 | 88 / 29 / 44 |
+| sq1 | split=80 + busy .15, far 1.6, reinforce | 1.2 | 0.31 / 9.3 | 0.63 / 6.6 | 0.83 / 10.0 | 8.7 / 7.8 / 7.2 | 88 / 36 / 37 |
+| sq2 | split=100 + the same | 0.9 | 0.28 / 8.9 | 0.61 / 6.6 | 0.82 / 9.8 | 8.7 / 7.9 / 7.2 | 92 / 36 / 40 |
+| sq3 | split=60 + the same | 1.8 | 0.31 / 9.2 | 0.69 / 6.2 | 0.69 / 10.3 | 8.9 / 8.0 / 7.2 | 94 / 39 / 42 |
+| sq4 | split=80, share .4 + the same | 1.0 | 0.34 / 8.1 | 0.66 / 5.9 | 0.85 / 11.1 | 8.5 / 7.6 / 7.1 | 88 / 48 / 63 |
+
+The half that stays keeps three quarters of the whole army's razing with half its warriors (0.57 to 0.69 quarters
+and armories a minute against 0.8) and loses half as many: the pace is not the army's size. The second force is the
+weak half: 0.3 a minute for 7 to 9 warriors, because its first target is 90 to 110 cells out and a force of 35 to 45
+is worn down on the way as the reinforcements are (s21003: 37 to 19 and 44 to 18 before either reached a building),
+while one that the reinforcements fill up does well (s21001: 36 at the split, 82 four minutes later, two copies).
+With `split_busy` (it may split with a few enemies near), `split_far` (a wider second look before merging) and
+`split_reinforce` (reinforcements to the weaker force) it is split 4 to 5 minutes a game instead of 2, and every
+such run reads at or under the base's copies at 20 and 30 min; sq4 by 0.4 at 20 min (1.5 sd) with no smaller army.
+
 ## Reproduce
 
 ```bash
