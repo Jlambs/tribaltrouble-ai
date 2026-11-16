@@ -929,6 +929,26 @@ With `split_busy` (it may split with a few enemies near), `split_far` (a wider s
 `split_reinforce` (reinforcements to the weaker force) it is split 4 to 5 minutes a game instead of 2, and every
 such run reads at or under the base's copies at 20 and 30 min; sq4 by 0.4 at 20 min (1.5 sd) with no smaller army.
 
+A second round on sq4 (split=80, share .4, busy .15, far 1.6, reinforce): `split_worn=0.75` (a second force down to
+three quarters of its most, still 30 cells from its target, turns back), `split_reach=80` (near targets only) and
+`split_share_max=0.55` (a bigger share when the target's defense asks for it).
+
+| run | added to sq4 | splits a game, minutes split | second force razes / loses a minute | main army | together | unsplit | copies housed at 20 / 25 / 30 | our warriors at 20 / 25 / 30 |
+|---|---|---|---|---|---|---|---|---|
+| sr1 | worn | 1.2, 3.5 | 0.40 / 7.4 | 0.66 / 5.6 | 1.06 / 13.0 | 0.85 / 11.5 | 8.6 / 7.8 / 7.1 | 89 / 50 / 43 |
+| sr2 | worn, reach 80 | 0.8, 2.0 | 0.62 / 7.2 | 0.58 / 4.6 | 1.19 / 11.7 | 0.76 / 11.9 | 8.8 / 7.9 / 6.8 | 98 / 53 / 48 |
+| sr3 | worn, split=120, share .5 | 0.7, 1.5 | 0.51 / 6.5 | 0.62 / 4.9 | 1.13 / 11.4 | 0.77 / 11.7 | 8.8 / 7.9 / 7.4 | 97 / 42 / 48 |
+| sr4 | worn, reach 80, share to .55 | 1.5, 2.9 | 0.49 / 8.1 | 0.61 / 4.8 | 1.10 / 13.0 | 0.77 / 11.1 | 8.9 / 7.8 / 7.3 | 97 / 49 / 57 |
+| sr5 | the same, margin 1.0 | 2.0, 3.7 | 0.47 / 8.7 | 0.61 / 5.4 | 1.08 / 14.1 | 0.75 / 11.2 | 8.8 / 7.5 / 7.0 | 97 / 53 / 42 |
+| sr6 | the same as sr4, split=60 | 2.2, 3.2 | 0.45 / 8.3 | 0.69 / 5.0 | 1.14 / 13.4 | 0.77 / 12.8 | 8.8 / 7.6 / 7.5 | 86 / 39 / 34 |
+
+While split the two forces now raze 1.06 to 1.19 quarters and armories a minute against 0.75 to 0.85 for the whole
+army, for 11 to 14 warriors a minute against 11 to 13. But the army is split only 2 to 4 of the eight minutes that
+count: on 88 to 158 of its 2 s checks a game it is big enough and finds no copy near and weak enough. Over the ten
+runs sq1..sr6 the copies housed read 8.75 / 7.78 / 7.18 at 20 / 25 / 30 min against the base's 8.93 / 7.9 / 7.3: a
+sixth of a copy, with armies of 93 / 45 / 44 against 94 / 47 / 39. 100 maps: `sx1..sx4-vs15` (sq4, sq1, sq4 with
+margin 2.0, sq4 with split_merge=30) and `sy1`, `sy2-vs15` (sr2, sr5), against `pc1-00`.
+
 ## Reproduce
 
 ```bash
