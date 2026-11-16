@@ -632,6 +632,59 @@ still takes its iron: 43 warriors (12 rock) against 45 (6) at 25 min, iron 7.7 a
 The rock line is closed: `rock_real` stays in the code, off. Three sessions and Gauntlet's notes agree that rock
 cannot be added to the iron line by any staffing rule: the weapon pool, not the ore, is what is short.
 
+### Where the war is fought, and how the copies arm (`lab/fable/zones.py`, `towerkills.py`; `fd0-log-vs15`)
+
+Twelve logged 40-minute games of the defaults, from minute 12, a game:
+
+| zone (cells from our start) | enemy warriors dead | our warriors dead | for one of ours |
+|---|---|---|---|
+| home (up to 70) | 82 | 19 | 4.3 |
+| middle (70-200: the forward armory, the near copies) | 666 | 186 | 3.6 |
+| far (beyond 200) | 294 | 174 | 1.7 |
+
+Within 17 cells of a standing tower of ours: 68 enemy warriors for 8 of ours in minutes 15-20, 136 for 13 in 20-25
+(about 10 for one, and 1.0 and 3.1 towers razed); everywhere else 153 for 83 and 145 for 85 (1.7-1.8 for one). A
+launch aimed at a tower of ours (`killzone.py`: 10 a game) costs the copy 35 warriors and us 4 and half a tower.
+
+From `AdvancedAI`: a copy launches its first N idle warriors when it has N of them idle (N = 10, plus 5 a launch, at
+most 40; with a chieftain from 20 on), aimed from the oldest; it arms new warriors only while fewer than N stand
+idle. So a wave that falls below N stands idle where it stopped (under our towers it dies there), a copy's
+production follows our kills (a copy needs 5-10 minutes to raise the next 40), and the copies hold 50-60 warriors
+each from minute 20 whatever we kill. Units have one hit point: a throw kills or misses.
+
+### Feeding waves to our towers (`shepherd_feed`, off; logged runs `fd1..fd9-log-vs15`, maps 21001..21012)
+
+The shepherds lead waves away from our base, where they end up as the groups the army and the gatherers meet in
+the field. `shepherd_feed` turns that round from minute 12, while six towers are manned: the spot is the ring cell
+nearest the nearest manned tower that has another within 14 cells, and the flee runs towards it.
+
+| run | what | tower kills 15-20 / 20-25 / 25-30 min | enemy dead at home | our warriors dead (home / middle / far) | towers / quarters razed | our peons dead at home | warriors at 20 / 25 / 30 min | lost by 40 min |
+|---|---|---|---|---|---|---|---|---|
+| fd0 | defaults | 68 / 136 / 118 | 82 | 19 / 186 / 174 | 10.4 / 3.3 | 45 | 99 / 46 / 37 | 3 |
+| fd1 | spot only, 2 copies | 53 / 148 / 123 | | | | | 91 / 36 / 45 | 2 |
+| fd2 | spot only, all copies | 71 / 115 / 91 | | | | | 91 / 44 / 36 | 4 |
+| fd4 | spot and flee, all copies | 140 / 184 / 128 | 182 | 19 / 154 / 148 | 15.9 / 6.3 | 81 | 86 / 49 / 32 | 6 |
+| fd5 | the same, flee weight 1.5 | 172 / 203 / 147 | 234 | 19 / 131 / 140 | 19.4 / 7.1 | 126 | 81 / 43 / 24 | 5 |
+| fd6 | the 3 nearest waves, none joins while 30 enemy warriors stand by the towers | 97 / 147 / 142 | 142 | 14 / 171 / 159 | 13.7 / 4.8 | 63 | 90 / 40 / 23 | 5 |
+| fd7 | the 6 nearest, 50 | 121 / 150 / 152 | 198 | 28 / 156 / 154 | 18.1 / 6.7 | 109 | 80 / 35 / 18 | 6 |
+
+- The spot alone does nothing: a shepherd flees a third of its time, the wave goes where he stands, and the flee
+  scored cells gained away from our start. With the flee turned too the waves come: 100-150 more enemy warriors die
+  at home a game for no more warriors of ours.
+- A wave follows the nearest shepherd, not its own copy's (`target unit_by_shepherd, nearest unit shepherd of
+  s14:hard 1 cells, own shepherd 54 cells`), so feeding some copies and leading others away mixes the two.
+- Fed with everything, the copies hold a fifth to a third fewer warriors from minute 25 (344 against 431 at 25
+  min, 202 against 352 at 35): their production does not keep up.
+- But the waves come through the whole base: 5-9 more towers, 1.5-4 more quarters and 20-80 more peons a game are
+  lost at home, iron falls from 12.5 to 8-11 a minute at 20 min, and the army is smaller from minute 20 on in every
+  version. Our own losses in the field fall by 30-90 warriors, partly because the army is smaller.
+- `feed_quarters_clear=45` (only towers with no quarters within 45 cells: fd8, fd9) fed nothing: no such towers
+  stand. A killing ground away from the economy has to be built for the purpose.
+
+So the mechanism is real and its price is the economy at home. Not screened on 100 maps: every version is behind
+the defaults in the 12 logged games. Next: a bastion (four or five towers 10-13 cells apart, 45 cells or more from
+every quarters and armory, on the enemy's side) as the only place waves are fed to.
+
 ## Reproduce
 
 ```bash

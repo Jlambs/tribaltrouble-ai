@@ -11,7 +11,7 @@ import os
 import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
-BUCKETS = [(5, 9), (9, 12), (12, 15), (15, 20), (20, 25), (25, 30)]
+BUCKETS = [(5, 9), (9, 12), (12, 15), (15, 20), (20, 25), (25, 30), (30, 35), (35, 40)]
 
 
 def main(runs):
@@ -53,8 +53,10 @@ def main(runs):
                             acc[b]['foes'] += war
                             if near:
                                 acc[b]['foes_at_towers'] += war
-                        elif near:
-                            acc[b]['ours_at_towers'] += war
+                        else:
+                            acc[b]['ours'] += war
+                            if near:
+                                acc[b]['ours_at_towers'] += war
             for r in razed:
                 for b in BUCKETS:
                     if b[0] * 60 <= r['t'] < b[1] * 60:
@@ -64,13 +66,14 @@ def main(runs):
                     games[b] += 1
                 elif end > b[0]:
                     games[b] += (end - b[0]) / (b[1] - b[0])
-        print(f'== {run}: {n} games; per game: enemy warriors killed by our towers / all killed | ours lost there | '
-              'towers razed | other buildings razed')
+        print(f'== {run}: {n} games; per game: enemy warriors killed by our towers / all killed | ours lost there / '
+              'everywhere | towers razed | other buildings razed')
         for b in BUCKETS:
             g = max(games[b], 1e-9)
             a = acc[b]
             print(f"  {b[0]:>2}-{b[1]:<2} min: {a['foes_at_towers'] / g:6.1f} / {a['foes'] / g:6.1f} | "
-                  f"{a['ours_at_towers'] / g:5.1f} | {a['towers_razed'] / g:5.2f} | {a['others_razed'] / g:5.2f}")
+                  f"{a['ours_at_towers'] / g:5.1f} / {a['ours'] / g:5.1f} | {a['towers_razed'] / g:5.2f} | "
+                  f"{a['others_razed'] / g:5.2f}")
 
 
 if __name__ == '__main__':
