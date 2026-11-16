@@ -51,9 +51,28 @@ SCREENS = {
         ('breach', '', 'breach=true'),
         ('hold_multi', '', 'hold_ratio=0.3,hold_multi=true'),
     ], '21001..21100'),
+    # the long game (2026-11-16): fixes found in the logs of long games, on the 100 maps of band30-100.txt (the first
+    # 100 of 21001..21300 with 6-9 copies housed at minute 30 under the default, which wins 44 of them); the half
+    # with D = not ABC, four of whose runs had been played as single variants (RUN_NAMES)
+    'lg1': ([
+        ('staff', '', 'sat_staff=true,stock_balance=true'),
+        ('harass_30s', '', 'harass_memory_ticks=1500'),
+        ('late_caution_1', '', 'late_caution=1.0'),
+        ('expand_threat', '', 'expand_under_threat=true'),
+    ], '@band30-100.txt'),
+}
+# Screens that use the other half of the four-factor design (D = not ABC), and runs played under another name.
+ODD_HALF = {'lg1'}
+RUN_NAMES = {
+    'lg1': {0: 'xt1-band-vs15', 1: 'sb2-band-vs15', 2: 'hm1-band-vs15', 4: 'lc1-band-vs15'},
 }
 FACTORS, SEEDS = SCREENS['scr1']
+NAME = 'scr1'
 ENEMIES = 15
+
+
+def run_name(name, i):
+    return RUN_NAMES.get(name, {}).get(i, f'{name}-{i:02d}')
 
 
 def design():
@@ -65,7 +84,7 @@ def design():
     if k == 4:
         for i in range(8):
             a, b, c = [(i >> n) & 1 for n in range(3)]
-            runs.append([a, b, c, (a + b + c) % 2])
+            runs.append([a, b, c, (a + b + c + (1 if NAME in ODD_HALF else 0)) % 2])
         return runs
     for i in range(16):
         a, b, c, d = [(i >> n) & 1 for n in range(4)]
@@ -80,21 +99,25 @@ def spec(levels):
 
 
 def main():
-    global FACTORS, SEEDS
+    global FACTORS, SEEDS, NAME
     cmd, name = sys.argv[1], sys.argv[2]
+    NAME = name
     FACTORS, SEEDS = SCREENS[name]
+    if SEEDS.startswith('@'):
+        SEEDS = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), SEEDS[1:])).read().strip()
     runs = design()
     n_runs = len(runs)
     if cmd == 'plan':
         for i, levels in enumerate(runs):
-            print(f'"{name}-{i:02d}|{spec(levels)} vs hard*{ENEMIES}|{SEEDS}"')
+            if run_name(name, i) == f'{name}-{i:02d}':
+                print(f'"{name}-{i:02d}|{spec(levels)} vs hard*{ENEMIES}|{SEEDS}"')
         return
     if cmd == 'model':
         model_read(name, runs, int(sys.argv[3]) if len(sys.argv) > 3 else 20)
         return
     wins = {}
     for i in range(n_runs):
-        p = f'aisim/runs/{name}-{i:02d}/results.jsonl'
+        p = f'aisim/runs/{run_name(name, i)}/results.jsonl'
         if not os.path.exists(p):
             print('missing', p)
             continue
@@ -129,7 +152,7 @@ def model_read(name, runs, minute):
     chance = {}
     n_runs = len(runs)
     for i in range(n_runs):
-        for k, (feats, _) in proxy.load(f'{name}-{i:02d}', minute).items():
+        for k, (feats, _) in proxy.load(run_name(name, i), minute).items():
             chance[(i, k)] = proxy.chance(model, feats)
     keys = sorted({k for _, k in chance})
     full = [k for k in keys if all((i, k) in chance for i in range(n_runs))]
