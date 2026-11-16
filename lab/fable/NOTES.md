@@ -1438,7 +1438,7 @@ cap, instead of 300 s) on the 300 fresh maps (`ct8f-vs15`, `ct8g-vs15`):
 | | 21301..21450 | 21451..21600 | all 300 | to a win / to a loss | warriors at minute 10 | copies out at minutes 10 / 15 |
 |---|---|---|---|---|---|---|
 | the mission and the full trainer, chieftain from 300 s | 84 | 74 | 158 | | | |
-| chieftain from 480 s | 87 | 84 | 171 | +46 -33 | +8.6 and +9.6 (z 9) | +0.25 / +0.19 (z 5 and 2-3) |
+| chieftain from 480 s | 87 | 84 | 171 | +46 -33 | +8.6 and +9.6 (z 9 and 10) | +0.25 (z 5 and 4) / +0.19 (z 3 and 2) |
 
 On the 100 open maps it shows less: +4.2 +- 4.2 in `bt2`, 0.0 +- 5.7 in `lg2` (below), 64 alone against 62; from
 600 s 53 (`ct10-band-vs15`), from 720 s 58 and a draw (`ct12-band-vs15`). (Before the mission 240 s and 420 s were
