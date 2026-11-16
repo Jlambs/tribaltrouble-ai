@@ -71,6 +71,10 @@ final class Shepherd {
     private static final float PICK_KEEP = 6f;
     /** shepherd_predict: a launch is checked against a prediction this recent (60 s). */
     private static final float PREDICT_CHECK_TICKS = 3000f;
+    /** shepherd_feed: manned towers this near each other cover one another (a garrison reaches 15.9 cells). */
+    private static final int FEED_COVER_CELLS = 14;
+    /** shepherd_feed: enemy warriors this near a manned tower keep further copies from joining. */
+    private static final int FEED_BUSY_CELLS = 40;
 
     private final @NonNull FableAI ai;
     private final List<@NonNull Flock> flocks = new ArrayList<>();
@@ -257,6 +261,12 @@ final class Shepherd {
         final boolean home;
         @Nullable
         Flock partner;
+        /** shepherd_feed: the copy's waves are led to our towers; the cells from its wave to its tower. */
+        boolean feeding;
+        float feed_d;
+        /** shepherd_feed: the copy's warriors at the last planFeed, and whether a tend has set ox, oy. */
+        int feed_n;
+        boolean has_origin;
 
         Flock(@NonNull Player copy, boolean home) {
             this.copy = copy;
@@ -266,6 +276,109 @@ final class Shepherd {
 
     Shepherd(@NonNull FableAI ai) {
         this.ai = ai;
+    }
+
+    /**
+     * shepherd_feed: when the feeding copies were last picked, our manned towers with cover then, and the tower
+     * findSpot's flock is led to (null: away from our start, as ever).
+     */
+    private float feed_at = -5000f;
+    private final List<@NonNull Building> feed_towers = new ArrayList<>();
+    private @Nullable Building score_feed;
+
+    /** shepherd_feed: every 2 s, which copies' waves are led to our towers. */
+    private void planFeed(@NonNull Intel intel) {
+        feed_at = ai.now();
+        Strategy strategy = ai.strategy();
+        List<Building> manned = new ArrayList<>();
+        for (Building t : intel.towers)
+            if (!t.isDead() && t.getUnitContainer() != null && t.getUnitContainer().getNumSupplies() > 0)
+                manned.add(t);
+        feed_towers.clear();
+        if (ai.now() >= strategy.feed_from_ticks && manned.size() >= strategy.feed_towers)
+            for (Building t : manned) {
+                int cover = 0;
+                for (Building o : manned)
+                    if (o != t && MapAnalysis.dist2(o.getGridX(), o.getGridY(), t.getGridX(),
+                            t.getGridY()) <= FEED_COVER_CELLS * FEED_COVER_CELLS)
+                        cover++;
+                boolean clear = true;
+                if (strategy.feed_quarters_clear > 0)
+                    for (Building q : intel.quarters)
+                        if (!q.isDead() && MapAnalysis.dist2(q.getGridX(), q.getGridY(), t.getGridX(),
+                                t.getGridY()) <= strategy.feed_quarters_clear * strategy.feed_quarters_clear) {
+                                    clear = false;
+                                    break;
+                                }
+                if (cover >= strategy.feed_cover && clear)
+                    feed_towers.add(t);
+            }
+        int near = 0;
+        for (Flock f : flocks)
+            f.feed_n = 0;
+        if (!feed_towers.isEmpty())
+            for (Unit e : intel.enemy_warriors) {
+                if (e.isDead())
+                    continue;
+                Flock own = flockOf(e.getOwner());
+                if (own != null)
+                    own.feed_n++;
+                for (Building t : manned)
+                    if (MapAnalysis.dist2(t.getGridX(), t.getGridY(), e.getGridX(),
+                            e.getGridY()) <= FEED_BUSY_CELLS * FEED_BUSY_CELLS) {
+                                near++;
+                                break;
+                            }
+            }
+        boolean busy = near >= strategy.feed_busy;
+        if (busy)
+            ai.aiLog().count("feed_busy");
+        // The flocks by their wave's cells to its tower, the feeding ones a fifth nearer (so two of about the same
+        // distance do not swap every time); a stable sort, so ties stay in flock order.
+        List<Flock> order = new ArrayList<>();
+        for (Flock f : flocks) {
+            // a copy with a wave worth leading (its first is 10 warriors), once tend has seen where it stands
+            Building t = f.home || !f.copy.isAlive() || !f.has_origin || f.feed_n < 10 ? null : feedTower(f.ox, f.oy);
+            if (t == null) {
+                if (f.feeding) {
+                    f.feeding = false;
+                    ai.aiLog().count("feed_stop");
+                }
+                continue;
+            }
+            f.feed_d = (float) Math.sqrt(MapAnalysis.dist2(f.ox, f.oy, t.getGridX(), t.getGridY()));
+            order.add(f);
+        }
+        order.sort(Comparator.comparingDouble(f -> f.feeding ? .8f * f.feed_d : f.feed_d));
+        int feeding = 0;
+        for (Flock f : order) {
+            boolean on = f.feed_d <= strategy.feed_commit || (!busy && feeding < strategy.feed_copies);
+            if (on)
+                feeding++;
+            if (on == f.feeding)
+                continue;
+            f.feeding = on;
+            ai.aiLog().count(on ? "feed_join" : "feed_stop");
+            if (ai.logging())
+                ai.log("feed of " + name(
+                        f) + (on ? " begins" : " stops") + ": wave at " + f.ox + "," + f.oy + ", " + (int) f.feed_d + " cells from a covered tower, " + manned.size() + " manned towers, " + near + " enemy warriors by them, " + f.feed_n + " warriors");
+        }
+    }
+
+    /** shepherd_feed: the manned tower with cover nearest (x, y), null when there is none. */
+    private @Nullable Building feedTower(int x, int y) {
+        Building best = null;
+        int best_d2 = Integer.MAX_VALUE;
+        for (Building t : feed_towers) {
+            if (t.isDead())
+                continue;
+            int d2 = MapAnalysis.dist2(t.getGridX(), t.getGridY(), x, y);
+            if (d2 < best_d2) {
+                best_d2 = d2;
+                best = t;
+            }
+        }
+        return best;
     }
 
     /**
@@ -324,6 +437,8 @@ final class Shepherd {
             circles.addAll(intel.enemy_quarters);
             circles.addAll(intel.enemy_armories);
         }
+        if (strategy.shepherd_feed && ai.periodDue(feed_at, 100f))
+            planFeed(intel);
         List<Player> fresh = new ArrayList<>();
         for (Player p : ai.owner().getWorld().getPlayers())
             if (ai.owner().isEnemy(p) && p.isAlive() && flockOf(p) == null)
@@ -580,6 +695,11 @@ final class Shepherd {
                     ai.aiLog().count("wave_to_shepherd");
                     f.fails = 0;
                 }
+                if (f.feeding) {
+                    Building near = nearestOwnBuilding(tx, ty);
+                    ai.aiLog().count(near != null && MapAnalysis.dist2(near.getGridX(), near.getGridY(), tx,
+                            ty) <= 20 * 20 ? "feed_launch_base" : "feed_launch");
+                }
                 if (ai.logging())
                     logLaunch(f, tx, ty);
                 // raid_evac: an armory of ours the wave goes for may empty before it arrives.
@@ -665,6 +785,7 @@ final class Shepherd {
         // shepherd_flee_pick: the origin for the flee's tether (guard flees between tends).
         f.ox = ox;
         f.oy = oy;
+        f.has_origin = true;
         if (strategy.shepherd_flee_pick && strategy.shepherd_tether > 0f)
             f.ob = (float) Math.sqrt(nearestOwnBuilding2(ox, oy));
         if (ai.strategy().shepherd_hold) {
@@ -1357,7 +1478,7 @@ final class Shepherd {
             dy = ai.planner().getStartY() - sy;
             len = Math.max(1f, (float) Math.sqrt(dx * dx + dy * dy));
         }
-        if (ai.strategy().shepherd_flee_side && !f.arrived) {
+        if (ai.strategy().shepherd_flee_side && !f.arrived && !f.feeding) {
             // shepherd_flee_side: a wave that catches a shepherd on its way out parks about 25 cells nearer to us
             // (logged N=13 ludicrous games), so a flee that would lose ground towards our start (away vector a, u the
             // unit vector from our start to the shepherd: a.u < -0.3 |a|, the fallback towards our start included)
@@ -1406,6 +1527,9 @@ final class Shepherd {
         int by = ai.planner().getStartY();
         float from_c = dist(sx, sy, cx, cy);
         float from_b = dist(sx, sy, bx, by);
+        // shepherd_feed: towards the tower instead of away from our start
+        Building feed = f.feeding ? feedTower(sx, sy) : null;
+        float from_f = feed == null ? 0f : dist(sx, sy, feed.getGridX(), feed.getGridY());
         boolean tether = strategy.shepherd_tether > 0f && f.ob >= 0f && f.ob <= 150f;
         float leash = .66f * f.ob - 2f;
         boolean keep = now - f.pick_at < PICK_KEEP_TICKS;
@@ -1426,7 +1550,8 @@ final class Shepherd {
                 float gain = dist(x, y, cx, cy) - from_c;
                 if (gain < 6f || !fleeLegal(sx, sy, x, y, intel))
                     continue;
-                float score = gain + strategy.shepherd_flee_out * (dist(x, y, bx, by) - from_b);
+                float score = gain + (feed != null ? strategy.feed_flee_in * (from_f - dist(x, y, feed.getGridX(),
+                        feed.getGridY())) : strategy.shepherd_flee_out * (dist(x, y, bx, by) - from_b));
                 int turn = Math.floorMod(h - f.pick_head, 16);
                 if (keep && (turn <= 1 || turn == 15))
                     score += PICK_KEEP;
@@ -1602,6 +1727,9 @@ final class Shepherd {
         int building2 = nearestOwnBuilding2(ox, oy);
         if (building2 == Integer.MAX_VALUE)
             return null;
+        score_feed = f.feeding ? feedTower(ox, oy) : null;
+        if (score_feed != null)
+            ai.aiLog().count("feed_spots");
         int unit2 = nearestOtherUnit2(ox, oy, s, f.partner == null ? null : f.partner.shepherd, f.predicted);
         float limit = (float) Math.sqrt(Math.min(building2 * .44f, unit2 * .8f));
         int max_r = (int) Math.min(ai.strategy().shepherd_max_r, limit);
@@ -1786,6 +1914,9 @@ final class Shepherd {
 
     /** Score of a spot: far from our start, a little less for a wider ring (and shepherd_home_weight). */
     private float spotScore(int x, int y, float r, int bx, int by, @NonNull List<@NonNull Building> guarded) {
+        // shepherd_feed: towards the tower
+        if (score_feed != null)
+            return -(float) Math.sqrt(MapAnalysis.dist2(x, y, score_feed.getGridX(), score_feed.getGridY()));
         float score = (float) Math.sqrt(MapAnalysis.dist2(x, y, bx, by)) - r * .5f;
         float home_weight = ai.strategy().shepherd_home_weight;
         if (home_weight > 0f && !guarded.isEmpty()) {

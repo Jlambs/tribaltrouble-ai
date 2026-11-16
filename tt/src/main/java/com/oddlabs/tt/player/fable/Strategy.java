@@ -1879,6 +1879,34 @@ class Strategy {
     int shepherd_fallback_r = 0;
     int shepherd_clear_parked = 0;
     /**
+     * shepherd_feed (off): from feed_from_ticks, while feed_towers towers of ours are manned, the shepherds of the
+     * feed_copies copies whose wave stands nearest lead it to our towers instead of away from them: the spot is the
+     * ring cell nearest the manned tower nearest the wave that has feed_cover other manned towers within 14 cells.
+     * While feed_busy enemy warriors stand within 40 cells of a manned tower only the waves within feed_commit cells
+     * of their tower are fed; the others are led away as ever. A wave that targets a tower of ours loses 35 warriors
+     * for 4 of ours and half a tower (lab/fable/killzone.py, fd0-log-vs15); in the field the army trades at 1.7-1.9
+     * for one (lab/fable/towerkills.py), and a copy only arms new warriors while fewer than its wave size stand idle
+     * (AdvancedAI), so what dies at the towers is not met in the field.
+     */
+    boolean shepherd_feed = false;
+    float feed_from_ticks = 36000f; // 12 min
+    int feed_towers = 6;
+    int feed_cover = 1;
+    int feed_copies = 3;
+    int feed_busy = 30;
+    int feed_commit = 50;
+    /**
+     * shepherd_feed: only towers with no quarters of ours within this many cells take fed waves (0: any tower). Fed
+     * into the whole base, twice as many peons die at home and 1.5-2 more quarters fall a game (fd4..fd7-log-vs15).
+     */
+    int feed_quarters_clear = 0;
+    /**
+     * shepherd_feed: a feeding shepherd's flee scores this per cell gained towards the tower, where the others score
+     * shepherd_flee_out per cell gained away from our start (a third of a shepherd's time is flight, and the wave
+     * goes where he stands, not where his spot is: fd2-log-vs15).
+     */
+    float feed_flee_in = 1f;
+    /**
      * Per-tick orders (Reflexes): restart each harvest swing right after its hit (audit A26: a viking peon then
      * hits every 15 ticks instead of 51), and cancel each stun on the tick it lands by ordering the unit again (K1).
      */
@@ -1963,6 +1991,15 @@ class Strategy {
         shepherd_predict = params.getBoolean("shepherd_predict", shepherd_predict);
         shepherd_fallback_r = params.getInt("shepherd_fallback_r", shepherd_fallback_r);
         shepherd_clear_parked = params.getInt("shepherd_clear_parked", shepherd_clear_parked);
+        shepherd_feed = params.getBoolean("shepherd_feed", shepherd_feed);
+        feed_from_ticks = (float) params.getDouble("feed_from_ticks", feed_from_ticks);
+        feed_towers = params.getInt("feed_towers", feed_towers);
+        feed_cover = params.getInt("feed_cover", feed_cover);
+        feed_copies = params.getInt("feed_copies", feed_copies);
+        feed_busy = params.getInt("feed_busy", feed_busy);
+        feed_commit = params.getInt("feed_commit", feed_commit);
+        feed_quarters_clear = params.getInt("feed_quarters_clear", feed_quarters_clear);
+        feed_flee_in = (float) params.getDouble("feed_flee_in", feed_flee_in);
         tower_parallel = params.getInt("tower_parallel", tower_parallel);
         front_tower_min = params.getInt("front_tower_min", front_tower_min);
         front_tower_max = params.getInt("front_tower_max", front_tower_max);
