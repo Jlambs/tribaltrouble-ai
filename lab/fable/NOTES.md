@@ -77,6 +77,22 @@ interval reaches below it. `@f2` scores on these seeds as on its first exam (37.
 easier; the development maps said 58 % for `@f3`, 7 points higher than its exam (about 1.5 standard errors of the
 difference). Exam seeds used so far: 36001..36700.
 
+Against the original Gauntlet (`@g16`) at high N (2026-11-16, at the user's request), each pair on the same maps:
+N=15 on the exam seeds already played above (36501..36700, `exam-g16-vs15-c`), N=16-20 on 100 maps never used for
+anything (31001..31100, `hn-f3-vsN`, `hn-g16-vsN`). No failed game, no swallowed error.
+
+| N | `@f3` | `@g16` | paired, `@f3` against `@g16` | minutes survived, more | copies out by minute 30, more |
+|---|---|---|---|---|---|
+| 15 (200 maps) | 102 = 51.0 % [44.1, 57.8] | 60 = 30.0 % [24.1, 36.7], 1 draw | +56 / -14 (z 5.0) | +3.9 (z 4.2) | +0.34 (z 2.4) |
+| 16 | 43 % [34, 53] | 15 % [9, 23] | +34 / -6 (z 4.4) | +6.9 (z 5.1) | +0.61 (z 3.4) |
+| 18 | 10 % [6, 18], 1 draw | 3 % [1, 9] | +8 / -1 (z 2.3) | +5.2 (z 4.7) | +0.50 (z 3.0) |
+| 20 | 0 % | 0 % | | +0.7 (z 1.1) | +0.38 (z 2.3) |
+
+With the exam table above (Gauntlet 60.5 % at N=13, 41.5 % at 14): Gauntlet crosses 50 % at about N=13.5, `@f3`
+at about N=15 (51 % at 15, 34-43 % at 16 on three sets of maps), and `@f3` at N=16 wins about as often as Gauntlet at
+N=14. At N=20 both are overrun in 30 minutes: the copies take about four out by minute 20, then the rest overwhelm
+the base whichever AI it is.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
