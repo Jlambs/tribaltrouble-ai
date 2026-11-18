@@ -110,6 +110,11 @@ copies more. Its win rate falls about fourfold from 16 to 18 and tenfold from 18
 threefold. Every 1-in-10 map `@f3` wins at N=18 is one Gauntlet loses (90 of 96), and at every N it lasts longer
 and puts out more copies before it falls (z 4-16).
 
+Gauntlet's record (2026-11-17/18, at the user's request; "Gauntlet's record, searched the same way" below): `@f3` has a
+verified, clean win at **N=25** (seed 10272, 296 min) against Gauntlet's N=24 (seed 9902, 216 min). The same search,
+5,000 maps per N until two N in a row had none: N=21 21 wins, N=22 13, N=23 1, N=24 3, N=25 1, N=26 0, N=27 0 (N=28 0 in
+4,810, cancelled). One win is as thin as Gauntlet's own record (1 in 4,320), and none of the three N=24 wins is clean.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -1538,6 +1543,53 @@ chieftain, which costs two or three more bases. Nothing that waits has paid at N
 Screen `lg2` on the 100 open maps (run 0 is `bt1-06`, 62 wins; wins by run 62 65 63 64 64 64 64 62): the bank as
 first built, `bank=80`, +0.5 +- 1.7 (it starts twice a game and fills 0.4 times: an attack is out nearly always),
 a floor under late launches, `late_min_strength=50`, -0.5 +- 1.3. Both off.
+
+### Gauntlet's record, searched the same way (`lab/fable/scan.py`, `spawns.py`, `cleanwins.py`)
+
+The user (2026-11-17): "see if this will beat gauntlet's record: scan 5000 maps for each N>20 until you get two N in a
+row that have no wins". Gauntlet's own record, from its notes and taken at face value (its search is not rerun):
+N=24, seed 9902, `cur16` (the AI frozen here as `@g16`), won at 216:52, replay VERIFIED, clean spawns (no two copies
+within 20 cells, the nearest copies 45 and 51 cells from us), found after 4,320 N=24 games on seeds 6001..11000
+(`frontier_search.py`: 0/10/10, ludicrous, 5,000 games per N, stop once two N in a row have none; cur15 had N=21 0 in
+2,436 and N=22 one win in about 1,860; cur16 N=23 0 in 5,000, N=24 1, N=25 0 and N=26 0 in 5,000 each).
+
+`@f3` played the same 5,000 maps (seeds 6001..11000, none ever used by fable) at N=21, 22, ... two N at a time, every
+N as one batch `sc-f3-vsN`; 19:05 to 05:28, 39,810 games, none failed. N=26 and N=27 both had no wins, so the scan
+stopped, and N=28 (0 in 4,810) was cancelled. A win is *clean* by Gauntlet's standard when every copy is real: no
+copy alive at 20 minutes without an armory (`spawns.py`: about 1 copy in 300 is stuck for good by its spawn, and the
+copy our opening strike removes is a kill, not a stuck one) and no two copies starting under 20 cells apart
+(`cleanwins.py`).
+
+| N | `@f3` wins in 5,000 | draws | wins with every copy armed | clean wins (and no pair under 20 cells) | Gauntlet (its notes) |
+|---|---|---|---|---|---|
+| 21 | 21 (0.42 %) | 0 | 17 | 15 | cur15 0 in 2,436 |
+| 22 | 13 (0.26 %) | 4 | 10 | 7 | cur15 1 in about 1,860 |
+| 23 | 1 | 0 | 1 | 1 | cur16 0 in 5,000 |
+| 24 | 3 | 1 | 0 | 0 | cur16 1 in 4,320 (clean): the record |
+| **25** | **1** | 0 | **1** | **1** | cur16 0 in 5,000 |
+| 26 | 0 | 0 | | | cur16 0 in 5,000 |
+| 27 | 0 | 1 | | | not played |
+| 28 | 0 in 4,810 | 0 | | | not played |
+
+The wins at N=23 and above (all six replay VERIFIED in a fresh JVM):
+
+| N | seed | length | field |
+|---|---|---|---|
+| 23 | s7834 | 147 min | clean: effective N 23, closest pair of copies 29 cells, nearest copies 42 and 51 cells from us |
+| 24 | s6601 | 240 min | one copy armed at 25 min (slow, but it armed), one pair at 20 cells: effective N 23-24 |
+| 24 | s9974 | 94 min | crowded starts (13 pairs under 20 cells, two 3 cells apart), one copy never armed and was put out at 27 min |
+| 24 | s10386 | 335 min | one copy armed at 49 min: effective N 23 |
+| **25** | **s10272** | **296 min** | **clean: the 24 copies not removed by the opening all armed by minute 8 (the nearest one, s2 at 42 cells, never did and was put out at 7.7 min, the same pattern as Gauntlet's record), nearest copies 42 and 50 cells from us; the closest pair of starts is exactly 20.0 cells (s12, s17), every other pair at least 36; checksum -1508468867** |
+
+So by Gauntlet's own standard the record moves from N=24 to N=25, by one clean win in 5,000 games. How much that is
+worth: the rate at N=23-25 is about one win in 5,000 (95 % interval 0.001 % to 0.11 % for a single win), as thin as
+Gauntlet's one in 4,320, so the frontier is N=25 give or take one, not a certain 25. The rates below it are the firmer
+comparison: N=21 0.42 % and N=22 0.26 % against Gauntlet's 0 in 2,436 and 1 in 1,860, and at N=20 `@f3` 0.9 % against
+`@g16` 0.3 % on 1,000 maps. The N=24 wins are all against a weakened field (one copy that armed late or never): the
+stuck copies are 1 in 300 per copy, so at N=24 and above they are in 7 % of games, and a stuck copy is how most wins
+there come about (all three N=24 wins, against 2 of 21 at N=21).
+
+On Gauntlet's record map, s9902, `@f3` wins at N=21 (107 min) and loses at 22 (31 min), 23 (28 min) and 24 (31 min).
 
 ## Reproduce
 
