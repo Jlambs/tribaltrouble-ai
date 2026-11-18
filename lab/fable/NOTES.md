@@ -93,6 +93,23 @@ at about N=15 (51 % at 15, 34-43 % at 16 on three sets of maps), and `@f3` at N=
 N=14. At N=20 both are overrun in 30 minutes: the copies take about four out by minute 20, then the rest overwhelm
 the base whichever AI it is.
 
+The same at 1000 maps per N (2026-11-17, at the user's request: 100 maps gave too few wins at N=18 and 20): the 100
+above and 900 more never used for anything (31101..32000, `hk-f3-vsN`, `hk-g16-vsN`; `lab/fable/highn.py` pairs a
+side made of several runs). 5400 games more, none failed, no swallowed error.
+
+| N | `@f3` | `@g16` | maps won by both / only `@f3` / only `@g16` | sign test | minutes survived | copies out by minute 30 / by the end |
+|---|---|---|---|---|---|---|
+| 16 | 377 = 37.7 % [34.7, 40.7], 2 draws | 127 = 12.7 % [10.8, 14.9], 6 draws | 85 / 292 / 42 | z 13.7 | 57.6 -> 66.6 | 4.42 -> 5.01 / 5.90 -> 8.91 |
+| 18 | 96 = 9.6 % [7.9, 11.6], 1 draw | 10 = 1.0 % [0.5, 1.8], 3 draws | 6 / 90 / 4 | z 8.9 | 37.7 -> 47.1 | 4.16 -> 4.70 / 4.34 -> 5.93 |
+| 20 | 9 = 0.9 % [0.5, 1.7] | 3 = 0.3 % [0.1, 0.9] | 2 / 7 / 1 | z 2.1 | 30.5 -> 32.6 | 3.85 -> 4.36 / 3.90 -> 4.50 |
+
+So the first 100 maps flattered `@f3` at N=16 (43 % there, 37.2 % on the next 900); its N=16 figures are now 34 %
+(exam), 37.7 % (these 1000) and 41.5 % (21601..21900). `@f3` at N=16 wins about as often as Gauntlet at N=14 (41.5 %
+on the exam), and at N=18 about as often as Gauntlet at N=16 (9.6 % against 12.7 %): it is worth about two Hard
+copies more. Its win rate falls about fourfold from 16 to 18 and tenfold from 18 to 20; Gauntlet's twelvefold, then
+threefold. Every 1-in-10 map `@f3` wins at N=18 is one Gauntlet loses (90 of 96), and at every N it lasts longer
+and puts out more copies before it falls (z 4-16).
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
