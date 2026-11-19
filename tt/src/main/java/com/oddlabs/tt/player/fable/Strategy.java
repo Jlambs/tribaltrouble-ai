@@ -1506,8 +1506,21 @@ class Strategy {
      * With the walk ahead it stands at 321 s and the game is won. For every site (pw-vs8/10/12, pwf/pwg-vs15, the
      * peons more than 20 cells from it) the armories under 120 cells out stand 0 to 5 s later, those farther out 39 s
      * earlier: a walk under 200 m takes no longer than the first quarters.
+     *
+     * Default 300 since the any-seat ladder's seat-0 games on 22001..22100 (bsA-vs8/10/12/14 against as-f3-vsN-s0):
+     * 23 of 400 games change, 6 lost ones are won and 1 won one is lost (97 -> 99, 96 -> 98, 89 -> 90, 76 -> 76 of
+     * 100). A search out to 1300 m (armory_iron_far) changes none of them, and moving the whole tribe at 500 m
+     * (opening_move_m) changes 3 without changing a result.
      */
-    int opening_prewalk = 0;
+    int opening_prewalk = 300;
+    /**
+     * opening_fallback: when the first armory's site is lost before any armory of ours has stood, the next one goes
+     * up by our safest quarters, as a lost armory's does, instead of on the same site again, and the opening's
+     * quarters not carried out yet are dropped when they lie more than 60 cells from it. as-f3-vs11-s0 s22003: the
+     * site 799 m out falls at 3:42, 7:58 and 10:16 and is planned again each time; from minute 11 up to 39 peons
+     * stand idle by the one quarters until the game is lost at 16:09 with no armory ever built.
+     */
+    boolean opening_fallback = false;
     /**
      * expansion_iron_need (iron nodes, 0 = off): the opening stays by the start, and when the first armory stands with
      * fewer than this many nodes within armory_iron_reach m of walking, a second one is planned at once (not before
@@ -2779,6 +2792,7 @@ class Strategy {
         armory_iron_far = params.getInt("armory_iron_far", armory_iron_far);
         opening_move_m = params.getInt("opening_move_m", opening_move_m);
         opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
+        opening_fallback = params.getBoolean("opening_fallback", opening_fallback);
         expansion_iron_need = params.getInt("expansion_iron_need", expansion_iron_need);
         expansion_iron_ticks = (float) params.getDouble("expansion_iron_ticks", expansion_iron_ticks);
         expansion_iron_far = params.getInt("expansion_iron_far", expansion_iron_far);

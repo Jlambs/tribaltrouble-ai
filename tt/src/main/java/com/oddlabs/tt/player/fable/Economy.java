@@ -97,6 +97,8 @@ final class Economy {
     private boolean rush_alert;
     private float rush_alert_time;
     private boolean had_armory;
+    /** opening_fallback: an armory site of ours was lost, or given up, before any armory had stood. */
+    private boolean first_armory_lost;
     /** retire: razings of our own buildings that free a slot for a flagged armory project, and the doomed set. */
     private final @NonNull Retire retire;
     /** How our buildings hold up under attack (always on: it only reads and counts), for repair_swarm and salvage. */
@@ -1321,6 +1323,8 @@ final class Economy {
         for (Iterator<Project> it = projects.iterator(); it.hasNext();) {
             Project p = it.next();
             if (p.building != null && p.building.isDead()) {
+                if (p.type == Race.BUILDING_ARMORY && !had_armory)
+                    first_armory_lost = true;
                 it.remove();
                 continue;
             }
@@ -2338,8 +2342,10 @@ final class Economy {
                             site.y, FableAI.seconds(-site.score), ai.planner().getStartField().get(site.x, site.y)));
             }
             // A lost armory goes up again next to the quarters furthest from the fighting, not back where it fell.
+            // opening_fallback: so does a first armory whose site fell before it stood.
+            boolean fallback = st.opening_fallback && first_armory_lost && !had_armory;
             if (site == null)
-                site = had_armory ? safeArmorySite() : ai.planner().findArmorySite(reservedSites(null));
+                site = had_armory || fallback ? safeArmorySite() : ai.planner().findArmorySite(reservedSites(null));
             if (!quiet && site != null && ai.military().threatNear(site.x, site.y, 25)) {
                 // rearm_placer: a site by another quarters with no threat within 25 cells, rather than none.
                 Site alt = had_armory && st.rearm_placer && nextDue(rearm_alt_next) ? calmArmorySite() : null;
@@ -2356,6 +2362,22 @@ final class Economy {
                         Race.BUILDING_ARMORY);
             }
             if (site != null) {
+                if (fallback) {
+                    int dropped = 0;
+                    for (Iterator<Project> it = projects.iterator(); it.hasNext();) {
+                        Project q = it.next();
+                        if (q.use_scout && q.building == null && MapAnalysis.dist2(q.site.x, q.site.y, site.x,
+                                site.y) > FALLBACK_KEEP * FALLBACK_KEEP) {
+                            it.remove();
+                            dropped++;
+                        }
+                    }
+                    ai.aiLog().count("opening_fallback"); // armory projects planned by a quarters after a lost first site
+                    if (ai.logging())
+                        ai.log(String.format(
+                                "opening fallback: armory by the quarters at %d,%d, %d far projects dropped",
+                                site.x, site.y, dropped));
+                }
                 armory_site = site;
                 addProject(Race.BUILDING_ARMORY, site, 0);
             }
@@ -2976,6 +2998,9 @@ final class Economy {
     /** hold_backlog: ore waits in the main armory for workers; since when. */
     private boolean backlog_on;
     private float backlog_since;
+
+    /** opening_fallback: opening projects this near the new armory site (cells) are kept. */
+    private static final int FALLBACK_KEEP = 60;
 
     /**
      * opening_prewalk, in cells: peons this near a quarters may still fill it; where they wait, off the site; peons
