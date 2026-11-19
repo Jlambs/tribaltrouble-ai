@@ -35,9 +35,10 @@ def check(run, key):
                 out.setdefault(d['s'], d['t'])
             elif '"ev":"end"' in line:
                 result = json.loads(line)
-    copies = [s for s in starts if s != 0]
+    me = int(key.rsplit('-', 1)[1])  # the key ends in our slot
+    copies = [s for s in starts if s != me]
     pairs = sorted((math.dist(starts[a], starts[b]), a, b) for i, a in enumerate(copies) for b in copies[i + 1:])
-    mine = sorted((math.dist(starts[0], starts[c]), c) for c in copies)
+    mine = sorted((math.dist(starts[me], starts[c]), c) for c in copies)
     stuck = [c for c in copies if (c not in armory or armory[c] > 1200) and out.get(c, 1e9) > 1200]
     armed = [sum(1 for c in copies if c in armory and armory[c] <= m * 60) for m in ARMED_BY]
     n = len(copies)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Per-run and paired statistics for 1-vs-N runs (team A = slot 0 against allied Hard copies).
+"""Per-run and paired statistics for 1-vs-N runs (team A = one slot, the row's `side`, against allied Hard copies).
 
     python lab/fable/stats.py RUN [RUN...]          one line per run, plus the win/loss split
     python lab/fable/stats.py --pair BASE VAR...    paired on the games both runs counted
@@ -31,6 +31,7 @@ def game_stats(run, key, row):
     a1lost = None
     w10 = None
     units = {}
+    me = row.get('side', 0)
     with open(path, encoding='utf-8') as f:
         for line in f:
             if '"ev":"deaths"' in line or '"ev":"stunned"' in line or '"ev":"cast"' in line:
@@ -38,13 +39,13 @@ def game_stats(run, key, row):
             e = json.loads(line)
             ev = e['ev']
             if ev in ('out', 'collapse'):
-                if e['s'] == 0:
+                if e['s'] == me:
                     a_out = a_out if a_out is not None else e['t']
                 else:
                     outs.setdefault(e['s'], e['t'])
-            elif ev == 'razed' and e.get('s') == 0 and e.get('b') == 'armory' and not e.get('site'):
+            elif ev == 'razed' and e.get('s') == me and e.get('b') == 'armory' and not e.get('site'):
                 a1lost = a1lost if a1lost is not None else e['t']
-            elif ev == 'census' and e['s'] == 0:
+            elif ev == 'census' and e['s'] == me:
                 if w10 is None and e['t'] >= 600:
                     w10 = e['rock'] + e['iron'] + e['rubber'] + e['garrison']
                 units[int(e['t'])] = e['units']

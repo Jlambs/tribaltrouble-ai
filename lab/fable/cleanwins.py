@@ -21,7 +21,7 @@ for run in sys.argv[1:]:
                 d = json.loads(line); armory.setdefault(d['s'], d['t'])
             elif '"ev":"out"' in line or '"ev":"collapse"' in line:
                 d = json.loads(line); out.setdefault(d['s'], d['t'])
-        copies = [s for s in starts if s != 0]
+        copies = [s for s in starts if s != int(key.rsplit('-', 1)[1])]  # the key ends in our slot
         stuck = [c for c in copies if (c not in armory or armory[c] > 1200) and out.get(c, 1e9) > 1200]
         close = sum(1 for i, a in enumerate(copies) for b in copies[i + 1:] if math.dist(starts[a], starts[b]) < 20)
         rows.append((key, len(copies), len(stuck), close))
@@ -30,4 +30,4 @@ for run in sys.argv[1:]:
     clean = [r for r in rows if r[2] == 0 and r[3] == 0]
     eff = collections.Counter(r[1] - r[2] for r in rows)
     print(f'{run}: {n} wins; no stuck copy {len(nostuck)}; no stuck copy and no pair under 20 cells {len(clean)}; effective N of the wins {dict(sorted(eff.items()))}')
-    print('   clean wins:', ' '.join(r[0][:-2] for r in clean))
+    print('   clean wins:', ' '.join(r[0] for r in clean))
