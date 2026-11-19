@@ -139,7 +139,10 @@ final class Freeze {
             copies.add(at, p);
             etas.add(at, eta);
         }
-        if (copies.isEmpty() || etas.getFirst() > strategy.freeze_eta_ticks) {
+        if (!copies.isEmpty() && etas.getFirst() < strategy.freeze_min_eta_ticks)
+            ai.aiLog().count("freeze_too_near");
+        if (copies.isEmpty() || etas.getFirst() > strategy.freeze_eta_ticks
+                || etas.getFirst() < strategy.freeze_min_eta_ticks) {
             String nearest = copies.isEmpty() ? "none reachable" : name(
                     copies.getFirst()) + " at " + (int) FableAI.seconds(etas.getFirst()) + "s";
             log(() -> "no strike: nearest copy " + nearest + ", freeze_eta " + (int) FableAI.seconds(
@@ -157,6 +160,11 @@ final class Freeze {
             pool.removeAll(intel.strikers);
             // Leave freeze_keep peons for our own opening.
             int wanted = first || strategy.freeze_squad2 <= 0 ? strategy.freeze_squad : strategy.freeze_squad2;
+            // freeze_near_ticks: a copy next door is struck with nearly everyone
+            if (first && etas.get(i) < strategy.freeze_near_ticks) {
+                wanted = strategy.freeze_near_squad;
+                ai.aiLog().count("freeze_near");
+            }
             int size = Math.min(wanted, pool.size() - Math.max(1, strategy.freeze_keep));
             if (size < MIN_SQUAD) {
                 int left = pool.size();

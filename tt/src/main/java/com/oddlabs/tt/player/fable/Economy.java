@@ -124,9 +124,23 @@ final class Economy {
         SitePlanner planner = ai.planner();
         Strategy strategy = ai.strategy();
         List<Site> reserved = new ArrayList<>();
-        armory_site = planner.findArmorySite(reserved);
         int sx = planner.getStartX();
         int sy = planner.getStartY();
+        // opening_keepout: nothing of the opening goes up by a copy that starts next door
+        if (strategy.opening_keepout > 0)
+            for (Player p : ai.owner().getWorld().getPlayers()) {
+                if (!ai.owner().isEnemy(p) || !p.isAlive())
+                    continue;
+                int ex = UnitGrid.toGridCoordinate(p.getStartX());
+                int ey = UnitGrid.toGridCoordinate(p.getStartY());
+                if (MapAnalysis.dist2(sx, sy, ex,
+                        ey) <= strategy.opening_keepout_range * strategy.opening_keepout_range) {
+                    reserved.add(new Site(ex, ey, 0f).withHalf(strategy.opening_keepout));
+                    ai.aiLog().count("opening_keepout"); // copies kept clear of, once each
+                    ai.log("keepout: no opening building within " + strategy.opening_keepout + " cells of " + ex + "," + ey);
+                }
+            }
+        armory_site = planner.findArmorySite(reserved);
         int ax = armory_site != null ? armory_site.x : sx;
         int ay = armory_site != null ? armory_site.y : sy;
         if (armory_site != null)

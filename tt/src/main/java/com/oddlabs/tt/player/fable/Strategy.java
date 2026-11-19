@@ -1522,6 +1522,16 @@ class Strategy {
      */
     boolean opening_fallback = false;
     /**
+     * opening_keepout (cells, 0 = off): the opening's buildings keep a square of this half size (plus their own and
+     * the usual gap) around the start of every copy that starts within opening_keepout_range cells of ours. A Hard
+     * copy sends its idle peons and gatherers at whatever of ours comes within 30 m of its quarters, and its idle
+     * peons answer anything within 8 cells themselves; with a copy next door our first quarters goes up inside that
+     * circle and the builders are killed at it (bsA-vs14 s22011: the copy 15 cells away, the quarters site 24 cells
+     * from its start, 19 of 20 peons dead in the first minute with the strike and, without it, out at 1:12).
+     */
+    int opening_keepout = 0;
+    int opening_keepout_range = 40;
+    /**
      * expansion_iron_need (iron nodes, 0 = off): the opening stays by the start, and when the first armory stands with
      * fewer than this many nodes within armory_iron_reach m of walking, a second one is planned at once (not before
      * expansion_iron_ticks) on the site the first-armory search finds when it charges for missing iron, up to
@@ -1563,6 +1573,25 @@ class Strategy {
     boolean freeze_open = false;
     int freeze_squad = 6;
     float freeze_eta_ticks = 2000f; // 40 s
+    /**
+     * freeze_min_eta_ticks (game ticks of peon walk, 0 = off): no strike when the nearest copy starts nearer than
+     * this. The squad then arrives while all twenty of the copy's peons still stand idle by its start; they take the
+     * squad on and go on to our builders next door. In the any-seat ladder's games at N=12..16 (as-f3-vsN-sS, 1149
+     * games) the 8 with a copy under 20 cells away lose 15.2 of our 20 units by 2:00 and the 7 at 20 to 29 cells lose
+     * 10.7, none of the 15 is won and the strike puts the copy out in 0 and 3 of them; from 30 cells on we lose 2.0
+     * and less and the strike puts it out in 64 to 85 %. bsA-vs14 s22011: the copy 34 m of walking away, 19 of our 20
+     * peons dead within the first minute, out at 5:54.
+     */
+    float freeze_min_eta_ticks = 0f;
+    /**
+     * freeze_near_ticks (game ticks of peon walk, 0 = off): against a copy that starts nearer than this the first
+     * strike takes freeze_near_squad peons instead of freeze_squad (all but one at most). Skipping the strike there
+     * (freeze_min_eta_ticks 700 on the 15 ladder games with a copy under 30 cells away: out before minute 10 in 13
+     * against 9, none won either way) and building clear of the copy (opening_keepout 30: out before minute 10 in 7,
+     * one won) both leave the copy's twenty peons to kill ours, who are under orders and do not answer.
+     */
+    float freeze_near_ticks = 0f;
+    int freeze_near_squad = 19;
     boolean freeze_raze = false;
     /**
      * A frozen copy stops counting as frozen (in the attack target's choice) once its frozen armory site is gone or it
@@ -2793,6 +2822,8 @@ class Strategy {
         opening_move_m = params.getInt("opening_move_m", opening_move_m);
         opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
         opening_fallback = params.getBoolean("opening_fallback", opening_fallback);
+        opening_keepout = params.getInt("opening_keepout", opening_keepout);
+        opening_keepout_range = params.getInt("opening_keepout_range", opening_keepout_range);
         expansion_iron_need = params.getInt("expansion_iron_need", expansion_iron_need);
         expansion_iron_ticks = (float) params.getDouble("expansion_iron_ticks", expansion_iron_ticks);
         expansion_iron_far = params.getInt("expansion_iron_far", expansion_iron_far);
@@ -2803,6 +2834,9 @@ class Strategy {
         freeze_open = params.getBoolean("freeze_open", freeze_open);
         freeze_squad = params.getInt("freeze_squad", freeze_squad);
         freeze_eta_ticks = (float) params.getDouble("freeze_eta_ticks", freeze_eta_ticks);
+        freeze_min_eta_ticks = (float) params.getDouble("freeze_min_eta_ticks", freeze_min_eta_ticks);
+        freeze_near_ticks = (float) params.getDouble("freeze_near_ticks", freeze_near_ticks);
+        freeze_near_squad = params.getInt("freeze_near_squad", freeze_near_squad);
         freeze_raze = params.getBoolean("freeze_raze", freeze_raze);
         freeze_unfreeze = params.getBoolean("freeze_unfreeze", freeze_unfreeze);
         freeze_fight = params.getBoolean("freeze_fight", freeze_fight);
