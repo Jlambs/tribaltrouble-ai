@@ -1498,6 +1498,17 @@ class Strategy {
      */
     int opening_move_m = 0;
     /**
+     * opening_prewalk (meters of walking, 0 = off): with the first armory's site this far from the start or farther,
+     * the peons with nothing to do walk to it while the scout still carries it out, instead of waiting by the first
+     * quarters for the site to be placed. as-f3-vs8-s0 s22088: the site 719 m of walking out is placed at 185 s, the
+     * first quarters stands at 41 s, 17 to 26 peons stand idle by it until then and only then set out, and the armory
+     * stands at 430 s, three minutes after the neighbours' first warriors; the game is lost at 12:42 with no kill.
+     * With the walk ahead it stands at 321 s and the game is won. For every site (pw-vs8/10/12, pwf/pwg-vs15, the
+     * peons more than 20 cells from it) the armories under 120 cells out stand 0 to 5 s later, those farther out 39 s
+     * earlier: a walk under 200 m takes no longer than the first quarters.
+     */
+    int opening_prewalk = 0;
+    /**
      * expansion_iron_need (iron nodes, 0 = off): the opening stays by the start, and when the first armory stands with
      * fewer than this many nodes within armory_iron_reach m of walking, a second one is planned at once (not before
      * expansion_iron_ticks) on the site the first-armory search finds when it charges for missing iron, up to
@@ -2767,6 +2778,7 @@ class Strategy {
         armory_iron_short_ticks = (float) params.getDouble("armory_iron_short_ticks", armory_iron_short_ticks);
         armory_iron_far = params.getInt("armory_iron_far", armory_iron_far);
         opening_move_m = params.getInt("opening_move_m", opening_move_m);
+        opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
         expansion_iron_need = params.getInt("expansion_iron_need", expansion_iron_need);
         expansion_iron_ticks = (float) params.getDouble("expansion_iron_ticks", expansion_iron_ticks);
         expansion_iron_far = params.getInt("expansion_iron_far", expansion_iron_far);

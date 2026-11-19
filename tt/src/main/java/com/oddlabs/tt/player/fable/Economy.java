@@ -2977,6 +2977,25 @@ final class Economy {
     private boolean backlog_on;
     private float backlog_since;
 
+    /**
+     * opening_prewalk, in cells: peons this near a quarters may still fill it; where they wait, off the site; peons
+     * this near the site are there.
+     */
+    private static final int PREWALK_HOME = 30;
+    private static final int PREWALK_STAGE = 9;
+    private static final int PREWALK_NEAR = 20;
+    private boolean prewalk_logged;
+
+    /** opening_prewalk: the first armory's project while its site is not placed yet, or null. */
+    private @Nullable Project prewalkProject() {
+        if (!ai.intel().armory_sites.isEmpty())
+            return null;
+        for (Project p : projects)
+            if (p.type == Race.BUILDING_ARMORY && p.use_scout && !p.isPlaced())
+                return ai.planner().getStartField().get(p.site.x, p.site.y) >= ai.strategy().opening_prewalk ? p : null;
+        return null;
+    }
+
     private boolean needsBuilders() {
         for (Project p : projects)
             if (p.isPlaced() && builderCount(p.building) < buildersWanted(p))
@@ -5851,11 +5870,35 @@ final class Economy {
 
         if (armory == null) {
             // Nothing to gather for yet: spare peons speed up a quarters that is below its reserve.
+            Project ahead = ai.strategy().opening_prewalk > 0 ? prewalkProject() : null;
+            List<Unit> walkers = new ArrayList<>();
             for (Unit u : free) {
                 Building q = MapAnalysis.nearest(intel.quarters, u.getGridX(), u.getGridY());
+                boolean walks = ahead != null && MapAnalysis.dist2(u.getGridX(), u.getGridY(), ahead.site.x,
+                        ahead.site.y) > PREWALK_NEAR * PREWALK_NEAR;
+                // opening_prewalk: a peon that has walked out does not come back to fill a quarters
                 if (q != null && !evacuating.containsKey(q) && !retire.isDoomed(q)
-                        && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q))
+                        && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q)
+                        && (ahead == null || MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(),
+                                q.getGridY()) <= PREWALK_HOME * PREWALK_HOME))
                     order(u, q, ai.enterAction(q));
+                else if (walks)
+                    walkers.add(u);
+            }
+            if (ahead != null && !walkers.isEmpty()) {
+                // toward the start from the site, clear of its footprint: a moving unit on it would block the placing
+                int sx = ai.planner().getStartX();
+                int sy = ai.planner().getStartY();
+                double d = Math.max(1.0, Math.sqrt(MapAnalysis.dist2(sx, sy, ahead.site.x, ahead.site.y)));
+                int tx = ahead.site.x + (int) Math.round((sx - ahead.site.x) * PREWALK_STAGE / d);
+                int ty = ahead.site.y + (int) Math.round((sy - ahead.site.y) * PREWALK_STAGE / d);
+                ai.landscapeOrder(walkers.toArray(new Selectable<?>[0]), tx, ty, Action.MOVE, false);
+                for (int i = 0; i < walkers.size(); i++)
+                    ai.aiLog().count("prewalk_sent"); // peons ordered out, once each as a rule
+                if (!prewalk_logged) {
+                    prewalk_logged = true;
+                    ai.log("prewalk: " + walkers.size() + " peons walk ahead to " + ahead.describe());
+                }
             }
             return;
         }
