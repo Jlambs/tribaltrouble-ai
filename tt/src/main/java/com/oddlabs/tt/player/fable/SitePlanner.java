@@ -4,6 +4,7 @@ import com.oddlabs.tt.model.BuildingTemplate;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Supply;
+import com.oddlabs.tt.pathfinder.UnitGrid;
 import com.oddlabs.tt.player.Player;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
@@ -142,6 +143,7 @@ final class SitePlanner {
         iron_need = need;
         iron_far = far;
         iron_scored = need > 0;
+        route_scored = strategy.armory_route_clear > 0;
         Site best = findArmorySite(reserved, strategy.max_armory_distance, start_field);
         // A start boxed in by cliffs may have nothing worth building on nearby; look further before settling.
         if (best == null || -best.score > strategy.armory_far_cost_ticks || shortOfIron(best)) {
@@ -155,7 +157,110 @@ final class SitePlanner {
                 best = further;
         }
         iron_scored = false;
+        route_scored = false;
         return best;
+    }
+
+    /** armory_route_clear: cells an enemy start lies farther from ours than the clearance before its walks count. */
+    private static final int ROUTE_NEXT_DOOR = 10;
+    private static final byte ROUTE_HOT = 1;
+    private static final byte ROUTE_CLEAR = 2;
+
+    private boolean route_scored;
+    /**
+     * armory_route_clear: the enemy starts that count, and per cell whether the walk to it is hot, clear or unknown.
+     */
+    private int @Nullable [] route_ex;
+    private int @Nullable [] route_ey;
+    private byte @Nullable [] route_state;
+    private int @NonNull [] route_path = new int[1024];
+
+    /**
+     * armory_route_clear: whether the walk from our start to (x, y), followed down the start field, passes within
+     * armory_route_clear cells of an enemy's start (a Hard sends its peons at anything within 30 m of its first
+     * quarters, and they follow it to where it goes). An enemy starting next door, within ROUTE_NEXT_DOOR cells more
+     * than that of ours, does not count: every walk starts by it.
+     */
+    boolean hotRoute(int x, int y) {
+        int clear = strategy.armory_route_clear;
+        if (clear <= 0)
+            return false;
+        int size = map.getSize();
+        if (x < 0 || y < 0 || x >= size || y >= size)
+            return false;
+        byte[] state = route_state;
+        if (state == null) {
+            state = route_state = new byte[size * size];
+            Player[] players = owner.getWorld().getPlayers();
+            int[] ex = new int[players.length];
+            int[] ey = new int[players.length];
+            int n = 0;
+            int far = clear + ROUTE_NEXT_DOOR;
+            for (Player p : players) {
+                if (!owner.isEnemy(p))
+                    continue;
+                int px = UnitGrid.toGridCoordinate(p.getStartX());
+                int py = UnitGrid.toGridCoordinate(p.getStartY());
+                if (MapAnalysis.dist2(start_x, start_y, px, py) > far * far) {
+                    ex[n] = px;
+                    ey[n++] = py;
+                }
+            }
+            route_ex = Arrays.copyOf(ex, n);
+            route_ey = Arrays.copyOf(ey, n);
+        }
+        int[] ex = route_ex;
+        int[] ey = route_ey;
+        if (ex == null || ey == null)
+            return false;
+        int cx = x;
+        int cy = y;
+        int n = 0;
+        byte walk = ROUTE_CLEAR;
+        while (true) {
+            int cell = cy * size + cx;
+            if (state[cell] != 0) {
+                walk = state[cell];
+                break;
+            }
+            int here = start_field.get(cx, cy);
+            if (here == DistanceField.UNREACHABLE)
+                break;
+            if (n == route_path.length)
+                route_path = Arrays.copyOf(route_path, 2 * n);
+            route_path[n++] = cell;
+            int best = here;
+            int bx = cx;
+            int by = cy;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++) {
+                    int c = start_field.get(cx + dx, cy + dy);
+                    if (c < best) {
+                        best = c;
+                        bx = cx + dx;
+                        by = cy + dy;
+                    }
+                }
+            if (bx == cx && by == cy)
+                break;
+            cx = bx;
+            cy = by;
+        }
+        // from the start outwards: a cell's walk is hot when the cell is or the walk to the cell before it was
+        for (int i = n - 1; i >= 0; i--) {
+            int cell = route_path[i];
+            if (walk != ROUTE_HOT) {
+                int px = cell % size;
+                int py = cell / size;
+                for (int k = 0; k < ex.length; k++)
+                    if (MapAnalysis.dist2(px, py, ex[k], ey[k]) <= clear * clear) {
+                        walk = ROUTE_HOT;
+                        break;
+                    }
+            }
+            state[cell] = walk;
+        }
+        return state[y * size + x] == ROUTE_HOT;
     }
 
     /** armory_iron_need: whether the search under way charges sites for the iron they lack, of how many nodes. */
@@ -312,6 +417,8 @@ final class SitePlanner {
                                 near++;
                         quick += strategy.armory_iron_short_ticks * Math.max(0, iron_need - near);
                     }
+                    if (route_scored && from_field == start_field && hotRoute(x, y))
+                        quick += strategy.armory_route_ticks;
                     candidates.add(new Site(x, y, -quick));
                 }
             }
@@ -391,6 +498,8 @@ final class SitePlanner {
                         strategy.armory_iron_reach);
                 cost += strategy.armory_iron_short_ticks * Math.max(0, iron_need - iron_near);
             }
+            if (route_scored && from_field == start_field && hotRoute(c.x, c.y))
+                cost += strategy.armory_route_ticks;
             if (max_tree > 0f && tree >= max_tree) {
                 tree_failed++;
                 continue;

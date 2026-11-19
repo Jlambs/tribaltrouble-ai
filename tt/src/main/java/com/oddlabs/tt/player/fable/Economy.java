@@ -145,6 +145,8 @@ final class Economy {
         int ay = armory_site != null ? armory_site.y : sy;
         if (armory_site != null)
             reserved.add(armory_site.withHalf(SitePlanner.RaceSizes.ARMORY));
+        if (armory_site != null && planner.hotRoute(ax, ay))
+            ai.aiLog().count("route_hot"); // armory_route_clear: no site with a clear walk was worth it
 
         // The freeze squad (Freeze) walks off at the start: it builds nothing until the strike ends.
         int first_builders = Math.max(1, intel.peons.size() - strategy.scouts - intel.strikers.size());
@@ -231,8 +233,50 @@ final class Economy {
             if (!builders.isEmpty())
                 place(first, builders);
         }
-        if (ai.logging())
+        if (ai.logging()) {
             logOreMap(ax, ay);
+            if (armory_site != null) {
+                int[] c = routeClearance(ax, ay);
+                ai.log("route to armory#1 passes " + c[0] + " cells from the start of s" + c[1] + " after " + c[2] + "m");
+            }
+        }
+    }
+
+    private static final int ROUTE_STEP_M = 8;
+
+    /**
+     * The walk from our start to (x, y) along the start field: {cells between it and the enemy start it passes
+     * closest, that enemy's index, meters walked from our start to that point}.
+     */
+    private int @NonNull [] routeClearance(int x, int y) {
+        DistanceField field = ai.planner().getStartField();
+        Player[] players = ai.owner().getWorld().getPlayers();
+        int best = Integer.MAX_VALUE;
+        int who = -1;
+        int at = 0;
+        int cx = x;
+        int cy = y;
+        while (true) {
+            int here = field.get(cx, cy);
+            for (int i = 0; i < players.length; i++) {
+                Player p = players[i];
+                if (!ai.owner().isEnemy(p) || !p.isAlive())
+                    continue;
+                int d = MapAnalysis.dist2(cx, cy, UnitGrid.toGridCoordinate(p.getStartX()), UnitGrid.toGridCoordinate(
+                        p.getStartY()));
+                if (d < best) {
+                    best = d;
+                    who = i;
+                    at = here == DistanceField.UNREACHABLE ? 0 : here;
+                }
+            }
+            int[] next = field.stepTowardsSource(cx, cy, ROUTE_STEP_M);
+            if (here == DistanceField.UNREACHABLE || here <= ROUTE_STEP_M || (next[0] == cx && next[1] == cy))
+                break;
+            cx = next[0];
+            cy = next[1];
+        }
+        return new int[]{(int) Math.sqrt(best), who, at};
     }
 
     /**

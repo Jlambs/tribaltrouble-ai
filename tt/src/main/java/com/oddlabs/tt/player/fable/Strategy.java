@@ -1490,6 +1490,20 @@ class Strategy {
     float armory_iron_short_ticks = 200f; // 4 s a node
     int armory_iron_far = 800;
     /**
+     * armory_route_clear (cells, 0 = off): a first armory site whose walk from the start passes within this many cells
+     * of an enemy's start costs armory_route_ticks more (SitePlanner.hotRoute). The Hard sends its peons at anything
+     * within 30 m of its first quarters and they follow our builders to the site, where builders do not fight back:
+     * from seat 0 at N=12-16 on maps 22001..22100 such a walk (under 30 cells: 19 games of 485 with no copy next
+     * door, 14 of them to iron 300 m and more out) wins 5 games where the seat-0 rates of the same N make 11, with
+     * 8 of our peons dead by minute 5 against 1 (lab/fable/route.py rt as-f4).
+     *
+     * Off, because the walk is still the better choice: on those 19 games a charge that keeps the armory off such a
+     * walk wins 2 (30 cells, 20000 ticks: rv1-vsN-s0) or none (40 cells: rv3, and 9 of the 19 games at 30-39 cells
+     * against 11), and a charge of 4000 ticks moves hardly a site (rv2: 5 and 11). Staying by the start starves.
+     */
+    int armory_route_clear = 0;
+    float armory_route_ticks = 20000f;
+    /**
      * opening_move_m (meters of walking, 0 = off): with the armory site this far from the start or farther, the first
      * quarters goes up by the armory site like the others, so the whole tribe walks there first. With the first
      * quarters by the start and the rest far (fo1-log-vs15, 16 maps with the armory 320 to 520 m out) the armory
@@ -2819,6 +2833,8 @@ class Strategy {
         armory_iron_reach = params.getInt("armory_iron_reach", armory_iron_reach);
         armory_iron_short_ticks = (float) params.getDouble("armory_iron_short_ticks", armory_iron_short_ticks);
         armory_iron_far = params.getInt("armory_iron_far", armory_iron_far);
+        armory_route_clear = params.getInt("armory_route_clear", armory_route_clear);
+        armory_route_ticks = (float) params.getDouble("armory_route_ticks", armory_route_ticks);
         opening_move_m = params.getInt("opening_move_m", opening_move_m);
         opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
         opening_fallback = params.getBoolean("opening_fallback", opening_fallback);
