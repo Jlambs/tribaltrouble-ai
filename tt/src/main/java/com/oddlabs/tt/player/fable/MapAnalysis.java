@@ -78,6 +78,55 @@ final class MapAnalysis {
         return trees;
     }
 
+    /** builder_tree: cells around the box of the peon and the site in which treeOnWay looks for trees. */
+    private static final int TREE_WAY_MARGIN = 24;
+
+    /**
+     * builder_tree: the standing tree with the shortest way from (ux, uy) by the tree to (sx, sy), as the crow flies,
+     * when that way is min_gain cells or more shorter than by the tree nearest to (ux, uy), which the engine's
+     * builder chops; else null. A tree is passed over when the walking distances from the field's source put it more
+     * than half again as far from the peon or the site as the straight line (water between them).
+     */
+    @Nullable
+    TreeSupply treeOnWay(int ux, int uy, int sx, int sy, int min_gain, @NonNull DistanceField field) {
+        int bx0 = Math.max(0, (Math.min(ux, sx) - TREE_WAY_MARGIN) / TREE_BUCKET);
+        int by0 = Math.max(0, (Math.min(uy, sy) - TREE_WAY_MARGIN) / TREE_BUCKET);
+        int bx1 = Math.min(tree_buckets_side - 1, (Math.max(ux, sx) + TREE_WAY_MARGIN) / TREE_BUCKET);
+        int by1 = Math.min(tree_buckets_side - 1, (Math.max(uy, sy) + TREE_WAY_MARGIN) / TREE_BUCKET);
+        int fu = field.getAround(ux, uy, 1);
+        int fs = field.getAround(sx, sy, 2);
+        double nearest = Double.MAX_VALUE;
+        double nearest_way = Double.MAX_VALUE;
+        double best_way = Double.MAX_VALUE;
+        TreeSupply best = null;
+        for (int by = by0; by <= by1; by++) {
+            for (int bx = bx0; bx <= bx1; bx++) {
+                for (TreeSupply t : tree_buckets.get(by * tree_buckets_side + bx)) {
+                    if (t.isEmpty())
+                        continue;
+                    double a = Math.sqrt(dist2(ux, uy, t.getGridX(), t.getGridY()));
+                    double b = Math.sqrt(dist2(t.getGridX(), t.getGridY(), sx, sy));
+                    if (a < nearest) {
+                        nearest = a;
+                        nearest_way = a + b;
+                    }
+                    if (a + b >= best_way)
+                        continue;
+                    int ft = field.getAround(t.getGridX(), t.getGridY(), 1);
+                    if (ft == DistanceField.UNREACHABLE)
+                        continue;
+                    if (fu != DistanceField.UNREACHABLE && Math.abs(ft - fu) > 3 * a + 12)
+                        continue;
+                    if (fs != DistanceField.UNREACHABLE && Math.abs(ft - fs) > 3 * b + 12)
+                        continue;
+                    best_way = a + b;
+                    best = t;
+                }
+            }
+        }
+        return best != null && nearest_way - best_way >= min_gain ? best : null;
+    }
+
     boolean inside(int x, int y) {
         return x >= 0 && y >= 0 && x < size && y < size;
     }

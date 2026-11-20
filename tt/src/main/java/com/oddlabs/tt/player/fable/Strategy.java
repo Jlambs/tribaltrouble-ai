@@ -1579,6 +1579,15 @@ class Strategy {
      */
     float release_fresh_ticks = 3000f; // 60 s
     /**
+     * builder_tree (cells, 0 = off): a builder sent to a site with no wood first chops the tree with the shortest way
+     * from where it stands by the tree to the site, when that way is this many cells or more shorter than by the
+     * tree nearest to it, which the engine's builder chops whatever the direction (the user, 2026-11-19: "picking an
+     * optimal tree to harvest on the way over"). tr-vs12 (30 logged openings, TREE lines): of 115 builders a game
+     * sent with no wood in the first 8 minutes the nearest tree costs 4.3 cells of walking more each, 492 a game,
+     * and 16 of them 10 cells and more.
+     */
+    int builder_tree = 0;
+    /**
      * armory_spare_ticks (game ticks, 0 = off): from then on a second armory is kept as a spare (Economy.planSpare).
      * idl-vs8/12/15 (lab/fable/noarmory.py): of the 244 games in which an armory of ours stands at every moment after
      * the first 243 are won, of the 56 with a moment of none 8; before that moment we stand at exactly one armory for
@@ -2906,6 +2915,7 @@ class Strategy {
         opening_builders = params.getInt("opening_builders", opening_builders);
         release_builders = params.getBoolean("release_builders", release_builders);
         release_fresh_ticks = (float) params.getDouble("release_fresh_ticks", release_fresh_ticks);
+        builder_tree = params.getInt("builder_tree", builder_tree);
         armory_spare_ticks = (float) params.getDouble("armory_spare_ticks", armory_spare_ticks);
         opening_fallback = params.getBoolean("opening_fallback", opening_fallback);
         opening_keepout = params.getInt("opening_keepout", opening_keepout);

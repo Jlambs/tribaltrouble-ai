@@ -5870,9 +5870,7 @@ final class Economy {
                 for (Unit u : chosen) {
                     if (u == scout && scoutHasWork())
                         continue;
-                    order(u, p.building, Action.DEFAULT);
-                    intel.peon_states.put(u, PeonState.BUILD);
-                    intel.builder_sites.put(u, p.building);
+                    sendBuilder(u, p);
                     ai.aiLog().count(had_armory ? "idle_builders" : "opening_builders"); // peons sent to a site beyond its builders
                 }
             }
@@ -5896,6 +5894,104 @@ final class Economy {
 
     /** release_builders: when each building of ours went up, for release_fresh_ticks after. */
     private final Map<@NonNull Building, Float> finished = new LinkedHashMap<>();
+
+    /**
+     * Sends the peon to build at the project's placed site. builder_tree: one with no wood first chops the tree with
+     * the shortest way by it to the site, when that saves builder_tree cells against the tree nearest to the peon,
+     * which the engine's builder goes for; tendFetchers sends it on to the site once it carries the wood.
+     */
+    private void sendBuilder(@NonNull Unit u, @NonNull Project p) {
+        Intel intel = ai.intel();
+        Building site = p.building;
+        if (site == null)
+            return;
+        if (ai.logging())
+            traceTree(u, p);
+        int gain = ai.strategy().builder_tree;
+        TreeSupply tree = gain > 0 && !carriesWood(u) ? ai.map().treeOnWay(u.getGridX(), u.getGridY(), p.site.x,
+                p.site.y, gain, ai.planner().getStartField()) : null;
+        if (tree != null) {
+            ai.owner().setTarget(Selectable.newArray(u), tree, Action.GATHER_REPAIR, false);
+            intel.fetchers.put(u, site);
+            ai.aiLog().count("builder_tree"); // builders sent by a tree on their way
+        } else {
+            intel.fetchers.remove(u);
+            order(u, site, Action.DEFAULT);
+        }
+        intel.peon_states.put(u, PeonState.BUILD);
+        intel.builder_sites.put(u, site);
+    }
+
+    /** builder_tree: a builder that carries its wood, or has stopped gathering, goes on to its site. */
+    private void tendFetchers() {
+        for (Iterator<Map.Entry<Unit, Building>> it = ai.intel().fetchers.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Unit, Building> e = it.next();
+            Unit u = e.getKey();
+            Building site = e.getValue();
+            if (u.isDead() || site.isDead()) {
+                it.remove();
+                continue;
+            }
+            if (site.isComplete() && !site.isDamaged()) {
+                // release_builders frees it this tick; else it gathers on for nobody
+                if (!builtOut(u))
+                    it.remove();
+                continue;
+            }
+            UnitSupplyContainer c = u.getSupplyContainer();
+            boolean loaded = c != null && c.getSupplyType() == TreeSupply.class && c.isSupplyFull();
+            if (loaded || !(u.getPrimaryController() instanceof GatherController)) {
+                it.remove();
+                order(u, site, Action.DEFAULT);
+            }
+        }
+    }
+
+    private int tree_sent;
+    private int tree_loaded;
+    private int tree_waste;
+    private int tree_waste_10;
+    private float tree_logged;
+
+    /**
+     * Log only, the first 8 minutes: a builder with no wood chops the tree nearest to itself (the engine's
+     * SupplyFinder) and carries the wood to the site. The cells that walks more than by the tree with the shortest way
+     * from the peon by the tree to the site, as the crow flies, summed up in a TREE line a minute.
+     */
+    private void traceTree(@NonNull Unit u, @NonNull Project p) {
+        if (ai.now() >= 24000f)
+            return;
+        if (carriesWood(u)) {
+            tree_loaded++;
+        } else {
+            double nearest = Double.MAX_VALUE;
+            double nearest_way = 0;
+            double best_way = Double.MAX_VALUE;
+            for (TreeSupply t : ai.map().getTrees()) {
+                if (t.isEmpty())
+                    continue;
+                double a = Math.sqrt(MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY()));
+                double b = Math.sqrt(MapAnalysis.dist2(t.getGridX(), t.getGridY(), p.site.x, p.site.y));
+                if (a < nearest) {
+                    nearest = a;
+                    nearest_way = a + b;
+                }
+                best_way = Math.min(best_way, a + b);
+            }
+            if (best_way < Double.MAX_VALUE) {
+                int waste = (int) Math.round(nearest_way - best_way);
+                tree_sent++;
+                tree_waste += waste;
+                if (waste >= 10)
+                    tree_waste_10++;
+            }
+        }
+        if (ai.periodDue(tree_logged, 3000f)) {
+            tree_logged = ai.now();
+            ai.aiLog().log("TREE",
+                    () -> tree_sent + " builders sent with no wood and " + tree_loaded + " with: " + tree_waste + " cells more than by the best tree, " + tree_waste_10 + " of them 10 cells and more");
+        }
+    }
 
     /** The peons that had no order at the last allocation (countStanding). */
     private final java.util.Set<@NonNull Unit> stood = new java.util.LinkedHashSet<>();
@@ -5946,6 +6042,8 @@ final class Economy {
         boolean sortie = ai.strategy().sortie_ratio > 0f;
         boolean swarm_on = ai.strategy().repair_swarm;
         boolean release = ai.strategy().release_builders;
+        if (!intel.fetchers.isEmpty())
+            tendFetchers();
         for (Unit peon : intel.peons) {
             PeonState s = intel.peon_states.get(peon);
             // sortie_ratio: peons out fighting by their armory are the military's until the sortie ends
@@ -5968,6 +6066,7 @@ final class Economy {
         // release_builders: free like the idle ones, with the wood they carry
         for (Unit u : released) {
             intel.builder_sites.remove(u);
+            intel.fetchers.remove(u);
             free.add(u);
             ai.aiLog().count("builders_released"); // peon-seconds a builder of a finished building was free for
         }
@@ -6021,9 +6120,7 @@ final class Economy {
             for (Unit u : chosen) {
                 if (u == scout && scoutHasWork())
                     continue;
-                order(u, p.building, Action.DEFAULT);
-                intel.peon_states.put(u, PeonState.BUILD);
-                intel.builder_sites.put(u, p.building);
+                sendBuilder(u, p);
             }
         }
         free.addAll(carriers);

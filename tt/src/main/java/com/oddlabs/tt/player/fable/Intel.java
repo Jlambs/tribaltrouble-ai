@@ -108,6 +108,8 @@ final class Intel {
     final Map<@NonNull Unit, @NonNull WarriorState> warrior_states = new LinkedHashMap<>();
     /** Construction site each builder works on. */
     final Map<@NonNull Unit, @NonNull Building> builder_sites = new LinkedHashMap<>();
+    /** builder_tree: builders sent to chop a tree on their way first, and the site each one builds at (Economy). */
+    final Map<@NonNull Unit, @NonNull Building> fetchers = new LinkedHashMap<>();
     final Map<@NonNull Unit, @Nullable Building> gather_buildings = new LinkedHashMap<>();
     @Nullable
     Unit chieftain;
@@ -263,6 +265,12 @@ final class Intel {
             return PeonState.SHEPHERD;
         if (controller instanceof IdleController && unit.getCurrentController() instanceof HuntController)
             return PeonState.FIGHT;
+        Building fetch = fetchers.get(unit);
+        if (fetch != null && !fetch.isDead()) {
+            // builder_tree: a builder, though the engine has it gathering until it carries the wood
+            builder_sites.put(unit, fetch);
+            return PeonState.BUILD;
+        }
         if (controller instanceof IdleController)
             return PeonState.IDLE;
         if (controller instanceof GatherController<?> gather) {
