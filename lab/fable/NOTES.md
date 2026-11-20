@@ -1906,6 +1906,41 @@ the fresh ones alone are the smaller change.
 Not adopted: `opening_builders=100` (the `idle_builders` rule for the opening alone: a peon left over joins the
 armory's site): it fires in 4 to 23 games of 100 and is +17 -16 over 1,200 games (`ob-vsN`, `obh-vsN`).
 
+### The tree on the way, and idle peons after all (`builder_tree`, `idle_builders`, the defaults since, `@f6`)
+
+The user (2026-11-19), on `opening_builders` left off as neutral: "This still sounds more principled though right?
+Or maybe even picking an optimal tree to harvest on the way over".
+
+**The tree.** A builder sent to a site with no wood chops the tree nearest to itself (the engine's `SupplyFinder`,
+from the unit), whichever way the site lies, and only its later trips start at the site. Logged over 30 openings
+(`tr-vs12`, `TREE` lines, first 8 minutes): 115 builders a game are sent with no wood and 20 with; against the tree
+with the shortest way from the peon by the tree to the site, as the crow flies, the nearest one costs 4.3 cells of
+walking a builder, 492 a game (177 to 949), and 16 builders a game 10 cells and more. `builder_tree` (cells): when
+the best tree saves that much, the builder is first told to gather that tree (`MapAnalysis.treeOnWay`; a tree the
+start field puts across water from the peon or the site is passed over) and counts as the site's builder meanwhile
+(`Intel.fetchers`), and once its load is full `tendFetchers` sends it on to the site; counter `builder_tree`. On 16
+openings (`btN-vs12`, 12 minutes): thresholds of 3, 6 and 10 cells reroute 77, 57 and 35 builders a game and put
+the armory at 236, 236 and 239 s against 241. At 6, against the default with the release (`rel2-vsN`, `rel2h-vs15`,
+`nb2-vsN`):
+
+| run | builders rerouted a game | first armory | sixth quarters | warriors at minute 8 | wins |
+|---|---|---|---|---|---|
+| N=12, 22001..22100 (`btr-vs12`) | 77 | 237 -> 232 s | 298 -> 292 s | 62.1 -> 63.6 | 93 -> 91 (+3 -5) |
+| N=15, 22001..22100 (`btr-vs15`) | 126 | 236 -> 234 s | 297 -> 296 s | 59.4 -> 58.8 | 64 -> 66 (+13 -11) |
+| N=15, 23001..23100 (`btrh-vs15`) | 126 | | | | 56 -> 61 (+18 -13) |
+| N=13, 24001..24200 (`btrn-vs13`) | 99 | 235 -> 232 s | 294 -> 291 s | 61.0 -> 62.9 | 177 -> 176 (+14 -15) |
+| N=15, 24001..24200 (`btrn-vs15`) | 127 | 239 -> 238 s | 303 -> 300 s | 57.9 -> 58.8 | 121 -> 122 (+31 -30) |
+
++79 -74 over 700 games, the model at minute 20 +1.0 +- 0.9 points, no swallowed error. A third of what the release
+gave, in the same place.
+
+**Idle peons.** `idle_builders=100` again, on the default with the release (`ibn-vs12/15`, `ibnh-vs15`,
+`ibnn-vs13/15`): 93 -> 93, 64 -> 69, 56 -> 57, 177 -> 176, 121 -> 125; **+19 -10** over 700 games (it fires in 8
+to 36 games of 100), the model +0.5 +- 0.3. With the +19 -19 on the old default that is +38 -29 over 1,900 games:
+not a loss anywhere, a gain perhaps, and the user's rule that a peon with nothing to do should work.
+
+Both are the default since commit aee7e81e, frozen as `@f6`.
+
 ## Reproduce
 
 ```bash
