@@ -166,6 +166,18 @@ wins 40.3 % of 300 maps of its own, and nothing is lost lower down (N=15 on the 
 took 7 % of the simulation's CPU; with a heap and the hot blocks by the goal free it takes 4.7 % and wins more:
 `@f10`, **59.3 % at N=16** (356 of the 600); at N=17 37.3 % (`@f9` 40.3 % on the same 300 maps).
 
+The micro round (2026-11-20/21, user: no new strategy, the handling of single units; "The micro round" below).
+Tracers of what the units do second by second found three flaws in how peons live among the enemy. A peon fled
+from every enemy warrior within 11 cells, also from one locked in a hunt on another peon, which sees nothing until
+that hunt ends: 7,190 orders to shelter a game, and from minute 24 one trip for iron in ten was delivered. A
+gatherer whose load had not changed for 70 s was called stuck and sent elsewhere while it was walking to iron 100
+cells out. And a gatherer that stepped out of a parked group's way was sent straight back through it. With the three
+mended (`bystander`, `stuck_still_ticks`, `gather_parked`): 12 % more iron an hour, fewer peons lost, a ninth less
+CPU, and at N=16 on 300 maps never used **68.0 %** for `@f10`'s 59.3 % (204 wins for 178, +50 -24). The default
+since, frozen as `@f11`. The warriors' own fighting has little left in it (they throw 70-75 % of the time with an
+enemy in reach, the Hard copies 63-65 %); routed reinforcements arrive alive and win nothing; the chieftain blasts
+once in 320 s where the charge takes 70, and three tries at that changed nothing.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2254,6 +2266,114 @@ percent of its own. The search is wide because the field itself is crossed by br
 only because of the ground by the goal; what is left of the cost (590 plans a game that give up after 8,000 blocks)
 wants fewer plans (one every walk order, 2 s, now) or coarser blocks. Not done.
 
+### The micro round: what single units do among the enemy (2026-11-20/21)
+
+The user's direction: no new strategy, the handling of single units: paths, the choice of supply and destination,
+warriors and the chieftain in a fight. The method was the one that found the shepherds' flaws: a log-only tracer
+of what the units do second by second, then the code that makes them do it. The tracers stay in the AI (they write
+only with `--logs`): `Military.traceEvade` / `traceFlight` (every step out of an enemy's way and every flight to
+shelter, with what the nearest enemy was doing), the `stuck` line of `Economy.unstickGatherers`, `FightTrace` (what
+the warriors of both sides do with an opposing warrior near), `ThrashTrace` (units whose orders turn them about) and
+`Chieftain.traceNoBlob`. Their readers: `lab/fable/evades.py`, `fighttime.py`, and `rates.py` (any run's counters
+per hour of game time, run against run, no logs needed).
+
+**Where an iron gatherer's time went** (`@f10`, 12 logged games at N=16, maps 22001..22012, `ev1log-vs16`; trips by
+how they end, a game per 8 minutes: number / seconds they took):
+
+| min | delivered | step out of an enemy's way | on the way into a building | dead |
+|---|---|---|---|---|
+| 8-16 | 116 / 5,570 | 5 / 102 | 75 / 1,830 | 15 / 305 |
+| 16-24 | 78 / 5,143 | 128 / 2,102 | 136 / 3,153 | 17 / 558 |
+| 24-32 | 70 / 3,232 | 362 / 4,563 | 300 / 3,849 | 17 / 331 |
+| 32-40 | 59 / 2,684 | 322 / 4,074 | 193 / 3,045 | 19 / 373 |
+
+From minute 24 a trip in ten is delivered. A game has 7,190 orders to shelter (`evacuatePeons`: a threat within 11
+cells) and 2,240 steps out of the way (`evade`), and 724 peons die outside a building, 262 of them shepherds.
+
+**1. The bystander** (`bystander=0`). In 5,160 of the 7,190 flights and 1,010 of the 2,240 steps the nearest enemy
+was a warrior locked in a hunt on another peon. The engine's hunter walks to its target without scanning and
+answers nothing (`HuntController`: `WalkBehaviour` without scan); only when its hunt ends does it scan its 8-cell
+square again, warriors before peons (`AttackScanFilter`). One warrior after one peon (a shepherd, or a gatherer
+running home) turned back every gatherer that passed within 11 cells of it: s22003 at 1802-1808 s, one hunter by
+the ore, twenty gatherers stepping away one after the other every second. With `bystander=0` such a hunter is no
+reason to flee or to step away (`Military.huntsElsewhere`); at 6 cells the gatherers walk into the circle and bounce
+there (12 logged games: 603 steps from hunters a game against 154).
+
+**2. The stuck gatherer that was walking** (`stuck_still_ticks=1000`). `unstickGatherers` re-sends a gatherer whose
+load has not changed for 70 s and avoids its supply for two minutes. Late iron lies 100 cells of walk and more
+out: of 281 gatherers called stuck a game 245 were walking, 140 on their way out (56 % of them within 40 cells of
+their supply) and 105 on their way home with their load (`byelog-vs16`). Now one is stuck only if it has also not
+left a 5-cell circle for 20 s; the 28 a game that swing at a supply for 70 s without a load still are.
+
+**3. The parked group in the way** (`gather_parked`). A gatherer that stepped out of a parked group's way was sent to
+the cheapest supply from the armory, which lay behind the group as often as not: #150 of s22003 bounced off a
+group of 10-16 nine times in 50 s, sent to a new supply each time, and half the steps away from a parked enemy came
+within 5 s of going back to work. A parked warrior stands where it is until it sees something, so its 8-cell
+square (10 with two to spare) is ground to walk round: a gatherer is sent only to a supply no parked warrior sees,
+with a straight walk there from where it stands, and from there to the armory, that none sees (`Economy.parkedSees`,
+`walkUnseen`, the cheapest such of the cheapest 12, else none: the peon is free for other work).
+`gather_avoid_parked` and `gather_route_clear`, both off since, look from the armory only and at every enemy.
+
+Per hour of game time (`rates.py`), on maps 25151..25300 from the first start, 150 games each:
+
+| | wins | iron | steps away | peons lost stepping away / on the way in / gathering | CPU s |
+|---|---|---|---|---|---|
+| `@f10` (`rn5-vs16`) | 87 | 793 | 2,051 | 85 / 103 / 53 | 45.0 |
+| `bystander=0` (`by0-vs16`) | 100 | 858 | 1,506 | 122 / 138 / 64 | 42.5 |
+| and `stuck_still_ticks=1000` (`ma2-vs16`) | 100 | 867 | 1,221 | 96 / 122 / 51 | 39.3 |
+| and `gather_parked` (`mb2-vs16`) | **105** | 890 | 733 | 71 / 109 / 28 | 39.8 |
+
+The bystander alone costs peons (a hunter whose hunt ends takes the nearest it then sees); with the parked groups
+walked round, fewer are lost than before the round, for 12 % more iron an hour and a ninth less CPU. On the first
+half of the block (25001..25150) `bystander=0` won 97 for 91, and with `stuck_still_ticks` and
+`bystander_reach=9` 99.
+
+**What was built and stays off, with its mechanism checked:**
+
+- `bystander_reach=9` (a hunter within throwing reach of its target, or whose target is about to walk into a
+  building, counts again: its hunt is about to end). The peons lost do not fall (95 an hour stepping away, as
+  without it) and the steps come back (2,019 for 1,165): the deaths are not at the end of such hunts
+  (`byr-vs16`, 94 for 97).
+- `reinforce_route` (reinforcements walk to the army along `SafeField`, a flood from the army's centre over 4-cell
+  blocks that keeps clear of enemy warriors, bases and towers, in place of attack-moving straight at it one by
+  one). It does what it is for: 82 reinforcements an hour lost on the way become 23 (of 500 sent). It wins nothing:
+  96 for 100 (+18 -22, `mc2-vs16`), with 8 % less iron and more peons lost. The reinforcements that walk through
+  the field one by one are also what clears the hunters out of it.
+- `micro_step=0.75` (a target out of throwing reach is worth less to `micro_targets`, and a warrior walking up to
+  its target takes one in reach instead). `FightTrace`: with an opposing warrior within 8 cells our attackers throw
+  70-72 % of the time and walk up to their target 21 % (the Hard copies, on the engine's own choice: 63-65 % and
+  26-28 %). But two targets in three are given with nothing in reach at all (the first contact, at 8 to 9 cells),
+  and the option moved 215 walks an hour: 75 % and 20 % (`mslog-vs16`). Nothing to win there.
+- The turning about. The military sends a peon to shelter from a threat within 11 cells; the economy's next tick
+  takes it, as any peon on its way into a building, for the gatherer its own flight left the plan short of; the
+  military sends it in again: 80 % of the 7,190 flight orders followed one given within 4 cells 0.5-2 s before,
+  and `ThrashTrace` counts 490 such turns a game beyond the fourth within 5 s (`m0log-vs16`). With the three
+  defaults a game has 1,194 flight orders, 7 % of them towards the enemy, and 65 such turns (`mblog-vs16`).
+  `flight_keep` (the economy leaves a peon on its way to shelter while the threat is within 14 cells): see `@f12`
+  below. `evade_cells=1` (every gatherer steps away, none walks to shelter): 100 wins for 105 (+7 -12, `md2-vs16`),
+  167 peons lost an hour for 207 but 4 % less iron.
+- `evade_chicken` (chicken hunters step away as the other gatherers do, in place of walking to the main armory from
+  up to 150 cells out): 21 of them lost far from home an hour for 27, 100 wins for 105 (+7 -12, `mg2-vs16`).
+- `shred_range=200` (the chieftain's blobs up to 200 cells from the armory): a third less time without a blob, 11.7
+  blasts an hour for 11.2, more approaches called off (46 for 39) and more chieftains lost (1.9 for 1.6): 100 wins
+  for 105 (+15 -20, `mh2-vs16`).
+- `shred_hunters` (waves locked in a hunt on a shepherd count as a blob: they see him no more than parked ones do),
+  with `chief_bystander`: 107 for 105, the same 11.2 blasts and the same time without a blob (`mi2-vs16`): he does
+  not catch up with a group that walks as fast as he does.
+
+**Confirmed and made the default** (`forGame`, large maps: `bystander=0`, `stuck_still_ticks=1000`,
+`gather_parked=true`; frozen as `@f11`). At N=16 from the first start on the 300 maps 26001..26300, never used for
+any of this: **204 wins for 178** (`mbm-vs16` against `rn5m-vs16`, +50 -24, z 3.0), 68.0 % for 59.3 %; 862 iron an
+hour of game for 807, 650 steps out of the way for 2,035, CPU 39.8 s an hour of game for 42.0.
+
+**The chieftain** (`shred`, strict: the `shred_t_*` counters count his rounds of half a second by what he does;
+`mb2-vs16`, an hour of game): 11.2 blasts that catch 22 warriors each, and of the hour 878 s charging, 613 s walking
+with the blast charged, 960 s charged with no blob, 188 s charged with an awake warrior within 9 cells, the rest
+without a chieftain. A blast takes 70 s to charge and comes every 320 s. `traceNoBlob` (12 logged games,
+`cnlog-vs16`, 396 moments charged without a blob): in 86 % a parked group of 8 and more stands beyond `shred_range`
+(140 cells from the armory; 77 % one of 20 and more, 27 % one within 200 cells), in 33 % eight and more awake enemy
+warriors are in range, in 14 % there is nothing.
+
 ## Reproduce
 
 ```bash
@@ -2282,6 +2402,9 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./lab/fable/dev.sh f8m-vs16 "@f8 vs hard*16" 26001..26300                              # likewise f7m-vs16 with @f7
 ./aisim.sh freeze f9 fable                     # the planned way for shepherds, at commit c64eb747
 ./aisim.sh freeze f10 fable                    # the same with the goal's hot blocks free, at commit 00f7ed2b
+./aisim.sh freeze f11 fable                    # the micro round's three defaults, at commit abb99be6
+./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
+python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
 ./lab/fable/dev.sh rtm-vs16 "@f8:... vs hard*16" 26001..26300   # on d2686e1c: fable:shepherd_route=true; rte-vs16 on 25001..25300
 ./lab/fable/dev.sh hplog-vs15 "@f7:shepherd_home_pair=120 vs hard*15" 22001..22008 --logs   # the pair as written
 python lab/fable/shepherds.py hplog-vs15                                               # what a shepherd's life buys
