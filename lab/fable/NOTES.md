@@ -115,6 +115,17 @@ verified, clean win at **N=25** (seed 10272, 296 min) against Gauntlet's N=24 (s
 5,000 maps per N until two N in a row had none: N=21 21 wins, N=22 13, N=23 1, N=24 3, N=25 1, N=26 0, N=27 0 (N=28 0 in
 4,810, cancelled). One win is as thin as Gauntlet's own record (1 in 4,320), and none of the three N=24 wins is clean.
 
+Any seat (2026-11-19, at the user's request; "Any seat: a map is won when one of its starts wins it" below): counting a
+map as won when fable beats the N Hards from at least one of the map's N+1 starts, the default wins **every one of
+200 maps at every N up to 13**, 199 at N=14, 198 at N=15 and 193 at N=16 (100 fresh maps 22001..22100 and 100 held
+out, 23001..23100; from the first start alone 99-100 of 100 up to N=7, 95-99 at N=8-11, 85-93 at N=12-13, 76-77, 52-62
+and 38-42 at N=14, 15, 16). `@f3` on the first block: the same up to N=16, then 87 of 100 at N=17 and 76 at N=18.
+The low-N losses it showed are seat-level leaks: a first armory a long walk from the start (repaired: idle peons walk
+ahead, `opening_prewalk` 300, the default since, frozen as `@f4` at commit bbe0e145; seat 0 at N=8-11 +7 -1), a start
+with no iron within a kilometre, a copy starting next door, and a walk to the far iron that passes a copy (all three
+open: nothing tried on them helped). `@f4` has no exam of its own: at N=12-16 it plays `@f3`'s results (+7 -4 of
+1,000 seat-0 games).
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -1591,6 +1602,184 @@ there come about (all three N=24 wins, against 2 of 21 at N=21).
 
 On Gauntlet's record map, s9902, `@f3` wins at N=21 (107 min) and loses at 22 (31 min), 23 (28 min) and 24 (31 min).
 
+### Any seat: a map is won when one of its starts wins it (`lab/fable/anyseat.py`, `barren.py`, `near.py`, `route.py`, `subset.py`)
+
+The user (2026-11-19): instead of 50 % of the games, win 100 % of the maps at as many N as possible, where a map
+counts as won when fable wins it from one or more of its N+1 starts; 100 or 200 maps at a time are enough. The point:
+a map lost from the first start may only have a bad first start, a map lost from every start is a bad map or a leak
+of ours, and the losses at low N are where leaks show.
+
+The harness seats by rotation already: `--side S` puts our AI in slot S and the Hards in the others, and the starts
+belong to the slots, so the N+1 seats of a seed are the same map with the same N+1 starts. Nothing in it changed.
+`dev.sh` takes `SIDE=S` (or `SIDE=all` for every seat in one batch); `stats.py`, `spawns.py` and `cleanwins.py` read
+our slot from the row instead of assuming slot 0. `anyseat.py` plays the ladder in rounds: seat 0 on every map, then
+seats 1, 2-3, 4-7, 8-15, ... only on the maps not won yet, each seat one batch `as-NAME-vsN-sS` (a batch that exists
+is read, not replayed). That is a tenth of the full matrix at N=12-14 (130-190 games instead of 1,300-1,500) and a
+quarter at N=16. The price of the order: the games played are mostly the hard maps' seats, so "games won" below is
+not the win rate of a random seat.
+
+Maps 22001..22100, never used before; maps won from some start / from seat 0 / games played. `@f4` is `@f3` with the
+pre-walk below (the default since); no game failed, no swallowed error.
+
+| N | `@f3` | `@f4` | lost from every start |
+|---|---|---|---|
+| 1-3 | 100 / 100 / 100 each | 100 / 100 / 100 each | |
+| 4 | 100 / 99 / 101 | 100 / 99 / 101 | |
+| 5-7 | 100 / 100 / 100 each | 100 / 100 / 100 each | |
+| 8 | 100 / 97 / 103 | 100 / 99 / 101 | |
+| 9 | 100 / 95 / 105 | 100 / 96 / 104 | |
+| 10 | 100 / 96 / 108 | 100 / 98 / 104 | |
+| 11 | 100 / 94 / 108 | 100 / 95 / 105 | |
+| 12 | 100 / 89 / 128 | 100 / 90 / 127 | |
+| 13 | 100 / 85 / 133 | 100 / 85 / 133 | |
+| 14 | 99 / 76 / 194 | 99 / 76 / 188 | 22018 |
+| 15 | 98 / 62 / 230 | 98 / 62 / 230 | 22018, 22095 |
+| 16 | 95 / 37 / 464 | 95 / 38 / 463 | 22018, 22082, 22088, 22095, 22097 |
+| 17 | 87 / 21 / 813 | | 13 maps |
+| 18 | 76 / 10 / 1,033 | | 24 maps |
+
+Maps 23001..23100, held out: never used before, and nothing was decided on them (the pre-walk was the default
+before their first game).
+
+| N | `@f3` | `@f4` | lost from every start |
+|---|---|---|---|
+| 1-7 | | 100 / 100 / 100 each | |
+| 8 | | 100 / 98 / 102 | |
+| 9 | | 100 / 99 / 101 | |
+| 10 | | 100 / 98 / 104 | |
+| 11 | | 100 / 95 / 107 | |
+| 12 | 100 / 92 / 121 | 100 / 90 / 116 | |
+| 13 | 100 / 91 / 119 | 100 / 93 / 113 | |
+| 14 | 100 / 77 / 143 | 100 / 77 / 141 | |
+| 15 | 100 / 52 / 264 | 100 / 52 / 250 | |
+| 16 | 98 / 41 / 411 | 98 / 42 / 418 | 23002, 23072 |
+
+So `@f4` wins every one of the 200 maps from some start at every N up to **13**, 199 of them at N=14, 198 at N=15
+and 193 at N=16; the two blocks differ by what two maps in a hundred allow (99 and 100, 98 and 100, 95 and 98).
+Seat 0 alone, the usual benchmark, is under 100 % from N=8 on (N=4 too, by one map), and the second start already
+wins most of what the first lost: at N=13 eight of the 15 maps lost from seat 0 are won from seat 1, at N=16 it takes
+up to 16 starts. Below N=14 the map is not what loses: one or two starts in fifteen are bad.
+
+The losses at low N are on the maps that leave the ladder later. `@f3` loses 18 games from seat 0 at N=8-11, and 9
+of them are on four of the five maps lost from every start at N=16 (22088 at N=8, 9, 10 and 11, 22018 at 10 and 11,
+22097 at 9 and 10, 22095 at 11), where chance makes one; the rest are 22003 (leak 2) twice, 22064 twice and five
+single maps. So a hole found at N=8 is a hole of the frontier's maps.
+
+**Leak 1, a first armory a long walk away (repaired, the default since: `opening_prewalk` 300, frozen as `@f4`).**
+At N=8-12 from seat 0, a first armory 300 m or more of walking from the start won 2 games of 9, and an armory that
+stood after 5.5 minutes 3 of 11, where seat 0 wins 94 of 100. In the opening one peon carries the armory site
+while the others build the first quarters, and builders are given only to a site that is placed: with the site 300 m
+out, the peons the quarters do not need stood idle at home until the carrier arrived, and then walked the same 300 m.
+Now they walk ahead to a point 9 cells short of the site as soon as the plan says the site is 300 m or more away
+(counter `prewalk_sent`; a peon within 30 cells of a quarters that still wants peons goes in first). s22088 at N=8:
+armory at 321 s instead of 430 s, a loss at 12.7 min becomes a win; s22077: a loss at 14.6 min becomes a win. Seat 0
+on the 100 maps (`bsA-vsN` against `as-f3-vsN-s0`): N=8 97 -> 99, N=10 96 -> 98, N=12 89 -> 90, N=14 76 -> 76 (+1
+-1); 23 of 400 games change, +6 -1. With it, searching iron out to 1,300 m (`armory_iron_far`, `bsB`) changes no
+game, and a wider first move (`opening_move_m=500`, `bsC`) three, none in its result. The first version walked ahead
+to every site more than 20 cells out: on the N=15 development maps 21301..21600 171 -> 173 of 300 (+10 -8), with
+ordinary armories 0-5 s later, so the trigger became the walk. On the ladders, `@f4` against `@f3` from seat 0:
+N=8-11 99, 96, 98, 95 against 97, 95, 96, 94 (+7 -1); N=12-16 +4 -2 on 22001..22100 and +3 -2 on the held-out maps.
+The repair is worth a map or two in a hundred at N=8-11 and nothing at the frontier, where leak 4 undoes it: over
+the 23 seat-0 games at N=8-14 in which it fires the armory stands 20-110 s earlier in 12 (N=8-10 mostly) and 9-142 s
+later in 7 (N=12-14), results +6 -1.
+
+**Leak 2, a start with no iron (open).** s22003 from seat 0 has 2 iron nodes within reach and the next iron about
+1,020 m of walking away: the one loss of the ladder below N=8 (N=4, lost at 171 min with 30 iron harvested in the
+whole game). Every map has 145 iron nodes, most of them in the interior (mean radius 95-100
+cells, the starts on a ring farther out), so a bare start is the seat's, not the map's, and seat 1 wins the map. Tried:
+`armory_iron_far=1300` finds the far iron, the trek passes copies and fails, and then the armory is planned on
+the same far site again for the rest of the game with up to 39 peons idle (the default does the same at N=11 on
+s22003, site 799 m out). `opening_fallback` (off) plans the next armory by the safest quarters once a first site was
+lost before any armory stood: N=11 s22003 lost at 17.6 min instead of 16.1, and it fired in 1 of 326 other games
+(`fbk-vsN`; N=12 s22095, lost at 20 min instead of 15), so it stays off for want of evidence, not because it hurt.
+The iron expansion that exists (`expansion_iron_need`, `_far`, `_crew`) did not rescue N=4 s22003 either: the far
+site loses the expansion's score, and with `expansion_iron_ticks=30000` it fired at 8,499 s (`xi1-vs4`, `xi2-vs4`).
+What would: an armory by the home rock first, then a guarded second base at the far iron. Not built.
+
+**Leak 3, a copy starting next door (open; nothing tried helps).** Over the 1,149 ladder games of `@f3` at N=12-16
+(`near.py`), by the distance from our start to the nearest copy's:
+
+| nearest copy | games | won | our units lost by 2:00 (of 20) | opening strike kills its copy |
+|---|---|---|---|---|
+| under 20 cells | 8 | 0 | 15.2 | 0 % |
+| 20-29 | 7 | 0 | 10.7 | 43 % |
+| 30-39 | 28 | 12 | | |
+| 40 and more | 1,106 | | under 1 | 77-85 % |
+
+(The share won keeps rising with the distance, 39 % at 60-69 cells, 65 % at 70-79, 80 % from 80, pooled over N and
+biased by the order of play.) Why: the Hard's `nodeDefendBase` scans 30 m around its quarters and armory and sends
+its idle warriors, idle peons and gatherers at any enemy unit there, an idle peon answers anything within 8 cells by
+itself, and our peons under a build order do not fight back. Under 30 cells our twenty peons stand in that range at
+the first tick. Replayed on those games (`subset.py`, sets `close` and `close34`, runs `nzK-vsN-sS`), all off by
+default:
+
+- no strike when the copy is under 700 ticks of walking (`freeze_min_eta_ticks`, nz1): worse, out before minute 10 in
+  13 of 15 games against 9;
+- the opening's buildings kept 30 cells from that start (`opening_keepout=30`, nz2): under 20 cells 0 -> 1 win of 8
+  and the mean end from 7.4 to 30.5 min, 20-29 cells 0 -> 0, 30-39 cells 12 -> 13;
+- both (nz3): worse than the keep-out alone;
+- a strike of 19 peons instead of the usual squad (`freeze_near_ticks=700`, `freeze_near_squad`, nz4, and with the
+  keep-out nz5): the copy dies, about 4 of our peons are left, no game won, and 30-34 cells 2 -> 0.
+
+A human would do no better from that seat; it is the mirror of the stuck copies in "Gauntlet's record" above, and
+the rotation exists to set it aside.
+
+**Leak 4, the walk to a far first armory passes a copy (known since the third session, measured here; open).** The
+stock AI sends its idle peons and gatherers at any unit within 30 m of its first quarters or armory, and they follow
+what they chase: our builders walk on to the site with them behind, builders do not fight back, and a site with 1 hp
+is razed. `SitePlanner.hotRoute` follows the start field from the planned site back to the start; the log line
+`route to armory#1 passes C cells from the start of sK` is the gap between that walk and the nearest copy's start
+(`route.py rt as-f4`: `rt-vsN` are one-minute logged games for the plans). From seat 0 at N=12-16 on 22001..22100,
+500 games, the 15 with a copy starting under 40 cells from us set aside:
+
+| the walk passes a copy's start at | games | won | our units lost by 5:00 |
+|---|---|---|---|
+| under 20 cells | 12 | 3 | 11.4 |
+| 20-29 | 7 | 2 | 1.0 |
+| 30-39 | 19 | 11 | 2.1 |
+| 40-49 | 50 | 25 | 1.1 |
+| 50-59 | 115 | 77 | 1.2 |
+| 60 and more | 282 | 227 | 1.2 |
+
+The bands from 40 cells up mostly sort the games by N (the copies stand closer at 16 than at 12). The 19 games under
+30 cells do not: at the seat-0 rates of their own N they would win 11, and they win 5. Fourteen of them are armories
+300 m and more out (4 won of 14, against 14 of the 27 far armories with a clear walk and 326 of the 439 near ones),
+and in 13 the opening strike is on that very copy already. On 22095, lost from every start at N=15 and 16, six of
+the seats played at those N lose 22-29 units in the first five minutes, by a copy's start or at our own site.
+s22049 at N=14 shows the mechanism, and that the pre-walk can make it worse: by default the builders pass s9's
+quarters in one group at 100-120 s, 10 units are lost by 5:00 and the armory stands at 318 s; with the pre-walk the
+walkers pass ahead of the group, s9's peons come after them to the site, 28 are lost by 5:00, two quarters sites are
+razed, and the armory has one builder for 90 s, then none for 70 s, and stands at 460 s.
+
+Tried on the 38 games under 40 cells (`subset.py hot rvK`, before -> after; all off):
+
+- no armory on such a walk (`armory_route_clear=30`, a charge of 20,000 ticks on the site, rv1): the 19 games under
+  30 cells win 2 instead of 5: the armory goes up by the start (on s22049 at the start itself) and starves;
+- the same at 40 cells (rv3): none of those 19, and 9 instead of 11 of the 19 at 30-39 cells;
+- a charge of 4,000 ticks (rv2): 5 and 11, hardly a site moves;
+- the whole tribe walks first (`opening_move_m=300`, rv4): 3 instead of 5 and 12 instead of 11, with three tribes out
+  before minute 10.
+
+So the far iron is worth the walk even at this price, as the third session found at N=15 ("The slow openings are
+iron behind water"). What is missing is a way past the copy: a convoy that fights back, or peons bred by the start
+that stay there until the copy is out. Not built.
+
+**The maps lost from every start.** Not a seat's fault by construction, and not the spacing either: the starts lie
+on a ring at every N (innermost start 130-170 cells from the centre), each with two neighbours, and the best-isolated
+seat's nearest copy is 76 cells on the lost map at N=14 against 78 on the 99 won, 72 against 70 at N=16, 65 against
+66 at N=17. What the lost maps share is a slow opening at most seats: iron nodes within 300 m of walking from the
+start, median over the 17 seats of N=16 (`orx-vs16-sS`, one-minute logged games, `barren.py`): 14 on 22088 (where 7
+of 17 seats also have the first armory 300 m or more out), 21 on 22018 and 23 on 22082, against 28-39 on five maps
+that are won; 22095 (32) and 22097 (27) look ordinary. On 22018 at N=14 no seat gets below 9 copies left, four seats
+last 70-124 min, and the map is won at N=13 from seat 4 (353 min) and at N=12 from seat 10 (225 min): it is the
+ordinary long game, lost 15 times in a row at about the frontier's odds. From N=16 on that is what the ladder
+measures (5, 13, 24 maps lost at N=16, 17, 18): the win rate of a seat falling (25 %, 13 %, 8 % of the games played)
+faster than the seats are added.
+
+Reproduce: `python lab/fable/anyseat.py --name f4 --n 1..16` (then `--report --detail` for the seats),
+`--name f4h --spec "@f4" --seeds 23001..23100 --n 12..16` for the held-out maps (a seed block needs a name of its
+own); `./aisim.sh freeze f4 fable` at commit bbe0e145 for the tag.
+
 ## Reproduce
 
 ```bash
@@ -1603,6 +1792,10 @@ python lab/fable/stats.py --pair exam-g16-vs14 exam-f2-vs14
 EXAM=1 ./lab/fable/dev.sh exam-f3-vs15 "@f3 vs hard*15" 36501..36700
 EXAM=1 ./lab/fable/dev.sh exam-f2-vs15-c "@f2 vs hard*15" 36501..36700
 python lab/fable/stats.py --pair exam-f2-vs15-c exam-f3-vs15
+./aisim.sh freeze f4 fable                     # the any-seat default, at commit bbe0e145
+python lab/fable/anyseat.py --name f4 --n 1..16                                        # maps 22001..22100
+python lab/fable/anyseat.py --name f4h --spec "@f4" --seeds 23001..23100 --n 1..16     # the held-out maps
+python lab/fable/anyseat.py --name f4 --n 12..16 --report --detail                     # what was played, by seat
 ```
 
 Gauntlet for the baseline: `git archive origin/gauntlet tt/src/main/java/com/oddlabs/tt/player/gauntlet | tar -x`,
@@ -1624,3 +1817,6 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   stands at the unit cap with two towers and a chieftain.
 - The opening strike leaves its copy frozen (alive, never armed) in 7 % of games, and those are won 15-20 % of the
   time against 45-50 % otherwise, for Gauntlet too; not looked into.
+- Seats (2026-11-19, "Any seat" above): the far iron behind a copy (19 of 485 seat-0 games at N=12-16 win 5 where
+  their N makes 11) wants a way past the copy, not a way round the walk; a start with no iron wants an armory by the
+  home rock and a guarded second base. A copy next door has no answer found.
