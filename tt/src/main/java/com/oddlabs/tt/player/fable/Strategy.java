@@ -1553,19 +1553,29 @@ class Strategy {
     int idle_builders = 0;
     /**
      * opening_builders (0 = off): idle_builders for the opening alone, before our first armory has stood: a peon left
-     * over joins a site, the armory's first, until it has this many builders.
+     * over joins a site, the armory's first, until it has this many builders. Off: at 100 it fires in 4 to 23 games
+     * of 100 and is +17 -16 over 1,200 seat-0 games (ob-vsN, obh-vsN).
      */
     int opening_builders = 0;
     /**
      * release_builders: a builder is free for the next job the moment its quarters or tower stands, instead of when
      * the engine lets go of it. The engine's RepairController only ends by the building: a builder with no wood chops
      * once more for the finished building, carries the wood back to it and goes idle there, and the allocation takes
-     * idle peons only.
+     * idle peons only (the user, 2026-11-19: "once they've gotten wood they'll just go stand around the previous
+     * quarters they were working on").
+     *
+     * Default since 2026-11-19, for the builders of a building just gone up (release_fresh_ticks): the first armory
+     * stands 7 to 10 s earlier and the sixth quarters 9 to 14 s (100 and 200 maps a run at N=12, 13, 15), with 2 to
+     * 4 more warriors at minute 8. Wins +142 -119 over 1,600 seat-0 games: N=8-16 on 22001..22100 and N=12-16 on
+     * 23001..23100 +94 -82 (rel2-vsN, rel2h-vsN against as-f4-vsN-s0, as-f4h-vsN-s0), 200 maps never used before
+     * 174 -> 177 at N=13 and 113 -> 121 at N=15 (nb2-vsN against nb0-vsN, 24001..24200); lab/fable/proxy.py's win
+     * chance at minute 20 +2.1 +- 0.7 points over the 1,400 games at N=12-16. Every game changes, from second 42.
      */
-    boolean release_builders = false;
+    boolean release_builders = true;
     /**
      * release_fresh_ticks: release_builders frees the builders of a building for this long after it went up (0: of
-     * any standing building that needs no repair, a repair's too).
+     * any standing building that needs no repair, a repair's too: +91 -99 over the first 1,200 of those games, the
+     * same earlier opening, rel-vsN, relh-vsN).
      */
     float release_fresh_ticks = 3000f; // 60 s
     /**
