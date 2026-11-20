@@ -3302,6 +3302,12 @@ class Strategy {
             strategy.bystander = 0;
             strategy.stuck_still_ticks = 1000f; // 20 s
             strategy.gather_parked = true;
+            // A peon on its way to shelter is left on it (the economy took it back for gathering every second): on
+            // the same 300 maps 215 wins for 204 (mem-vs16, +35 -24), 179 peons lost an hour of game for 213. And the
+            // chieftain's mission minds no hunter of another unit either: a quarter fewer approaches called off,
+            // 108 wins for 105 on 150 maps (mf2-vs16).
+            strategy.flight_keep = true;
+            strategy.chief_bystander = true;
         }
         return strategy;
     }
