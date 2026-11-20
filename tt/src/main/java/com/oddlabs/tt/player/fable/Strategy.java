@@ -1545,12 +1545,14 @@ class Strategy {
      * standing by it (32 to 82 s while another armory stands); and s22022 opens with 6 builders on the armory and 110
      * peons standing.
      *
-     * Off: at 100 it does what it says (standing after minute 15 from 2,579 to 207 peon-seconds a game at N=15, a
-     * lost armory back after 81 s instead of 116, the first armory of the two worst openings 74 and 92 s earlier) and
-     * the wins do not move: +19 -19 over 1,200 seat-0 games (N=8-16 on 22001..22100, N=12-16 on 23001..23100;
-     * ib100-vsN, ib100h-vsN). At 40 the same wins with half the standing left.
+     * At 100 it does what it says (standing after minute 15 from 2,579 to 207 peon-seconds a game at N=15, a lost
+     * armory back after 81 s instead of 116, the first armory of the two worst openings 74 and 92 s earlier) and the
+     * wins hardly move: on the default before release_builders +19 -19 over 1,200 seat-0 games (N=8-16 on
+     * 22001..22100, N=12-16 on 23001..23100; ib100-vsN, ib100h-vsN; at 40 the same wins with half the standing left),
+     * on the default with it +19 -10 over 700 (ibn-vs12/15, ibnh-vs15, ibnn-vs13/15 against rel2-vsN, rel2h-vs15,
+     * nb2-vsN). Default 100 since 2026-11-19 on the user's word that a peon with nothing to do should work.
      */
-    int idle_builders = 0;
+    int idle_builders = 100;
     /**
      * opening_builders (0 = off): idle_builders for the opening alone, before our first armory has stood: a peon left
      * over joins a site, the armory's first, until it has this many builders. Off: at 100 it fires in 4 to 23 games
@@ -1585,8 +1587,14 @@ class Strategy {
      * optimal tree to harvest on the way over"). tr-vs12 (30 logged openings, TREE lines): of 115 builders a game
      * sent with no wood in the first 8 minutes the nearest tree costs 4.3 cells of walking more each, 492 a game,
      * and 16 of them 10 cells and more.
+     *
+     * Default 6 since 2026-11-19: 77 to 127 builders a game go by a tree of ours, the first armory stands 2 to 5 s
+     * earlier in each of four runs (237 -> 232 s and 236 -> 234 s at N=12 and 15 on 22001..22100, 235 -> 232 s and
+     * 239 -> 238 s at N=13 and 15 on 24001..24200) and the sixth quarters 1 to 6 s; wins +79 -74 over 700 games, the
+     * model at minute 20 +1.0 +- 0.9 points (btr-vsN, btrh-vs15, btrn-vsN against rel2-vsN, rel2h-vs15, nb2-vsN).
+     * Thresholds of 3 and 10 cells were only tried on 16 openings (bt3-vs12, bt10-vs12).
      */
-    int builder_tree = 0;
+    int builder_tree = 6;
     /**
      * armory_spare_ticks (game ticks, 0 = off): from then on a second armory is kept as a spare (Economy.planSpare).
      * idl-vs8/12/15 (lab/fable/noarmory.py): of the 244 games in which an armory of ours stands at every moment after
