@@ -2208,12 +2208,13 @@ class Strategy {
     boolean shepherd_route = false;
     /**
      * shepherd_route_near (blocks of 4 cells): the hot blocks within this many of the spot's are free. The spot lies
-     * by its copy's group, so every way ends through hot blocks, and their price told the search nothing while it
-     * made it look through thousands of blocks for a cheaper end: 2,400 a plan that found a way, and 1,300 plans a
-     * game that ran out of their 8,000 (tmprt-vs16), 7 % of the simulation's CPU. 0: the goal's own block only, as
-     * first written (rte-vs16, rtm-vs16).
+     * by its copy's group, so every way ends through hot blocks, and their price there tells the search nothing while
+     * it widens it: with 0 a plan that found a way looked at 2,400 blocks and 1,300 plans a game ran out of their
+     * 8,000 (tmprt-vs16), 7 % of the simulation's CPU. With 5 at N=16 on two blocks of 300 maps: 178 wins for 172
+     * and 178 for 165 (rn5-vs16, rn5m-vs16: +91 -72), the plans that find no way 1,240-1,420 -> 590 a game, the
+     * planner 4.7 % of the CPU for 6.2 %. 3: 167 for 172 on the first block.
      */
-    int shepherd_route_near = 0;
+    int shepherd_route_near = 5;
     /**
      * shepherd_unloaded (cells, 0 = off): the recruit is the nearest eligible peon that carries nothing, when it is at
      * most this many cells farther from the wave's origin than the nearest of all. A peon with a load walks at 4 m/s,
