@@ -525,6 +525,21 @@ class Strategy {
      */
     boolean flight_keep = false;
     /**
+     * evade_chicken: chicken hunters step out of an enemy's way as the other gatherers do (evade_cells). Left out of
+     * it, one with a threat within 11 cells walks to the main armory from wherever it is, up to chicken_range cells
+     * out: 17 an hour of game die hunting far from home, and the peons lost far from home on their way into a
+     * building went from 23 to 44 an hour with bystander (rn5-vs16, by0-vs16).
+     */
+    boolean evade_chicken = false;
+    /**
+     * chief_bystander: an enemy warrior locked in a hunt on something other than our chieftain does not count as
+     * awake for his blast mission (as bystander for the peons: a hunter does not scan). An awake warrior within 9
+     * cells calls the walk to a cast point off and one within 16 drives him from his waiting place towards the
+     * armory: 39 approaches called off an hour of game for 11 blasts, and for every blast 55 s walked with the blast
+     * charged on top of the 78 s it takes to charge (mb2-vs16, the shred_t_* counters).
+     */
+    boolean chief_bystander = false;
+    /**
      * iron_real (0 = off): the plan's share of iron gatherers follows the measured gatherer-time per unit of iron (a
      * running mean of measureYield's 30-s windows) where that is above the modelled trip, up to this multiple of the
      * model. The model is the walk to the nearest three nodes; the real cost is 2-3 times that from minute 14
@@ -2748,6 +2763,8 @@ class Strategy {
         bystander_reach = params.getInt("bystander_reach", bystander_reach);
         stuck_still_ticks = (float) params.getDouble("stuck_still_ticks", stuck_still_ticks);
         flight_keep = params.getBoolean("flight_keep", flight_keep);
+        evade_chicken = params.getBoolean("evade_chicken", evade_chicken);
+        chief_bystander = params.getBoolean("chief_bystander", chief_bystander);
         iron_real = (float) params.getDouble("iron_real", iron_real);
         tree_real = (float) params.getDouble("tree_real", tree_real);
         rock_real = (float) params.getDouble("rock_real", rock_real);

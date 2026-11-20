@@ -69,6 +69,7 @@ public final class FableAI extends AI {
     private @Nullable Jams jams;
     private @Nullable PeonLedger ledger;
     private @Nullable FightTrace fight_trace;
+    private @Nullable ThrashTrace thrash_trace;
     /** Stalled enemy armies and parked enemies (giant_keepout, giant_stun_hold, giant_shred). */
     private @Nullable Giants giants;
     private @Nullable Freeze freeze;
@@ -181,6 +182,8 @@ public final class FableAI extends AI {
                 ledger.tick();
             if (fight_trace != null)
                 fight_trace.tick();
+            if (thrash_trace != null)
+                thrash_trace.tick();
         }
         if (due_economy) {
             next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
@@ -248,6 +251,7 @@ public final class FableAI extends AI {
         jams = new Jams(this);
         ledger = new PeonLedger(this);
         fight_trace = new FightTrace(this);
+        thrash_trace = new ThrashTrace(this);
         intel.decoys = decoys;
     }
 

@@ -5,6 +5,7 @@ import com.oddlabs.tt.model.Building;
 import com.oddlabs.tt.model.RacesResources;
 import com.oddlabs.tt.model.Selectable;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.behaviour.HuntController;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
@@ -386,9 +387,20 @@ final class Chieftain {
     private int nearestAwakeDistance(int x, int y) {
         int best = Integer.MAX_VALUE;
         for (Unit e : ai.intel().enemy_warriors)
-            if (!e.isDead() && !Intel.isParked(e) && !Intel.isStunned(e))
+            if (!e.isDead() && !Intel.isParked(e) && !Intel.isStunned(e) && !huntsOther(e))
                 best = Math.min(best, MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()));
         return best == Integer.MAX_VALUE ? 1000 : (int) Math.sqrt(best);
+    }
+
+    /**
+     * chief_bystander: whether an enemy warrior is locked in a hunt on something other than our chieftain: it walks
+     * to its target without scanning (HuntController) and sees him only when that hunt is over.
+     */
+    private boolean huntsOther(@NonNull Unit e) {
+        if (!ai.strategy().chief_bystander || !(e.getCurrentController() instanceof HuntController hunt))
+            return false;
+        Selectable<?> target = hunt.getTarget();
+        return target != ai.intel().chieftain && !target.isDead();
     }
 
     /** Whether the chieftain is on the strict shred mission now: he keeps home, never stuns and blasts blobs. */
@@ -439,6 +451,10 @@ final class Chieftain {
                 continue;
             int abort = strategy.shred_strict ? 9 : 13; // strict: only what can see him
             if (MapAnalysis.dist2(cx, cy, e.getGridX(), e.getGridY()) <= abort * abort) {
+                if (huntsOther(e)) {
+                    ai.aiLog().count("chief_bystander"); // chieftain rounds a hunter of another passed within 9
+                    continue;
+                }
                 if (shred_target != null)
                     ai.aiLog().count("shred_abort");
                 ai.aiLog().count("shred_t_awake");
@@ -449,6 +465,10 @@ final class Chieftain {
         int[] blob = findBlob(cx, cy);
         if (blob == null) {
             ai.aiLog().count("shred_t_noblob");
+            if (ai.logging() && ai.periodDue(noblob_trace, 1000f)) { // 20 s
+                noblob_trace = ai.now();
+                traceNoBlob(cx, cy);
+            }
             shred_target = null;
             return false;
         }
@@ -946,7 +966,7 @@ final class Chieftain {
         if (fill > 0f) {
             boolean hunted = false;
             for (Unit e : ai.intel().enemy_warriors)
-                if (!e.isDead() && !Intel.isParked(e) && Math.abs(e.getGridX() - cx) <= 9 && Math.abs(
+                if (!e.isDead() && !Intel.isParked(e) && !huntsOther(e) && Math.abs(e.getGridX() - cx) <= 9 && Math.abs(
                         e.getGridY() - cy) <= 9) {
                             hunted = true;
                             break;
@@ -1086,6 +1106,63 @@ final class Chieftain {
             ai.aiLog().count("shred_nopoint_" + new String[]{"ground", "seen", "tower", "friends", "few"}[m]);
         }
         return best;
+    }
+
+    private float noblob_trace = -5000f;
+
+    /**
+     * Log only: charged and no blob to blast. The parked and awake enemy warriors, and the biggest group of parked ones
+     * (within 10 cells of one of them) in each class: in range but under a tower, out of range, too small in range.
+     */
+    private void traceNoBlob(int cx, int cy) {
+        Intel intel = ai.intel();
+        Building armory = intel.armory();
+        int hx = armory != null ? armory.getGridX() : ai.planner().getStartX();
+        int hy = armory != null ? armory.getGridY() : ai.planner().getStartY();
+        java.util.List<Unit> parked = new java.util.ArrayList<>();
+        int awake = 0;
+        int awake_near = 0;
+        int range = ai.strategy().shred_range;
+        for (Unit e : intel.enemy_warriors) {
+            if (e.isDead())
+                continue;
+            if (Intel.isParked(e)) {
+                parked.add(e);
+            } else {
+                awake++;
+                if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), hx, hy) <= range * range)
+                    awake_near++;
+            }
+        }
+        // {members, x, y} of the biggest group per class: tower, far, small
+        int[][] best = new int[3][3];
+        for (int i = 0; i < parked.size(); i += 3) {
+            Unit seed = parked.get(i);
+            int sx = seed.getGridX();
+            int sy = seed.getGridY();
+            int n = 0;
+            for (Unit e : parked)
+                if (MapAnalysis.dist2(sx, sy, e.getGridX(), e.getGridY()) <= 10 * 10)
+                    n++;
+            boolean far = MapAnalysis.dist2(sx, sy, hx, hy) > range * range;
+            boolean tower = false;
+            for (Building t : intel.enemy_towers)
+                if (!t.isDead() && MapAnalysis.dist2(sx, sy, t.getGridX(), t.getGridY()) <= 22 * 22)
+                    tower = true;
+            int k = far ? 1 : tower && n >= ai.strategy().shred_min ? 0 : 2;
+            if (n > best[k][0])
+                best[k] = new int[]{n, sx, sy};
+        }
+        StringBuilder sb = new StringBuilder(String.format("shred noblob: %d parked, %d awake (%d in range)",
+                parked.size(),
+                awake, awake_near));
+        String[] names = {"under a tower", "out of range", "small or towered"};
+        for (int k = 0; k < 3; k++)
+            if (best[k][0] > 0)
+                sb.append(String.format("; %s %d at %d,%d (home %d, chief %d)", names[k], best[k][0], best[k][1],
+                        best[k][2], (int) Math.sqrt(MapAnalysis.dist2(best[k][1], best[k][2], hx, hy)),
+                        (int) Math.sqrt(MapAnalysis.dist2(best[k][1], best[k][2], cx, cy))));
+        ai.log(sb.toString());
     }
 
     /**

@@ -6258,6 +6258,7 @@ final class Economy {
         have[0] += ai.military().evading(PeonState.GATHER_TREE);
         have[1] += ai.military().evading(PeonState.GATHER_IRON);
         have[2] += ai.military().evading(PeonState.GATHER_ROCK);
+        have[3] += ai.military().evading(PeonState.GATHER_CHICKEN);
         // satellite: the iron gatherers the engine linked to a satellite are gatherers of the plan
         for (Building sat : satellites())
             have[1] += intel.countLinkedGatherers(PeonState.GATHER_IRON, sat);
@@ -6736,7 +6737,7 @@ final class Economy {
         if (armory == null || armory.isDead() || armory_field == null)
             return;
         sendGatherer(peon,
-                kind == PeonState.GATHER_TREE ? TreeSupply.class : kind == PeonState.GATHER_IRON ? IronSupply.class : RockSupply.class,
+                kind == PeonState.GATHER_TREE ? TreeSupply.class : kind == PeonState.GATHER_IRON ? IronSupply.class : kind == PeonState.GATHER_CHICKEN ? RubberSupply.class : RockSupply.class,
                 armory);
     }
 

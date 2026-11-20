@@ -2008,8 +2008,9 @@ final class Military {
             if (salvage && p.getCurrentController() instanceof EnterController)
                 continue;
             // evade: a gatherer far from every shelter steps out of the way and goes on gathering
-            if (evade > 0 && (s == PeonState.GATHER_TREE || s == PeonState.GATHER_IRON || s == PeonState.GATHER_ROCK)
-                    && shelterCells(p) > evade && startEvading(p, s))
+            if (evade > 0 && (s == PeonState.GATHER_TREE || s == PeonState.GATHER_IRON || s == PeonState.GATHER_ROCK
+                    || (s == PeonState.GATHER_CHICKEN && ai.strategy().evade_chicken)) && shelterCells(p) > evade
+                    && startEvading(p, s))
                 continue;
             evacuate.add(p);
         }
@@ -2076,18 +2077,27 @@ final class Military {
 
     /** Log only: a peon sent to shelter from a threat within 11 cells. */
     private void traceFlight(@NonNull Unit p, @NonNull Building shelter) {
-        Unit foe = nearestFoe(p.getGridX(), p.getGridY(), 20);
+        Unit foe = nearestFoe(p.getGridX(), p.getGridY(), 20, p);
         PeonState s = ai.intel().peon_states.get(p);
         Supply supply = ai.economy().gatherTarget(p);
-        ai.log(String.format("flight %s at %d,%d loaded %b supply %d cells shelter %s %d cells foe %s %d cells",
+        int sx = shelter.getGridX() - p.getGridX();
+        int sy = shelter.getGridY() - p.getGridY();
+        double sd = Math.sqrt(sx * sx + sy * sy);
+        double cos = 0.0;
+        double fd = -1.0;
+        if (foe != null) {
+            int fx = foe.getGridX() - p.getGridX();
+            int fy = foe.getGridY() - p.getGridY();
+            fd = Math.sqrt(fx * fx + fy * fy);
+            cos = sd > 0.0 && fd > 0.0 ? (sx * fx + sy * fy) / (sd * fd) : 0.0;
+        }
+        ai.log(String.format(
+                "flight %s at %d,%d loaded %b supply %d cells shelter %s %d cells foe %s %d cells cos %.2f",
                 s == null ? "-" : s.name().toLowerCase(java.util.Locale.ROOT), p.getGridX(), p.getGridY(),
-                p.getSupplyContainer().getNumSupplies() > 0, supply == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(
-                        p.getGridX(),
-                        p.getGridY(), supply.getGridX(), supply.getGridY())), Intel.kind(shelter), (int) Math.sqrt(
-                                MapAnalysis.dist2(p.getGridX(), p.getGridY(), shelter.getGridX(), shelter.getGridY())),
-                foe == null ? "none" : foeState(foe, p),
-                foe == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(), foe.getGridX(),
-                        foe.getGridY()))));
+                p.getSupplyContainer().getNumSupplies() > 0,
+                supply == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(), supply.getGridX(),
+                        supply.getGridY())),
+                Intel.kind(shelter), (int) sd, foe == null ? "none" : foeState(foe, p), (int) fd, cos));
     }
 
     // ------------------------------------------------------------------------------------------------------------
