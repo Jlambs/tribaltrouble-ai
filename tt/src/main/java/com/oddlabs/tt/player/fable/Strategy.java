@@ -2175,6 +2175,21 @@ class Strategy {
      */
     float shepherd_home_pair_ticks = 0f;
     /**
+     * shepherd_home_spare: shepherd_home_pair's second shepherd is for the time the copy's own one is away with the
+     * parked wave. While the own flock's origin is at the copy's home (before its first wave, and whenever its oldest
+     * idle warrior stands there), no second one is recruited, and one that stands there goes home once the own one is
+     * within 40 cells. As written the pair sent both to the same place: of the second shepherds recruited in the
+     * first ten minutes 82 % had their spot within 30 cells of the own one's (hplog-vs15, 8 logged games at N=15: 22
+     * a game), and 21-27 % later.
+     */
+    boolean shepherd_home_spare = false;
+    /**
+     * shepherd_detour_ticks (game ticks, -1: shepherd_fixes_ticks): from when shepherd_detour acts. It came in with
+     * the late fixes (stuck, no-progress and no-spot releases, each with a gap of minutes for the copy), all behind
+     * shepherd_fixes_ticks = 40 min, though it is a walk round what stands in the way and not a release.
+     */
+    float shepherd_detour_ticks = -1f;
+    /**
      * shepherd_unloaded (cells, 0 = off): the recruit is the nearest eligible peon that carries nothing, when it is at
      * most this many cells farther from the wave's origin than the nearest of all. A peon with a load walks at 4 m/s,
      * a warrior's speed, and has no order to drop it, so a loaded shepherd cannot leave a wave behind: 40 of the 158
@@ -2485,6 +2500,8 @@ class Strategy {
         shepherd_gap_ticks = (float) params.getDouble("shepherd_gap_ticks", shepherd_gap_ticks);
         shepherd_unloaded = params.getInt("shepherd_unloaded", shepherd_unloaded);
         shepherd_home_pair_ticks = (float) params.getDouble("shepherd_home_pair_ticks", shepherd_home_pair_ticks);
+        shepherd_home_spare = params.getBoolean("shepherd_home_spare", shepherd_home_spare);
+        shepherd_detour_ticks = (float) params.getDouble("shepherd_detour_ticks", shepherd_detour_ticks);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);

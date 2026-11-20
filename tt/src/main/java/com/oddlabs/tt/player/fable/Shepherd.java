@@ -644,6 +644,24 @@ final class Shepherd {
             ox = at_home ? leader.getGridX() : armory.getGridX();
             oy = at_home ? leader.getGridY() : armory.getGridY();
             origin = at_home ? "leader" : "armory";
+            // shepherd_home_spare: while the copy's own flock has its origin at home, its shepherd is the one for
+            // home. No second one is recruited then, and one that stands here leaves when the copy's own is here.
+            Flock main = f.partner;
+            if (strategy.shepherd_home_spare && main != null && (!main.has_origin || MapAnalysis.dist2(main.ox,
+                    main.oy, armory.getGridX(), armory.getGridY()) <= HOME_CELLS * HOME_CELLS)) {
+                Unit own = main.shepherd;
+                boolean here = own != null && !own.isDead() && MapAnalysis.dist2(own.getGridX(), own.getGridY(), ox,
+                        oy) <= HOME_CELLS * HOME_CELLS;
+                if (f.shepherd == null) {
+                    ai.aiLog().count("shepherd_home_spared"); // tends with no second shepherd wanted
+                    return;
+                }
+                if (here) {
+                    ai.aiLog().count("shepherd_home_released"); // second shepherds sent home alive
+                    release(f);
+                    return;
+                }
+            }
         } else if (leader != null) {
             ox = leader.getGridX();
             oy = leader.getGridY();
@@ -1061,7 +1079,8 @@ final class Shepherd {
                 && ai.periodDue(f.last_order, 100f) && !held) {
             int[] to = spot;
             // shepherd_detour: around what stands on the straight walk
-            if (strategy.shepherd_detour && ai.now() >= strategy.shepherd_fixes_ticks
+            if (strategy.shepherd_detour
+                    && ai.now() >= (strategy.shepherd_detour_ticks >= 0f ? strategy.shepherd_detour_ticks : strategy.shepherd_fixes_ticks)
                     && !walkClear(s.getGridX(), s.getGridY(), spot[0], spot[1], intel)) {
                 int[] wp = detour(s, spot, intel);
                 if (wp != null) {
