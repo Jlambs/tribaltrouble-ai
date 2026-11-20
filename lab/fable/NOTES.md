@@ -1860,6 +1860,52 @@ a tower since to attack the winding-up chieftain, and the engine asserts on an o
 errors in one game of about 3,000 (`spi-vs15` s22001, from 5,886 s). The default plays the same games otherwise (8 of
 8 checksums).
 
+### Builders after their building stands (`release_builders`, the default since, `@f5`)
+
+The user (2026-11-19, on the standing peons above): gathering wood is fine, "but once they've gotten wood they'll
+just go stand around the previous quarters they were working on".
+
+That is the engine's `RepairController`: it ends only by its building. Once the building is finished, a builder with
+no wood in hand still goes to chop for it once more and carries the wood back, a builder with wood walks back the
+same, and both go idle by it (an armory's builder walks in with its wood, which is wanted). The allocation gave jobs
+to idle peons only, so after every quarters and tower each builder went by the finished building before its next
+job. With `release_builders` a builder of a quarters or tower that has stood for under 60 s (`release_fresh_ticks`)
+and needs no repair is free at the next allocation (counter `builders_released`, 130 to 180 peon-seconds in the
+first 12 minutes), and takes the wood it carries to the next site.
+
+The opening, means over the maps of a run (`opening.py`; the old default -> with the release):
+
+| run | first armory | sixth quarters | warriors at minute 8 | iron by minute 8 | maps with the sixth quarters after 330 s |
+|---|---|---|---|---|---|
+| N=8, 22001..22100 | 210 -> 206 s | 273 -> 269 s | 77.2 -> 80.5 | 114 -> 116 | 13 -> 12 |
+| N=12, 22001..22100 | 244 -> 237 s | 306 -> 298 s | 59.0 -> 62.1 | 93 -> 97 | 17 -> 15 |
+| N=15, 22001..22100 | 246 -> 236 s | 308 -> 297 s | 55.2 -> 59.4 | 88 -> 92 | 22 -> 16 |
+| N=13, 24001..24200 | 242 -> 235 s | 306 -> 294 s | 59.5 -> 61.0 | 91 -> 95 | 32 -> 22 of 200 |
+| N=15, 24001..24200 | 246 -> 239 s | 316 -> 303 s | 56.0 -> 57.9 | 88 -> 91 | 51 -> 39 of 200 |
+
+Wins from seat 0, the old default (`as-f4-vsN-s0`, `as-f4h-vsN-s0`, `nb0-vsN`) -> with the release (`rel2-vsN`,
+`rel2h-vsN`, `nb2-vsN`); every game changes, from second 42 on:
+
+| N | 22001..22100 | 23001..23100 | 24001..24200 (200 maps, never used before) |
+|---|---|---|---|
+| 8 | 99 -> 100 | | |
+| 10 | 98 -> 99 | | |
+| 12 | 90 -> 93 | 90 -> 93 | |
+| 13 | 85 -> 81 | 93 -> 92 | 174 -> 177 |
+| 14 | 76 -> 81 | 77 -> 76 | |
+| 15 | 62 -> 64 | 52 -> 56 | 113 -> 121 |
+| 16 | 38 -> 41 | 42 -> 38 | |
+
+Together +142 -119 over 1,600 games (sign test z 1.4), and `proxy.py`'s win chance from the state at minute 20
+(trained on the old default's games of the same N) +2.1 +- 0.7 points over the 1,400 games at N=12-16, positive in
+10 of 12 runs and largest at N=15 and 16 (+4 to +6 on the first two blocks). A first version freed the builders of
+any standing building, a repair's too (`release_fresh_ticks=0`, `rel-vsN`, `relh-vsN`): the same earlier opening, the
+model +2.6 +- 0.8, and the wins +91 -99 over the first 1,200 games; nothing shows that the repairs are why, but
+the fresh ones alone are the smaller change.
+
+Not adopted: `opening_builders=100` (the `idle_builders` rule for the opening alone: a peon left over joins the
+armory's site): it fires in 4 to 23 games of 100 and is +17 -16 over 1,200 games (`ob-vsN`, `obh-vsN`).
+
 ## Reproduce
 
 ```bash
