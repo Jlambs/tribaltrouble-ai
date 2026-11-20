@@ -3295,6 +3295,13 @@ class Strategy {
             // at N=16 on two blocks of 300 maps never used 172 wins for 154 and 165 for 148 (rte-vs16, rtm-vs16:
             // +100 -65), 55 to 87 fewer shepherds lost a game.
             strategy.shepherd_route = true;
+            // The micro round (lab/fable/NOTES.md): a peon minds no enemy that is locked in a hunt on another unit, a
+            // gatherer on a long walk is not stuck, and gatherers walk round parked groups. From minute 24 a trip
+            // for iron in ten was delivered; 12 % more iron an hour, fewer peons lost, a ninth less CPU. At N=16 on
+            // 300 maps never used 204 wins for 178 (mbm-vs16, +50 -24), on 150 of another block 105 for 87.
+            strategy.bystander = 0;
+            strategy.stuck_still_ticks = 1000f; // 20 s
+            strategy.gather_parked = true;
         }
         return strategy;
     }
