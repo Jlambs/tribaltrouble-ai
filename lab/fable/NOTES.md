@@ -151,7 +151,9 @@ The second shepherd (2026-11-20, the user: "don't assume the disabled features w
 shepherds: what a life buys, and the second shepherd repaired" below): Gauntlet's second shepherd for far copies had
 been dropped as flat, and was flat here too (71 wins for 70 at N=15). In logged games both shepherds of a copy went
 to the same place before its first wave. With that repaired it is +23 -15 on 200 maps at N=15 and, on 300 maps
-never used, **154 wins for 124 at N=16: 51.3 % for 41.3 %** (+60 -30, z 3.2). The default since, frozen as `@f8`.
+never used, **154 wins for 124 at N=16: 51.3 % for 41.3 %** (+60 -30, z 3.2). The default since, frozen as `@f8`;
+on 300 maps of its own `@f8` wins 49.3 % at N=16 for `@f7`'s 42.0 % (+60 -38), 50.3 % over the 600: N=16 is at
+the line now, as N=15 was for `@f3`. No harm lower down (N=8-14: +24 -13 over 500 games).
 A pause before a lost shepherd's replacement, recruits with no load and an earlier walk round all lose or do nothing:
 a wave at our base costs far more than the peon that would have drawn it.
 
@@ -2149,7 +2151,12 @@ adopted: N=16 on 25001..25300, from the first start, against `@f7`'s 124 wins of
 Ten points at N=16, for 163 more shepherds lost a game (169 -> 332) and games 13 minutes longer; two draws in each
 arm, no swallowed error. The second shepherd with the shepherds' own start is the default in `forGame` for large
 maps since commit 65e5d5a4, frozen as `@f8`; the default plays the arm's games (6 of 6 checksums, `f8chk-vs16`).
-The 51.3 % is the better of two arms on those maps; `@f8` on maps of its own is below.
+The 51.3 % is the better of two arms on those maps. `@f8` on maps of its own, 26001..26300 at N=16 (`f8m-vs16`,
+`f7m-vs16`): **148 of 300 = 49.3 %** [43.9, 55.1] with one draw, `@f7` 126 = 42.0 %, paired +60 -38 (z 2.2), the
+model at minute 40 +5.9 +- 2.3, waves at our base 31.0 -> 26.1, buildings lost 30.6 -> 26.5. Both blocks together:
+302 of 600 = 50.3 % for 250 = 41.7 % (+120 -68, z 3.8). At lower N on 22001..22100 against `@f7`'s games from the
+first start (`f8d-vsN`): N=8 100 -> 100, N=10 98 -> 99, N=12 89 -> 94, N=13 88 -> 87, N=14 81 -> 87, +24 -13
+together, fewer buildings lost at every N (N=14: 13.9 -> 8.8).
 
 ## Reproduce
 
@@ -2176,6 +2183,7 @@ python lab/fable/anyseat.py --name pb6 --spec "$PB" --n 8..16                   
 python lab/fable/seat0.py f6 pb6 --n 8..16                                             # two ladders paired from the first start
 ./lab/fable/dev.sh f7n-vs16 "@f7 vs hard*16" 25001..25300                              # likewise f4n-vs16 with @f4
 ./aisim.sh freeze f8 fable                     # the second shepherd repaired, at commit 65e5d5a4
+./lab/fable/dev.sh f8m-vs16 "@f8 vs hard*16" 26001..26300                              # likewise f7m-vs16 with @f7
 ./lab/fable/dev.sh hplog-vs15 "@f7:shepherd_home_pair=120 vs hard*15" 22001..22008 --logs   # the pair as written
 python lab/fable/shepherds.py hplog-vs15                                               # what a shepherd's life buys
 ./lab/fable/dev.sh hpsn-vs16 "@f7:... vs hard*16" 25001..25300   # on 094fafa7: fable:shepherd_home_pair=120,shepherd_home_spare=true
