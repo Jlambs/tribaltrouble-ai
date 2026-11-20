@@ -144,7 +144,8 @@ quarters bred up from empty, peons sent out by the rush alarm with no armory to 
 stall clock that peons reset). All fifteen together, against the same build without them: from the first start at
 N=8-16 **+99 -72** over 1,800 games (z 2.1), no draw where there were five, no swallowed error, the opening on the
 same second. They are the default since, frozen as `@f7`; from `@f4` to `@f7` the same 1,800 games are +117 -70 (z
-3.4). Options with a measured cost stay off.
+3.4). Options with a measured cost stay off. On 300 maps never used (25001..25300) at N=16, from the first start,
+`@f7` wins 41.3 % [35.9, 47.0] and `@f4` 35.7 % (+59 -42): the 50 % line is still between N=15 and N=16.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
