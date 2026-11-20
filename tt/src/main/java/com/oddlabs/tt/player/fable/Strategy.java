@@ -2165,6 +2165,16 @@ class Strategy {
      */
     float shepherd_gap_ticks = 0f;
     /**
+     * shepherd_home_pair_ticks (game ticks): shepherd_home_pair's second shepherds only from this game time on. From
+     * the start (hp200-vs15, hp120-vs15, 100 maps at N=15 on the default of 2026-11-20) the pair wins 71 for 70 with
+     * 137 more shepherds lost a game and 1.6 to 3.3 fewer waves at our base: the state model is 6 to 9 points down at
+     * minute 20 and level again at minute 40. From minute 12 (hpl12-vs15) 70 for 70; from minute 20 (hpl20-vs15,
+     * hpl20h-vs15, 60000) 74 for 70 and 64 for 65, +10 -7 over 200 games, the model at minute 40 -0.9 +- 1.8 and
+     * -3.6 +- 2.0, 67 to 97 more shepherds lost a game and waves at our base 19.9 -> 15.7 and 19.9 -> 19.3: it buys
+     * nothing that shows for the peons it costs, at any start. Off.
+     */
+    float shepherd_home_pair_ticks = 0f;
+    /**
      * shepherd_unloaded (cells, 0 = off): the recruit is the nearest eligible peon that carries nothing, when it is at
      * most this many cells farther from the wave's origin than the nearest of all. A peon with a load walks at 4 m/s,
      * a warrior's speed, and has no order to drop it, so a loaded shepherd cannot leave a wave behind: 40 of the 158
@@ -2474,6 +2484,7 @@ class Strategy {
         shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
         shepherd_gap_ticks = (float) params.getDouble("shepherd_gap_ticks", shepherd_gap_ticks);
         shepherd_unloaded = params.getInt("shepherd_unloaded", shepherd_unloaded);
+        shepherd_home_pair_ticks = (float) params.getDouble("shepherd_home_pair_ticks", shepherd_home_pair_ticks);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);

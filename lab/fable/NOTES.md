@@ -2147,8 +2147,14 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
     +19 -35 together, the model -4 to -7 points in all three, waves at the base +2 to +7. The load is not what
     kills them: 93 % of the recruits are lost with it as without.
   So a wave at our base costs far more than the peon, the deaths with no wave are tries to cover a copy again, and
-  what counts is how soon the next shepherd stands, which the nearest peon does best. What is left is Gauntlet's
-  verdict of old: how a shepherd survives a flee.
+  what counts is how soon the next shepherd stands, which the nearest peon does best.
+  More cover for more peons does not pay either: a second shepherd for the copies 200 and 120 cells and more away
+  (`shepherd_home_pair`, Gauntlet's, off; `hp200-vs15`, `hp120-vs15`) wins 71 and 71 for 70 with 137 more
+  shepherds lost a game and waves at the base 19.9 -> 18.3 and 16.6, the model 6 and 9 points down at minute 20 and
+  level at minute 40. Started later (`shepherd_home_pair_ticks`, new; 120 cells): from minute 12 70 for 70, from
+  minute 20 74 for 70 on 22001..22100 and 64 for 65 on 23001..23100 (+10 -7 together, the model at minute 40 -0.9
+  +- 1.8 and -3.6 +- 2.0, waves at the base 15.7 and 19.3 for 19.9). Off. What is left is Gauntlet's verdict of
+  old: how a shepherd survives a flee.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,

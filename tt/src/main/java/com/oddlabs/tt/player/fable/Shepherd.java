@@ -469,13 +469,16 @@ final class Shepherd {
         for (Player p : fresh)
             flocks.add(new Flock(p, false));
         int pair = strategy.shepherd_home_pair;
-        if (pair > 0)
-            for (Player p : fresh) {
-                // After every copy's own flock, so those get peons first.
+        if (pair > 0 && ai.now() >= strategy.shepherd_home_pair_ticks)
+            // After every copy's own flock, so those get peons first (the list grows by the home flocks only).
+            for (int i = 0, n = flocks.size(); i < n; i++) {
+                Flock main = flocks.get(i);
+                if (main.home || main.partner != null || !main.copy.isAlive())
+                    continue;
+                Player p = main.copy;
                 int d2 = MapAnalysis.dist2(ai.planner().getStartX(), ai.planner().getStartY(),
                         UnitGrid.toGridCoordinate(p.getStartX()), UnitGrid.toGridCoordinate(p.getStartY()));
-                Flock main = flockOf(p);
-                if (d2 >= pair * pair && main != null) {
+                if (d2 >= pair * pair) {
                     Flock h = new Flock(p, true);
                     h.partner = main;
                     main.partner = h;
