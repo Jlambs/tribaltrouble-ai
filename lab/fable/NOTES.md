@@ -162,7 +162,9 @@ aimed at them, and the three switched-off options for their walk each look 8 to 
 planned way round enemy warriors, bases and towers, built new: those recruited in minutes 20-40 reach their spot in
 53 % for 23 %, and at N=16 on the 600 maps never used `@f8`'s 50.3 % becomes **56.2 %** (337 wins for 302, +100
 -65). The default since, frozen as `@f9`. From `@f7` to `@f9` in a day: 41.7 % to 56.2 % at N=16; at N=17 `@f9`
-wins 40.3 % of 300 maps of its own, and nothing is lost lower down (N=15 on the first block 70 -> 78).
+wins 40.3 % of 300 maps of its own, and nothing is lost lower down (N=15 on the first block 70 -> 78). The planner
+took 7 % of the simulation's CPU; with a heap and the hot blocks by the goal free it takes 4.7 % and wins more:
+`@f10`, **59.3 % at N=16** (356 of the 600).
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -2232,8 +2234,23 @@ The planner's cost (`prof-f8-vs16`, `prof-f9-vs16`, the same 8 games profiled): 
 `Shepherd.route` 7.2 % of it. A plan that finds a way looks at 2,400 blocks, and the 1,300 a game that find none
 all run out of their 8,000 (none is cut off by water; `tmprt-vs16`): the spot lies by its copy's group, so every
 way ends through hot blocks, and A* looks far and wide for a cheaper end that is not there. A heap of longs for the
-boxed queue plays the same games (6 of 6 checksums, commit f925a7f6). `shepherd_route_near` (blocks, off): the hot
-blocks that near the goal are free; it changes the ways, so it is played before it is taken.
+boxed queue plays the same games (6 of 6 checksums, commit f925a7f6). `shepherd_route_near` (blocks): the hot
+blocks that near the goal are free; it changes the ways, so it was played before it was taken. At N=16 against
+`@f9`'s games:
+
+| near | 25001..25300 | 26001..26300 | plans with no way a game | the planner's share of the CPU |
+|---|---|---|---|---|
+| 0 (`@f9`) | 172 | 165 | 1,240-1,420 | 7.2 % as first written, 6.2 % with the heap |
+| 3 (`rn3-vs16`) | 167 (+45 -50) | | 890 | |
+| 5 (`rn5-vs16`, `rn5m-vs16`) | **178** (+43 -37) | **178** (+48 -35) | 590 | 4.7 % |
+
+Five is the default since commit 00f7ed2b, frozen as `@f10`: 356 of 600 = **59.3 %** at N=16 for `@f9`'s 56.2 % (+91
+-72, z 1.5; the model at minute 40 +2.1 +- 2.5 and +5.2 +- 2.2), and a fifth less CPU a game minute than the
+planner as first written. An estimate that counts the hot blocks no way can go round (the depth of the goal in hot
+ground) was tried in its place and thrown out: it found no more ways (18 % of the plans still ran out) and cost a
+percent of its own. The search is wide because the field itself is crossed by broad hot belts late in a game, not
+only because of the ground by the goal; what is left of the cost (590 plans a game that give up after 8,000 blocks)
+wants fewer plans (one every walk order, 2 s, now) or coarser blocks. Not done.
 
 ## Reproduce
 
@@ -2262,6 +2279,7 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./aisim.sh freeze f8 fable                     # the second shepherd repaired, at commit 65e5d5a4
 ./lab/fable/dev.sh f8m-vs16 "@f8 vs hard*16" 26001..26300                              # likewise f7m-vs16 with @f7
 ./aisim.sh freeze f9 fable                     # the planned way for shepherds, at commit c64eb747
+./aisim.sh freeze f10 fable                    # the same with the goal's hot blocks free, at commit 00f7ed2b
 ./lab/fable/dev.sh rtm-vs16 "@f8:... vs hard*16" 26001..26300   # on d2686e1c: fable:shepherd_route=true; rte-vs16 on 25001..25300
 ./lab/fable/dev.sh hplog-vs15 "@f7:shepherd_home_pair=120 vs hard*15" 22001..22008 --logs   # the pair as written
 python lab/fable/shepherds.py hplog-vs15                                               # what a shepherd's life buys
