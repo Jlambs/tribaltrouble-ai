@@ -164,7 +164,7 @@ planned way round enemy warriors, bases and towers, built new: those recruited i
 -65). The default since, frozen as `@f9`. From `@f7` to `@f9` in a day: 41.7 % to 56.2 % at N=16; at N=17 `@f9`
 wins 40.3 % of 300 maps of its own, and nothing is lost lower down (N=15 on the first block 70 -> 78). The planner
 took 7 % of the simulation's CPU; with a heap and the hot blocks by the goal free it takes 4.7 % and wins more:
-`@f10`, **59.3 % at N=16** (356 of the 600).
+`@f10`, **59.3 % at N=16** (356 of the 600); at N=17 37.3 % (`@f9` 40.3 % on the same 300 maps).
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -2246,7 +2246,9 @@ blocks that near the goal are free; it changes the ways, so it was played before
 
 Five is the default since commit 00f7ed2b, frozen as `@f10`: 356 of 600 = **59.3 %** at N=16 for `@f9`'s 56.2 % (+91
 -72, z 1.5; the model at minute 40 +2.1 +- 2.5 and +5.2 +- 2.2), and a fifth less CPU a game minute than the
-planner as first written. An estimate that counts the hot blocks no way can go round (the depth of the goal in hot
+planner as first written. At N=17 on 27001..27300 `@f10` wins 112 of 300 = 37.3 % with three draws, where `@f9` won
+121 (+40 -49): over the three blocks five against none is +131 -121, so it is the cheaper planner and not a
+better one, and N=17 stands at 37 to 40 %. An estimate that counts the hot blocks no way can go round (the depth of the goal in hot
 ground) was tried in its place and thrown out: it found no more ways (18 % of the plans still ran out) and cost a
 percent of its own. The search is wide because the field itself is crossed by broad hot belts late in a game, not
 only because of the ground by the goal; what is left of the cost (590 plans a game that give up after 8,000 blocks)
