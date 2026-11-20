@@ -658,6 +658,19 @@ class Strategy {
     boolean evacuate = false;
     /** Gatherers skip supplies an idle enemy can see (Economy.seenByParked). */
     boolean gather_avoid_parked = false;
+    /**
+     * gather_parked: a gatherer is sent only to a supply that no parked enemy warrior sees and that it can walk to
+     * unseen, straight from where it stands (and from there to the armory), the cheapest such of the cheapest
+     * gather_parked_tries; with none, to none (it is free for other work). A parked warrior scans an 8-cell square,
+     * hunts what it sees and stands where it is until then, so its square, with two cells to spare, is ground to walk
+     * round, where an enemy that walks is one to step away from. Without it a gatherer that stepped out of a parked
+     * group's way is sent to the cheapest ore from the armory, which lies behind the group as often as not: one
+     * bounced off a group of 10-16 nine times in 50 s (s22003 #150, by0log-vs16), and half the steps away from a parked
+     * enemy come within 5 s of going back to work (lab/fable/evades.py). gather_avoid_parked and gather_route_clear
+     * look from the armory only, and at every enemy.
+     */
+    boolean gather_parked = false;
+    int gather_parked_tries = 12;
     /** Lure-kiting (Lures): up to lure_max peons pull blobs of lure_min+ idle enemies into tower reach. */
     boolean lure = false;
     /** Rock filler (Economy.computeGatherTargets) while iron starves the armory. */
@@ -809,6 +822,13 @@ class Strategy {
     boolean tower_front_entry = true;
     /** Reinforcements head for the army's march waypoint, join near any attacker, and are waited for (Military). */
     boolean reinforce_intercept = false;
+    /**
+     * reinforce_route: reinforcements walk to the army along the cheapest way that keeps clear of enemy warriors,
+     * bases and towers (SafeField, one flood from the army's centre every 2 s for all of them), three blocks at a
+     * time, instead of attack-moving straight at it one by one. Of 450 sent in an hour of game 74 die on the way
+     * (rn5-vs16), 75 in 92 more than 60 cells from the army and 54 by a group on the move (ft1log-vs16).
+     */
+    boolean reinforce_route = false;
     /** Shepherds hold their spot (flee at 9 cells, not 12) while their copy's launch is imminent (Shepherd). */
     boolean shepherd_hold = false;
     /**
@@ -1777,6 +1797,14 @@ class Strategy {
      * chance that nobody else's throw kills it first, instead of letting several throw at the same nearest one.
      */
     boolean micro_targets = true;
+    /**
+     * micro_step (1 = off): what a target out of throwing reach is worth to micro_targets against one in reach, and a
+     * warrior walking up to its target takes a better one in reach instead. The targets are chosen within 9 cells and
+     * a throw reaches 7.9, a cell of walk is half a second of a 2-s throw, and the target walks too: with an opposing
+     * warrior within 8 cells our attackers throw 72 % of the time and walk up to their target 21 % (ft1log-vs16,
+     * lab/fable/fighttime.py; the engine's own choice, as the Hard copies fight, walks 26 %).
+     */
+    float micro_step = 1f;
     /**
      * Order our stunned warriors again: the stun behaviour keeps them frozen, but the order replaces the stun
      * controller, which is what takes away their chance to dodge.
@@ -2771,6 +2799,8 @@ class Strategy {
         shepherd_range = params.getInt("shepherd_range", shepherd_range);
         evacuate = params.getBoolean("evacuate", evacuate);
         gather_avoid_parked = params.getBoolean("gather_avoid_parked", gather_avoid_parked);
+        gather_parked = params.getBoolean("gather_parked", gather_parked);
+        gather_parked_tries = params.getInt("gather_parked_tries", gather_parked_tries);
         lure = params.getBoolean("lure", lure);
         rock_surge = params.getBoolean("rock_surge", rock_surge);
         site_shepherd = params.getBoolean("site_shepherd", site_shepherd);
@@ -2815,6 +2845,7 @@ class Strategy {
         chief_dodge = params.getBoolean("chief_dodge", chief_dodge);
         tower_front_entry = params.getBoolean("tower_front_entry", tower_front_entry);
         reinforce_intercept = params.getBoolean("reinforce_intercept", reinforce_intercept);
+        reinforce_route = params.getBoolean("reinforce_route", reinforce_route);
         shepherd_hold = params.getBoolean("shepherd_hold", shepherd_hold);
         tower_reaim = params.getBoolean("tower_reaim", tower_reaim);
         tower_prequeue_any = params.getBoolean("tower_prequeue_any", tower_prequeue_any);
@@ -3061,6 +3092,7 @@ class Strategy {
         freeze_eta2_ticks = (float) params.getDouble("freeze_eta2_ticks", freeze_eta2_ticks);
         freeze_keep = params.getInt("freeze_keep", freeze_keep);
         micro_targets = params.getBoolean("micro_targets", micro_targets);
+        micro_step = (float) params.getDouble("micro_step", micro_step);
         restore_dodge = params.getBoolean("restore_dodge", restore_dodge);
         restore_dodge_gap_ticks = (float) params.getDouble("restore_dodge_gap_ticks", restore_dodge_gap_ticks);
         sappers = params.getBoolean("sappers", sappers);

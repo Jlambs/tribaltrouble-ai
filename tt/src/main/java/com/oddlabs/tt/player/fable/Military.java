@@ -14,6 +14,7 @@ import com.oddlabs.tt.model.behaviour.Controller;
 import com.oddlabs.tt.model.behaviour.EnterController;
 import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.model.behaviour.IdleController;
+import com.oddlabs.tt.model.behaviour.WalkBehaviour;
 import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.fable.Intel.PeonState;
@@ -6871,6 +6872,7 @@ final class Military {
         boolean wing_front_looked = false;
         wing_bound.removeIf(Unit::isDead);
         boolean intercept = ai.strategy().reinforce_intercept;
+        boolean routed = false;
         List<Unit> attackers = null;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             if (e.getValue() != Role.REINFORCE)
@@ -6922,9 +6924,30 @@ final class Military {
             // While the army marches calmly, head for where it is going (its march waypoint), which it has just
             // cleared, instead of chasing its centre.
             int[] goal = intercept && march_wp != null && ai.now() - march_calm_time < 100f ? march_wp : front;
+            if (ai.strategy().reinforce_route) {
+                // reinforce_route: along the way that keeps clear of the enemy
+                SafeField field = reinforce_field;
+                if (field == null)
+                    field = reinforce_field = new SafeField(ai);
+                if (!routed) {
+                    routed = true;
+                    field.update(goal[0], goal[1], ai.intel(), 200f, withRole(Role.REINFORCE)); // 4 s
+                }
+                int[] wp = field.next(u.getGridX(), u.getGridY());
+                if (wp != null) {
+                    // warrior-rounds (0.5 s) on a planned way, by whether its next stretch passes the enemy
+                    ai.aiLog().count(field.crossedHot() ? "reinforce_route_hot" : "reinforce_route");
+                    goal = wp;
+                } else {
+                    ai.aiLog().count("reinforce_route_none");
+                }
+            }
             attackGround(u, goal[0], goal[1], false);
         }
     }
+
+    /** reinforce_route: the ways to the attacking army. */
+    private @Nullable SafeField reinforce_field;
 
     /** The army's current march waypoint, and when it was set (only while marching calmly). */
     private int @Nullable [] march_wp;
@@ -7584,33 +7607,59 @@ final class Military {
                 survive.merge(t, 1f - hitChance(w, t), (a, b) -> a * b);
         }
         int r2 = THROW_CELLS * THROW_CELLS;
+        float step = ai.strategy().micro_step;
         for (Unit w : units) {
             WarriorState s = ai.intel().warrior_states.get(w);
             if (s == WarriorState.STUNNED || s == WarriorState.ENTER || w.isDead())
                 continue;
             Unit current = hunt_targets.get(w);
             boolean hunting = current != null && w.getCurrentController() instanceof HuntController;
+            Unit keep = null;
             if (hunting && MapAnalysis.dist2(w.getGridX(), w.getGridY(), current.getGridX(),
                     current.getGridY()) <= (THROW_CELLS + 3) * (THROW_CELLS + 3)) {
-                targeted.add(w);
-                continue;
+                // micro_step: a warrior still walking up to its target may take one in reach instead
+                if (step >= 1f || inReach(w, current) || !(w.getCurrentBehaviour() instanceof WalkBehaviour)) {
+                    targeted.add(w);
+                    continue;
+                }
+                keep = current;
+                // its own throw is not one of those its target has to survive
+                float own = 1f - hitChance(w, current);
+                if (!isMultiHit(current) && own > 0f)
+                    survive.computeIfPresent(current, (k, v) -> Math.min(1f, v / own));
             }
             Unit best = null;
             float best_score = 0f;
             float best_p = 0f;
+            boolean any_reach = false;
             for (Unit e : foes) {
                 if (MapAnalysis.dist2(w.getGridX(), w.getGridY(), e.getGridX(), e.getGridY()) > r2)
                     continue;
                 float p = hitChance(w, e);
                 float score = throwValue(w, e) * p * survival(survive, e);
+                boolean reach = inReach(w, e);
+                any_reach |= reach;
+                if (!reach)
+                    score *= step;
                 if (score > best_score) {
                     best_score = score;
                     best = e;
                     best_p = p;
                 }
             }
+            if (keep != null && (best == null || best == keep || !inReach(w, best))) {
+                // nothing better in reach: on to the target it has
+                if (!isMultiHit(keep))
+                    survive.merge(keep, 1f - hitChance(w, keep), (a, b) -> a * b);
+                targeted.add(w);
+                continue;
+            }
             if (best == null)
                 continue;
+            if (keep != null)
+                ai.aiLog().count("micro_step_switch"); // a walk up to a target left for a target in reach
+            // targets given: in reach, out of reach, and out of reach with another in reach
+            ai.aiLog().count(inReach(w, best) ? "assign_reach" : any_reach ? "assign_step_alt" : "assign_step");
             if (!isMultiHit(best))
                 survive.merge(best, 1f - best_p, (a, b) -> a * b);
             hunt_targets.put(w, best);
@@ -7620,6 +7669,12 @@ final class Military {
             targeted.add(w);
         }
         return targeted;
+    }
+
+    /** Whether warrior w can throw at e from where it stands (HuntController's own test). */
+    private static boolean inReach(@NonNull Unit w, @NonNull Unit e) {
+        float reach = w.getRange(e);
+        return MapAnalysis.dist2(w.getGridX(), w.getGridY(), e.getGridX(), e.getGridY()) <= reach * reach;
     }
 
     /**

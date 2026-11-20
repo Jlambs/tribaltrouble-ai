@@ -6262,6 +6262,11 @@ final class Economy {
         for (Building sat : satellites())
             have[1] += intel.countLinkedGatherers(PeonState.GATHER_IRON, sat);
         int[] want = {want_tree, want_iron, want_rock, want_chicken};
+        // gatherer-seconds, to set against what was harvested (an economy tick is a second)
+        for (int k = 0; k < have[0]; k++)
+            ai.aiLog().count("gather_s_tree");
+        for (int k = 0; k < have[1]; k++)
+            ai.aiLog().count("gather_s_iron");
         Class<?>[] types = {TreeSupply.class, IronSupply.class, RockSupply.class, RubberSupply.class};
         rebuildSupplyLoad();
         int deploy_for_gathering = 0;
@@ -7026,6 +7031,14 @@ final class Economy {
         Strategy st = ai.strategy();
         boolean tree = type == TreeSupply.class;
         int radius = tree ? (wood_starved ? st.wood_reach : 60) : 200;
+        // gather_parked: the walk starts where the peon stands, unless that is by the armory
+        scan_from_x = armory.getGridX();
+        scan_from_y = armory.getGridY();
+        if (peon != null && MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), scan_from_x,
+                scan_from_y) > PARKED_ORIGIN_CELLS * PARKED_ORIGIN_CELLS) {
+            scan_from_x = peon.getGridX();
+            scan_from_y = peon.getGridY();
+        }
         Supply best = scanSupplies(type, armory, radius, armory_field);
         // ore_reach_fail: a near pick that found nothing, with no threat or parked blob by any of the ore (ore more
         // than 400 m of walk away, across water or cliffs, or avoided after stuck gatherers), looks farther too.
@@ -7066,6 +7079,48 @@ final class Economy {
         return best;
     }
 
+    /** gather_parked: where the walk to the supply scanSupplies picks starts (pickSupply sets it). */
+    private int scan_from_x;
+    private int scan_from_y;
+    /** gather_parked: a peon farther than this from the armory walks to its supply from where it stands. */
+    private static final int PARKED_ORIGIN_CELLS = 12;
+    /** gather_parked: a parked enemy warrior sees 8 cells along both axes; two to spare. */
+    private static final int PARKED_SEES = 10;
+    /** gather_parked: supplies a parked enemy warrior saw at a pick, left out until the time given (10 s). */
+    private final Map<@NonNull Supply, Float> parked_supplies = new LinkedHashMap<>();
+
+    /** gather_parked: whether a parked enemy warrior stands within PARKED_SEES cells of (x, y) along both axes. */
+    private boolean parkedSees(int x, int y) {
+        EnemyIndex index = ai.intel().enemyIndex(ai.worldTicks());
+        int[] found = index.queryUnordered(x, y, 2 * PARKED_SEES * PARKED_SEES);
+        for (int k = 0, m = index.count(); k < m; k++) {
+            if (index.group(found[k]) != EnemyIndex.WARRIOR)
+                continue;
+            Unit e = index.unit(found[k]);
+            if (!e.isDead() && Intel.isParked(e) && Math.abs(e.getGridX() - x) <= PARKED_SEES
+                    && Math.abs(e.getGridY() - y) <= PARKED_SEES)
+                return true;
+        }
+        return false;
+    }
+
+    /**
+     * gather_parked: whether the straight walk from (x0, y0) to (x1, y1), sampled every 4 cells from the first step
+     * on and at its end, stays out of every parked enemy warrior's sight.
+     */
+    private boolean walkUnseen(int x0, int y0, int x1, int y1) {
+        float len = (float) Math.sqrt(MapAnalysis.dist2(x0, y0, x1, y1));
+        for (float step = 4f;; step += 4f) {
+            float d = Math.min(step, len);
+            int x = len > 0f ? Math.round(x0 + (x1 - x0) * d / len) : x0;
+            int y = len > 0f ? Math.round(y0 + (y1 - y0) * d / len) : y0;
+            if (parkedSees(x, y))
+                return false;
+            if (d >= len)
+                return true;
+        }
+    }
+
     /**
      * The cheapest supply of the type within radius cells of the armory for a gatherer to walk to, by the walking
      * distances of field, or null.
@@ -7090,8 +7145,12 @@ final class Economy {
         boolean late = ai.now() >= gst.gather_fixes_ticks;
         boolean kill_on = gst.gather_kill_zone && late;
         int killed = 0;
-        boolean route_on = gst.gather_route_clear && late;
-        Supply[] route_cand = route_on ? new Supply[Math.max(1, gst.gather_route_tries)] : null;
+        boolean parked_on = gst.gather_parked;
+        boolean route_on = parked_on || (gst.gather_route_clear && late);
+        if (parked_on)
+            parked_supplies.values().removeIf(until -> until < ai.now());
+        Supply[] route_cand = route_on ? new Supply[Math.max(1,
+                parked_on ? gst.gather_parked_tries : gst.gather_route_tries)] : null;
         float[] route_cost = route_on ? new float[route_cand.length] : null;
         int route_n = 0;
         // satellite: ore goes to its nearest armory, so it is as far as that armory (within the 400 m field of either)
@@ -7131,6 +7190,10 @@ final class Economy {
             Float other = other_armory_supplies.get(s);
             if (other != null && other > ai.now())
                 continue;
+            if (parked_on && parked_supplies.containsKey(s)) {
+                parked++;
+                continue;
+            }
             // gather_kill_zone: where our peons keep dying
             if (kill_on && inKillZone(s.getGridX(), s.getGridY())) {
                 threat++;
@@ -7162,7 +7225,26 @@ final class Economy {
         }
         if (killed > 0)
             ai.aiLog().count("pick_kill_zone");
-        if (route_on && best != null) {
+        if (parked_on && best != null) {
+            // the cheapest of the few that no parked enemy sees, with a walk there and home unseen; else none
+            Supply clear = null;
+            boolean afield = scan_from_x != ax || scan_from_y != ay;
+            for (int k = 0; k < route_n && clear == null; k++) {
+                Supply s = route_cand[k];
+                if (parkedSees(s.getGridX(), s.getGridY())) {
+                    parked_supplies.put(s, ai.now() + 500f); // 10 s
+                    parked++;
+                } else if (walkUnseen(scan_from_x, scan_from_y, s.getGridX(), s.getGridY())
+                        && (!afield || walkUnseen(s.getGridX(), s.getGridY(), ax, ay))) {
+                            clear = s;
+                        } else {
+                            parked++;
+                        }
+            }
+            if (clear != best)
+                ai.aiLog().count(clear == null ? "pick_parked_none" : "pick_parked_other");
+            best = clear;
+        } else if (route_on && best != null) {
             // the cheapest of the few whose walk is clear; with none clear, the cheapest as without the option (a
             // strict rule left gatherers home near a besieged base, where nearly every walk passes some enemy)
             Supply clear = null;
