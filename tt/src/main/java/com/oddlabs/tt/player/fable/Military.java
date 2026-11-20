@@ -1499,7 +1499,8 @@ final class Military {
         for (Map.Entry<Unit, Float> en : caster_hunters.entrySet()) {
             Unit u = en.getKey();
             Unit chief = hunt_targets.get(u);
-            if (u.isDead() || Intel.isStunned(u))
+            // a hunter that has gone into a tower since takes no order (the engine asserts on a mounted unit)
+            if (u.isDead() || u.isMounted() || Intel.isStunned(u))
                 continue;
             if (chief == null || !caster_targets.containsKey(chief)) {
                 // Another order took him off the caster: put him back on the nearest one.
