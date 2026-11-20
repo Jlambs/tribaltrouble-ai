@@ -2167,12 +2167,18 @@ On top of `@f8` at N=16, 300 maps an arm, against its 154 wins on 25001..25300 (
 | no new second shepherd from minute 12 / 20 / 30 (`shepherd_home_pair_until`, new; `hpu12`, `hpu20`, `hpu30`, against `hpa`) | 162 -> 144, 151, 151 (+23 -41, +18 -29, +7 -18) | -4.9, -2.5, -1.5 | second recruits 162 -> 28, 60, 89 a game |
 | rings out to 38 cells where the ring of 22 has no spot (`shepherd_fallback_r=38`; `fb38`) | 154 -> 158 (+44 -40) | -1.2 +- 2.3 | tends with no spot 13,540 -> 10,872, waves at the base 24.8 -> 25.2 |
 | the same, parked warriors block only within 8 cells (`shepherd_clear_parked=8`; `fbcp`) | 154 -> 152 (+32 -34) | -0.9 +- 2.2 | no spot 13,540 -> 9,028, waves at the base 25.7 |
+| a spot with a clear walk to it (`shepherd_safe_walk`; `sw`) | 154 -> 159 (+46 -41) | -0.2 +- 2.5 | none of the 12 best spots has one in 15,966 tends a game; lost 332 -> 318 |
+| a recruit with a clear walk, of the five nearest (`shepherd_recruit_clear` from 120 s; `rc`) | 154 -> 156 (+40 -38) | +0.1 +- 2.4 | no recruit in 8,131 tends a game; lost 332 -> 287, waves at the base 25.6 |
 
 Which copies get the second shepherd does not matter (+52 -50 over the 600 maps), so 120 cells stays. The late
 second shepherds are not waste, though one in eight arrives: ending the recruiting loses wins, the more the sooner
 (my reading of the start at minute 20 was wrong). The wider rings do what they say and move nothing: a ring beyond
 22 cells is allowed only where the copy's group stands far from our buildings, and those are not the groups whose
-waves reach the base.
+waves reach the base. The two for the walk are too near-sighted to make it safe, like the walk round: the twelve
+best spots lie on one ring of 14-22 cells about one origin, so the walks to them from a peon 100 cells off are one
+walk, and of the five nearest peons none has a clear start most of the time (it then recruits nobody, which loses
+nothing here: 45 fewer shepherds lost a game for 0.8 more waves at the base). What the walk wants is a route, not a
+choice among near things: not built yet.
 
 ## Reproduce
 
