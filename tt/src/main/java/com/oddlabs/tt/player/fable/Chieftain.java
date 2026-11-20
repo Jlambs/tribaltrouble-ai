@@ -397,7 +397,12 @@ final class Chieftain {
      * to its target without scanning (HuntController) and sees him only when that hunt is over.
      */
     private boolean huntsOther(@NonNull Unit e) {
-        if (!ai.strategy().chief_bystander || !(e.getCurrentController() instanceof HuntController hunt))
+        return ai.strategy().chief_bystander && huntsElse(e);
+    }
+
+    /** Whether an enemy warrior is locked in a hunt on something other than our chieftain. */
+    private boolean huntsElse(@NonNull Unit e) {
+        if (!(e.getCurrentController() instanceof HuntController hunt))
             return false;
         Selectable<?> target = hunt.getTarget();
         return target != ai.intel().chieftain && !target.isDead();
@@ -1178,10 +1183,12 @@ final class Chieftain {
         int hy = armory != null ? armory.getGridY() : ai.planner().getStartY();
         java.util.List<Unit> parked = new java.util.ArrayList<>();
         java.util.List<Unit> awake = new java.util.ArrayList<>();
+        boolean hunters = strategy.shred_hunters;
         for (Unit e : intel.enemy_warriors) {
             if (e.isDead())
                 continue;
-            (Intel.isParked(e) ? parked : awake).add(e);
+            // shred_hunters: a hunter of something else sees him no more than a parked warrior does
+            (Intel.isParked(e) || (hunters && huntsElse(e)) ? parked : awake).add(e);
         }
         // shred_base: the warriors at our buildings are a blob too, awake or not
         if (strategy.shred_base)

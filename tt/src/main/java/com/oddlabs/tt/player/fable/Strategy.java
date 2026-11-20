@@ -540,6 +540,13 @@ class Strategy {
      */
     boolean chief_bystander = false;
     /**
+     * shred_hunters: enemy warriors locked in a hunt on something other than our chieftain (a wave after a shepherd)
+     * are members of a blob for the blast mission as parked ones are: neither sees him come. With the blast charged
+     * he has no blob 27 % of the time (shred_t_noblob, mb2-vs16), and in a third of those moments eight and more
+     * awake enemy warriors are within shred_range of the armory (cnlog-vs16). Meant with chief_bystander.
+     */
+    boolean shred_hunters = false;
+    /**
      * iron_real (0 = off): the plan's share of iron gatherers follows the measured gatherer-time per unit of iron (a
      * running mean of measureYield's 30-s windows) where that is above the modelled trip, up to this multiple of the
      * model. The model is the walk to the nearest three nodes; the real cost is 2-3 times that from minute 14
@@ -2765,6 +2772,7 @@ class Strategy {
         flight_keep = params.getBoolean("flight_keep", flight_keep);
         evade_chicken = params.getBoolean("evade_chicken", evade_chicken);
         chief_bystander = params.getBoolean("chief_bystander", chief_bystander);
+        shred_hunters = params.getBoolean("shred_hunters", shred_hunters);
         iron_real = (float) params.getDouble("iron_real", iron_real);
         tree_real = (float) params.getDouble("tree_real", tree_real);
         rock_real = (float) params.getDouble("rock_real", rock_real);
