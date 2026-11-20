@@ -2364,7 +2364,17 @@ half of the block (25001..25150) `bystander=0` won 97 for 91, and with `stuck_st
 **Confirmed and made the default** (`forGame`, large maps: `bystander=0`, `stuck_still_ticks=1000`,
 `gather_parked=true`; frozen as `@f11`). At N=16 from the first start on the 300 maps 26001..26300, never used for
 any of this: **204 wins for 178** (`mbm-vs16` against `rn5m-vs16`, +50 -24, z 3.0), 68.0 % for 59.3 %; 862 iron an
-hour of game for 807, 650 steps out of the way for 2,035, CPU 39.8 s an hour of game for 42.0.
+hour of game for 807, 650 steps out of the way for 2,035, CPU 39.8 s an hour of game for 42.0. At N=17 on
+27001..27300, where `@f9` won 121 and `@f10` 112: **148 of 300 = 49.3 %** (`f11n-vs17`, +57 -21 against `@f10`).
+
+**`@f12`: `flight_keep` and `chief_bystander`** (the default since commit 5e14c475). `flight_keep` on top of the
+three: 106 wins for 105 on 150 maps (`me2-vs16`, +13 -12) and, on the 300 maps 26001..26300, **215 for `@f11`'s 204
+and `@f10`'s 178** (`mem-vs16`: +35 -24 against `@f11`, +52 -15 against `@f10`), 71.7 %. An hour of game, `@f10` /
+`@f11` / with `flight_keep`: peons lost stepping away, on the way into a building, gathering and building 255 /
+213 / 179; units lost inside razed buildings 48 / 37 / 32; iron 807 / 862 / 879. `chief_bystander` (the chieftain's
+mission minds no enemy locked in a hunt on another unit: the same reasoning as for the peons): 29 approaches called
+off an hour for 39, the same 11 blasts, 108 wins for 105 (`mf2-vs16`, +10 -7); adopted as waste removed with no
+harm seen, not as a gain.
 
 **The chieftain** (`shred`, strict: the `shred_t_*` counters count his rounds of half a second by what he does;
 `mb2-vs16`, an hour of game): 11.2 blasts that catch 22 warriors each, and of the hour 878 s charging, 613 s walking
