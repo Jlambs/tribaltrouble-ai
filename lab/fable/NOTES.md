@@ -126,6 +126,14 @@ with no iron within a kilometre, a copy starting next door, and a walk to the fa
 open: nothing tried on them helped). `@f4` has no exam of its own: at N=12-16 it plays `@f3`'s results (+7 -4 of
 1,000 seat-0 games).
 
+Standing peons (2026-11-19, the user's question; "Standing peons, and the moment with no armory" below): peons with
+no order are counted now (`idle_s_*`). The median game has none; what there is stands by a site whose trees are cut
+(6 builders, up to 110 standing) and, far more, by the armory going up again after the last one fell (33 games of
+100 at N=15). Letting them all build (`idle_builders`) removes it and moves no wins (+19 -19 in 1,200 games), a
+spare second armory loses 7 of 100 at N=15, and builders that set out before a site is placed lose a little; all
+off. Of 244 games with an armory standing at every moment 243 are won, of 56 with a moment of none 8: the standing
+marks a base being overrun. A rare swallowed assertion in the caster hunt is repaired.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -1779,6 +1787,78 @@ faster than the seats are added.
 Reproduce: `python lab/fable/anyseat.py --name f4 --n 1..16` (then `--report --detail` for the seats),
 `--name f4h --spec "@f4" --seeds 23001..23100 --n 12..16` for the held-out maps (a seed block needs a name of its
 own); `./aisim.sh freeze f4 fable` at commit bbe0e145 for the tag.
+
+### Standing peons, and the moment with no armory (`lab/fable/idle.py`, `noarmory.py`)
+
+The user (2026-11-19, on the pre-walk above): do peons wait idle until a site has been put down? "Peons should
+probably never be literally standing around."
+
+They do: a builder is given to a site only once its carrier has put it down, and before the first armory a peon
+with no such site and no room in a quarters has no order. It seldom costs anything in the opening: the carrier
+leaves in the first second, and a site under about 200 m of walking is down before the first quarters stands.
+`Economy.countStanding` counts a second for every peon that has no order at two allocations in a row (counters
+`idle_s_open` before the first armory stood, `idle_s_15`, `idle_s_30`, `idle_s_late` by the minute after). The default
+on maps 22001..22100 from seat 0, peon-seconds a game (mean / 90th percentile / largest / games with any):
+
+| N | before the first armory | to minute 15 | minutes 15-30 | later |
+|---|---|---|---|---|
+| 8 (`idl-vs8`) | 12 / 38 / 309 / 16 | 0 / 0 / 14 / 6 | 289 / 0 / 28,941 / 2 | 120 / 0 / 11,997 / 1 |
+| 12 (`idl-vs12`) | 46 / 39 / 2,391 / 22 | 1 / 2 / 29 / 11 | 81 / 0 / 4,635 / 6 | 934 / 1 / 41,045 / 11 |
+| 15 (`idl-vs15`) | 155 / 47 / 8,563 / 25 | 13 / 2 / 1,024 / 15 | 732 / 1,800 / 26,142 / 26 | 1,847 / 5,023 / 38,654 / 32 |
+
+So the median game has none, and the standing there is comes in two places (the `IDLE` log line says where and in
+what state):
+
+- **A site with its trees cut.** `buildersWanted` gives a site 4 builders a tree within 12 cells and 6 at least. On
+  s22022 at N=15 the first armory has 6 builders from 200 s on while 36, 74, 84 and 110 peons stand by it at 271 to
+  361 s (8,563 peon-seconds; armory at 370 s, lost at 41 min); s22039 the same with 74 standing. Five openings in a
+  hundred at N=15 and eight at N=12 stand 100 peon-seconds and more.
+- **No armory.** Nearly all of the standing after minute 15 is while the last armory is down (152 of 162 `IDLE`
+  lines in 14 logged games, `idg-vs12`, `idg-vs15`; the other 10 are by an armory emptied ahead of a wave): with an
+  armory every spare peon works in it, with none there is the opening's rule only. The armory going up again takes 157 to 276 s
+  with 60 to 178 peons standing by it (32 to 82 s for an armory built while another stands). At N=15 33 games of 100
+  stand 300 peon-seconds and more after minute 15, and 6 of them are won; of the 55 with none 49.
+
+`noarmory.py` on the same runs, by whether an armory of ours stands at every moment after the first:
+
+| N | an armory at every moment | a moment with none | from minute 10: none / one / two or more, games won | games not won |
+|---|---|---|---|---|
+| 8 | 99 games, 99 won | 1, 0 won | 0 / 7 / 93 % | 43 / 57 / 0 % |
+| 12 | 89, 88 won | 11, 2 won | 0 / 15 / 85 % | 23 / 28 / 49 % |
+| 15 | 56, 56 won | 44, 6 won | 0 / 28 / 71 % | 18 / 41 / 41 % |
+
+Before the first moment with none we stand at exactly one armory for a median of 312 s at N=12 and 355 s at N=15
+(quartiles 160 to 679 s; 17 and 21 minutes in s22027 and s22016 at N=15, with no second armory so much as placed).
+The second armory is an expansion only (`considerExpansion`: gathering a quarter cheaper elsewhere, no threat at the
+base, a building slot free), and at the cap of 20 buildings a tower takes a razed armory's slot at once.
+
+Three answers, each behind a flag, 100 maps a run, wins against the default's (`idl-vsN`):
+
+| | N=12 (90) | N=15 (62) | what it does |
+|---|---|---|---|
+| `idle_builders=40`: with no armory standing, a peon left over joins a site, the armory's first, up to 40 builders (`ib40`) | 90 (+0 -0) | 64 (+3 -1) | standing after minute 15 at N=15 2,579 -> 1,069 peon-seconds a game |
+| `idle_builders=100` (`ib100`) | 90 (+0 -0) | 64 (+3 -1) | 2,579 -> 207; a lost armory back after 81 s instead of 116 (median), 39 of 75 episodes rebuilt against 33 of 71; s22022's first armory at 278 s, s22039's at 241 s instead of 315 |
+| with `opening_join`: builders set out for a site still carried (`ibj`, on `idle_builders=40`) | 87 (+0 -3) | 61 (+3 -4) | standing before the first armory 46 -> 3 and 155 -> 6 |
+| `armory_spare_ticks=30000`: from minute 10 a second armory is kept, planned by a calm quarters, holding the next building slot (`sp`) | 90 (+2 -2) | 55 (+2 -9) | time at one armory in the games won 28 % -> 4 %; a moment with none in 46 games against 44 |
+| spare and `idle_builders=100` (`spi`) | 91 (+2 -1) | 55 (+4 -11) | |
+
+`idle_builders=100` at the other N and on the held-out maps (against `as-f4-vsN-s0` and `as-f4h-vsN-s0`, the same
+games): N=8 99 -> 99, N=10 98 -> 99, N=13 85 -> 82, N=14 76 -> 74, N=16 38 -> 38; 23001..23100 N=12 90 -> 89, N=13
+93 -> 90, N=14 77 -> 80, N=15 52 -> 56, N=16 42 -> 41. Over the 1,200 games **+19 -19**. All off.
+
+So the user's rule finds the place and not the cure. The peons stand because the last armory is gone, and a base
+whose last armory is gone is being overrun: the same peons building it again three times as fast win one game more
+of 33, and a second armory kept in reserve falls with the first and costs a tower's slot. What the 244 games with an
+armory at every moment have (243 won) is a base that holds, which is the long game's old question ("Minutes 15-25",
+"The chieftain's blast"). `opening_join` loses for a reason not looked into (a builder sent to a placed site chops
+where it stands and walks out with the wood; one that carries the site may arrive with none). The one clear gain is
+the opening with a cut site (s22022: armory 92 s earlier, a loss at 41 min becomes a win), five to eight games in a
+hundred; an `idle_builders` for the opening alone is not tried.
+
+Found on the way and repaired (commit 6670682e): `Military.keepHuntingCasters` ordered a warrior that had gone into
+a tower since to attack the winding-up chieftain, and the engine asserts on an order to a mounted unit: 45 swallowed
+errors in one game of about 3,000 (`spi-vs15` s22001, from 5,886 s). The default plays the same games otherwise (8 of
+8 checksums).
 
 ## Reproduce
 
