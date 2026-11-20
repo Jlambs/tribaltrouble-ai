@@ -2064,6 +2064,12 @@ plays the bundle's games (16 of 16 checksums, `f7chk-vs13` against `pb0-vs13`). 
 bundle is not worse, so nothing asked for the split. At N=1-7 the bundle wins every map of both blocks from some
 start, as before, and 699 and 700 of 700 from the first (`@f6` 698 and 700).
 
+**On maps never used** (25001..25300, N=16, from the first start; `f4n-vs16`, `f7n-vs16`): `@f4` 107 of 300 = 35.7 %
+[30.5, 41.2], `@f7` 124 = **41.3 %** [35.9, 47.0], paired +59 -42 (z 1.7), the state model at minute 20 +3.1 +- 1.7
+points, no draw and no swallowed error in either. So the two blocks above run about five points easy at N=16 (40 %
+and 46 % there), the three defaults since `@f4` are worth five to six points at N=16 on any of them, and the 50 %
+line still lies between N=15 and N=16.
+
 ## Reproduce
 
 ```bash
@@ -2087,6 +2093,8 @@ python lab/fable/anyseat.py --name f6 --spec "@f6" --n 1..16                    
 PB="@f6:stock_balance=true,sat_staff=true,expand_under_threat=true,tower_wood_drop=true,tower_wood_ticks=30000,tower_site_fallback=true,unstick_builders_ticks=1500,rush_hold_armory=true,rush_opening_only=true,walk_select=300,capped_min_strength=40,seed_quarters_ticks=1500,site_towers_first=true,stall_peons=true,freeze_unfreeze=true"
 python lab/fable/anyseat.py --name pb6 --spec "$PB" --n 8..16                          # plays what @f7 plays; pb6h on 23001..23100
 python lab/fable/seat0.py f6 pb6 --n 8..16                                             # two ladders paired from the first start
+./lab/fable/dev.sh f7n-vs16 "@f7 vs hard*16" 25001..25300                              # likewise f4n-vs16 with @f4
+python lab/fable/waylaid.py --maps as-pb6-vs15-s0                                      # builders killed by a copy's start
 ```
 
 Gauntlet for the baseline: `git archive origin/gauntlet tt/src/main/java/com/oddlabs/tt/player/gauntlet | tar -x`,
@@ -2116,4 +2124,20 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   own: 17 a game in the won games, 160 in the lost. What does not depend on the result: shepherds, 147 lost of 158
   recruited (131 of them while fleeing; 70 reach their spot, and 205 of a game's 420 waves go to a shepherd, 20 to
   our base), and gatherers that step out of an enemy's way and die all the same (93 of 2,340 steps). Peons walking
-  between our own buildings: 59 in the won games, 172 in the lost. Not looked into.
+  between our own buildings: 59 in the won games, 172 in the lost.
+- The shepherds, a first look (2026-11-20, the 16 logged games of `pb0-vs13`: 119 lost a game). Their recruiting
+  is not early: a copy's first shepherd is recruited at a median 171 s and walks 252 cells, the first launch is at
+  a median 339 s (earliest 276 s), and only 91 of 187 stand on their spot before it, a median 55 s. But 88 % die in
+  a flee and 9 % on the walk, at a median 129 s after they were recruited (22 % within a minute), and of the 158
+  recruited a game at N=15 only 70 ever reach a spot. When one dies the nearest enemy warrior is 4-9 cells from
+  its last tended cell in 72 % (a throw reaches 3), a peon within 3 cells in 7 %, a tower within 16 in 9 %; 40 of
+  the 158 are recruited carrying a load, and a loaded peon walks at a warrior's 4 m/s, not 5. Whether those deaths
+  each bought a wave, and what the loaded ones cost, is the next thing to measure.
+- Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
+  within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
+  and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
+  where the walk to an armory 511 m out passes the struck copy and then a second one at 15 cells, 22049, 22059,
+  23037, 22008, and 23047 with a copy next door). Under half a game in a hundred from the first start; on 22095
+  at N=15, lost from all 16 starts, 6 starts lose 6 and more that way and the other 10 lose without it. A walk round
+  the copy's 30 m would have to carry every peon the home quarters breeds for minutes, not only the first group; not
+  built.
