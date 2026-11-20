@@ -2374,8 +2374,8 @@ and `@f10`'s 178** (`mem-vs16`: +35 -24 against `@f11`, +52 -15 against `@f10`),
 213 / 179; units lost inside razed buildings 48 / 37 / 32; iron 807 / 862 / 879. `chief_bystander` (the chieftain's
 mission minds no enemy locked in a hunt on another unit: the same reasoning as for the peons): 29 approaches called
 off an hour for 39, the same 11 blasts, 108 wins for 105 (`mf2-vs16`, +10 -7); adopted as waste removed with no
-harm seen, not as a gain. The default itself on maps 25151..25300: **110 of 150** (`ml2-vs16`; `@f10` 87, the
-three 105). On top of it, tried a second time: `reinforce_route` 106 (`mj2-vs16`) and `evade_chicken` 107
+harm seen, not as a gain. The default itself (`@f12`) on 26001..26300: **214 of 300 = 71.3 %** (`f12m-vs16`;
++50 -14 against `@f10`); on maps 25151..25300: **110 of 150** (`ml2-vs16`; `@f10` 87, the three 105). On top of it, tried a second time: `reinforce_route` 106 (`mj2-vs16`) and `evade_chicken` 107
 (`mk2-vs16`). Both do what they are for and neither wins; both stay off.
 
 **The chieftain** (`shred`, strict: the `shred_t_*` counters count his rounds of half a second by what he does;
@@ -2415,6 +2415,8 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./aisim.sh freeze f9 fable                     # the planned way for shepherds, at commit c64eb747
 ./aisim.sh freeze f10 fable                    # the same with the goal's hot blocks free, at commit 00f7ed2b
 ./aisim.sh freeze f11 fable                    # the micro round's three defaults, at commit abb99be6
+./aisim.sh freeze f12 fable                    # and flight_keep, chief_bystander, at commit 5e14c475
+./lab/fable/dev.sh f12m-vs16 "fable vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
 ./lab/fable/dev.sh rtm-vs16 "@f8:... vs hard*16" 26001..26300   # on d2686e1c: fable:shepherd_route=true; rte-vs16 on 25001..25300
