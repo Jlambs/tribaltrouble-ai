@@ -1127,6 +1127,9 @@ final class Shepherd {
     private int @Nullable [] route_from;
     private int @Nullable [] route_seen;
     private int route_gen;
+    /** shepherd_route: blockField of every block for route_field_of, the start field they were read from. */
+    private int @Nullable [] route_field;
+    private @Nullable DistanceField route_field_of;
     private final java.util.PriorityQueue<@NonNull Long> route_open = new java.util.PriorityQueue<>();
 
     /**
@@ -1151,6 +1154,16 @@ final class Shepherd {
             from = route_from = new int[side * side];
             seen = route_seen = new int[side * side];
             route_hot_at = -1f;
+            route_field_of = null;
+        }
+        int[] walk = route_field;
+        if (walk == null || route_field_of != field) {
+            // the walking distances by block, read once: a plan looks at each block up to eight times
+            walk = route_field = new int[side * side];
+            for (int by = 0; by < side; by++)
+                for (int bx = 0; bx < side; bx++)
+                    walk[by * side + bx] = blockField(field, bx, by);
+            route_field_of = field;
         }
         if (route_hot_at != ai.now()) {
             route_hot_at = ai.now();
@@ -1195,7 +1208,7 @@ final class Shepherd {
                 found = true;
                 break;
             }
-            int here = blockField(field, x, y);
+            int here = walk[node];
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dx = -1; dx <= 1; dx++) {
                     int nx = x + dx;
@@ -1203,7 +1216,7 @@ final class Shepherd {
                     if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= side || ny >= side)
                         continue;
                     int next = ny * side + nx;
-                    int there = blockField(field, nx, ny);
+                    int there = walk[next];
                     if (there == DistanceField.UNREACHABLE)
                         continue;
                     int step = dx != 0 && dy != 0 ? 6 : 4;
