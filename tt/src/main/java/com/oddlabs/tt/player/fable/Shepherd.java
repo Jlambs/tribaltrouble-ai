@@ -1084,8 +1084,16 @@ final class Shepherd {
         if (MapAnalysis.dist2(s.getGridX(), s.getGridY(), spot[0], spot[1]) > 2 * 2
                 && ai.periodDue(f.last_order, 100f) && !held) {
             int[] to = spot;
+            boolean routed = false;
+            // shepherd_route: along a way that keeps clear of enemy warriors and bases, where the straight walk does not
+            if (strategy.shepherd_route && !walkClear(s.getGridX(), s.getGridY(), spot[0], spot[1], intel)) {
+                int[] wp = route(s.getGridX(), s.getGridY(), spot, intel);
+                routed = wp != null;
+                if (wp != null)
+                    to = wp;
+            }
             // shepherd_detour: around what stands on the straight walk
-            if (strategy.shepherd_detour
+            if (!routed && strategy.shepherd_detour
                     && ai.now() >= (strategy.shepherd_detour_ticks >= 0f ? strategy.shepherd_detour_ticks : strategy.shepherd_fixes_ticks)
                     && !walkClear(s.getGridX(), s.getGridY(), spot[0], spot[1], intel)) {
                 int[] wp = detour(s, spot, intel);
@@ -1102,6 +1110,153 @@ final class Shepherd {
             f.detour_x = to != spot ? to[0] : -1;
             f.detour_y = to != spot ? to[1] : -1;
         }
+    }
+
+    /** shepherd_route: cells to a block of the coarse grid the ways are planned on. */
+    private static final int ROUTE_BLOCK = 4;
+    /** shepherd_route: what a step into a block by an enemy warrior or base costs more than a clear one, in cells. */
+    private static final int ROUTE_HOT = 80;
+    /** shepherd_route: blocks ahead on the planned way that the walk order goes to. */
+    private static final int ROUTE_AHEAD = 3;
+    /** shepherd_route: most blocks a plan expands before it gives up. */
+    private static final int ROUTE_BUDGET = 8000;
+    private int route_side;
+    private boolean @Nullable [] route_hot;
+    private float route_hot_at = -1f;
+    private int @Nullable [] route_g;
+    private int @Nullable [] route_from;
+    private int @Nullable [] route_seen;
+    private int route_gen;
+    private final java.util.PriorityQueue<@NonNull Long> route_open = new java.util.PriorityQueue<>();
+
+    /**
+     * shepherd_route: the cell to walk to next on the cheapest way from (sx, sy) to the spot over a grid of ROUTE_BLOCK
+     * cells, where a block within shepherd_flee_clear cells of an enemy warrior, DEFENSE_CELLS of an enemy quarters or
+     * armory or TOWER_CELLS of an enemy tower costs ROUTE_HOT cells more (it can be crossed, at a price: the spot
+     * itself may lie in one). Blocks are joined when both are reachable and the walking distances from our start do
+     * not put water between them. The spot itself when it is within ROUTE_AHEAD blocks; null when no way is found.
+     */
+    private int @Nullable [] route(int sx, int sy, int @NonNull [] spot, @NonNull Intel intel) {
+        DistanceField field = ai.planner().getStartField();
+        int size = field.getSize();
+        int side = (size + ROUTE_BLOCK - 1) / ROUTE_BLOCK;
+        boolean[] hot = route_hot;
+        int[] g = route_g;
+        int[] from = route_from;
+        int[] seen = route_seen;
+        if (hot == null || g == null || from == null || seen == null || route_side != side) {
+            route_side = side;
+            hot = route_hot = new boolean[side * side];
+            g = route_g = new int[side * side];
+            from = route_from = new int[side * side];
+            seen = route_seen = new int[side * side];
+            route_hot_at = -1f;
+        }
+        if (route_hot_at != ai.now()) {
+            route_hot_at = ai.now();
+            Arrays.fill(hot, false);
+            int clear = (ai.strategy().shepherd_flee_clear + ROUTE_BLOCK) / ROUTE_BLOCK;
+            for (Unit e : intel.enemy_warriors)
+                if (!e.isDead())
+                    markHot(hot, side, e.getGridX(), e.getGridY(), clear);
+            for (Building b : circles)
+                if (!b.isDead())
+                    markHot(hot, side, b.getGridX(), b.getGridY(), (DEFENSE_CELLS + ROUTE_BLOCK) / ROUTE_BLOCK);
+            for (Building t : intel.enemy_towers)
+                if (!t.isDead())
+                    markHot(hot, side, t.getGridX(), t.getGridY(), (TOWER_CELLS + ROUTE_BLOCK) / ROUTE_BLOCK);
+        }
+        int start = Math.min(side - 1, sy / ROUTE_BLOCK) * side + Math.min(side - 1, sx / ROUTE_BLOCK);
+        int goal = Math.min(side - 1, spot[1] / ROUTE_BLOCK) * side + Math.min(side - 1, spot[0] / ROUTE_BLOCK);
+        int gx = goal % side;
+        int gy = goal / side;
+        if (Math.max(Math.abs(start % side - gx), Math.abs(start / side - gy)) <= ROUTE_AHEAD)
+            return spot;
+        int gen = ++route_gen;
+        route_open.clear();
+        g[start] = 0;
+        seen[start] = gen;
+        from[start] = -1;
+        int sdx = Math.abs(start % side - gx);
+        int sdy = Math.abs(start / side - gy);
+        route_open.add(((long) (4 * Math.max(sdx, sdy) + 2 * Math.min(sdx, sdy)) << 20) | start);
+        int budget = ROUTE_BUDGET;
+        boolean found = false;
+        while (!route_open.isEmpty() && budget-- > 0) {
+            long top = route_open.poll();
+            int node = (int) (top & 0xfffffL);
+            int x = node % side;
+            int y = node / side;
+            int dxg = Math.abs(x - gx);
+            int dyg = Math.abs(y - gy);
+            if ((int) (top >>> 20) != g[node] + 4 * Math.max(dxg, dyg) + 2 * Math.min(dxg, dyg))
+                continue; // an older entry of a block reached more cheaply since
+            if (node == goal) {
+                found = true;
+                break;
+            }
+            int here = blockField(field, x, y);
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    int nx = x + dx;
+                    int ny = y + dy;
+                    if ((dx == 0 && dy == 0) || nx < 0 || ny < 0 || nx >= side || ny >= side)
+                        continue;
+                    int next = ny * side + nx;
+                    int there = blockField(field, nx, ny);
+                    if (there == DistanceField.UNREACHABLE)
+                        continue;
+                    int step = dx != 0 && dy != 0 ? 6 : 4;
+                    // the start may stand where the start field has no value; else no water between the two
+                    if (here != DistanceField.UNREACHABLE && Math.abs(there - here) > 3 * step + 12)
+                        continue;
+                    int cost = g[node] + step + (hot[next] && next != goal ? ROUTE_HOT : 0);
+                    if (seen[next] == gen && g[next] <= cost)
+                        continue;
+                    seen[next] = gen;
+                    g[next] = cost;
+                    from[next] = node;
+                    int hx = Math.abs(nx - gx);
+                    int hy = Math.abs(ny - gy);
+                    route_open.add(((long) (cost + 4 * Math.max(hx, hy) + 2 * Math.min(hx, hy)) << 20) | next);
+                }
+            }
+        }
+        if (!found) {
+            ai.aiLog().count("shepherd_route_none");
+            return null;
+        }
+        // back from the goal: the block ROUTE_AHEAD steps from the start, and whether the way goes through a hot one
+        int length = 0;
+        for (int n = goal; n != start; n = from[n])
+            length++;
+        int node = goal;
+        boolean crosses = false;
+        for (int k = length; k > ROUTE_AHEAD; k--) {
+            node = from[node];
+            crosses |= hot[node];
+        }
+        for (int n = node; n != start; n = from[n])
+            crosses |= hot[n];
+        ai.aiLog().count(crosses ? "shepherd_route_hot" : "shepherd_route"); // walk orders along a planned way
+        if (node == goal)
+            return spot;
+        return field.nearestReachable(node % side * ROUTE_BLOCK + ROUTE_BLOCK / 2,
+                node / side * ROUTE_BLOCK + ROUTE_BLOCK / 2, ROUTE_BLOCK / 2);
+    }
+
+    /** shepherd_route: the walking distance from our start to the middle of a block, UNREACHABLE when none of it is. */
+    private static int blockField(@NonNull DistanceField field, int bx, int by) {
+        return field.getAround(bx * ROUTE_BLOCK + ROUTE_BLOCK / 2, by * ROUTE_BLOCK + ROUTE_BLOCK / 2, ROUTE_BLOCK / 2);
+    }
+
+    /** shepherd_route: marks the blocks within r blocks of cell (x, y). */
+    private static void markHot(boolean @NonNull [] hot, int side, int x, int y, int r) {
+        int bx = x / ROUTE_BLOCK;
+        int by = y / ROUTE_BLOCK;
+        for (int j = Math.max(0, by - r); j <= Math.min(side - 1, by + r); j++)
+            for (int i = Math.max(0, bx - r); i <= Math.min(side - 1, bx + r); i++)
+                hot[j * side + i] = true;
     }
 
     /**

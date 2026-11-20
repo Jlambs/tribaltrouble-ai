@@ -2199,6 +2199,14 @@ class Strategy {
      */
     float shepherd_detour_ticks = -1f;
     /**
+     * shepherd_route: where a shepherd's straight walk to its spot is not clear (walkClear), its walk order goes
+     * three blocks along the cheapest way over a grid of 4-cell blocks, on which a block by an enemy warrior, base or
+     * tower costs 80 cells more (Shepherd.route). Half the shepherds lost never had a wave aimed at them, a quarter
+     * to a third of those recruited after minute 20 reach a spot, and what there was for the walk looks 8-60 cells
+     * ahead (shepherd_detour, shepherd_safe_walk, shepherd_recruit_clear: all flat, lab/fable/NOTES.md).
+     */
+    boolean shepherd_route = false;
+    /**
      * shepherd_unloaded (cells, 0 = off): the recruit is the nearest eligible peon that carries nothing, when it is at
      * most this many cells farther from the wave's origin than the nearest of all. A peon with a load walks at 4 m/s,
      * a warrior's speed, and has no order to drop it, so a loaded shepherd cannot leave a wave behind: 40 of the 158
@@ -2512,6 +2520,7 @@ class Strategy {
         shepherd_home_spare = params.getBoolean("shepherd_home_spare", shepherd_home_spare);
         shepherd_home_pair_until = (float) params.getDouble("shepherd_home_pair_until", shepherd_home_pair_until);
         shepherd_detour_ticks = (float) params.getDouble("shepherd_detour_ticks", shepherd_detour_ticks);
+        shepherd_route = params.getBoolean("shepherd_route", shepherd_route);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
