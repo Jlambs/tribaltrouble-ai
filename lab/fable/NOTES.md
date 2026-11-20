@@ -174,7 +174,9 @@ gatherer whose load had not changed for 70 s was called stuck and sent elsewhere
 cells out. And a gatherer that stepped out of a parked group's way was sent straight back through it. With the three
 mended (`bystander`, `stuck_still_ticks`, `gather_parked`): 12 % more iron an hour, fewer peons lost, a ninth less
 CPU, and at N=16 on 300 maps never used **68.0 %** for `@f10`'s 59.3 % (204 wins for 178, +50 -24). The default
-since, frozen as `@f11`. The warriors' own fighting has little left in it (they throw 70-75 % of the time with an
+since, frozen as `@f11`; with a fleeing peon left on its way to shelter and the chieftain's mission under the same
+rule, `@f12`: **71.3 % at N=16** (214 of the 300) and **52.0 % at N=17** (156 of 300 maps of its own, `@f10` 112).
+The warriors' own fighting has little left in it (they throw 70-75 % of the time with an
 enemy in reach, the Hard copies 63-65 %); routed reinforcements arrive alive and win nothing; the chieftain blasts
 once in 320 s where the charge takes 70, and three tries at that changed nothing.
 
@@ -2374,7 +2376,9 @@ and `@f10`'s 178** (`mem-vs16`: +35 -24 against `@f11`, +52 -15 against `@f10`),
 213 / 179; units lost inside razed buildings 48 / 37 / 32; iron 807 / 862 / 879. `chief_bystander` (the chieftain's
 mission minds no enemy locked in a hunt on another unit: the same reasoning as for the peons): 29 approaches called
 off an hour for 39, the same 11 blasts, 108 wins for 105 (`mf2-vs16`, +10 -7); adopted as waste removed with no
-harm seen, not as a gain. The default itself (`@f12`) on 26001..26300: **214 of 300 = 71.3 %** (`f12m-vs16`;
+harm seen, not as a gain. **At N=17 on 27001..27300 `@f12` wins 156 of 300 = 52.0 %** (`f12n-vs17`; `@f11` 148,
+`@f10` 112, `@f9` 121; maps used for these measurements only, no choice was made on them): the first N=17 at
+half and more. The default itself (`@f12`) on 26001..26300: **214 of 300 = 71.3 %** (`f12m-vs16`;
 +50 -14 against `@f10`); on maps 25151..25300: **110 of 150** (`ml2-vs16`; `@f10` 87, the three 105). On top of it, tried a second time: `reinforce_route` 106 (`mj2-vs16`) and `evade_chicken` 107
 (`mk2-vs16`). Both do what they are for and neither wins; both stay off.
 
