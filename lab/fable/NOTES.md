@@ -2454,6 +2454,16 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   the shepherds" above. Still open: the waves at our base did not fall with the way (24-26 a game at N=16); three
   quarters of them leave a group parked near us while its shepherd is 36-112 cells off or has no spot. And the
   way's plans that find nothing (771-1,238 a game), and its cost.
+- After the micro round (2026-11-21, "The micro round" above; an hour of game at N=16 with `@f11`): 1,100 units
+  lost for 2,660 killed. Open, by size: (1) the towers: 126 of the attack's 400 deaths a game fall within 17 cells
+  of an enemy tower, 80 of them with three enemy warriors or fewer about (the breach and raze drills did not change
+  it: the tower throws 15.9 cells and the army arrives as a column); (2) the chieftain: 11 blasts an hour of 22
+  warriors each where the charge allows 51; for every blast he walks 55 s charged and stands 86 s charged with no
+  blob in range, while a third of those moments have eight and more awake warriors in range, most of them waves
+  after a shepherd that cannot see him and walk as fast as he does: a shepherd that leads its wave to him would be
+  the kill cell the second session asked for; (3) the home army: 218 deaths a game, 134 of them at odds of two to
+  one and worse, 11 to 50 cells from our nearest building; (4) peons on their way into a building, 110 an hour,
+  the largest loss of peons left after the shepherds' 180.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
