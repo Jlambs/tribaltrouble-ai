@@ -1130,7 +1130,11 @@ final class Shepherd {
     /** shepherd_route: blockField of every block for route_field_of, the start field they were read from. */
     private int @Nullable [] route_field;
     private @Nullable DistanceField route_field_of;
-    private final java.util.PriorityQueue<@NonNull Long> route_open = new java.util.PriorityQueue<>();
+    /** shepherd_route: the open blocks as a binary heap of (cost and estimate) << 20 | block, least first. */
+    private long @NonNull [] route_open = new long[1024];
+    private int route_open_n;
+    /** shepherd_route_near, for route: the hot blocks this near the goal are free. */
+    private int route_near;
 
     /**
      * shepherd_route: the cell to walk to next on the cheapest way from (sx, sy) to the spot over a grid of ROUTE_BLOCK
@@ -1186,17 +1190,18 @@ final class Shepherd {
         if (Math.max(Math.abs(start % side - gx), Math.abs(start / side - gy)) <= ROUTE_AHEAD)
             return spot;
         int gen = ++route_gen;
-        route_open.clear();
+        route_open_n = 0;
+        route_near = ai.strategy().shepherd_route_near;
         g[start] = 0;
         seen[start] = gen;
         from[start] = -1;
         int sdx = Math.abs(start % side - gx);
         int sdy = Math.abs(start / side - gy);
-        route_open.add(((long) (4 * Math.max(sdx, sdy) + 2 * Math.min(sdx, sdy)) << 20) | start);
+        pushOpen(((long) (4 * Math.max(sdx, sdy) + 2 * Math.min(sdx, sdy)) << 20) | start);
         int budget = ROUTE_BUDGET;
         boolean found = false;
-        while (!route_open.isEmpty() && budget-- > 0) {
-            long top = route_open.poll();
+        while (route_open_n > 0 && budget-- > 0) {
+            long top = popOpen();
             int node = (int) (top & 0xfffffL);
             int x = node % side;
             int y = node / side;
@@ -1223,15 +1228,16 @@ final class Shepherd {
                     // the start may stand where the start field has no value; else no water between the two
                     if (here != DistanceField.UNREACHABLE && Math.abs(there - here) > 3 * step + 12)
                         continue;
-                    int cost = g[node] + step + (hot[next] && next != goal ? ROUTE_HOT : 0);
+                    int hx = Math.abs(nx - gx);
+                    int hy = Math.abs(ny - gy);
+                    // shepherd_route_near: by the goal every way is hot, and the price only widens the search
+                    int cost = g[node] + step + (hot[next] && Math.max(hx, hy) > route_near ? ROUTE_HOT : 0);
                     if (seen[next] == gen && g[next] <= cost)
                         continue;
                     seen[next] = gen;
                     g[next] = cost;
                     from[next] = node;
-                    int hx = Math.abs(nx - gx);
-                    int hy = Math.abs(ny - gy);
-                    route_open.add(((long) (cost + 4 * Math.max(hx, hy) + 2 * Math.min(hx, hy)) << 20) | next);
+                    pushOpen(((long) (cost + 4 * Math.max(hx, hy) + 2 * Math.min(hx, hy)) << 20) | next);
                 }
             }
         }
@@ -1256,6 +1262,43 @@ final class Shepherd {
             return spot;
         return field.nearestReachable(node % side * ROUTE_BLOCK + ROUTE_BLOCK / 2,
                 node / side * ROUTE_BLOCK + ROUTE_BLOCK / 2, ROUTE_BLOCK / 2);
+    }
+
+    private void pushOpen(long key) {
+        long[] heap = route_open;
+        if (route_open_n == heap.length)
+            heap = route_open = Arrays.copyOf(heap, 2 * heap.length);
+        int i = route_open_n++;
+        while (i > 0) {
+            int parent = (i - 1) >> 1;
+            if (heap[parent] <= key)
+                break;
+            heap[i] = heap[parent];
+            i = parent;
+        }
+        heap[i] = key;
+    }
+
+    private long popOpen() {
+        long[] heap = route_open;
+        long top = heap[0];
+        long last = heap[--route_open_n];
+        int n = route_open_n;
+        int i = 0;
+        while (true) {
+            int child = 2 * i + 1;
+            if (child >= n)
+                break;
+            if (child + 1 < n && heap[child + 1] < heap[child])
+                child++;
+            if (heap[child] >= last)
+                break;
+            heap[i] = heap[child];
+            i = child;
+        }
+        if (n > 0)
+            heap[i] = last;
+        return top;
     }
 
     /** shepherd_route: the walking distance from our start to the middle of a block, UNREACHABLE when none of it is. */

@@ -2207,6 +2207,14 @@ class Strategy {
      */
     boolean shepherd_route = false;
     /**
+     * shepherd_route_near (blocks of 4 cells): the hot blocks within this many of the spot's are free. The spot lies
+     * by its copy's group, so every way ends through hot blocks, and their price told the search nothing while it
+     * made it look through thousands of blocks for a cheaper end: 2,400 a plan that found a way, and 1,300 plans a
+     * game that ran out of their 8,000 (tmprt-vs16), 7 % of the simulation's CPU. 0: the goal's own block only, as
+     * first written (rte-vs16, rtm-vs16).
+     */
+    int shepherd_route_near = 0;
+    /**
      * shepherd_unloaded (cells, 0 = off): the recruit is the nearest eligible peon that carries nothing, when it is at
      * most this many cells farther from the wave's origin than the nearest of all. A peon with a load walks at 4 m/s,
      * a warrior's speed, and has no order to drop it, so a loaded shepherd cannot leave a wave behind: 40 of the 158
@@ -2521,6 +2529,7 @@ class Strategy {
         shepherd_home_pair_until = (float) params.getDouble("shepherd_home_pair_until", shepherd_home_pair_until);
         shepherd_detour_ticks = (float) params.getDouble("shepherd_detour_ticks", shepherd_detour_ticks);
         shepherd_route = params.getBoolean("shepherd_route", shepherd_route);
+        shepherd_route_near = params.getInt("shepherd_route_near", shepherd_route_near);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);
