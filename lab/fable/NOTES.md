@@ -147,6 +147,14 @@ same second. They are the default since, frozen as `@f7`; from `@f4` to `@f7` th
 3.4). Options with a measured cost stay off. On 300 maps never used (25001..25300) at N=16, from the first start,
 `@f7` wins 41.3 % [35.9, 47.0] and `@f4` 35.7 % (+59 -42): the 50 % line is still between N=15 and N=16.
 
+The second shepherd (2026-11-20, the user: "don't assume the disabled features were perfect as written"; "The
+shepherds: what a life buys, and the second shepherd repaired" below): Gauntlet's second shepherd for far copies had
+been dropped as flat, and was flat here too (71 wins for 70 at N=15). In logged games both shepherds of a copy went
+to the same place before its first wave. With that repaired it is +23 -15 on 200 maps at N=15 and, on 300 maps
+never used, **154 wins for 124 at N=16: 51.3 % for 41.3 %** (+60 -30, z 3.2). The default since, frozen as `@f8`.
+A pause before a lost shepherd's replacement, recruits with no load and an earlier walk round all lose or do nothing:
+a wave at our base costs far more than the peon that would have drawn it.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2115,7 +2123,7 @@ were discarded"). It is meant for the time the copy's own shepherd is away with 
 leaves from home. But before a copy's first wave, and whenever its oldest idle warrior stands at home, the own
 flock's origin is the home too, and both were sent to the same place: of the second shepherds recruited in the
 first ten minutes 82 % had their spot within 30 cells of the own one's (`hplog-vs15`, 8 logged games: 18 of 24 a
-game), 20 % later. `shepherd_home_spare` (new): while the own flock's origin is at the copy's home no second one is
+game), a sixth later. `shepherd_home_spare` (new): while the own flock's origin is at the copy's home no second one is
 recruited, and one that stands there is sent home alive once the own one is within 40 cells (`hpslog-vs15`: the
 doubles of the first ten minutes 18.2 -> 3.6 a game, 20 sent home a game). With it, pair 120:
 
@@ -2130,8 +2138,18 @@ As written it was +8 -7; repaired, +23 -15 from the start and +18 -9 from minute
 2.1), with 85-90 more shepherds lost a game and four to five fewer waves at the base. Started at minute 20 it buys
 nothing: the waves it catches leave home between the first launch and minute 20, when the base has three to six
 towers. The model at minute 20 stays 3 to 5 points down, as it must (it counts the peons and not the waves kept
-off). Seven variants were run on these two blocks, so the two best are confirmed on other maps before anything is
-adopted: @@CONFIRM@@
+off). Seven variants were run on these two blocks, so the two best were played on other maps before anything was
+adopted: N=16 on 25001..25300, from the first start, against `@f7`'s 124 wins of 300 there (`f7n-vs16`).
+
+| start | wins of 300 | waves at our base | buildings lost | the model at minute 20 / 40 |
+|---|---|---|---|---|
+| with the shepherds (`hpsn-vs16`) | 124 -> **154** = 51.3 % [45.7, 56.9] (+60 -30, z 3.2) | 29.7 -> 24.8 | 30.0 -> 25.8 | +0.6 +- 1.5 / +7.3 +- 2.4 |
+| minute 12 (`hps12n-vs16`) | 124 -> 148 = 49.3 % (+48 -24, z 2.8) | 29.7 -> 26.4 | 30.0 -> 26.6 | -3.4 +- 1.2 / +4.1 +- 2.2 |
+
+Ten points at N=16, for 163 more shepherds lost a game (169 -> 332) and games 13 minutes longer; two draws in each
+arm, no swallowed error. The second shepherd with the shepherds' own start is the default in `forGame` for large
+maps since commit 65e5d5a4, frozen as `@f8`; the default plays the arm's games (6 of 6 checksums, `f8chk-vs16`).
+The 51.3 % is the better of two arms on those maps; `@f8` on maps of its own is below.
 
 ## Reproduce
 
@@ -2157,6 +2175,10 @@ PB="@f6:stock_balance=true,sat_staff=true,expand_under_threat=true,tower_wood_dr
 python lab/fable/anyseat.py --name pb6 --spec "$PB" --n 8..16                          # plays what @f7 plays; pb6h on 23001..23100
 python lab/fable/seat0.py f6 pb6 --n 8..16                                             # two ladders paired from the first start
 ./lab/fable/dev.sh f7n-vs16 "@f7 vs hard*16" 25001..25300                              # likewise f4n-vs16 with @f4
+./aisim.sh freeze f8 fable                     # the second shepherd repaired, at commit 65e5d5a4
+./lab/fable/dev.sh hplog-vs15 "@f7:shepherd_home_pair=120 vs hard*15" 22001..22008 --logs   # the pair as written
+python lab/fable/shepherds.py hplog-vs15                                               # what a shepherd's life buys
+./lab/fable/dev.sh hpsn-vs16 "@f7:... vs hard*16" 25001..25300   # on 094fafa7: fable:shepherd_home_pair=120,shepherd_home_spare=true
 python lab/fable/waylaid.py --maps as-pb6-vs15-s0                                      # builders killed by a copy's start
 ```
 
