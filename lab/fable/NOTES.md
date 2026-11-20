@@ -157,6 +157,12 @@ the line now, as N=15 was for `@f3`. No harm lower down (N=8-14: +24 -13 over 50
 A pause before a lost shepherd's replacement, recruits with no load and an earlier walk round all lose or do nothing:
 a wave at our base costs far more than the peon that would have drawn it.
 
+A way for the shepherds (2026-11-20; "A way for the shepherds" below): half the shepherds lost never had a wave
+aimed at them, and the three switched-off options for their walk each look 8 to 60 cells ahead and do nothing. A
+planned way round enemy warriors, bases and towers, built new: those recruited in minutes 20-40 reach their spot in
+53 % for 23 %, and at N=16 on the 600 maps never used `@f8`'s 50.3 % becomes **56.2 %** (337 wins for 302, +100
+-65). The default since, frozen as `@f9`. From `@f7` to `@f9` in a day: 41.7 % to 56.2 % at N=16.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2178,7 +2184,44 @@ waves reach the base. The two for the walk are too near-sighted to make it safe,
 best spots lie on one ring of 14-22 cells about one origin, so the walks to them from a peon 100 cells off are one
 walk, and of the five nearest peons none has a clear start most of the time (it then recruits nobody, which loses
 nothing here: 45 fewer shepherds lost a game for 0.8 more waves at the base). What the walk wants is a route, not a
-choice among near things: not built yet.
+choice among near things.
+
+### A way for the shepherds (`shepherd_route`, the default since, `@f9`)
+
+Half the shepherds lost never had a wave aimed at them: they die crossing a field in which the copies' waves stand
+parked, on the straight walk the engine gives them. `Shepherd.route`: when the straight walk to the spot is not
+clear (the old test, `walkClear`), the walk order goes three blocks along the cheapest way over a grid of 4-cell
+blocks. A block within the flee distance of an enemy warrior, 17 cells of an enemy quarters or armory or 19 of an
+enemy tower costs 80 cells more, so it can be crossed at a price (the spot itself lies by the copy's group); two
+blocks are joined when both can be reached and the walking distances from our start put no water between them.
+The plan is A* with the blocks' walking distances read once a game, and is made again with every walk order (2 s).
+
+In logged games first (8 at N=15, 22001..22008, `f8log-vs15` -> `rtlog-vs15`), no swallowed error:
+
+| | `@f8` | with the way |
+|---|---|---|
+| walk orders along a planned way that is clear / crosses a hot block / none found, a game | | 1,181 / 3,592 / 771 |
+| shepherds recruited / lost a game | 271 / 234 | 224 / 185 |
+| of them lost on the walk / in a flee | 31 / 195 | 21 / 159 |
+| the own shepherds recruited in minutes 5-10 that reach a spot | 43 % | 55 % |
+| in minutes 10-20 | 33 % | 45 % |
+| in minutes 20-40 | 23 % | 53 % |
+| waves they draw a life, recruited in minutes 20-40 | 1.44 | 2.41 |
+
+Then at N=16 from the first start, 300 maps a block, against `@f8` on the same maps:
+
+| maps | `@f8` | with the way | shepherds lost a game | the model at minute 40 |
+|---|---|---|---|---|
+| 25001..25300 (`rte-vs16`) | 154 | **172** = 57.3 % (+49 -31) | 332 -> 244 | +5.2 +- 2.3 |
+| 26001..26300 (`rtm-vs16`) | 148 | **165** = 55.0 % (+51 -34) | 329 -> 275 | +3.2 +- 2.3 |
+| both | 302 = 50.3 % | 337 = **56.2 %** (+100 -65, z 2.7) | | |
+
+One arm, not picked among several, so both blocks count. The waves at our base stay where they were (24.8 -> 24.0,
+26.1 -> 25.3): the gain is 55 to 87 peons a game that live, more waves drawn to a shepherd (305 -> 327-360), and
+fewer buildings lost (25.8 -> 24.5, 26.5 -> 25.4). The default in `forGame` for large maps since commit c64eb747,
+frozen as `@f9`; the default plays the arm's games (4 of 4 checksums, `f9chk-vs16`). Cost: about a seventh more
+CPU a game as first written, a tenth less of that with the distances read once (the same games, 6 of 6 checksums);
+771 to 1,238 plans a game find no way within 8,000 blocks, which is where the rest of the cost is. Not profiled yet.
 
 ## Reproduce
 
@@ -2206,6 +2249,8 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./lab/fable/dev.sh f7n-vs16 "@f7 vs hard*16" 25001..25300                              # likewise f4n-vs16 with @f4
 ./aisim.sh freeze f8 fable                     # the second shepherd repaired, at commit 65e5d5a4
 ./lab/fable/dev.sh f8m-vs16 "@f8 vs hard*16" 26001..26300                              # likewise f7m-vs16 with @f7
+./aisim.sh freeze f9 fable                     # the planned way for shepherds, at commit c64eb747
+./lab/fable/dev.sh rtm-vs16 "@f8:... vs hard*16" 26001..26300   # on d2686e1c: fable:shepherd_route=true; rte-vs16 on 25001..25300
 ./lab/fable/dev.sh hplog-vs15 "@f7:shepherd_home_pair=120 vs hard*15" 22001..22008 --logs   # the pair as written
 python lab/fable/shepherds.py hplog-vs15                                               # what a shepherd's life buys
 ./lab/fable/dev.sh hpsn-vs16 "@f7:... vs hard*16" 25001..25300   # on 094fafa7: fable:shepherd_home_pair=120,shepherd_home_spare=true
@@ -2240,8 +2285,10 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   recruited (131 of them while fleeing; 70 reach their spot, and 205 of a game's 420 waves go to a shepherd, 20 to
   our base), and gatherers that step out of an enemy's way and die all the same (93 of 2,340 steps). Peons walking
   between our own buildings: 59 in the won games, 172 in the lost.
-- The shepherds (2026-11-20): "The shepherds: what a life buys, and the second shepherd repaired" above. Open: the
-  walk across the field after minute 10, where half of them die before any wave is aimed at them.
+- The shepherds (2026-11-20): "The shepherds: what a life buys, and the second shepherd repaired" and "A way for
+  the shepherds" above. Still open: the waves at our base did not fall with the way (24-26 a game at N=16); three
+  quarters of them leave a group parked near us while its shepherd is 36-112 cells off or has no spot. And the
+  way's plans that find nothing (771-1,238 a game), and its cost.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
