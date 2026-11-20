@@ -161,7 +161,8 @@ A way for the shepherds (2026-11-20; "A way for the shepherds" below): half the 
 aimed at them, and the three switched-off options for their walk each look 8 to 60 cells ahead and do nothing. A
 planned way round enemy warriors, bases and towers, built new: those recruited in minutes 20-40 reach their spot in
 53 % for 23 %, and at N=16 on the 600 maps never used `@f8`'s 50.3 % becomes **56.2 %** (337 wins for 302, +100
--65). The default since, frozen as `@f9`. From `@f7` to `@f9` in a day: 41.7 % to 56.2 % at N=16.
+-65). The default since, frozen as `@f9`. From `@f7` to `@f9` in a day: 41.7 % to 56.2 % at N=16; at N=17 `@f9`
+wins 40.3 % of 300 maps of its own, and nothing is lost lower down (N=15 on the first block 70 -> 78).
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -2221,7 +2222,18 @@ One arm, not picked among several, so both blocks count. The waves at our base s
 fewer buildings lost (25.8 -> 24.5, 26.5 -> 25.4). The default in `forGame` for large maps since commit c64eb747,
 frozen as `@f9`; the default plays the arm's games (4 of 4 checksums, `f9chk-vs16`). Cost: about a seventh more
 CPU a game as first written, a tenth less of that with the distances read once (the same games, 6 of 6 checksums);
-771 to 1,238 plans a game find no way within 8,000 blocks, which is where the rest of the cost is. Not profiled yet.
+771 to 1,238 plans a game find no way within 8,000 blocks, which is where the rest of the cost is.
+
+`@f9` up and down the ladder, from the first start. N=17 on 27001..27300 (`f9n-vs17`): **121 of 300 = 40.3 %**
+[35.3, 46.3], two draws, no error. On 22001..22100 (`f9d-vsN`), `@f7` -> `@f8` -> `@f9`: N=10 98 -> 99 -> 98, N=12
+89 -> 94 -> 95, N=14 81 -> 87 -> 91, N=15 70 -> 77 -> 78. Buildings lost a game at N=15: 18.7 -> 15.5 -> 13.2.
+
+The planner's cost (`prof-f8-vs16`, `prof-f9-vs16`, the same 8 games profiled): 324 -> 391 s of simulation CPU,
+`Shepherd.route` 7.2 % of it. A plan that finds a way looks at 2,400 blocks, and the 1,300 a game that find none
+all run out of their 8,000 (none is cut off by water; `tmprt-vs16`): the spot lies by its copy's group, so every
+way ends through hot blocks, and A* looks far and wide for a cheaper end that is not there. A heap of longs for the
+boxed queue plays the same games (6 of 6 checksums, commit f925a7f6). `shepherd_route_near` (blocks, off): the hot
+blocks that near the goal are free; it changes the ways, so it is played before it is taken.
 
 ## Reproduce
 
