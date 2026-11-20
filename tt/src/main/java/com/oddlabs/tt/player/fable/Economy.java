@@ -1305,6 +1305,8 @@ final class Economy {
          */
         boolean lock;
         float open_since = -1f;
+        /** armory_spare_ticks: a second armory planned as a spare (planSpare). */
+        boolean spare;
         /** rearm_placer: the peon last sent to place this armory, and whether evacuatePeons ever left it be. */
         @Nullable
         Unit placer;
@@ -1501,17 +1503,18 @@ final class Economy {
             return true;
         // reloc: a hop's placer walks out only once the site can take a building (reloc_slot plans it at the cap);
         // reloc_lock: so does a lock move's.
-        if ((p.reloc || p.lock) && !ai.owner().canBuild(Race.BUILDING_ARMORY)) {
-            ai.aiLog().count(p.lock ? "lock_slot_wait" : "reloc_slot_wait"); // economy ticks (1 s)
+        if ((p.reloc || p.lock || p.spare) && !ai.owner().canBuild(Race.BUILDING_ARMORY)) {
+            ai.aiLog().count(p.lock ? "lock_slot_wait" : p.spare ? "spare_slot_wait" : "reloc_slot_wait"); // economy ticks (1 s)
             last_veto = VETO_SITES;
             return false;
         }
         // reloc_slot, reloc_lock: the next freed slot is the waiting armory's, not a tower's, a quarters' or a sniper
         // tower's.
-        Project waiter = !p.reloc && !p.lock ? slotWaiter() : null;
+        Project waiter = !p.reloc && !p.lock && !p.spare ? slotWaiter() : null;
         if (waiter != null) {
             String what = p.type == Race.BUILDING_TOWER ? "tower" : "other";
-            ai.aiLog().count((waiter.lock ? "lock_slot_" : "reloc_slot_") + what + "_wait"); // economy ticks (1 s)
+            ai.aiLog().count(
+                    (waiter.lock ? "lock_slot_" : waiter.spare ? "spare_slot_" : "reloc_slot_") + what + "_wait"); // economy ticks (1 s)
             last_veto = VETO_SITES;
             return false;
         }
@@ -2005,7 +2008,8 @@ final class Economy {
             for (Project q : projects) {
                 if (q == p)
                     break;
-                if (q.use_scout && !q.isPlaced() && q.building != null && placerOf(q.building) == scout)
+                if (q.use_scout && !q.isPlaced() && q.building != null && ai.intel().builder_sites.get(
+                        scout) == q.building)
                     return null;
             }
             return scout;
@@ -2444,8 +2448,33 @@ final class Economy {
         } else if (ai.strategy().reloc && ai.now() >= ai.strategy().reloc_ticks && relocGate()) {
             considerRelocation();
         } else if (armory_count == 1 && intel.armories.size() == 1) {
-            considerExpansion();
+            if (!planSpare())
+                considerExpansion();
         }
+        return true;
+    }
+
+    private float spare_next = -1f;
+
+    /**
+     * armory_spare_ticks: from then on, with one armory standing and none going up, a second one is planned by a
+     * quarters with no threat near, the calmest first, whatever it would gather there, and it waits for the next
+     * building slot (slotWaiter). Without it the second armory is an expansion only: planned when the gathering
+     * elsewhere is a quarter cheaper, with no threat at the base and a slot free.
+     */
+    private boolean planSpare() {
+        Strategy st = ai.strategy();
+        if (st.armory_spare_ticks <= 0f || ai.now() < st.armory_spare_ticks || !nextDue(spare_next))
+            return false;
+        spare_next = ai.now() + 500f; // 10 s
+        Site site = calmArmorySite();
+        if (site == null) {
+            ai.aiLog().count("spare_no_site"); // tries (10 s) with a threat by every quarters
+            return false;
+        }
+        Project p = addProject(Race.BUILDING_ARMORY, site, 1);
+        p.spare = true;
+        ai.aiLog().count("armory_spare"); // spare armories planned
         return true;
     }
 
@@ -4041,11 +4070,11 @@ final class Economy {
      */
     private @Nullable Project slotWaiter() {
         Strategy st = ai.strategy();
-        if (!st.reloc_slot && st.reloc_lock_ticks <= 0)
+        if (!st.reloc_slot && st.reloc_lock_ticks <= 0 && st.armory_spare_ticks <= 0f)
             return null;
         Project waiting = null;
         for (Project q : projects)
-            if (((st.reloc_slot && q.reloc) || q.lock) && !q.isPlaced()) {
+            if (((st.reloc_slot && q.reloc) || q.lock || q.spare) && !q.isPlaced()) {
                 waiting = q;
                 break;
             }
@@ -5809,6 +5838,82 @@ final class Economy {
     // ------------------------------------------------------------------------------------------------------------
     // Peon allocation
 
+    /**
+     * opening_join: whether builders may set out for the project's site before its carrier has put it down: before the
+     * first armory stands, and while somebody carries it.
+     */
+    private boolean joinsCarried(@NonNull Project p) {
+        return ai.strategy().opening_join && !had_armory && p.building != null && !p.building.isDead()
+                && !p.building.isPlaced() && placerOf(p.building) != null;
+    }
+
+    /**
+     * idle_builders: with no armory standing a peon has nothing else to do, so those left over carry wood for a site
+     * that is going up, the armory's first, until it has idle_builders builders, whatever the trees by it can feed.
+     * Takes the peons it orders out of {@code rest}.
+     */
+    private void joinSites(@NonNull List<@NonNull Unit> rest) {
+        Intel intel = ai.intel();
+        int cap = ai.strategy().idle_builders;
+        for (int pass = 0; pass < 2; pass++)
+            for (Project p : projects) {
+                if (rest.isEmpty())
+                    return;
+                if ((p.type == Race.BUILDING_ARMORY) != (pass == 0) || !p.isPlaced() || retire.isDoomed(p.building))
+                    continue;
+                List<Unit> chosen = new ArrayList<>();
+                takeNearest(rest, chosen, cap - builderCount(p.building), p.site.x, p.site.y);
+                for (Unit u : chosen) {
+                    if (u == scout && scoutHasWork())
+                        continue;
+                    order(u, p.building, Action.DEFAULT);
+                    intel.peon_states.put(u, PeonState.BUILD);
+                    intel.builder_sites.put(u, p.building);
+                    ai.aiLog().count("idle_builders"); // peons sent to a site beyond its builders
+                }
+            }
+    }
+
+    /** The peons that had no order at the last allocation (countStanding). */
+    private final java.util.Set<@NonNull Unit> stood = new java.util.LinkedHashSet<>();
+
+    /**
+     * Counters only: a peon with no order at two allocations in a row has stood for the second between them. By
+     * phase: before the first armory stood (idle_s_open), then up to minute 15, up to minute 30 and later.
+     */
+    private void countStanding(@NonNull List<@NonNull Unit> free) {
+        float t = FableAI.seconds(ai.now());
+        String band = !had_armory ? "idle_s_open" : t < 900f ? "idle_s_15" : t < 1800f ? "idle_s_30" : "idle_s_late";
+        int n = 0;
+        Unit first = null;
+        for (Unit u : free)
+            if (stood.contains(u)) {
+                ai.aiLog().count(band);
+                n++;
+                if (first == null)
+                    first = u;
+            }
+        stood.clear();
+        stood.addAll(free);
+        if (ai.logging() && first != null && n >= 5 && ai.periodDue(standing_logged, 1500f)) { // every 30 s
+            standing_logged = ai.now();
+            Intel intel = ai.intel();
+            Building a = intel.armory();
+            Building q = MapAnalysis.nearest(intel.quarters, first.getGridX(), first.getGridY());
+            int nn = n;
+            Unit f = first;
+            ai.aiLog().log("IDLE",
+                    () -> nn + " peons stand: armory " + (a == null ? "none" : a.isComplete() ? "up" : "site") + ", armories " + intel.armories.size() + "+" + intel.armory_sites.size() + ", quarters " + intel.quarters.size() + "+" + intel.quarters_sites.size() + ", projects " + projects.size() + ", threat " + ai.military().baseThreatLevel() + ", evacuating " + evacuating.size() + ", pop " + ai.owner().getUnitCountContainer().getNumSupplies() + "; first at " + f.getGridX() + "," + f.getGridY() + (q == null ? "" : ", " + (int) Math.sqrt(
+                            MapAnalysis.dist2(f.getGridX(),
+                                    f.getGridY(), q.getGridX(),
+                                    q.getGridY())) + " cells from a quarters holding " + q.getUnitContainer().getNumSupplies() + " of " + holdFor(
+                                            q)) + (a == null
+                                                    || !a.isComplete() ? "" : ", armory holds " + a.getUnitContainer().getNumSupplies()));
+        }
+    }
+
+    private float standing_logged = -5000f;
+
     private void allocatePeons() {
         Intel intel = ai.intel();
         Building armory = intel.armory();
@@ -5832,6 +5937,7 @@ final class Economy {
         }
         if (scout != null && (scout.isDead() || !scoutHasWork()))
             scout = scout.isDead() ? null : scout;
+        countStanding(free);
 
         // 1. Construction.
         boolean wood_drop = ai.strategy().tower_wood_drop && ai.now() >= ai.strategy().tower_wood_ticks;
@@ -5847,8 +5953,8 @@ final class Economy {
                 }
             }
         for (Project p : projects) {
-            // retire: no builders for a stalled site being razed.
-            if (!p.isPlaced() || retire.isDoomed(p.building))
+            // retire: no builders for a stalled site being razed. opening_join: a site still carried takes builders.
+            if (!(p.isPlaced() || joinsCarried(p)) || retire.isDoomed(p.building))
                 continue;
             if (wood_drop)
                 dropWood(p, carriers);
@@ -5955,19 +6061,24 @@ final class Economy {
             // Nothing to gather for yet: spare peons speed up a quarters that is below its reserve.
             Project ahead = ai.strategy().opening_prewalk > 0 ? prewalkProject() : null;
             List<Unit> walkers = new ArrayList<>();
+            List<Unit> rest = new ArrayList<>();
             for (Unit u : free) {
                 Building q = MapAnalysis.nearest(intel.quarters, u.getGridX(), u.getGridY());
-                boolean walks = ahead != null && MapAnalysis.dist2(u.getGridX(), u.getGridY(), ahead.site.x,
-                        ahead.site.y) > PREWALK_NEAR * PREWALK_NEAR;
                 // opening_prewalk: a peon that has walked out does not come back to fill a quarters
                 if (q != null && !evacuating.containsKey(q) && !retire.isDoomed(q)
                         && q.getUnitContainer().getNumSupplies() + countHeadingTo(q) < holdFor(q)
                         && (ahead == null || MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(),
                                 q.getGridY()) <= PREWALK_HOME * PREWALK_HOME))
                     order(u, q, ai.enterAction(q));
-                else if (walks)
-                    walkers.add(u);
+                else
+                    rest.add(u);
             }
+            if (ai.strategy().idle_builders > 0 && !rest.isEmpty())
+                joinSites(rest);
+            for (Unit u : rest)
+                if (ahead != null && MapAnalysis.dist2(u.getGridX(), u.getGridY(), ahead.site.x,
+                        ahead.site.y) > PREWALK_NEAR * PREWALK_NEAR)
+                    walkers.add(u);
             if (ahead != null && !walkers.isEmpty()) {
                 // toward the start from the site, clear of its footprint: a moving unit on it would block the placing
                 int sx = ai.planner().getStartX();

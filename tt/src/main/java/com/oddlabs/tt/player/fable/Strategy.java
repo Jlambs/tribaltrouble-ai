@@ -1528,6 +1528,43 @@ class Strategy {
      */
     int opening_prewalk = 300;
     /**
+     * opening_join: before the first armory stands, builders set out for a site while its carrier is still on the way
+     * (an order to an unplaced site makes a peon carry it too), instead of waiting for it to be put down. Off: on
+     * top of idle_builders=40 it wins 87 and 61 of 100 maps at N=12 and 15 against 90 and 64 (ibj-vsN against
+     * ib40-vsN, maps 22001..22100; +3 -7 against the default). Why is not checked; a builder sent to a placed site
+     * chops where it stands and walks there with the wood, one that carries the site may arrive with none.
+     */
+    boolean opening_join = false;
+    /**
+     * idle_builders (0 = off): while no armory of ours stands, before the first one and after the last one fell, a
+     * peon the allocation would leave standing joins a site that is going up, the armory's first, until the site has
+     * this many builders. buildersWanted gives a site 4 builders a tree within 12 cells and 6 at least, so that
+     * builders are not taken from other work for wood that is not there; with no armory there is no other work.
+     * idl-vs15 (100 maps, counters idle_s_*, lab/fable/idle.py): 33 games stand 300 peon-seconds and more after
+     * minute 15, all of it with no armory, where the armory going up again takes 157 to 276 s with 60 to 178 peons
+     * standing by it (32 to 82 s while another armory stands); and s22022 opens with 6 builders on the armory and 110
+     * peons standing.
+     *
+     * Off: at 100 it does what it says (standing after minute 15 from 2,579 to 207 peon-seconds a game at N=15, a
+     * lost armory back after 81 s instead of 116, the first armory of the two worst openings 74 and 92 s earlier) and
+     * the wins do not move: +19 -19 over 1,200 seat-0 games (N=8-16 on 22001..22100, N=12-16 on 23001..23100;
+     * ib100-vsN, ib100h-vsN). At 40 the same wins with half the standing left.
+     */
+    int idle_builders = 0;
+    /**
+     * armory_spare_ticks (game ticks, 0 = off): from then on a second armory is kept as a spare (Economy.planSpare).
+     * idl-vs8/12/15 (lab/fable/noarmory.py): of the 244 games in which an armory of ours stands at every moment after
+     * the first 243 are won, of the 56 with a moment of none 8; before that moment we stand at exactly one armory for
+     * a median of 355 s at N=15 (17 and 21 min in s22027 and s22016): a tower takes the razed armory's building slot
+     * at once, and the expansion rule wants cheaper gathering and a base with no threat.
+     *
+     * Off: from minute 10 (30000) the time at one armory falls from 28 % to 4 % in the games won, as many games
+     * reach a moment with none (46 against 44 at N=15), and it wins 55 of 100 against 62 at N=15 (+2 -9) and 90
+     * against 90 at N=12 (sp-vsN); with idle_builders=100 55 and 91 (spi-vsN). The moment with no armory marks a base
+     * that is being overrun; a second armory there does not hold it and costs a tower's slot.
+     */
+    float armory_spare_ticks = 0f;
+    /**
      * opening_fallback: when the first armory's site is lost before any armory of ours has stood, the next one goes
      * up by our safest quarters, as a lost armory's does, instead of on the same site again, and the opening's
      * quarters not carried out yet are dropped when they lie more than 60 cells from it. as-f3-vs11-s0 s22003: the
@@ -2837,6 +2874,9 @@ class Strategy {
         armory_route_ticks = (float) params.getDouble("armory_route_ticks", armory_route_ticks);
         opening_move_m = params.getInt("opening_move_m", opening_move_m);
         opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
+        opening_join = params.getBoolean("opening_join", opening_join);
+        idle_builders = params.getInt("idle_builders", idle_builders);
+        armory_spare_ticks = (float) params.getDouble("armory_spare_ticks", armory_spare_ticks);
         opening_fallback = params.getBoolean("opening_fallback", opening_fallback);
         opening_keepout = params.getInt("opening_keepout", opening_keepout);
         opening_keepout_range = params.getInt("opening_keepout_range", opening_keepout_range);
