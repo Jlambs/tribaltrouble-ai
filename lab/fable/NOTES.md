@@ -2071,6 +2071,68 @@ points, no draw and no swallowed error in either. So the two blocks above run ab
 and 46 % there), the three defaults since `@f4` are worth five to six points at N=16 on any of them, and the 50 %
 line still lies between N=15 and N=16.
 
+### The shepherds: what a life buys, and the second shepherd repaired (`lab/fable/shepherds.py`)
+
+Where our units die at N=15 put the shepherds first among the losses that do not depend on the result: 147 lost of
+158 recruited a game. What the logs say (16 games of `pb0-vs13`, 8 of `f7log-vs15`):
+
+- Recruiting is not early: a copy's first shepherd is recruited at a median 171 s and walks 252 cells, the first
+  launch is at a median 339 s (earliest 276 s), and only 91 of 187 stand on their spot before it, a median 55 s.
+- 88 % die in a flee and 9 % on the walk, a median 129 s after they were recruited. 47 % of the lost drew no wave
+  (82 % of those never reached a spot, median life 80 s), 22 % one, 13 % two, 17 % three and more. Recruited before
+  minute 5 they reach a spot in 64-72 % and live 280-300 s; after minute 20 in 25-30 % and 90-110 s. The next one is
+  recruited in the tick the last one died. A wave was never aimed at 49 % of the lost; 18 % die within 20 s of one.
+- Launches at N=13, a game: 176 at a shepherd (its own is "away", a median 39-47 cells from the origin, in 73 % of
+  them: it need not stand on the spot, only be nearer than 0.7 of our nearest building), 24 at a unit in the field,
+  8.3 at a tower or by the base. Of those 8.3 a quarter leave the copy's home with its shepherd a median 189 cells
+  off; the rest leave a parked group with the shepherd a median 65 cells off (away 75 %, no spot 23 %).
+
+Tried at N=15 against `@f7` on the same maps (22001..22100, and 23001..23100 where "h"), 100 maps an arm:
+
+| arm | wins | shepherds lost a game | waves at our base a game | the state model, minute 20 / 40 |
+|---|---|---|---|---|
+| a pause before the next one, 30 s (`shepherd_gap_ticks`, `sg30`) | 70 -> 60 (+6 -16) | 148 -> 124 | 19.9 -> 26.5 | -8.3 +- 2.7 / -8.9 |
+| the same, 90 s (`sg90`) | 70 -> 44 (+3 -29) | 148 -> 94 | 19.9 -> 35.9 | -20.9 +- 2.6 / -26.4 |
+| recruits with no load, 40 cells (`shepherd_unloaded`, new; `su40`) | 70 -> 67 (+7 -10) | 148 -> 154 | 19.9 -> 22.2 | -5.9 +- 2.8 / -4.9 |
+| the same, always (`su1k`, `su1kh`) | 70 -> 67, 65 -> 55 | 148 -> 167 | 19.9 -> 23.3, 27.2 | -6.7, -4.2 / -6.0, -7.5 |
+| the late fixes from minute 20, from minute 10 (`shepherd_fixes_ticks`; `sf20`, `sf10`) | 70 -> 68, 66 | 148 -> 139, 121 | 19.9 -> 19.8, 17.6 | 0, -3.2 / -2.7, -3.7 |
+| the walk round alone from minute 10, from minute 2 (`shepherd_detour_ticks`, new; `dt10`, `dt2`) | 70 -> 66, 70 | 148 -> 126, 148 | 19.9 -> 19.3, 20.4 | -4.4, -2.2 / -5.0, -2.0 |
+| the late stuck gap 30 s for 4 min (`shepherd_stuck_gap_ticks`; `sgap30`) | 70 -> 71 (+1 -0) | 148 -> 145 | 19.9 -> 19.5 | 0 / 0 |
+| a second shepherd as written, copies 200 / 120 cells off (`shepherd_home_pair`; `hp200`, `hp120`) | 70 -> 71, 71 | 148 -> 284, 288 | 19.9 -> 18.3, 16.6 | -5.7, -9.1 / -1.8, -0.3 |
+| the same from minute 12, from minute 20 (`shepherd_home_pair_ticks`, new; `hpl12`, `hpl20`, `hpl20h`) | 70 -> 70, 74; 65 -> 64 | 148 -> 270, 215; 243 | 19.9 -> 16.6, 15.7; 19.3 | -5.7, 0 / -0.5, -0.9; -3.6 |
+
+What they say together. A wave at our base costs far more than the peon: 24 shepherds saved for 7 more waves at
+the base is 10 wins of 70. The lives with no wave are tries to cover a copy again, and the nearest peon at once is
+the fastest try: the unloaded one does what it says (loaded recruits 40 -> 1-4 a game), 93 % of the recruits are
+lost with a load as without, and it comes later. The walk round stood behind the gate of the late fixes (minute
+40) with releases that pause a copy for minutes; alone and early it leaves the arrivals where they were (recruited
+in minutes 20-40: 25 % reach a spot without it, 28 % with, `f7log-vs15`, `dtlog-vs15`, 8 logged games each; net
+speed to the spot 1.0 cells a second either way): it looks 8 and 16 cells ahead, and that is too near to matter.
+
+**The second shepherd had a flaw as written** (the user, 2026-11-20: "don't assume the disabled features were
+perfect as written, maybe they had some sort of flaw that stopped them from reaching their potential before they
+were discarded"). It is meant for the time the copy's own shepherd is away with the parked wave and the next wave
+leaves from home. But before a copy's first wave, and whenever its oldest idle warrior stands at home, the own
+flock's origin is the home too, and both were sent to the same place: of the second shepherds recruited in the
+first ten minutes 82 % had their spot within 30 cells of the own one's (`hplog-vs15`, 8 logged games: 18 of 24 a
+game), 20 % later. `shepherd_home_spare` (new): while the own flock's origin is at the copy's home no second one is
+recruited, and one that stands there is sent home alive once the own one is within 40 cells (`hpslog-vs15`: the
+doubles of the first ten minutes 18.2 -> 3.6 a game, 20 sent home a game). With it, pair 120:
+
+| start | 22001..22100 | 23001..23100 | waves at our base | buildings lost | the model at minute 40 |
+|---|---|---|---|---|---|
+| with the shepherds (`hps`, `hpsh`) | 70 -> 77 (+14 -7) | 65 -> 66 (+9 -8) | 19.9 -> 15.2, 18.5 | 18.7 -> 15.5, 20.0 -> 18.9 | +1.9, +1.5 |
+| minute 12 (`hps12`, `hps12h`) | 70 -> 75 (+8 -3) | 65 -> 69 (+10 -6) | 14.8, 16.3 | 16.4, 16.7 | +3.4, -0.5 |
+| minute 20 (`hps20`, `hps20h`) | 70 -> 70 (+5 -5) | 65 -> 67 (+5 -3) | 18.7, 18.8 | 18.5, 20.0 | -1.1, -4.7 |
+| every copy, minute 20 (`hpsa20`, `hpsa20h`) | 70 -> 72 (+7 -5) | 65 -> 66 (+5 -4) | 18.4, 19.8 | 18.4, 20.8 | -1.7, -2.9 |
+
+As written it was +8 -7; repaired, +23 -15 from the start and +18 -9 from minute 12 (+41 -24 over the 400 games, z
+2.1), with 85-90 more shepherds lost a game and four to five fewer waves at the base. Started at minute 20 it buys
+nothing: the waves it catches leave home between the first launch and minute 20, when the base has three to six
+towers. The model at minute 20 stays 3 to 5 points down, as it must (it counts the peons and not the waves kept
+off). Seven variants were run on these two blocks, so the two best are confirmed on other maps before anything is
+adopted: @@CONFIRM@@
+
 ## Reproduce
 
 ```bash
@@ -2126,35 +2188,8 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   recruited (131 of them while fleeing; 70 reach their spot, and 205 of a game's 420 waves go to a shepherd, 20 to
   our base), and gatherers that step out of an enemy's way and die all the same (93 of 2,340 steps). Peons walking
   between our own buildings: 59 in the won games, 172 in the lost.
-- The shepherds, a first look (2026-11-20, the 16 logged games of `pb0-vs13`: 119 lost a game). Their recruiting
-  is not early: a copy's first shepherd is recruited at a median 171 s and walks 252 cells, the first launch is at
-  a median 339 s (earliest 276 s), and only 91 of 187 stand on their spot before it, a median 55 s. But 88 % die in
-  a flee and 9 % on the walk, at a median 129 s after they were recruited (22 % within a minute), and of the 158
-  recruited a game at N=15 only 70 ever reach a spot. When one dies the nearest enemy warrior is 4-9 cells from
-  its last tended cell in 72 % (a throw reaches 3), a peon within 3 cells in 7 %, a tower within 16 in 9 %; 40 of
-  the 158 are recruited carrying a load, and a loaded peon walks at a warrior's 4 m/s, not 5.
-  What a life buys (`lab/fable/shepherds.py`, the same games): 47 % of the shepherds lost drew no wave (82 % of
-  those never reached a spot, median life 80 s), 22 % one, 13 % two, 17 % three and more; recruited before minute 5
-  they reach a spot in 72 % and live 296 s, after minute 20 in 26-30 % and 90-108 s; the next one is recruited in
-  the tick the last one died.
-  Two answers tried at N=15 against `@f7` on the same maps, both worse, for one reason:
-  - a pause before the next shepherd (`shepherd_gap_ticks`, Gauntlet's, off; `sg30-vs15`, `sg90-vs15`, 100 maps
-    each): 30 s wins 60 for 70 (+6 -16, the model at minute 20 -8.3 +- 2.7) with 24 fewer shepherds lost a game and
-    waves at our base 19.9 -> 26.5; 90 s wins 44 (+3 -29, the model -20.9 +- 2.6) with 54 fewer lost, 35.9 waves at
-    the base and buildings lost 18.7 -> 31.9;
-  - recruits that carry nothing (`shepherd_unloaded`, new, off; `su40-vs15`, `su1k-vs15` on 22001..22100,
-    `su1kh-vs15` on 23001..23100): loaded recruits 40 -> 1-4 a game as built, 67 and 67 for 70 and 55 for 65 wins,
-    +19 -35 together, the model -4 to -7 points in all three, waves at the base +2 to +7. The load is not what
-    kills them: 93 % of the recruits are lost with it as without.
-  So a wave at our base costs far more than the peon, the deaths with no wave are tries to cover a copy again, and
-  what counts is how soon the next shepherd stands, which the nearest peon does best.
-  More cover for more peons does not pay either: a second shepherd for the copies 200 and 120 cells and more away
-  (`shepherd_home_pair`, Gauntlet's, off; `hp200-vs15`, `hp120-vs15`) wins 71 and 71 for 70 with 137 more
-  shepherds lost a game and waves at the base 19.9 -> 18.3 and 16.6, the model 6 and 9 points down at minute 20 and
-  level at minute 40. Started later (`shepherd_home_pair_ticks`, new; 120 cells): from minute 12 70 for 70, from
-  minute 20 74 for 70 on 22001..22100 and 64 for 65 on 23001..23100 (+10 -7 together, the model at minute 40 -0.9
-  +- 1.8 and -3.6 +- 2.0, waves at the base 15.7 and 19.3 for 19.9). Off. What is left is Gauntlet's verdict of
-  old: how a shepherd survives a flee.
+- The shepherds (2026-11-20): "The shepherds: what a life buys, and the second shepherd repaired" above. Open: the
+  walk across the field after minute 10, where half of them die before any wave is aimed at them.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
