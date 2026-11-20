@@ -2159,9 +2159,22 @@ class Strategy {
     boolean shepherd_follow = false;
     /**
      * shepherd_gap_ticks (game ticks, 0 = off): after a copy's shepherd is lost, the next is recruited only this much
-     * later (nine shepherds of ten die, most on the way: Shepherd.tend).
+     * later (nine shepherds of ten die, most on the way: Shepherd.tend). At N=15 on the default of 2026-11-20
+     * (sg30-vs15, sg90-vs15, 100 maps): 30 s loses 10 wins of 70 and 90 s 26, with 24 and 54 fewer shepherds lost
+     * a game and 7 and 16 more waves at our base. A wave at the base costs far more than the peon.
      */
     float shepherd_gap_ticks = 0f;
+    /**
+     * shepherd_unloaded (cells, 0 = off): the recruit is the nearest eligible peon that carries nothing, when it is at
+     * most this many cells farther from the wave's origin than the nearest of all. A peon with a load walks at 4 m/s,
+     * a warrior's speed, and has no order to drop it, so a loaded shepherd cannot leave a wave behind: 40 of the 158
+     * recruits a game at N=15 carry one (shepherd_recruit_loaded), four in five recruits after minute 10 are
+     * gatherers, and 88 % of the shepherds lost die in a flee (lab/fable/shepherds.py, pb0-vs13). Off: it does what
+     * it says (loaded recruits 40 -> 1 a game) and the load is not what kills them, 93 % of the recruits are lost
+     * with it as without, while the farther peon comes later: at N=15 +19 -35 over 300 games (su40-vs15, su1k-vs15,
+     * su1kh-vs15), the state model at minute 20 -4 to -7 points, 2 to 7 more waves at our base a game.
+     */
+    int shepherd_unloaded = 0;
     int shepherd_home_pair = 0;
     int shepherd_safe_look = 40;
     int shepherd_safe_clear = 10;
@@ -2460,6 +2473,7 @@ class Strategy {
         shepherd_flee_side = params.getBoolean("shepherd_flee_side", shepherd_flee_side);
         shepherd_follow = params.getBoolean("shepherd_follow", shepherd_follow);
         shepherd_gap_ticks = (float) params.getDouble("shepherd_gap_ticks", shepherd_gap_ticks);
+        shepherd_unloaded = params.getInt("shepherd_unloaded", shepherd_unloaded);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
         shepherd_safe_clear = params.getInt("shepherd_safe_clear", shepherd_safe_clear);

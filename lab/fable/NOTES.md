@@ -2132,8 +2132,23 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   a flee and 9 % on the walk, at a median 129 s after they were recruited (22 % within a minute), and of the 158
   recruited a game at N=15 only 70 ever reach a spot. When one dies the nearest enemy warrior is 4-9 cells from
   its last tended cell in 72 % (a throw reaches 3), a peon within 3 cells in 7 %, a tower within 16 in 9 %; 40 of
-  the 158 are recruited carrying a load, and a loaded peon walks at a warrior's 4 m/s, not 5. Whether those deaths
-  each bought a wave, and what the loaded ones cost, is the next thing to measure.
+  the 158 are recruited carrying a load, and a loaded peon walks at a warrior's 4 m/s, not 5.
+  What a life buys (`lab/fable/shepherds.py`, the same games): 47 % of the shepherds lost drew no wave (82 % of
+  those never reached a spot, median life 80 s), 22 % one, 13 % two, 17 % three and more; recruited before minute 5
+  they reach a spot in 72 % and live 296 s, after minute 20 in 26-30 % and 90-108 s; the next one is recruited in
+  the tick the last one died.
+  Two answers tried at N=15 against `@f7` on the same maps, both worse, for one reason:
+  - a pause before the next shepherd (`shepherd_gap_ticks`, Gauntlet's, off; `sg30-vs15`, `sg90-vs15`, 100 maps
+    each): 30 s wins 60 for 70 (+6 -16, the model at minute 20 -8.3 +- 2.7) with 24 fewer shepherds lost a game and
+    waves at our base 19.9 -> 26.5; 90 s wins 44 (+3 -29, the model -20.9 +- 2.6) with 54 fewer lost, 35.9 waves at
+    the base and buildings lost 18.7 -> 31.9;
+  - recruits that carry nothing (`shepherd_unloaded`, new, off; `su40-vs15`, `su1k-vs15` on 22001..22100,
+    `su1kh-vs15` on 23001..23100): loaded recruits 40 -> 1-4 a game as built, 67 and 67 for 70 and 55 for 65 wins,
+    +19 -35 together, the model -4 to -7 points in all three, waves at the base +2 to +7. The load is not what
+    kills them: 93 % of the recruits are lost with it as without.
+  So a wave at our base costs far more than the peon, the deaths with no wave are tries to cover a copy again, and
+  what counts is how soon the next shepherd stands, which the nearest peon does best. What is left is Gauntlet's
+  verdict of old: how a shepherd survives a flee.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,

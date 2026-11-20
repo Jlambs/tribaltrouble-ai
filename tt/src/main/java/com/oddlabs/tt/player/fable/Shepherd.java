@@ -1360,10 +1360,16 @@ final class Shepherd {
         return danger < 0 || danger > 14;
     }
 
-    /** The eligible peon nearest (ox, oy). */
+    /**
+     * The eligible peon nearest (ox, oy). shepherd_unloaded: one that carries nothing, when it is at most that many
+     * cells farther than the nearest of all.
+     */
     private @Nullable Unit nearestRecruit(int ox, int oy, @NonNull Intel intel) {
+        int margin = ai.strategy().shepherd_unloaded;
         Unit best = null;
         int best_d = Integer.MAX_VALUE;
+        Unit free = null;
+        int free_d = Integer.MAX_VALUE;
         for (Unit p : intel.peons) {
             if (!eligible(p, intel))
                 continue;
@@ -1372,6 +1378,15 @@ final class Shepherd {
                 best_d = d;
                 best = p;
             }
+            if (margin > 0 && d < free_d && !loaded(p)) {
+                free_d = d;
+                free = p;
+            }
+        }
+        if (free != null && free != best && best != null && loaded(best)
+                && Math.sqrt(free_d) <= Math.sqrt(best_d) + margin) {
+            ai.aiLog().count("shepherd_unloaded"); // recruits taken past a nearer peon with a load
+            return free;
         }
         return best;
     }
