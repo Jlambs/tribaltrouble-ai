@@ -3159,6 +3159,13 @@ class Strategy {
             strategy.capped_min_strength = 40f;
             strategy.stall_peons = true;
             strategy.freeze_unfreeze = true;
+            // A second shepherd by the home of every copy 120 cells and more away, for the waves that leave from
+            // there while its own shepherd is off with the parked one, and none while the own one's place is the
+            // home (lab/fable/NOTES.md, the second shepherd repaired). As written the two went to one place in
+            // the opening and the pair won 71 for 70 at N=15; repaired, +23 -15 on 200 maps there, and at N=16
+            // on 300 maps never used 154 wins for 124 (+60 -30, hpsn-vs16), 5 fewer waves at our base a game.
+            strategy.shepherd_home_pair = 120;
+            strategy.shepherd_home_spare = true;
         }
         return strategy;
     }
