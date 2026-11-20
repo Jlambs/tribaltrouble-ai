@@ -124,15 +124,27 @@ The low-N losses it showed are seat-level leaks: a first armory a long walk from
 ahead, `opening_prewalk` 300, the default since, frozen as `@f4` at commit bbe0e145; seat 0 at N=8-11 +7 -1), a start
 with no iron within a kilometre, a copy starting next door, and a walk to the far iron that passes a copy (all three
 open: nothing tried on them helped). `@f4` has no exam of its own: at N=12-16 it plays `@f3`'s results (+7 -4 of
-1,000 seat-0 games).
+1,000 seat-0 games). The default since (`@f7`, "The mechanics left off as neutral" below) wins every one of the 200
+maps at every N up to 14, 199 at N=15 and 196 at N=16, and from the first start alone 161, 135 and 92 of
+200 at N=14, 15, 16 where `@f4` won 153, 114 and 80.
 
-Standing peons (2026-11-19, the user's question; "Standing peons, and the moment with no armory" below): peons with
-no order are counted now (`idle_s_*`). The median game has none; what there is stands by a site whose trees are cut
-(6 builders, up to 110 standing) and, far more, by the armory going up again after the last one fell (33 games of
-100 at N=15). Letting them all build (`idle_builders`) removes it and moves no wins (+19 -19 in 1,200 games), a
-spare second armory loses 7 of 100 at N=15, and builders that set out before a site is placed lose a little; all
-off. Of 244 games with an armory standing at every moment 243 are won, of 56 with a moment of none 8: the standing
-marks a base being overrun. A rare swallowed assertion in the caster hunt is repaired.
+Standing peons (2026-11-19, the user's question; "Standing peons, and the moment with no armory" below): peons with no
+order are counted now (`idle_s_*`). The median game has none; what there is stands by a site whose trees are cut (6
+builders, up to 110 standing) and, far more, by the armory going up again after the last one fell (33 games of 100 at
+N=15). Letting them all build (`idle_builders`) removes it and moves no wins (+19 -19 in 1,200 games; on since `@f6`,
+with the builders' release and the tree on the way, below), a spare second armory loses 7 of 100 at N=15, and builders
+that set out before a site is placed lose a little; those two are off. Of 244 games with an armory standing at every
+moment 243 are won, of 56 with a moment of none 8: the standing marks a base being overrun. A rare swallowed assertion
+in the caster hunt is repaired.
+
+Mechanics left off (2026-11-20, the user's question; "The mechanics left off as neutral" below): of the options
+that were off, fifteen each end a measured waste and had each been dropped after one flat screen (workers shut in
+an armory with iron and no wood, satellites nobody staffs, tower sites with no trees or no place, wedged builders,
+quarters bred up from empty, peons sent out by the rush alarm with no armory to go to, a muster with no army, a
+stall clock that peons reset). All fifteen together, against the same build without them: from the first start at
+N=8-16 **+99 -72** over 1,800 games (z 2.1), no draw where there were five, no swallowed error, the opening on the
+same second. They are the default since, frozen as `@f7`; from `@f4` to `@f7` the same 1,800 games are +117 -70 (z
+3.4). Options with a measured cost stay off.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -1941,6 +1953,117 @@ not a loss anywhere, a gain perhaps, and the user's rule that a peon with nothin
 
 Both are the default since commit aee7e81e, frozen as `@f6`.
 
+### The ladders of `@f5` and `@f6`
+
+Maps of 100 won from at least one start (and from the first start alone), 22001..22100 / 23001..23100:
+
+| N | `@f4` | `@f5` | `@f6` |
+|---|---|---|---|
+| 1-13 | 100 / 100 | 100 / 100 | 100 / 100 |
+| 14 | 99 (76) / 100 (77) | 99 (81) / 100 (76) | 100 (79) / 100 (78) |
+| 15 | 98 (62) / 100 (52) | 98 (64) / 100 (56) | 99 (65) / 100 (64) |
+| 16 | 95 (38) / 98 (42) | 95 (41) / 93 (38) | 96 (36) / 98 (47) |
+
+The N=16 count is the noisiest figure here: a map is lost only when 17 games in a row are, and a start wins a game
+in four there. Of the seven held-out maps `@f5` lost from every start `@f4` had won three from its first (23069,
+23070, 23084), and `@f5` won 23002, 22082 and 22097 from one start each (seats 7, 9, 9) where `@f4` lost all 17.
+`@f6` lost 22095 from every start at N=15 and 16, 22018, 22088 and 22097 at N=16, and 23037 and 23069 at N=16.
+
+From the first start the ladders of two builds are a paired run of 100 maps a rung (`lab/fable/seat0.py`). At
+N=8-16, 900 games a block: `@f4` -> `@f5` +53 -44 and +45 -47, `@f5` -> `@f6` +44 -48 and +58 -41; the wins over
+the 1,800 games 1,483, 1,490 and 1,503. Less than the +142 -119 and +79 -74 of the runs that adopted them, and not a
+loss.
+
+### The mechanics left off as neutral (fifteen switches, the default since, `@f7`)
+
+The user (2026-11-20): "Are there any other mechanics that may have been neglected like this: things that would
+clearly be a principled improvement on the strategy but wasn't adopted due to not showing a significant winrate
+increase?"
+
+Yes. `Strategy` has about 195 options that are off with a record of why (`forGame`'s settings counted as on). Read
+by what each record measured, they fall in three kinds.
+
+**It ends a measured waste, and one screen of 100 maps or fewer was flat.** A run of 100 maps has a standard error
+of 4 to 5 wins, so it cannot see a mechanic worth one or two, and fifteen were dropped that way:
+
+| switch | the waste | its own record |
+|---|---|---|
+| `stock_balance` | from minute 20 the main armory holds iron and no wood in 22-38 % of the half-minute samples, with 31-60 workers inside | `sb2` +21 -11 on the 100 open maps |
+| `sat_staff` | a satellite sits on its iron with one worker inside while the main armory holds 45-130 idle ones | with the above; in `L1f-vs15` with two others 126 against 126 of 300 |
+| `expand_under_threat` | after the expansion falls no armory is placed again: parked blobs keep the threat above 0 | `xt1` +9 -5, the model at minute 40 +3.1 +- 1.1 |
+| `capped_min_strength` 40 | at the unit cap the attack musters with an army of 0 and deploys every weapon for 45 s at a time | `cm1` +6 -5 |
+| `stall_peons` | every fight with a peon resets the attack's stall clock (Gauntlet's five-hour draw) | 6 wins against 6 |
+| `freeze_unfreeze` | a frozen copy that gets its armory still counts as frozen | never run alone |
+| `tower_wood_drop` from 600 s | a tower site with no trees takes 116 s against 45-69 s | 61 s against 127 s in 12 logged games; no screen |
+| `tower_site_fallback` | a tower with no site at its anchor retries the same ring every plan tick: 9 % of the construction slots | fires 2.8 times a game |
+| `site_towers_first` | a quarters site holds the slot a tower waits for in 9.3 % of the samples | no screen |
+| `unstick_builders_ticks` 1500 | builders wedged in a notch, 6-23 of them for 13 minutes in one game | fires in 60 % of the games |
+| `walk_select` 300 | builders are taken by straight line, whatever the walk | N=11: 18 wins against 15 |
+| `seed_quarters_ticks` 1500 | a new quarters breeds up from empty for 77 s, about 5 peons | 3 wins against 4, 2 against 0 |
+| `rush_hold_armory` | the rush alarm sends 20-90 peons out of the quarters with no armory to go to | N=13: 71 against 70 |
+| `rush_opening_only` | the rush alarm fires again after our last armory fell | never run alone |
+
+(`tower_wood_ticks` is the fifteenth param. The second half of the table is Gauntlet's, screened at N=11-13.)
+
+**It has a measured cost, and stays off:** `harass_memory_ticks` (-3.0 +- 2.7 in the screen), `capped_clump` (+2
+-17), `hold_backlog` (z -5.3), `armory_spare_ticks` (55 wins against 62), `opening_join` (+3 -7), `armory_cover` on
+top of `evade_tower` (-3.2 +- 3.0), `late_reinforce_min` and `late_min_strength` (warriors kept at home die at
+home).
+
+**A real waste with no fix that works yet:** the units inside buildings when they are razed (63-66 a game at N=15
+here, the bundle does not change it; Gauntlet tried four fixes), the home warriors that die one at a time after
+minute 30, and copies that can no longer arm and are not hunted down (`mopup` exists, off).
+
+**The test.** All fifteen at once on the frozen default (`@f6:stock_balance=true,...`, runs `pb6` and `pb6h`), as
+any-seat ladders at N=8-16 next to `@f6`'s, so the games from the first start pair map by map. Wins from the first
+start, `@f6` -> with the fifteen:
+
+| N | 22001..22100 | 23001..23100 |
+|---|---|---|
+| 8 | 100 -> 100 | 97 -> 98 |
+| 9 | 95 -> 97 | 99 -> 99 |
+| 10 | 98 -> 98 | 99 -> 97 |
+| 11 | 93 -> 96 | 95 -> 96 |
+| 12 | 92 -> 89 | 91 -> 95 |
+| 13 | 86 -> 88 | 89 -> 89 |
+| 14 | 79 -> 81 | 78 -> 80 |
+| 15 | 65 -> 70 | 64 -> 65 |
+| 16 | 36 -> 45 | 47 -> 47 |
+| all | 744 -> 764 (+55 -35, z 2.1) | 759 -> 766 (+44 -37, z 0.8) |
+
+Together **+99 -72** over 1,800 games (z 2.1), 16 of the 18 rungs level or up; from `@f4` +63 -38 and +54 -32 (z 3.4)
+and from `@f5` +53 -37 and +58 -34. Draws from the first start 5 -> 0 (`stall_peons` was built for them), no swallowed
+error in either. Maps won from some start: as `@f6` up to N=15 (100 everywhere, 99 on the first block at N=15, 22095
+again), and at N=16 97 and 99 (`@f6` 96 and 98): 22018, 22088 and 22097 are lost from every start by both, 22095 is
+won now, and 23003 is lost where `@f6` lost 23037 and 23069.
+
+What else the adoption rule asks for (the mechanism's own counter, the opening, the state model, errors):
+
+- Counters a game at N=15, first block / held out (games of 100 in which it fires): `stock_balance` 425 / 446 (97 /
+  99), `sat_staff_sent` 177 / 137 (95 / 95), `seed_quarters_sent` 11.3 / 10.8 (98 / 98), `tower_wood_drop` 17.6 / 17.6
+  (94 / 95), `tower_site_fallback` 2.5 / 3.3 (70 / 66) with `tower_nosite`, the plan ticks with room for a tower and
+  no site on its ring, 95 -> 2.5 and 137 -> 3.3, `site_towers_first_used` 15.5 / 13.4 (30 / 33), `capped_min_blocked`
+  16.1 / 8.4 (45 / 45), `builder_unstuck` 2.2 / 1.7 (73 / 71), `exp_blocked_site` 5.7 / 5.9 (51 / 59),
+  `rush_hold_armory` 1.1 / 1.4 (8 / 8).
+- The opening (`opening.py`, N=13 and 15, both blocks): first quarters, armory and sixth quarters within 0.3 s of
+  `@f6`'s; at minute 8 warriors +1.8 to +2.8 (62.2 -> 64.7, 62.7 -> 64.5, 59.1 -> 61.3, 60.2 -> 63.0), peons -0.5
+  to -4.0, iron +0.5 to +1.6.
+- The state model (`proxy.py`, N=14 and 15, both blocks) at minute 20: +1.1, -4.2, +4.4, -0.1 points (each +- 2.6
+  to 2.9); at minute 30: -2.4, -2.2, +4.2, +2.7; at minute 40: -0.2, -2.5, +4.1, +4.4. No direction at N=14, up
+  at N=15; nothing beyond 1.7 standard errors either way.
+- Buildings lost a game at N=15 20.2 -> 18.7 and 21.6 -> 20.0. Standing peons (`idle_s_late`) 307 -> 39 s on the
+  first block and 80 -> 446 s on the other: a few games carry it either way.
+- Cost: 23.8 -> 26.4 CPU seconds a game over the 1,800 (58 game minutes in both), measured with eight games at a time
+  on a busy machine; a profiled run of the same 8 maps at N=15 for each (`prof-f6-vs15`, `prof-f7-vs15`) has 350 and
+  343 s of simulation CPU with the AI at 34.6 and 34.8 % of it, so the fifteen cost nothing themselves and the rest is
+  longer games and load.
+
+By the user's rule (2026-11-19: a mechanic that is the principled thing and shows no harm is adopted, not shelved as
+neutral) all fifteen are on in `forGame` for large maps and up since commit 00461225, frozen as `@f7`: the default
+plays the bundle's games (16 of 16 checksums, `f7chk-vs13` against `pb0-vs13`). The halves were not run apart: the
+bundle is not worse, so nothing asked for the split. At N=1-7 the bundle wins every map of both blocks from some
+start, as before, and 699 and 700 of 700 from the first (`@f6` 698 and 700).
+
 ## Reproduce
 
 ```bash
@@ -1957,6 +2080,13 @@ python lab/fable/stats.py --pair exam-f2-vs15-c exam-f3-vs15
 python lab/fable/anyseat.py --name f4 --n 1..16                                        # maps 22001..22100
 python lab/fable/anyseat.py --name f4h --spec "@f4" --seeds 23001..23100 --n 1..16     # the held-out maps
 python lab/fable/anyseat.py --name f4 --n 12..16 --report --detail                     # what was played, by seat
+./aisim.sh freeze f5 fable                     # the builders' release, at commit 77fde350
+./aisim.sh freeze f6 fable                     # the tree on the way and idle builders, at commit aee7e81e
+./aisim.sh freeze f7 fable                     # the fifteen switches, at commit 00461225
+python lab/fable/anyseat.py --name f6 --spec "@f6" --n 1..16                           # likewise f5, and f5h, f6h on 23001..23100
+PB="@f6:stock_balance=true,sat_staff=true,expand_under_threat=true,tower_wood_drop=true,tower_wood_ticks=30000,tower_site_fallback=true,unstick_builders_ticks=1500,rush_hold_armory=true,rush_opening_only=true,walk_select=300,capped_min_strength=40,seed_quarters_ticks=1500,site_towers_first=true,stall_peons=true,freeze_unfreeze=true"
+python lab/fable/anyseat.py --name pb6 --spec "$PB" --n 8..16                          # plays what @f7 plays; pb6h on 23001..23100
+python lab/fable/seat0.py f6 pb6 --n 8..16                                             # two ladders paired from the first start
 ```
 
 Gauntlet for the baseline: `git archive origin/gauntlet tt/src/main/java/com/oddlabs/tt/player/gauntlet | tar -x`,
@@ -1981,3 +2111,9 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
 - Seats (2026-11-19, "Any seat" above): the far iron behind a copy (19 of 485 seat-0 games at N=12-16 win 5 where
   their N makes 11) wants a way past the copy, not a way round the walk; a start with no iron wants an armory by the
   home rock and a guarded second base. A copy next door has no answer found.
+- Where our units die (2026-11-20, the 200 first-start games of `pb6` and `pb6h` at N=15, counters a game; won 135
+  games of 84 min / lost 65 of 54 min). Units inside razed buildings are a mark of the lost game, not a leak of its
+  own: 17 a game in the won games, 160 in the lost. What does not depend on the result: shepherds, 147 lost of 158
+  recruited (131 of them while fleeing; 70 reach their spot, and 205 of a game's 420 waves go to a shepherd, 20 to
+  our base), and gatherers that step out of an enemy's way and die all the same (93 of 2,340 steps). Peons walking
+  between our own buildings: 59 in the won games, 172 in the lost. Not looked into.
