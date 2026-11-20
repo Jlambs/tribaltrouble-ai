@@ -3185,6 +3185,12 @@ class Strategy {
             // on 300 maps never used 154 wins for 124 (+60 -30, hpsn-vs16), 5 fewer waves at our base a game.
             strategy.shepherd_home_pair = 120;
             strategy.shepherd_home_spare = true;
+            // A shepherd whose straight walk to its spot is not clear walks a planned way round enemy warriors,
+            // bases and towers (lab/fable/NOTES.md, a way for the shepherds). Half the shepherds lost never had a
+            // wave aimed at them. In logged games those recruited in minutes 20-40 reach a spot in 53 % for 23 %;
+            // at N=16 on two blocks of 300 maps never used 172 wins for 154 and 165 for 148 (rte-vs16, rtm-vs16:
+            // +100 -65), 55 to 87 fewer shepherds lost a game.
+            strategy.shepherd_route = true;
         }
         return strategy;
     }
