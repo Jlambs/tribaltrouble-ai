@@ -3089,6 +3089,34 @@ class Strategy {
             // 9 more warriors at minute 10 and 0.2 more copies out at minute 15, and win 171 against 158 on the 300
             // fresh maps (ct8f-vs15, ct8g-vs15: +46 -33). 600 s scored 53 of the 100 open maps against 62.
             strategy.chieftain_ticks = 24000f; // 480 s
+            // Fifteen switches that each end a measured waste and were each left off after one flat screen
+            // (lab/fable/NOTES.md, the mechanics left off as neutral), together: from seat 0 at N=8-16 on two blocks
+            // of 100 maps +99 -72 against the same build without them (pb6, pb6h: 1,800 games, z 2.1) and no draw
+            // where there were five; the maps won from some start 199 of 200 at N=15 and 196 at N=16, where they
+            // were 199 and 194; no swallowed error, the opening on the second where it was.
+            // The stock: workers the armory cannot employ fetch the wood its iron waits for, a satellite gets the
+            // peons its stock can use, and a new armory is looked for under threat too.
+            strategy.stock_balance = true;
+            strategy.sat_staff = true;
+            strategy.expand_under_threat = true;
+            // Building: wood is carried to a tower site with no trees, a tower with no site at its anchor looks
+            // around the other buildings and is not kept waiting by a quarters, a wedged builder is taken out, the
+            // builders with the shortest walk are taken, and a new quarters starts with the peons at its door.
+            strategy.tower_wood_drop = true;
+            strategy.tower_wood_ticks = 30000f; // 600 s
+            strategy.tower_site_fallback = true;
+            strategy.site_towers_first = true;
+            strategy.unstick_builders_ticks = 1500f; // 30 s
+            strategy.walk_select = 300;
+            strategy.seed_quarters_ticks = 1500f; // 30 s
+            // The rush alarm sends no peon out with no armory to go to, and not after the opening.
+            strategy.rush_hold_armory = true;
+            strategy.rush_opening_only = true;
+            // The attack: no muster with no army, peons do not reset the stall clock, a frozen copy that arms
+            // counts again.
+            strategy.capped_min_strength = 40f;
+            strategy.stall_peons = true;
+            strategy.freeze_unfreeze = true;
         }
         return strategy;
     }
