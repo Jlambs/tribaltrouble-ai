@@ -6054,6 +6054,9 @@ final class Economy {
                 continue;
             if (s == PeonState.IDLE)
                 free.add(peon);
+            // flight_keep: not a peon on its way to shelter from a threat still by it
+            else if (s == PeonState.TRANSIT && ai.strategy().flight_keep && ai.military().fleeing(peon))
+                ai.aiLog().count("flight_kept"); // peon-seconds on the way to shelter
             // salvage: not its evacuees by the building emptied
             else if (s == PeonState.TRANSIT && (salvages.isEmpty() || !nearSalvage(peon)))
                 transit.add(peon);
@@ -6717,6 +6720,12 @@ final class Economy {
     }
 
     /** evade: a gatherer that stepped out of an enemy's way goes back to gathering what it gathered. */
+    /** Log only: the supply a gatherer was last sent to, or null. */
+    @Nullable
+    Supply gatherTarget(@NonNull Unit peon) {
+        return gather_targets.get(peon);
+    }
+
     void resumeGatherer(@NonNull Unit peon, @NonNull PeonState kind) {
         Building armory = ai.intel().armory();
         if (armory == null || armory.isDead() || armory_field == null)
@@ -6836,6 +6845,8 @@ final class Economy {
      * A gatherer whose load has not changed for 70 seconds is stuck, most often walking to a tree it cannot reach: it
      * is sent to another supply and the old one is avoided for two minutes.
      */
+    private static final int STUCK_STILL_CELLS = 5;
+
     private void unstickGatherers(@NonNull Building armory) {
         if (!ai.strategy().unstick)
             return;
@@ -6854,13 +6865,24 @@ final class Economy {
             int amount = peon.getSupplyContainer() != null ? peon.getSupplyContainer().getNumSupplies() : 0;
             float[] seen = gather_progress.get(peon);
             if (seen == null || seen[0] != amount) {
-                gather_progress.put(peon, new float[]{amount, now});
+                gather_progress.put(peon, new float[]{amount, now, peon.getGridX(), peon.getGridY(), now});
                 continue;
+            }
+            // stuck_still_ticks: where it was when it last left a circle of STUCK_STILL_CELLS, and when
+            if (MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), (int) seen[2],
+                    (int) seen[3]) > STUCK_STILL_CELLS * STUCK_STILL_CELLS) {
+                seen[2] = peon.getGridX();
+                seen[3] = peon.getGridY();
+                seen[4] = now;
             }
             // A gatherer on a long walk carries nothing new for a whole trip; only a stall well past it is stuck.
             float trip = type == IronSupply.class ? iron_cycle : type == TreeSupply.class ? tree_cycle : rock_cycle;
             if (now - seen[1] < Math.max(3500f, ai.strategy().stuck_trip_factor * trip)) // 70 s
                 continue;
+            if (ai.strategy().stuck_still_ticks > 0f && now - seen[4] < ai.strategy().stuck_still_ticks) {
+                ai.aiLog().count("stuck_walk_s"); // gatherer-seconds on a walk past the stuck time
+                continue;
+            }
             Supply old = gather_targets.get(peon);
             // ore_reach_fail: a far pick made while the plan saw ore within the 400 m field (no ore_far) walks a longer
             // trip than that field's cycle; a stuck_trip_factor allowance counts its own (else 800 m trips are flagged
@@ -6873,7 +6895,21 @@ final class Economy {
             }
             if (old != null)
                 bad_supplies.put(old, now + 6000f); // 120 s
-            gather_progress.put(peon, new float[]{amount, now});
+            if (ai.logging()) {
+                var behaviour = peon.getCurrentBehaviour();
+                ai.log(String.format(
+                        "stuck %s at %d,%d load %d for %.0f s supply %s (%d cells, empty %b, load %d) armory %d cells moving %b %s %s",
+                        s.name().toLowerCase(java.util.Locale.ROOT), peon.getGridX(), peon.getGridY(), amount,
+                        FableAI.seconds(now - seen[1]), old == null ? "-" : old.getGridX() + "," + old.getGridY(),
+                        old == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(peon.getGridX(), peon.getGridY(),
+                                old.getGridX(), old.getGridY())),
+                        old != null && old.isEmpty(), old == null ? 0 : supply_load.getOrDefault(old, 0),
+                        (int) Math.sqrt(MapAnalysis.dist2(peon.getGridX(), peon.getGridY(), armory.getGridX(),
+                                armory.getGridY())),
+                        peon.isMoving(), peon.getCurrentController().getClass().getSimpleName(),
+                        behaviour == null ? "-" : behaviour.getClass().getSimpleName() + (behaviour.isBlocking() ? "(blocked)" : "")));
+            }
+            gather_progress.put(peon, new float[]{amount, now, peon.getGridX(), peon.getGridY(), now});
             unstuck++;
             Building works_for = intel.gather_buildings.get(peon);
             if (type == TreeSupply.class && isSatellite(works_for)) {

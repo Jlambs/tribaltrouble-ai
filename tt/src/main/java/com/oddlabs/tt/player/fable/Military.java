@@ -7,10 +7,14 @@ import com.oddlabs.tt.model.DeployType;
 import com.oddlabs.tt.model.IronSupply;
 import com.oddlabs.tt.model.Race;
 import com.oddlabs.tt.model.Selectable;
+import com.oddlabs.tt.model.Supply;
 import com.oddlabs.tt.model.Unit;
+import com.oddlabs.tt.model.behaviour.AttackController;
+import com.oddlabs.tt.model.behaviour.Controller;
 import com.oddlabs.tt.model.behaviour.EnterController;
 import com.oddlabs.tt.model.behaviour.HuntController;
 import com.oddlabs.tt.model.behaviour.IdleController;
+import com.oddlabs.tt.model.behaviour.WalkController;
 import com.oddlabs.tt.player.Player;
 import com.oddlabs.tt.player.fable.Intel.PeonState;
 import com.oddlabs.tt.player.fable.Intel.WarriorState;
@@ -518,6 +522,53 @@ final class Military {
         for (Unit u : threats)
             if (!u.isDead() && MapAnalysis.dist2(x, y, u.getGridX(), u.getGridY()) <= r2)
                 return true;
+        return false;
+    }
+
+    /**
+     * bystander: whether an enemy is locked in a hunt on something other than peon p, more than the option's cells
+     * from p: it does not scan until that hunt ends.
+     */
+    private boolean huntsElsewhere(@NonNull Unit e, @NonNull Unit p) {
+        int cells = ai.strategy().bystander;
+        if (cells < 0 || !(e.getCurrentController() instanceof HuntController hunt))
+            return false;
+        Selectable<?> target = hunt.getTarget();
+        if (target == p || target.isDead() || MapAnalysis.dist2(e.getGridX(), e.getGridY(), p.getGridX(),
+                p.getGridY()) <= cells * cells)
+            return false;
+        // bystander_reach: a hunt about to end
+        int reach = ai.strategy().bystander_reach;
+        if (reach > 0 && target instanceof Unit t) {
+            if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), t.getGridX(), t.getGridY()) <= reach * reach)
+                return false;
+            if (t.getOwner() == ai.owner() && t.getPrimaryController() instanceof EnterController
+                    && shelterCells(t) <= BYSTANDER_DOOR_CELLS)
+                return false;
+        }
+        return true;
+    }
+
+    /** bystander_reach: a hunted peon of ours this near a quarters or armory, on its way in, is about to be gone. */
+    private static final int BYSTANDER_DOOR_CELLS = 6;
+
+    /**
+     * threatNear for a peon's flight to shelter and its step out of the way: bystander leaves hunters of others out.
+     */
+    private boolean threatNearPeon(@NonNull Unit p, int radius) {
+        int r2 = radius * radius;
+        boolean passed = false;
+        for (Unit u : threats) {
+            if (u.isDead() || MapAnalysis.dist2(p.getGridX(), p.getGridY(), u.getGridX(), u.getGridY()) > r2)
+                continue;
+            if (huntsElsewhere(u, p)) {
+                passed = true;
+                continue;
+            }
+            return true;
+        }
+        if (passed)
+            ai.aiLog().count("bystander");
         return false;
     }
 
@@ -1731,11 +1782,16 @@ final class Military {
 
     /** evade: the nearest living enemy warrior or chieftain within cells of (x, y), or null. */
     private @Nullable Unit nearestFoe(int x, int y, int cells) {
+        return nearestFoe(x, y, cells, null);
+    }
+
+    /** evade: nearestFoe as peon p has to mind it: bystander leaves the hunters of others out. */
+    private @Nullable Unit nearestFoe(int x, int y, int cells, @Nullable Unit p) {
         Unit best = null;
         int best2 = cells * cells + 1;
         for (List<Unit> group : List.of(ai.intel().enemy_warriors, ai.intel().enemy_chieftains))
             for (Unit e : group) {
-                if (e.isDead())
+                if (e.isDead() || (p != null && huntsElsewhere(e, p)))
                     continue;
                 int d2 = MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY());
                 if (d2 < best2) {
@@ -1794,15 +1850,70 @@ final class Military {
     }
 
     private boolean startEvading(@NonNull Unit p, @NonNull PeonState kind) {
-        Unit foe = nearestFoe(p.getGridX(), p.getGridY(), EVADE_CLEAR_CELLS);
+        Unit foe = nearestFoe(p.getGridX(), p.getGridY(), EVADE_CLEAR_CELLS, p);
         if (foe == null || !stepAway(p, foe))
             return false;
         evaders.put(p, new float[]{kind.ordinal(), ai.now(), ai.now()});
         ai.intel().evading.add(p);
         ai.intel().peon_states.put(p, PeonState.SHEPHERD);
         ai.aiLog().count("evade_started");
+        if (ai.logging())
+            traceEvade(p, kind, foe);
         return true;
     }
+
+    /** Log only: a serial number for each gatherer that ever stepped out of an enemy's way. */
+    private final Map<@NonNull Unit, Integer> evade_ids = new LinkedHashMap<>();
+
+    /** Log only: what an enemy unit is doing, as seen from peon p. */
+    private static @NonNull String foeState(@NonNull Unit foe, @NonNull Unit p) {
+        Controller c = foe.getCurrentController();
+        if (Intel.isParked(foe))
+            return "parked";
+        if (c instanceof HuntController h)
+            return h.getTarget() == p ? "hunts_me" : h.getTarget() instanceof Unit u
+                    && !u.getAbilities().hasAbilities(Abilities.THROW) ? "hunts_peon" : "hunts_other";
+        if (c instanceof AttackController)
+            return "attacks";
+        if (c instanceof WalkController w)
+            return w.isAgressive() ? "attack_walk" : "walk";
+        return c.getClass().getSimpleName();
+    }
+
+    /** Log only: the start of a step out of an enemy's way. */
+    private void traceEvade(@NonNull Unit p, @NonNull PeonState kind, @NonNull Unit foe) {
+        evade_ids.keySet().removeIf(Unit::isDead);
+        Integer id = evade_ids.get(p);
+        if (id == null) {
+            id = evade_serial++;
+            evade_ids.put(p, id);
+        }
+        Supply supply = ai.economy().gatherTarget(p);
+        Building home = ai.intel().gather_buildings.get(p);
+        int around = 0;
+        int parked = 0;
+        for (Unit e : ai.intel().enemy_warriors)
+            if (!e.isDead() && MapAnalysis.dist2(p.getGridX(), p.getGridY(), e.getGridX(), e.getGridY()) <= 14 * 14) {
+                around++;
+                if (Intel.isParked(e))
+                    parked++;
+            }
+        ai.log(String.format(
+                "evade start #%d %s at %d,%d loaded %b supply %s (%d cells) home %d cells foe %s at %d,%d %d cells, %d within 14 (%d parked), foe to supply %d",
+                id, kind.name().toLowerCase(java.util.Locale.ROOT), p.getGridX(), p.getGridY(),
+                p.getSupplyContainer().getNumSupplies() > 0,
+                supply == null ? "-" : supply.getGridX() + "," + supply.getGridY(),
+                supply == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(), supply.getGridX(),
+                        supply.getGridY())),
+                home == null || home.isDead() ? -1 : (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(),
+                        home.getGridX(), home.getGridY())),
+                foeState(foe, p), foe.getGridX(), foe.getGridY(),
+                (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(), foe.getGridX(), foe.getGridY())), around,
+                parked, supply == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(foe.getGridX(), foe.getGridY(),
+                        supply.getGridX(), supply.getGridY()))));
+    }
+
+    private int evade_serial;
 
     /**
      * evade: every round an evader goes back to gathering once no enemy is within EVADE_CLEAR_CELLS, steps away again
@@ -1823,14 +1934,24 @@ final class Military {
                 it.remove();
                 intel.evading.remove(p);
                 ai.aiLog().count("evade_died");
+                if (ai.logging())
+                    ai.log(String.format("evade end #%d died after %.1f", evade_ids.getOrDefault(p, -1),
+                            FableAI.seconds(now - v[1])));
                 continue;
             }
-            Unit foe = nearestFoe(p.getGridX(), p.getGridY(), EVADE_CLEAR_CELLS);
+            Unit foe = nearestFoe(p.getGridX(), p.getGridY(), EVADE_CLEAR_CELLS, p);
             if (foe == null) {
                 it.remove();
                 intel.evading.remove(p);
+                Supply before = ai.logging() ? ai.economy().gatherTarget(p) : null;
                 ai.economy().resumeGatherer(p, PeonState.values()[(int) v[0]]);
                 ai.aiLog().count("evade_resumed");
+                if (ai.logging()) {
+                    Supply after = ai.economy().gatherTarget(p);
+                    ai.log(String.format("evade end #%d resumed after %.1f at %d,%d supply %s same %b",
+                            evade_ids.getOrDefault(p, -1), FableAI.seconds(now - v[1]), p.getGridX(), p.getGridY(),
+                            after == null ? "-" : after.getGridX() + "," + after.getGridY(), after == before));
+                }
                 continue;
             }
             boolean close = MapAnalysis.dist2(p.getGridX(), p.getGridY(), foe.getGridX(), foe.getGridY()) <= 11 * 11;
@@ -1838,6 +1959,12 @@ final class Military {
                 it.remove();
                 intel.evading.remove(p);
                 ai.aiLog().count("evade_gave_up");
+                if (ai.logging())
+                    ai.log(String.format("evade end #%d gave_up after %.1f at %d,%d foe %s %d cells",
+                            evade_ids.getOrDefault(p, -1), FableAI.seconds(now - v[1]), p.getGridX(), p.getGridY(),
+                            foeState(foe,
+                                    p), (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(), foe.getGridX(),
+                                            foe.getGridY()))));
             } else if (close && now - v[2] >= 50f) {
                 v[2] = now;
             }
@@ -1854,6 +1981,7 @@ final class Military {
         boolean swarm = ai.strategy().repair_swarm;
         boolean salvage = ai.strategy().salvage;
         int evade = ai.strategy().evade_cells;
+        flights.keySet().removeIf(u -> u.isDead() || intel.peon_states.get(u) != PeonState.TRANSIT);
         List<Unit> evacuate = new ArrayList<>();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
@@ -1866,7 +1994,7 @@ final class Military {
             // sortie_ratio: and so do peons out of a sortie armory.
             if (sortie_peons.containsKey(p))
                 continue;
-            if (!threatNear(p.getGridX(), p.getGridY(), 11))
+            if (!threatNearPeon(p, 11))
                 continue;
             // rearm_placer: a peon carrying an armory site walks on while no threat is within 6 cells.
             if (ai.economy().evacExempt(p))
@@ -1919,9 +2047,46 @@ final class Military {
                 shelter = armory; // no quarters qualifies: as without bank_guard
             else if (bank_full && shelter != null)
                 ai.aiLog().count("bank_shelter_quarters");
-            if (shelter != null && shelter.getUnitContainer() != null)
+            if (shelter != null && shelter.getUnitContainer() != null) {
+                if (ai.strategy().flight_keep)
+                    flights.put(p, ai.now());
+                if (ai.logging())
+                    traceFlight(p, shelter);
                 ai.owner().setTarget(Selectable.newArray(p), shelter, ai.enterAction(shelter), false);
+            }
         }
+    }
+
+    /** flight_keep: the peons evacuatePeons sent to shelter that are still on their way, and when they were sent. */
+    private final Map<@NonNull Unit, Float> flights = new LinkedHashMap<>();
+    /** flight_keep: a flight ends when no threat is within this many cells of the peon (it starts at 11). */
+    private static final int FLIGHT_CLEAR_CELLS = 14;
+
+    /** flight_keep: whether a peon is on its way to shelter with the threat still by it; the economy leaves it. */
+    boolean fleeing(@NonNull Unit p) {
+        if (!flights.containsKey(p))
+            return false;
+        if (p.isDead() || !threatNearPeon(p, FLIGHT_CLEAR_CELLS)) {
+            flights.remove(p);
+            return false;
+        }
+        return true;
+    }
+
+    /** Log only: a peon sent to shelter from a threat within 11 cells. */
+    private void traceFlight(@NonNull Unit p, @NonNull Building shelter) {
+        Unit foe = nearestFoe(p.getGridX(), p.getGridY(), 20);
+        PeonState s = ai.intel().peon_states.get(p);
+        Supply supply = ai.economy().gatherTarget(p);
+        ai.log(String.format("flight %s at %d,%d loaded %b supply %d cells shelter %s %d cells foe %s %d cells",
+                s == null ? "-" : s.name().toLowerCase(java.util.Locale.ROOT), p.getGridX(), p.getGridY(),
+                p.getSupplyContainer().getNumSupplies() > 0, supply == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(
+                        p.getGridX(),
+                        p.getGridY(), supply.getGridX(), supply.getGridY())), Intel.kind(shelter), (int) Math.sqrt(
+                                MapAnalysis.dist2(p.getGridX(), p.getGridY(), shelter.getGridX(), shelter.getGridY())),
+                foe == null ? "none" : foeState(foe, p),
+                foe == null ? -1 : (int) Math.sqrt(MapAnalysis.dist2(p.getGridX(), p.getGridY(), foe.getGridX(),
+                        foe.getGridY()))));
     }
 
     // ------------------------------------------------------------------------------------------------------------

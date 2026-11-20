@@ -499,6 +499,32 @@ class Strategy {
      */
     int evade_tower = 0;
     /**
+     * bystander (cells, -1 = off): an enemy warrior locked in a hunt on another unit is no reason for a peon to walk
+     * to shelter or step out of its way unless it is within this many cells. A hunter walks to its target without
+     * scanning and answers nothing (HuntController: WalkBehaviour without scan); only when the hunt ends does it scan
+     * its 8-cell square again, and it takes a warrior before a peon (AttackScanFilter). In 12 logged games at N=16
+     * (ev1log-vs16, lab/fable/evades.py) the nearest enemy was such a hunter in 6,000 of a game's 7,200 flights to
+     * shelter and in 1,300 of its 2,200 steps out of the way: one warrior after one peon turns back every gatherer
+     * that passes within 11 cells of it, and from minute 20 two iron trips in three end that way.
+     */
+    int bystander = -1;
+    /**
+     * bystander_reach (cells, 0 = off): bystander minds a hunter of another unit all the same when that hunt is about
+     * to end: its target is a unit within this many cells of it (in throwing reach: a hit kills), or a peon of ours
+     * about to walk into a building. The hunter then scans at once, and a peon in its throwing reach at that moment
+     * is hit with .75 before it can step away (peons lost stepping away or on the way to shelter: 140 an hour of game
+     * to 230 with bystander alone, by0log-vs16).
+     */
+    int bystander_reach = 0;
+    /**
+     * flight_keep: a peon sent to shelter from a threat within 11 cells stays on its way there until the threat is 14
+     * cells off or it is inside. Without it the economy's next tick takes it, as any peon on its way into a building,
+     * for the gatherer its own flight left the plan short of, the military's next tick sends it to shelter again, and
+     * it turns about by the enemy twice a second: 80 % of a game's 7,200 flight orders follow one given to a peon
+     * within 4 cells 0.5-2 s before (ev1log-vs16).
+     */
+    boolean flight_keep = false;
+    /**
      * iron_real (0 = off): the plan's share of iron gatherers follows the measured gatherer-time per unit of iron (a
      * running mean of measureYield's 30-s windows) where that is above the modelled trip, up to this multiple of the
      * model. The model is the walk to the nearest three nodes; the real cost is 2-3 times that from minute 14
@@ -1445,6 +1471,13 @@ class Strategy {
     boolean gather_threat_1v1 = false;
     /** A gatherer counts as stuck after this many round trips (at least 70 s) without its load changing; 0 = 70 s. */
     float stuck_trip_factor = 0f;
+    /**
+     * stuck_still_ticks (0 = off): a gatherer whose load has not changed for the stuck time (unstickGatherers, 70 s)
+     * is stuck only if it has also not left a 5-cell circle for this long. Late iron lies 100 cells and more of walk
+     * out, and of a game's 280 gatherers called stuck, 245 were walking (byelog-vs16): 140 on their way out, turned
+     * to another supply and their own avoided for two minutes, 105 on their way home with their load.
+     */
+    float stuck_still_ticks = 0f;
 
     /** Open a second armory by fresh iron once the first one's surroundings are mined out. */
     boolean expansion = true;
@@ -2683,6 +2716,10 @@ class Strategy {
         shelter_reach = params.getInt("shelter_reach", shelter_reach);
         evade_cells = params.getInt("evade_cells", evade_cells);
         evade_tower = params.getInt("evade_tower", evade_tower);
+        bystander = params.getInt("bystander", bystander);
+        bystander_reach = params.getInt("bystander_reach", bystander_reach);
+        stuck_still_ticks = (float) params.getDouble("stuck_still_ticks", stuck_still_ticks);
+        flight_keep = params.getBoolean("flight_keep", flight_keep);
         iron_real = (float) params.getDouble("iron_real", iron_real);
         tree_real = (float) params.getDouble("tree_real", tree_real);
         rock_real = (float) params.getDouble("rock_real", rock_real);
