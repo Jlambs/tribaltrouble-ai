@@ -1407,6 +1407,11 @@ final class Economy {
                                 () -> "completed " + q.describe() + " after " + (int) FableAI.seconds(
                                         ai.now() - q.placed_time) + "s with " + q.wood_sent + " wood sent");
                     }
+                    if (ai.strategy().release_builders && ai.strategy().release_fresh_ticks > 0f) {
+                        float now = ai.now();
+                        finished.values().removeIf(t -> now - t > ai.strategy().release_fresh_ticks);
+                        finished.put(p.building, now);
+                    }
                     onCompleted(p);
                 }
                 continue;
@@ -5852,9 +5857,8 @@ final class Economy {
      * that is going up, the armory's first, until it has idle_builders builders, whatever the trees by it can feed.
      * Takes the peons it orders out of {@code rest}.
      */
-    private void joinSites(@NonNull List<@NonNull Unit> rest) {
+    private void joinSites(@NonNull List<@NonNull Unit> rest, int cap) {
         Intel intel = ai.intel();
-        int cap = ai.strategy().idle_builders;
         for (int pass = 0; pass < 2; pass++)
             for (Project p : projects) {
                 if (rest.isEmpty())
@@ -5869,10 +5873,29 @@ final class Economy {
                     order(u, p.building, Action.DEFAULT);
                     intel.peon_states.put(u, PeonState.BUILD);
                     intel.builder_sites.put(u, p.building);
-                    ai.aiLog().count("idle_builders"); // peons sent to a site beyond its builders
+                    ai.aiLog().count(had_armory ? "idle_builders" : "opening_builders"); // peons sent to a site beyond its builders
                 }
             }
     }
+
+    /**
+     * release_builders: whether the peon still builds at a quarters or tower that stands and needs no repair. The
+     * engine's builder with no wood in hand chops once more for it, and one with wood walks back to it, before either
+     * goes idle there; an armory's builder walks in with its wood, which is wanted.
+     */
+    private boolean builtOut(@NonNull Unit peon) {
+        Building b = ai.intel().builder_sites.get(peon);
+        if (b == null || b.isDead() || !b.isComplete() || b.isDamaged()
+                || b.getTemplate().getTemplateID() == Race.BUILDING_ARMORY)
+            return false;
+        // release_fresh_ticks: only the builders of a building that has just gone up, not a repair's
+        float fresh = ai.strategy().release_fresh_ticks;
+        Float done = finished.get(b);
+        return fresh <= 0f || (done != null && ai.now() - done <= fresh);
+    }
+
+    /** release_builders: when each building of ours went up, for release_fresh_ticks after. */
+    private final Map<@NonNull Building, Float> finished = new LinkedHashMap<>();
 
     /** The peons that had no order at the last allocation (countStanding). */
     private final java.util.Set<@NonNull Unit> stood = new java.util.LinkedHashSet<>();
@@ -5919,8 +5942,10 @@ final class Economy {
         Building armory = intel.armory();
         List<Unit> free = new ArrayList<>();
         List<Unit> transit = new ArrayList<>();
+        List<Unit> released = new ArrayList<>();
         boolean sortie = ai.strategy().sortie_ratio > 0f;
         boolean swarm_on = ai.strategy().repair_swarm;
+        boolean release = ai.strategy().release_builders;
         for (Unit peon : intel.peons) {
             PeonState s = intel.peon_states.get(peon);
             // sortie_ratio: peons out fighting by their armory are the military's until the sortie ends
@@ -5934,10 +5959,18 @@ final class Economy {
             // salvage: not its evacuees by the building emptied
             else if (s == PeonState.TRANSIT && (salvages.isEmpty() || !nearSalvage(peon)))
                 transit.add(peon);
+            else if (release && s == PeonState.BUILD && builtOut(peon))
+                released.add(peon);
         }
         if (scout != null && (scout.isDead() || !scoutHasWork()))
             scout = scout.isDead() ? null : scout;
         countStanding(free);
+        // release_builders: free like the idle ones, with the wood they carry
+        for (Unit u : released) {
+            intel.builder_sites.remove(u);
+            free.add(u);
+            ai.aiLog().count("builders_released"); // peon-seconds a builder of a finished building was free for
+        }
 
         // 1. Construction.
         boolean wood_drop = ai.strategy().tower_wood_drop && ai.now() >= ai.strategy().tower_wood_ticks;
@@ -6073,8 +6106,11 @@ final class Economy {
                 else
                     rest.add(u);
             }
-            if (ai.strategy().idle_builders > 0 && !rest.isEmpty())
-                joinSites(rest);
+            // opening_builders: the same before the first armory has stood
+            int join = had_armory ? ai.strategy().idle_builders : Math.max(ai.strategy().idle_builders,
+                    ai.strategy().opening_builders);
+            if (join > 0 && !rest.isEmpty())
+                joinSites(rest, join);
             for (Unit u : rest)
                 if (ahead != null && MapAnalysis.dist2(u.getGridX(), u.getGridY(), ahead.site.x,
                         ahead.site.y) > PREWALK_NEAR * PREWALK_NEAR)

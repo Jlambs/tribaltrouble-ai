@@ -1552,6 +1552,23 @@ class Strategy {
      */
     int idle_builders = 0;
     /**
+     * opening_builders (0 = off): idle_builders for the opening alone, before our first armory has stood: a peon left
+     * over joins a site, the armory's first, until it has this many builders.
+     */
+    int opening_builders = 0;
+    /**
+     * release_builders: a builder is free for the next job the moment its quarters or tower stands, instead of when
+     * the engine lets go of it. The engine's RepairController only ends by the building: a builder with no wood chops
+     * once more for the finished building, carries the wood back to it and goes idle there, and the allocation takes
+     * idle peons only.
+     */
+    boolean release_builders = false;
+    /**
+     * release_fresh_ticks: release_builders frees the builders of a building for this long after it went up (0: of
+     * any standing building that needs no repair, a repair's too).
+     */
+    float release_fresh_ticks = 3000f; // 60 s
+    /**
      * armory_spare_ticks (game ticks, 0 = off): from then on a second armory is kept as a spare (Economy.planSpare).
      * idl-vs8/12/15 (lab/fable/noarmory.py): of the 244 games in which an armory of ours stands at every moment after
      * the first 243 are won, of the 56 with a moment of none 8; before that moment we stand at exactly one armory for
@@ -2876,6 +2893,9 @@ class Strategy {
         opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
         opening_join = params.getBoolean("opening_join", opening_join);
         idle_builders = params.getInt("idle_builders", idle_builders);
+        opening_builders = params.getInt("opening_builders", opening_builders);
+        release_builders = params.getBoolean("release_builders", release_builders);
+        release_fresh_ticks = (float) params.getDouble("release_fresh_ticks", release_fresh_ticks);
         armory_spare_ticks = (float) params.getDouble("armory_spare_ticks", armory_spare_ticks);
         opening_fallback = params.getBoolean("opening_fallback", opening_fallback);
         opening_keepout = params.getInt("opening_keepout", opening_keepout);
