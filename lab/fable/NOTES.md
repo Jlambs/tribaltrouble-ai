@@ -2374,7 +2374,9 @@ and `@f10`'s 178** (`mem-vs16`: +35 -24 against `@f11`, +52 -15 against `@f10`),
 213 / 179; units lost inside razed buildings 48 / 37 / 32; iron 807 / 862 / 879. `chief_bystander` (the chieftain's
 mission minds no enemy locked in a hunt on another unit: the same reasoning as for the peons): 29 approaches called
 off an hour for 39, the same 11 blasts, 108 wins for 105 (`mf2-vs16`, +10 -7); adopted as waste removed with no
-harm seen, not as a gain.
+harm seen, not as a gain. The default itself on maps 25151..25300: **110 of 150** (`ml2-vs16`; `@f10` 87, the
+three 105). On top of it, tried a second time: `reinforce_route` 106 (`mj2-vs16`) and `evade_chicken` 107
+(`mk2-vs16`). Both do what they are for and neither wins; both stay off.
 
 **The chieftain** (`shred`, strict: the `shred_t_*` counters count his rounds of half a second by what he does;
 `mb2-vs16`, an hour of game): 11.2 blasts that catch 22 warriors each, and of the hour 878 s charging, 613 s walking
