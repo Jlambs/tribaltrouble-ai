@@ -644,6 +644,12 @@ final class Shepherd {
             ox = at_home ? leader.getGridX() : armory.getGridX();
             oy = at_home ? leader.getGridY() : armory.getGridY();
             origin = at_home ? "leader" : "armory";
+            // shepherd_home_pair_until: no new second shepherd from then on (one that stands stays)
+            if (f.shepherd == null && strategy.shepherd_home_pair_until > 0f
+                    && ai.now() >= strategy.shepherd_home_pair_until) {
+                ai.aiLog().count("shepherd_home_late"); // tends with no second shepherd recruited any more
+                return;
+            }
             // shepherd_home_spare: while the copy's own flock has its origin at home, its shepherd is the one for
             // home. No second one is recruited then, and one that stands here leaves when the copy's own is here.
             Flock main = f.partner;

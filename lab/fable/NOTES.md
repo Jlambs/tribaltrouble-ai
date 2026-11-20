@@ -2158,6 +2158,22 @@ model at minute 40 +5.9 +- 2.3, waves at our base 31.0 -> 26.1, buildings lost 3
 first start (`f8d-vsN`): N=8 100 -> 100, N=10 98 -> 99, N=12 89 -> 94, N=13 88 -> 87, N=14 81 -> 87, +24 -13
 together, fewer buildings lost at every N (N=14: 13.9 -> 8.8).
 
+On top of `@f8` at N=16, 300 maps an arm, against its 154 wins on 25001..25300 (its 148 on 26001..26300 where "m"):
+
+| arm | wins | the model at minute 40 | what its counter says |
+|---|---|---|---|
+| a second shepherd for every copy (`shepherd_home_pair=1`; `hpa`, `hpam`) | 154 -> 162 (+27 -19); 148 -> 142 (+25 -31) | +3.4 +- 1.8; +0.4 +- 1.8 | as many second shepherds either way (162 a game) |
+| for the copies 60 cells off (`hp60`) | 154 -> 162 (+27 -19) | +3.1 +- 1.8 | at N=16 nearly every copy is |
+| no new second shepherd from minute 12 / 20 / 30 (`shepherd_home_pair_until`, new; `hpu12`, `hpu20`, `hpu30`, against `hpa`) | 162 -> 144, 151, 151 (+23 -41, +18 -29, +7 -18) | -4.9, -2.5, -1.5 | second recruits 162 -> 28, 60, 89 a game |
+| rings out to 38 cells where the ring of 22 has no spot (`shepherd_fallback_r=38`; `fb38`) | 154 -> 158 (+44 -40) | -1.2 +- 2.3 | tends with no spot 13,540 -> 10,872, waves at the base 24.8 -> 25.2 |
+| the same, parked warriors block only within 8 cells (`shepherd_clear_parked=8`; `fbcp`) | 154 -> 152 (+32 -34) | -0.9 +- 2.2 | no spot 13,540 -> 9,028, waves at the base 25.7 |
+
+Which copies get the second shepherd does not matter (+52 -50 over the 600 maps), so 120 cells stays. The late
+second shepherds are not waste, though one in eight arrives: ending the recruiting loses wins, the more the sooner
+(my reading of the start at minute 20 was wrong). The wider rings do what they say and move nothing: a ring beyond
+22 cells is allowed only where the copy's group stands far from our buildings, and those are not the groups whose
+waves reach the base.
+
 ## Reproduce
 
 ```bash

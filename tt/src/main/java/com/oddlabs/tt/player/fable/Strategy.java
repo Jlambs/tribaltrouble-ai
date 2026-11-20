@@ -2184,6 +2184,15 @@ class Strategy {
      */
     boolean shepherd_home_spare = false;
     /**
+     * shepherd_home_pair_until (game ticks, 0 = never): from then on no new second shepherd is recruited; one that
+     * stands stays. Started at minute 20 the second shepherds buy nothing (hps20-vs15: waves at our base 18.7 for
+     * 19.9 with 88 of them recruited a game), and those sent across the field after minute 20 reach a spot in one
+     * case of eight, which read as if the pair gained only by the ones that walked out early. It does not: at N=16
+     * on 300 maps an end at minute 12, 20 and 30 wins 144, 151 and 151 where no end wins 162 (hpu12-vs16, hpu20-vs16,
+     * hpu30-vs16 against hpa-vs16: +23 -41, +18 -29, +7 -18), the worse the sooner. Off.
+     */
+    float shepherd_home_pair_until = 0f;
+    /**
      * shepherd_detour_ticks (game ticks, -1: shepherd_fixes_ticks): from when shepherd_detour acts. It came in with
      * the late fixes (stuck, no-progress and no-spot releases, each with a gap of minutes for the copy), all behind
      * shepherd_fixes_ticks = 40 min, though it is a walk round what stands in the way and not a release.
@@ -2501,6 +2510,7 @@ class Strategy {
         shepherd_unloaded = params.getInt("shepherd_unloaded", shepherd_unloaded);
         shepherd_home_pair_ticks = (float) params.getDouble("shepherd_home_pair_ticks", shepherd_home_pair_ticks);
         shepherd_home_spare = params.getBoolean("shepherd_home_spare", shepherd_home_spare);
+        shepherd_home_pair_until = (float) params.getDouble("shepherd_home_pair_until", shepherd_home_pair_until);
         shepherd_detour_ticks = (float) params.getDouble("shepherd_detour_ticks", shepherd_detour_ticks);
         shepherd_home_pair = params.getInt("shepherd_home_pair", shepherd_home_pair);
         shepherd_safe_look = params.getInt("shepherd_safe_look", shepherd_safe_look);
