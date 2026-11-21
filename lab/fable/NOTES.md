@@ -3187,6 +3187,21 @@ What the corrected harvest time did (`harvest_ticks`, 500 in the cost model wher
 What is left of the slow openings after these is the ground itself: starts with two trees or none in reach (the
 first quarters at 59 to 98 s for the others' 38 to 50), armories 300 m out, and a neighbour next door.
 
+**The chain and the later army in whole games: nothing in the wins.** `hold_mid` 6 (six kept inside from 240 s too)
+had won 52 of 150 at N=18 for `@f15`'s 46 (`oz2-vs18`, +18 -12). Both, each alone and together, on 150 maps never
+used at N=16 (35001..35150) and at N=17 (33151..33300), against `@f15` (`oc0-vs16` 112 wins, `oc2-vs17` 83):
+
+| | N=16 wins | | N=17 wins | | our warriors at 6 / 8 / 10 min, N=16 | N=17 |
+|---|---|---|---|---|---|---|
+| the chain (`oc1`, `oc3`) | 111 | +8 -9 | 83 | +13 -13 | +1.3 / +4.4 / +2.2 | +1.0 / +1.7 / +0.6 |
+| `hold_mid=6` (`oc4`, `oc5`) | 112 | +17 -17 | 81, 1 draw | +18 -20 | -2.2 / +3.5 / +2.3 | -2.4 / +2.4 / +3.8 |
+| both (`oc6`, `oc7`) | 107 | +12 -17 | 79 | +15 -19 | -1.0 / +6.0 / +4.6 | -1.0 / +4.3 / +2.8 |
+
+The armies move as the openings said and the campaign does not: the copies housed are the same to a tenth at every
+minute from 8 to 20 in all six runs, where `@f15`'s 6 to 10 warriors had taken 0.2 to 0.4 off them. `hold_mid` is a
+trade and it buys nothing over three blocks (+53 -49): left at 4. The chain is walking taken out with no harm
+shown (+21 -22).
+
 ## Reproduce
 
 ```bash
@@ -3254,6 +3269,9 @@ python lab/fable/openspeed.py os0-vs16 os1-vs16 os10-vs16 os18-vs16             
 ./lab/fable/dev.sh ow4-vs16 "@f14 vs hard*16" 32151..32300     # ow5: @f15
 ./lab/fable/dev.sh ow6-vs17 "@f14 vs hard*17" 33001..33150     # ow7: @f15
 ./lab/fable/dev.sh oz0-vs18 "@f14 vs hard*18" 34001..34150     # oz1: @f15; oz2: fable:hold_mid=6 (on @f15's defaults)
+./lab/fable/dev.sh oc0-vs16 "@f15 vs hard*16" 35001..35150     # oc1, oc4, oc6: the chain, hold_mid=6, both (made as fable): the specs are in each run.json
+./lab/fable/dev.sh oc2-vs17 "@f15 vs hard*17" 33151..33300     # oc3, oc5, oc7: the same at N=17
+./lab/fable/dev.sh ot5log-vs16 "fable:opening_chain=2,opening_chain_m=60,opening_prewalk_first=true vs hard*16" 22078,22054,22081,22094,22013,22061,22023,22046,22040,22065,22011,22057,22051,22024,22070,22093 --logs --minutes 10
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
