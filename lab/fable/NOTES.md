@@ -180,7 +180,7 @@ The warriors' own fighting has little left in it (they throw 70-75 % of the time
 enemy in reach, the Hard copies 63-65 %); routed reinforcements arrive alive and win nothing; the chieftain blasts
 once in 320 s where the charge takes 70, and three tries at that changed nothing.
 
-The tower round (2026-11-21/22, user: a counter to the enemy's towers; "The towers" below). `TowerTrace`: a
+The tower round (2026-11-20, user: a counter to the enemy's towers; "The towers" below). `TowerTrace`: a
 garrison kills one of ours in about four seconds whatever stands in its reach, 104 warriors a game, and a razed
 tower stands 29.5 s from the first warrior in its reach, 19 of them before anything damages it, because nothing
 orders a warrior onto a tower. Three counters were built and none is a default. Ordering the warriors onto it
@@ -190,6 +190,17 @@ of ours as a bait (`bait`): the garrison throws at the first thing it finds unti
 holds it for a minute and the towers razed under it cost 0 to 3 warriors for 9; but the site has to stand before
 the army comes, which worked for one tower in fifteen, and as built (two building slots kept free, ten peons
 with the army) it costs 22 games of 150. `fable` still plays `@f12`'s games.
+
+The chieftain round (2026-11-20, user: the chieftain next; "The chieftain's blast, traced" below). `ChiefTrace`:
+his blasts kill 204 enemy warriors an hour of game, a fourteenth of our kills, 27 taken a blast; he is there 2,540 s
+of an hour, which allows 33 casts (not 51), and makes 12, because a charge waits 72 s for its blast: the blob he
+walks to is chosen anew every half second, a walking wave that passes sees him 16 times an hour, and one to seven
+warriors hunting him turn a charged blast back to the armory ten times an hour. Five repairs were built
+(`shred_point_blank`, `shred_press`, `shred_stick`, `shred_sidestep`, and a wider range with them), each does what
+it is for, and none is a default: the best is an eighth more blasts at the same losses, on two blocks of maps, and
+no arm wins more games than the default (101 to 108 of 150 for its 110; 210 of 300 for 214). His stun with the army
+(`shred_from_ticks`) never reaches a tower and is ten seconds from where he may stand. `fable` still plays `@f12`'s
+games.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -2279,7 +2290,7 @@ percent of its own. The search is wide because the field itself is crossed by br
 only because of the ground by the goal; what is left of the cost (590 plans a game that give up after 8,000 blocks)
 wants fewer plans (one every walk order, 2 s, now) or coarser blocks. Not done.
 
-### The micro round: what single units do among the enemy (2026-11-20/21)
+### The micro round: what single units do among the enemy (2026-11-20)
 
 The user's direction: no new strategy, the handling of single units: paths, the choice of supply and destination,
 warriors and the chieftain in a fight. The method was the one that found the shepherds' flaws: a log-only tracer
@@ -2401,7 +2412,7 @@ without a chieftain. A blast takes 70 s to charge and comes every 320 s. `traceN
 (140 cells from the armory; 77 % one of 20 and more, 27 % one within 200 cells), in 33 % eight and more awake enemy
 warriors are in range, in 14 % there is nothing.
 
-### The towers: what a garrison does, and three counters that do not pay (2026-11-21/22)
+### The towers: what a garrison does, and three counters that do not pay (2026-11-20)
 
 The user's direction after the micro round: a counter to the enemy's towers. The method again a log-only tracer
 first: `TowerTrace` (a contact is one manned enemy tower from the first warrior of ours within 16 cells of it until it
@@ -2510,6 +2521,137 @@ shorten the contact takes warriors from the work that decides the game or peons 
 stop the garrison throwing need units in place before the army arrives. The stun is the engine's own answer (a cast
 within 18 cells, 10 to 30 s for every tower there), and the chieftain is at home for 250 kills an hour.
 
+### The chieftain's blast, traced: five repairs that work and none that wins (2026-11-20)
+
+The user's direction after the tower round: the chieftain. Again a log-only tracer first: `ChiefTrace` (every half
+second the enemy warriors about him by what they do: parked, hunting him, hunting another unit of ours, walking,
+other; how many a blast would reach from where he stands and from the best cell a 6 s and a 15 s walk away; with
+`--logs` a `CHIEF s` line a second, a `CHIEF blast` line a cast with who was in reach at the order, who the blast
+took, who died and what it cost him, `CHIEF dmg`, `CHIEF dead`, and a `CHIEF sum` a minute), read by
+`lab/fable/chief.py`. And counters that need no logs: `shred_taken`, `shred_killed` (the enemy warriors within 18
+cells when a blast takes its targets, and those of them dead when its ring has passed), `chief_spotted` and
+`chief_spotted_charged` (an enemy warrior begins to hunt him with none after him the round before), `chief_hp_lost`.
+Nothing of this round is a default: `fable` without params plays `@f12`'s games (8 of 8 identical on 26001..26008,
+`chk12d-vs16`; with the first two repairs in the code, 150 of 150 on 25151..25300, `cz2-vs16` against `ml2-vs16`).
+
+**The engine's blast and the engine's wave** (`SonicBlast`, `SonicBlastFactory`, `MagicBehaviour`, `Stun`,
+`AdvancedAI.nodeAttackWithWarriorsAndChieftain`, `WalkBehaviour`):
+
+- A cast is six seconds in which he stands, whatever is ordered. 2.15 s after the order the blast takes its targets:
+  everything within 36 m of him then. From 3.77 s a ring runs out to 36 m in 0.8 s and hits each target as it
+  passes, with a chance of 2 to 17 (by the ring's radius; 2 from about 8 m out) times (1 - defense) and 150 to 30
+  damage: certain for rock warriors and peons, .6 to .65 for iron. A unit that walks in after the 2.15 s is not hit.
+  If he dies before the 3.77 s there is no blast.
+- The stun is the same cast with 10 to 30 s by distance on the same curve: 16 s at one cell, 10.7 s from three
+  cells out. From the 17 cells the standoff at a tower keeps it is a ten-second stun.
+- A wave is not sent after a unit. It is an attack-move to the cell where our unit nearest the copy's oldest idle
+  warrior stood at the launch (or to our nearest building, when that unit is not within 0.71 of its distance). Its
+  warriors scan 8 cells (Chebyshev) as they walk, hunt what they see (a hunt does not scan), and park at the cell
+  when they arrive with nothing in sight.
+
+**What he does in an hour of game** (`@f12` at N=16; the 150 maps 25151..25300, `cz2-vs16`): 10.3 blasts that take
+277 enemy warriors and kill 204 of them, 7.5 % of our 2,726 kills, and 1.5 chieftains lost. In the 12 logged games
+(22001..22012, `cf2log-vs16`):
+
+- He is there 2,540 s of the 3,600: the first is born at 683 s, and a dead one is away 198 s (median; quartiles 196
+  and 209: the training with 14 peons inside). So the charge allows 33 casts an hour, not the 51 the micro round's
+  note counted on the whole hour, and he makes 12.4.
+- A blast takes 27 warriors (quartiles 18 / 26 / 34), 14.5 of them rock, and kills 19.8; 2.2 of ours stand in it
+  and 1.4 die. 9.4 of the 12.4 are cast with an awake warrior within 9 cells of him ("hunted": 22.5 in reach at the
+  order, 28.0 taken, 2.4 of his hit points lost in the cast), 2.7 when the fill is reached on the way to a cast
+  point (25.3 taken, 0.3 hit points), 0.4 from the cast point itself.
+- While a charge waited, a blast would have reached 21 at most from where he stood, 38 from the best cell a 6 s walk
+  away and 48 from a 15 s walk: he takes the edge of what is there.
+- A charge waits 72 s for its blast (median 27). Of 13.5 charges an hour 3.6 are cast within 15 s, 4.3 within 45 s,
+  3.5 within two minutes (276 s together) and 2.2 after more (542 s: ten approaches and 281 cells walked each).
+  Another 600 s of "charged, no blob" are the ends of won games.
+- 39.7 walks to a cast point an hour: 23.3 end with an awake warrior within 9 cells (the mission is called off and
+  he walks towards the armory), 10.8 with the blast (the point 47 cells off at the start, 17 s), 5.1 with the blob
+  gone (94 cells off at the start). In a walk that ends with the blast the cast point jumps 3.9 times, 119 cells:
+  the blob is chosen anew every half second by members / (30 + cells) and the sizes change with every launch
+  (s22005 at 1119-1207 s: blobs 130 cells north and 65 south by turns, a turn every few seconds).
+- An enemy warrior begins to hunt him 24.3 times an hour, 16.1 of them with a walking wave within 17 cells the
+  second before and 8.1 with parked warriors only: the waves that pass see him, not the blobs he walks up to (a
+  cast point may lie 6 cells from a parked warrior, but he blasts on the way). 12.2 times an hour hunters hold a
+  charged blast up, 453 s: one to three of them 6.4 times (223 s), four to seven 3.4 times (109 s), with a parked
+  blob of 15 and more within a 15 s walk in 60 % (s22003 at 1034 s: four of them, 86 s to the armory with a blob
+  of 50 27 cells behind him, 75 s back).
+- Charged with 8 and more in reach and no cast: 146 s an hour. 87 s of it our own units rule it out (22 of ours
+  within 19 cells: the home army, gatherers, builders: he is at the base or in a fight of ours), 42 s an enemy
+  within 5 cells of him does (`castValue`'s rule for cast points, applied to the cell he stands on: with a hunter at
+  him he cannot blast at all), 17 s he waits for the fill.
+- 109 hit points lost an hour (he never heals), 89 % with a hunter of his within 17 cells: 45 charged, 63 not, 24 in
+  the casts. 1.7 deaths, 1.1 of them with the blast charged.
+- Of 4,500 launches in the 12 games 3,945 go to a shepherd's cell and 63 to the chieftain's: he is seen, not aimed
+  at.
+
+**Five repairs** (all off):
+
+- `shred_point_blank`: with an awake warrior within 9 cells, an enemy within 5 cells of him does not rule out a
+  blast from where he stands.
+- `shred_press` (`shred_press_cells` 30, `shred_press_fire_cells` 12, `shred_press_hunters` 3): charged, with a cast
+  point near, he is not turned back by an awake warrior within 9 cells, walks on with what hunts him and blasts at
+  the fill or when he is hit. `shred_defend` (n): being hit he blasts for n in reach instead of `shred_min`.
+- `shred_stick` (factor): the blob chosen within the last 10 s scores that much more.
+- `shred_sidestep`: he keeps 10 cells (Chebyshev) from the next 14 cells of every walking enemy warrior's way: steps
+  to the nearest of 32 cells about him that is clear, and waits only where no way passes.
+- `shred_range` beyond 140 with these: 37 % of the moments with no blob have one of 15 and more within 200 cells.
+
+Logged, per 1,000 s he is there (12 games each; `cf2log`, `cb1log`, `cq1log`, `cq2log`, `cs1log`, `cd1log`):
+
+| | casts | taken | killed | deaths | hit points lost | a blast takes / costs him | a charge waits, approaches |
+|---|---|---|---|---|---|---|---|
+| default | 4.9 | 132 | 97 | 0.67 | 43 | 27.0 / 1.9 | 72 s, 3.3 |
+| point blank | 5.6 | 162 | 119 | 0.85 | 49 | 29.0 / 2.0 | 71 s, 3.4 |
+| and press (any number of hunters) | 6.0 | 189 | 133 | 1.34 | 77 | 33.3 / 5.6 | 56 s, 2.0 |
+| and press with two hunters at most, defend 3 | 5.6 | 160 | 115 | 1.05 | 66 | 29.2 / 4.0 | 60 s, 2.1 |
+| and press with three, defend 4, stick 1.6 | 5.3 | 154 | 109 | 1.16 | 70 | 29.5 / 3.8 | 69 s, 2.6 |
+| sidestep alone | 5.5 | 141 | 104 | 0.73 | 43 | 25.7 / 1.2 | 76 s, 2.5 |
+
+The sidestep does what it is for (a walking wave sets a hunter on a charged chieftain 3.1 times an hour for 8.8)
+and the pressed blasts are the big ones (38 to 43 taken), at the price of the cast: he stands six seconds with
+whatever followed him in throwing reach.
+
+On 150 maps from the first start (25151..25300, an hour of game):
+
+| | wins | against `cz2-vs16` | blasts | killed by them | chieftains lost |
+|---|---|---|---|---|---|
+| `cz2-vs16` `@f12` | 110 | | 10.3 | 204 | 1.5 |
+| `pb2` point blank | 105 | +5 -10 | 11.7 | 234 | 1.6 |
+| `sj2` sidestep | 104 | +10 -16 | 10.7 | 210 | 1.6 |
+| `sk2` sidestep, point blank, stick 1.6 | 107, 1 draw | +13 -16 | 11.8 | 230 | 1.5 |
+| `sr2` and `shred_range=200` | 101 | +14 -23 | 12.8 | 239 | 1.8 |
+| `pp2` point blank and press | 103 | +8 -15 | 11.1 | 248 | 2.3 |
+| `ha2` point blank, `hold_chieftain_again=40` (a later chieftain trained by 40 peons) | 108 | +7 -9 | 12.1 | 241 | 1.6 |
+| `sv2` `shred_from_ticks=60000` (with the army until minute 20) | 104, 1 draw | +10 -16 | 8.1 | 152 | 1.7 |
+
+And point blank on the 300 maps 26001..26300 (`pbm-vs16` against `f12m-vs16`): 210 wins and two draws for 214 (+11
+-15), 11.3 blasts for 10.2, 258 in reach at the order for 229, 1.6 chieftains lost for 1.6.
+
+So the one repair that is free is the point-blank rule: an eighth more blasts and a seventh more kills by them at
+the same losses, on both blocks. The others add little to it (the sidestep 3 % by itself, the wider range, the
+press and the fuller trainer 2 to 6 % on top) and cost what they gain: the sidestep its walking (100 s an hour more
+on the way), the press and the wider range chieftains (2.3 and 1.8 lost for 1.5).
+And none of it shows in the wins: every arm is 3 to 9 under the default on the 150 maps and point blank 4 under it
+on the 300 (+16 -25 over both, z -1.4). Part of that is the default's own luck on these maps (`@f12`'s options were
+chosen on them, so anything that plays other games falls back towards its true rate), and the rest is the size of
+the thing: thirty more kills an hour are one in a hundred of ours. All five stay off.
+
+**His stun with the army** (`shred_from_ticks=60000`: he marches and stuns as before the mission until minute 20,
+then blasts; `sf1log-vs16`, 12 logged games): 4.2 stuns a game in those nine minutes where the charge allows 13,
+and the garrisons of the towers the army meets are stunned 7 s a game of their 686 s of contact. As written he
+never stuns a tower: `shouldStun` wants a catch of 4 with a tower counting 3, and he marches behind the army's
+middle while the towers stand at its head. And a tower's stun from the standoff is ten seconds, two or three
+warriors of the nine a razed tower costs.
+On the 150 maps (`sv2-vs16`) the nine minutes with the army are worth 0.09 copies at minute 20 (9.46 housed for
+9.55) and cost the blasts of those minutes: 470 to 480 enemy warriors stand at minutes 18 to 20 for 441 to 457, the
+blasts kill 152 an hour for 204, and it wins 104 and a draw for 110.
+
+**Where this leaves the chieftain.** His blasts are a fourteenth of our kills and nothing found doubles them: the
+targets within his 140 cells are transient (a blob launches as soon as its copy has a wave's worth idle), the waves
+that pass see him, and every way to blast more often stands him six seconds among what hunts him. The mission as it
+is uses 12 of the 33 casts his time allows; the repairs here reach 13 to 14.
+
 ## Reproduce
 
 ```bash
@@ -2543,6 +2685,11 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./lab/fable/dev.sh tw0log-vs16 "fable vs hard*16" 22001..22012 --logs   # the tower round's logged runs: st*log (storm), bt*log (bait)
 python lab/fable/towers.py tw0log-vs16 st1log-vs16             # contacts with manned enemy towers, from TowerTrace
 ./lab/fable/dev.sh sa2-vs16 "fable:storm=17 vs hard*16" 25151..25300    # sb2..si2, ba2..bc2: the specs are in each run.json
+./lab/fable/dev.sh cf2log-vs16 "fable vs hard*16" 22001..22012 --logs   # the chieftain round's logged runs: cb1log, cq1log, cq2log, cs1log, cd1log, sf1log
+python lab/fable/chief.py cf2log-vs16 cb1log-vs16              # what the chieftain does with his blast, from ChiefTrace
+./lab/fable/dev.sh cz2-vs16 "fable vs hard*16" 25151..25300    # ml2-vs16's games with the blast counters; pb2, sj2, sk2, sr2, pp2, ha2, sv2: the specs are in each run.json
+./lab/fable/dev.sh pbm-vs16 "fable:shred_point_blank=true vs hard*16" 26001..26300
+python lab/fable/rates.py --re "shred_(blast$|taken|killed)|chief_" cz2-vs16 pb2-vs16
 ./lab/fable/dev.sh f12m-vs16 "fable vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
@@ -2585,7 +2732,7 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   the shepherds" above. Still open: the waves at our base did not fall with the way (24-26 a game at N=16); three
   quarters of them leave a group parked near us while its shepherd is 36-112 cells off or has no spot. And the
   way's plans that find nothing (771-1,238 a game), and its cost.
-- After the micro round (2026-11-21, "The micro round" above; an hour of game at N=16 with `@f11`): 1,100 units
+- After the micro round (2026-11-20, "The micro round" above; an hour of game at N=16 with `@f11`): 1,100 units
   lost for 2,660 killed. Open, by size: (1) the towers: 126 of the attack's 400 deaths a game fall within 17 cells
   of an enemy tower, 80 of them with three enemy warriors or fewer about (the breach and raze drills did not change
   it: the tower throws 15.9 cells and the army arrives as a column); (2) the chieftain: 11 blasts an hour of 22
@@ -2595,12 +2742,18 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   the kill cell the second session asked for; (3) the home army: 218 deaths a game, 134 of them at odds of two to
   one and worse, 11 to 50 cells from our nearest building; (4) peons on their way into a building, 110 an hour,
   the largest loss of peons left after the shepherds' 180.
-- After the tower round (2026-11-22, "The towers" above): the garrisons take 104 warriors a game and nothing
+- After the tower round (2026-11-20, "The towers" above): the garrisons take 104 warriors a game and nothing
   found takes them back without costing more. Open: (1) a bait or a corner decoy that is in place before the army,
   from a crew that waits at the next copy instead of racing the army to this one, and without a home tower's slot
   (a slot freed for the minute it is needed); (2) the stun, 10 to 30 s for every garrison within 18 cells, if the
   chieftain's place is ever reopened; (3) what the bait's 22 games are made of: not the slots alone (five or
   seven quarters for six, a tower more or fewer, are 105 and 104 for 110), so the standing squad or the sites.
+- After the chieftain round (2026-11-20, "The chieftain's blast, traced" above): the mission makes 12 of the 33
+  casts his time allows and the repairs reach 13 to 14 with nothing in the wins, so (2) of the micro round's list
+  is smaller than it read there. Open: `shred_point_blank` is free by its counters (an eighth more blasts, the same
+  chieftains lost) and 9 wins under the default over 450 maps on which the default's options were chosen; a pair
+  on maps of their own would settle it. What would change his size is a blob brought to him whole, a wave's
+  worth at one known cell with nothing awake about, and the shepherds lead the waves the other way.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,

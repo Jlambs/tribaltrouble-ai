@@ -2122,7 +2122,9 @@ class Strategy {
      * him behind him, and blasts once the fill is reached or he is hit with shred_min in reach. Walking home does not
      * shake a hunter (it walks as fast as he does, and only the blast or our towers end it): 10 times an hour of game
      * one to seven of them turn him back, 330 s of a charged blast, with a blob of 15 and more within a 15 s walk in
-     * 60 % (cf0log-vs16, ChiefTrace).
+     * 60 % (cf0log-vs16, ChiefTrace). Off: with shred_point_blank the blasts kill 248 an hour for 234 and 2.3
+     * chieftains are lost for 1.6 (he stands six seconds in the cast with what followed him), 103 wins of 150 for the
+     * default's 110 (pp2-vs16).
      */
     boolean shred_press = false;
     int shred_press_cells = 30;
@@ -2134,7 +2136,8 @@ class Strategy {
      * shred_stick (factor, 1 = off): the blob chosen within the last 10 s scores this much more than the others
      * (Chieftain.findBlob scores members / (30 + cells)). The sizes jump with every launch, and without it he turns
      * round between blobs 100 and more cells apart every few seconds: a cast point jumps 3.9 times, 119 cells, in a
-     * walk that ends in a blast (cf0log-vs16, s22005 at 1119-1207 s).
+     * walk that ends in a blast (cf0log-vs16, s22005 at 1119-1207 s). Off: with the sidestep and point blank it adds
+     * nothing to point blank alone (sk2-vs16: 230 killed an hour for 234, 107 wins of 150).
      */
     float shred_stick = 1f;
     /**
@@ -2143,7 +2146,9 @@ class Strategy {
      * steps to the nearest of 32 cells about him that is clear of every such way, and his waiting points are chosen
      * clear of them. 24 times an hour of game an enemy warrior begins to hunt him, 16 of them with a walking wave
      * within 17 cells the second before and 8 with parked warriors only (cf2log-vs16, ChiefTrace): the waves that
-     * walk past see him, not the blobs he walks up to.
+     * walk past see him, not the blobs he walks up to. Off: a walking wave sets a hunter on a charged chieftain 3.1
+     * times an hour for 8.8 (cd1log-vs16), he walks 100 s an hour more, and the blasts kill 210 for 204 (sj2-vs16, 104
+     * wins of 150 for 110).
      */
     boolean shred_sidestep = false;
     /**
@@ -2156,7 +2161,8 @@ class Strategy {
      * a blast from where he stands (castValue's rule for cast points: what stands that near throws before the blast
      * lands). Whatever is that near has seen him already, and with it there he could not blast at all: charged with 8
      * and more in reach he stands 64 s an hour of game under that rule, and 1.1 of his 1.7 deaths an hour come with
-     * the blast charged (cf0log-vs16, cp1log-vs16, ChiefTrace).
+     * the blast charged (cf0log-vs16, cp1log-vs16, ChiefTrace). Off: 11.7 blasts an hour for 10.3 and 234 killed by
+     * them for 204 at the same chieftains lost, and 105 wins of 150 for 110 (pb2-vs16), 210 of 300 for 214 (pbm-vs16).
      */
     boolean shred_point_blank = false;
     /**
