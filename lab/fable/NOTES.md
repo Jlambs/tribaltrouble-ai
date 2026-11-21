@@ -180,6 +180,17 @@ The warriors' own fighting has little left in it (they throw 70-75 % of the time
 enemy in reach, the Hard copies 63-65 %); routed reinforcements arrive alive and win nothing; the chieftain blasts
 once in 320 s where the charge takes 70, and three tries at that changed nothing.
 
+The tower round (2026-11-21/22, user: a counter to the enemy's towers; "The towers" below). `TowerTrace`: a
+garrison kills one of ours in about four seconds whatever stands in its reach, 104 warriors a game, and a razed
+tower stands 29.5 s from the first warrior in its reach, 19 of them before anything damages it, because nothing
+orders a warrior onto a tower. Three counters were built and none is a default. Ordering the warriors onto it
+(`storm`) halves that wait and takes 30 % of the garrison's kills, and loses 15 games of 150: the warriors it takes
+are the ones that cut the copy down. The sappers alone, sooner or more of them, are even or worse. And a tower site
+of ours as a bait (`bait`): the garrison throws at the first thing it finds until that is dead, a mended site
+holds it for a minute and the towers razed under it cost 0 to 3 warriors for 9; but the site has to stand before
+the army comes, which worked for one tower in fifteen, and the building slot it needs is a tower fewer at home,
+which alone costs 22 games. `fable` still plays `@f12`'s games.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2390,6 +2401,112 @@ without a chieftain. A blast takes 70 s to charge and comes every 320 s. `traceN
 (140 cells from the armory; 77 % one of 20 and more, 27 % one within 200 cells), in 33 % eight and more awake enemy
 warriors are in range, in 14 % there is nothing.
 
+### The towers: what a garrison does, and three counters that do not pay (2026-11-21/22)
+
+The user's direction after the micro round: a counter to the enemy's towers. The method again a log-only tracer
+first: `TowerTrace` (a contact is one manned enemy tower from the first warrior of ours within 16 cells of it until it
+falls, loses its garrison, or has had none of ours in reach for 10 s; every half second what each warrior in reach
+does and what the garrison throws at; with `--logs` a `TOWER s` line a second, a `TOWER end` line a contact, and a
+`jampic` of the first big contacts), read by `lab/fable/towers.py`. Nothing of this round is a default: `fable`
+without params plays `@f12`'s games (8 of 8 identical on 26001..26008, `chk12b-vs16`).
+
+**The engine's tower** (`MountUnitContainer`, `IdleController`, `AttackController`, `AttackScanFilter`,
+`UnitGrid.scan`, `InstantHitFactory`, `RepairBehaviour`, `Stun`):
+
+- One warrior inside. It scans only while it has no target, every 1 to 2 s, the square of 14 cells around the tower
+  (29 x 29), ring by ring outwards, and takes the highest priority anywhere in the square (warrior 4, peon 3,
+  building 1 or 2), the first found among equals. Then it throws at that target every 2 s until it is dead or out of
+  reach (15.9 cells for a unit, 16.9 for a tower's site), and does not scan meanwhile. After a kill it stands 1 to 2 s
+  before the next scan. Its throw hits with three times the chance: .675 on an iron warrior, always on a peon.
+- So a garrison kills one warrior in about four seconds however many stand in its reach, and its kills are its
+  seconds of contact divided by four.
+- A warrior throws at a tower from 8.9 cells, 1.5 damage a throw on average: 133 thrower-seconds a tower. A peon's
+  swing takes 6 from a tower or a tower's site every 2.2 s (3.6 warriors' worth) and needs the cell next to it.
+- The chieftain's stun silences every garrison within 18 cells for 10 to 30 s (`Stun` walks into the tower for its
+  unit); his blast does 30 to a tower. Either cast empties both charges (40 s and 70 s). He is at home (`shred`).
+- A peon carries one wood, five strokes of 1 hit point a second on a site; a placed site starts at 1 hit point.
+
+**What the army does under a tower** (`@f12`, 12 logged games at N=16, maps 22001..22012, `tw0log-vs16`, a game):
+20 contacts, 16 towers razed, 718 s; 196 warriors dead in reach, 104 of them the garrison's target when they died.
+A razed tower stands 29.5 s from the first warrior in its reach (19 s before anything damages it) and costs 9.4
+warriors and a peon. Of the 18,500 warrior-seconds in reach 8 % throw at the tower, 6 % walk up to it, 26 % are
+after enemy warriors (7 in reach on average), 21 % after peons, 14 % at other buildings, 25 % walk. Nothing orders a
+warrior onto a tower: the army attack-moves, and the engine's own scan takes any warrior or peon within 8 cells
+first. Sappers are in reach 996 s and swing 172 s of it.
+
+**1. The storm** (`storm=17`: every warrior of the attack within `storm_join` 24 cells of a manned tower that has
+one of them in its reach is sent at it as a hunt, which does not scan on the way; one with an enemy warrior in
+throwing reach fights that first; the sappers within 30 cells go in with them). It does what it says, and it loses
+games:
+
+| logged, 12 games | contacts (razed) | first damage | a razed tower stands | warriors + peons a razed tower | the garrison's kills a game |
+|---|---|---|---|---|---|
+| `tw0log` default | 20.2 (16.4) | 19.0 s | 29.5 s | 9.4 + 1.0 | 104 |
+| `st1log` storm=17 | 20.7 (17.4) | 10.0 s | 20.5 s | 7.4 + 0.5 | 74 |
+| `st2log` and storm_close=5.5 | 15.6 (12.9) | 12.0 s | 21.0 s | 8.1 + 0.5 | 54 |
+| `st8log` storm_per=24 | 24.0 (20.8) | 11.0 s | 21.8 s | 7.6 + 0.9 | 84 |
+| `st9log` storm_per=24, 12 sappers at the head | 21.9 (18.8) | 8.6 s | 18.0 s | 6.2 + 1.8 | 68 |
+| `st10log` no warriors, 12 sappers at the head | 20.4 (16.9) | 12.5 s | 23.4 s | 7.2 + 3.1 | 81 |
+
+| 150 maps 25151..25300 from the first start | wins | against `ml2-vs16` | copies housed at min 20 | attack lost / sappers lost an hour |
+|---|---|---|---|---|
+| `ml2-vs16` `@f12` | 110 | | 9.55 | 436 / 34 |
+| `sa2` storm=17 | 95 | +11 -26 | 9.82 | 424 / 24 |
+| `sb2` and storm_close=5.5 | 95 | +8 -23 | 9.82 | 421 / 23 |
+| `sc2` storm_per=24 | 95 | +10 -25 | 9.63 | 409 / 27 |
+| `sd2` storm_per=12 | 103 | +11 -18 | 9.40 | 435 / 36 |
+| `sg2` storm_per=-1 (the sappers alone) | 110 | +11 -11 | 9.49 | 420 / 46 |
+| `sh2` the sappers alone, 12 of them at the army's head | 108 | +16 -18 | 9.46 | 414 / 106 |
+| `si2` the same with 16 to 24 | 100 | +9 -19 | 9.62 | 387 / 120 |
+
+Why. The pictures (`st4pic-vs16`): a hunt stops at the first cell in reach, so the first dozen warriors of a broad
+front stand shoulder to shoulder on the arc 8.9 cells from the tower and the rest cannot pass them: 12 to 25 throw
+while 50 stand behind in the tower's reach for the 10 to 13 s it lasts (st1: half the warrior-seconds in reach are
+that walk). `storm_close` (walk to the tower's foot first, each on its own bearing) fills the arc faster and starts
+it 2 s later: the same 21 s. And those fifty are the ones that otherwise cut the copy's peons down and throw at its
+quarters: with the storm the campaign is 0.27 copies behind at minute 20, which is what the 15 wins are (a copy at
+minute 20 is worth 25 to 30 points). The more warriors on the tower, the fewer wins: all 95, 24 95, 12 103, none
+110. The garrison kills one in four seconds whatever we do; 133 thrower-seconds buy the end of that, and the same
+seconds on peons and warriors are worth more. The sappers do not change the sum either: sent at once they swing a
+little more and die a little more, led at the army's head (`storm_lead`) they die three times as often for 5 %
+fewer warriors lost.
+
+**2. The bait** (`bait`, class `Bait`). The garrison's rule above has a hole: what it finds first, it throws at until
+that is dead. A tower site of ours with one row of cells inside its scan square, its builders outside the square,
+found while no unit of ours is in the square, holds the garrison as long as it stands, and builders with wood mend
+it faster than an iron axe breaks it. Confirmed in games: s22001 of `bt2log-vs16` at 1528 s, a garrison on a site
+2.5 s after it was placed and for the 50 s the trace goes on, the site growing from 1 to 43 hit points under it,
+no builder shot; in the eight contacts of that run with the garrison on a site most of the time, 0 to 3 warriors
+dead in six of them (2 dead with 99 warriors in reach for 22 s) where a razed tower costs nine.
+
+It is not a counter yet, because it has to stand before the first warrior enters the square:
+
+| what was needed, found in this order (logged runs `bt1log`..`bt10log`) | |
+|---|---|
+| a building slot | we are at the cap of 20 most of the game: our towers must leave it (`canBuildTower`) |
+| wood in hand | a site without it has 1 hit point when the first throw lands; the sappers chop on the way (`Bait.wood`), crews are wood carriers only |
+| two towers a copy | a job a tower, two at a time |
+| the way | the nearest side of the square as the crow flies is often across water: the side nearest on foot (`computeField`) |
+| time | a crew makes 1.5 cells a second, not the 2.5 of its speed, and starts behind the army's centre: sent ahead it dies (`bt6log`: 137 sappers lost an hour), from behind it comes through a jammed army 20 to 35 s late, so the head is held outside the square meanwhile (`bait_hold_ticks`) |
+| a site that lasts | a crew of five has 25 hit points of wood; 20 to 30 of the locks end with the site down before the tower |
+
+With all of it (`bt10log`): 16 jobs an hour of game, 8 sites placed, 3.4 garrisons locked, 1.2 towers razed under
+lock, the garrison at a building 45 s a game where it is at a warrior 386 s. And on 150 maps it costs 22 to 24 wins, with the hold or
+without (`ba2` 86, `bb2` with the storm on locked towers 87, `bc2` without the hold 88, against 110: +9 -31). Not by
+what it does in the field: by the two building slots, which are 1.4 towers fewer at home from minute 12 (12.0 to
+10.6) and 24 to 32 more of the home army lost an hour, and the ten peons that stand with the army. Taking them
+away is also a measure of what a home tower is worth: up to 15 wins of 150 a tower.
+
+**3. What a garrison cannot reach.** The scan square's corners are out of its throw (15.9 cells; a corner is 19.8):
+a warrior of ours there is found, cannot be thrown at, and is found again at every scan as long as no warrior
+stands nearer. It would hold a garrison without wood or a site. Not built: like the bait it needs every other
+warrior out of the square, and peons alone at the tower's foot among the copy's own warriors.
+
+**Where this leaves the towers.** 104 warriors a game die as a garrison's target, of 196 dead in a tower's reach. Every way to
+shorten the contact takes warriors from the work that decides the game or peons from the economy, and both ways to
+stop the garrison throwing need units in place before the army arrives. The stun is the engine's own answer (a cast
+within 18 cells, 10 to 30 s for every tower there), and the chieftain is at home for 250 kills an hour.
+
 ## Reproduce
 
 ```bash
@@ -2420,6 +2537,9 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./aisim.sh freeze f10 fable                    # the same with the goal's hot blocks free, at commit 00f7ed2b
 ./aisim.sh freeze f11 fable                    # the micro round's three defaults, at commit abb99be6
 ./aisim.sh freeze f12 fable                    # and flight_keep, chief_bystander, at commit 5e14c475
+./lab/fable/dev.sh tw0log-vs16 "fable vs hard*16" 22001..22012 --logs   # the tower round's logged runs: st*log (storm), bt*log (bait)
+python lab/fable/towers.py tw0log-vs16 st1log-vs16             # contacts with manned enemy towers, from TowerTrace
+./lab/fable/dev.sh sa2-vs16 "fable:storm=17 vs hard*16" 25151..25300    # sb2..si2, ba2..bc2: the specs are in each run.json
 ./lab/fable/dev.sh f12m-vs16 "fable vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
@@ -2472,6 +2592,12 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   the kill cell the second session asked for; (3) the home army: 218 deaths a game, 134 of them at odds of two to
   one and worse, 11 to 50 cells from our nearest building; (4) peons on their way into a building, 110 an hour,
   the largest loss of peons left after the shepherds' 180.
+- After the tower round (2026-11-22, "The towers" above): the garrisons take 104 warriors a game and nothing
+  found takes them back without costing more. Open: (1) a bait or a corner decoy that is in place before the army,
+  from a crew that waits at the next copy instead of racing the army to this one, and without a home tower's slot
+  (a slot freed for the minute it is needed); (2) the stun, 10 to 30 s for every garrison within 18 cells, if the
+  chieftain's place is ever reopened; (3) home towers: 1.4 fewer cost 22 wins of 150 here, so the twentieth
+  building slot and the quarters that hold six of them are worth another look.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
