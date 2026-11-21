@@ -894,10 +894,14 @@ class Strategy {
      * two members farthest apart are 48 cells from each other in the first seconds (the median of 487 groups;
      * quartiles 28 and 74) and still 42 after a minute, and it meets the enemy a few at a time: 86 of 497 sent in an
      * hour of game die on the way for 72 enemy warriors, 0.84 for one where the army and the home army trade 1.6
-     * (lab/fable/reinforce.py rt1log-vs16; lab/fable/NOTES.md, the reinforcements traced).
+     * (lab/fable/reinforce.py rt1log-vs16; lab/fable/NOTES.md, the reinforcements traced). The gather closes the
+     * group up (13 cells) and costs more than it saves: five more warriors stand at home at any moment, an eighth
+     * fewer reach the army, and on 150 maps it wins 97 for the default's 109 (rg3-vs16, +12 -24). Off.
      * reinforce_march: a group on its way fights as one body, every member at the enemies about it once one comes
      * within 10 cells of any of them, and a member more than 12 cells ahead of the one a third of the way back
-     * stands until the rest are up (Military.marchGroup).
+     * stands until the rest are up (Military.marchGroup). A group kills 1.4 for one of its own on the way with it
+     * (119 for 85 an hour, ro1log-vs16) and nothing waits; level in the wins (ro3-vs16, 109 for 109). On in forGame
+     * against several enemies on large maps, with retreat_regroup.
      */
     int reinforce_gather = 0;
     boolean reinforce_march = false;
@@ -910,6 +914,9 @@ class Strategy {
      * retreat sends the reinforcements on their way home with the army: at a worn retreat the army is 16 strong and
      * 21 are on their way to it, at an outmatched one 26 and 16 (rt2log-vs16, 2.6 retreats an hour of game, 49
      * reinforcements an hour turned back), and the next attack leaves 65 s (median) after the army is home, with 49.
+     * At 8: 0.9 to 1.6 regroups an hour, all joined within a minute, 33 reinforcements turned back for 49 and a tenth
+     * more of them joined; half are followed by a retreat within two minutes all the same (rq1log-vs16). Level in the
+     * wins (rq3-vs16, 108 and a draw for 109). On at 8 in forGame against several enemies on large maps.
      */
     float retreat_regroup = 0f;
     /** retreat_regroup only when the army with those reinforcements would not have turned back. */
@@ -3524,6 +3531,14 @@ class Strategy {
                 strategy.hold_ratio = .3f;
                 strategy.hold_stick = 12;
                 strategy.hold_commit = 20;
+                // A group of reinforcements fights as one body, and an army about to turn back falls back on the
+                // reinforcements on their way to it instead of taking them home (lab/fable/NOTES.md, the
+                // reinforcements traced). A group kills 1.4 enemy warriors on its way for one of its own where it
+                // killed 0.84, and 7 to 13 % more reinforcements reach the army. Nothing in the wins: at N=16 on
+                // two blocks of maps never used 210 of 300 for 213 (rs3-vs16, ru4-vs16: +30 -33), at N=17 160 of
+                // 300 for 162 (ru5-vs17: +37 -39). Waste removed that shows no harm.
+                strategy.reinforce_march = true;
+                strategy.retreat_regroup = 8f;
             }
         }
         return strategy;
