@@ -79,6 +79,11 @@ final class Military {
     private final java.util.Set<@NonNull Unit> defending = new java.util.LinkedHashSet<>();
     /** reinforce_march: the reinforcements told to stand until the rest of their group has caught up. */
     private final java.util.Set<@NonNull Unit> halted = new java.util.LinkedHashSet<>();
+    /** retreat_regroup: the army falls back on its reinforcements until then (-1: not), and those it waits for. */
+    private float regroup_until = -1f;
+    private float regroup_since;
+    private float regroup_ended = -1e9f;
+    private final java.util.Set<@NonNull Unit> regroup_wait = new java.util.LinkedHashSet<>();
     private static final int MARCH_AHEAD = 12;
     private static final int MARCH_RESUME = 6;
     private static final int MARCH_CONTACT = 10;
@@ -5957,6 +5962,10 @@ final class Military {
             }
         }
         attack_running = false;
+        if (regroup_until >= 0f)
+            ai.aiLog().count("regroup_cut");
+        regroup_until = -1f;
+        regroup_wait.clear();
         if (column_until >= 0f) {
             column_until = -1f;
             column_target = null;
@@ -6050,6 +6059,8 @@ final class Military {
         float worn_base = wornBasis(total);
         if (ai.logging() && ai.periodDue(last_trace, 200f))
             traceBattle(army, c, total, local_enemy);
+        if (regroup_until >= 0f && regroup(army, c, total))
+            return;
         // stall_engaged_ticks: the wedge watchdog looks before any of the paths below can return.
         if (engagedWatch() && wedgeWatch(army, c, pinned))
             return;
@@ -6065,6 +6076,9 @@ final class Military {
             float wide = withEnemyTowers(enemyFightersNear(c[0], c[1], 36), c[0], c[1], 36);
             float terrain = terrainFactor(army, intel.enemy_warriors, c[0], c[1], 36);
             if (wide > 0f && total * terrain < ai.strategy().precontact_ratio * lateCaution() * wide) {
+                if (beginRegroup("precontact", c, total, total,
+                        ai.strategy().precontact_ratio * lateCaution() * wide / Math.max(.01f, terrain)))
+                    return;
                 ai.log(String.format("turning back before contact: %.1f against %.1f", total * terrain, wide));
                 beginRetreat();
                 return;
@@ -6086,6 +6100,8 @@ final class Military {
             ai.aiLog().count("split_guard_kept");
         }
         if (!all_in && !toot && !pinned && outmatched) {
+            if (beginRegroup("outmatched", c, total, Math.max(weighed, 1f), local_enemy / retreat_ratio))
+                return;
             if (local_raw <= retreat_ratio * Math.max(weighed, 1f))
                 ai.aiLog().count("stun_fear_retreat");
             ai.log(String.format("retreat: local %.1f vs enemy %.1f (army %.1f of %.1f)", ours, local_enemy, total,
@@ -6094,6 +6110,8 @@ final class Military {
             return;
         }
         if (!pinned && worn) {
+            if (beginRegroup("worn", c, total, total, local_enemy))
+                return;
             ai.aiLog().count("worn_fired");
             if (local_raw <= total)
                 ai.aiLog().count("stun_fear_worn");
@@ -6246,6 +6264,107 @@ final class Military {
     private void markCapProgress() {
         cap_progress_time = ai.now();
         cap_progress_kills = ai.owner().getUnitsKilled();
+    }
+
+    /**
+     * retreat_regroup: an army about to turn back falls back on the reinforcements on their way to it instead, when
+     * those within retreat_regroup_reach cells are worth that much and, with retreat_regroup_need, when weighed
+     * strength with theirs reaches need, the strength at which the army would not have turned back. Returns whether
+     * it does.
+     */
+    private boolean beginRegroup(@NonNull String why, int @NonNull [] c, float total, float weighed, float need) {
+        Strategy strategy = ai.strategy();
+        if (strategy.retreat_regroup <= 0f)
+            return false;
+        if (ai.now() - regroup_ended < strategy.retreat_regroup_cooldown_ticks) {
+            ai.aiLog().count("regroup_cooldown");
+            return false;
+        }
+        regroup_wait.clear();
+        float coming = 0f;
+        int reach = strategy.retreat_regroup_reach;
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            Unit u = e.getKey();
+            if (e.getValue() != Role.REINFORCE || wing_bound.contains(u)
+                    || MapAnalysis.dist2(u.getGridX(), u.getGridY(), c[0], c[1]) > reach * reach)
+                continue;
+            regroup_wait.add(u);
+            coming += Combat.value(u);
+        }
+        if (coming < strategy.retreat_regroup) {
+            regroup_wait.clear();
+            return false;
+        }
+        if (strategy.retreat_regroup_need && weighed + coming < need) {
+            regroup_wait.clear();
+            ai.aiLog().count("regroup_short");
+            return false;
+        }
+        regroup_since = ai.now();
+        regroup_until = regroup_since + strategy.retreat_regroup_ticks;
+        ai.aiLog().count("regroup_start");
+        ai.aiLog().count("regroup_" + why);
+        ai.log(String.format("regroup (%s): the army of %.1f falls back on %.1f of reinforcements within %d cells", why,
+                total, coming, reach));
+        return true;
+    }
+
+    /**
+     * retreat_regroup, each round: the attackers that are not in a fight walk to the nearest of the reinforcements
+     * waited for, which keep coming (reinforce). Over once those have all joined or fallen, or the time is up: the
+     * army is weighed anew from then on, the worn retreat against what it is now. Returns whether it still runs.
+     */
+    private boolean regroup(@NonNull List<@NonNull Unit> army, int @NonNull [] c, float total) {
+        regroup_wait.removeIf(u -> u.isDead() || roles.get(u) != Role.REINFORCE);
+        boolean timeout = ai.now() > regroup_until;
+        if (regroup_wait.isEmpty() || timeout) {
+            regroup_until = -1f;
+            regroup_ended = ai.now();
+            regroup_wait.clear();
+            attack_initial_strength = total;
+            worn_peak = total;
+            worn_history.clear();
+            last_progress_time = ai.now();
+            ai.aiLog().count(timeout ? "regroup_timeout" : "regroup_joined");
+            ai.log(String.format("regroup over after %.0f s (%s): the army is %.1f",
+                    FableAI.seconds(ai.now() - regroup_since), timeout ? "time" : "joined", total));
+            return false;
+        }
+        Unit nearest = null;
+        int best = Integer.MAX_VALUE;
+        for (Unit u : regroup_wait) {
+            int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), c[0], c[1]);
+            if (d < best) {
+                best = d;
+                nearest = u;
+            }
+        }
+        if (nearest == null)
+            return true;
+        long sx = 0;
+        long sy = 0;
+        int n = 0;
+        for (Unit u : regroup_wait)
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), nearest.getGridX(), nearest.getGridY()) <= 20 * 20) {
+                sx += u.getGridX();
+                sy += u.getGridY();
+                n++;
+            }
+        int mx = (int) (sx / n);
+        int my = (int) (sy / n);
+        boolean rearguard = ai.strategy().retreat_rearguard;
+        for (Unit u : army) {
+            WarriorState st = ai.intel().warrior_states.get(u);
+            if (st == WarriorState.STUNNED || (rearguard && inFight(u))
+                    || MapAnalysis.dist2(u.getGridX(), u.getGridY(), mx, my) <= 8 * 8)
+                continue;
+            Float last = last_order.get(u);
+            if (last != null && !ai.periodDue(last, REORDER_PERIOD_TICKS) && st != WarriorState.IDLE)
+                continue;
+            move(u, mx, my);
+        }
+        ai.aiLog().count("regroup_rounds"); // military rounds (0.5 s)
+        return true;
     }
 
     /**
@@ -7151,6 +7270,10 @@ final class Military {
 
     private void beginRetreat() {
         mode = Mode.RETREAT;
+        if (regroup_until >= 0f)
+            ai.aiLog().count("regroup_cut");
+        regroup_until = -1f;
+        regroup_wait.clear();
         // retreat_cap_ticks: measured from its first round
         retreat_measured = false;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {

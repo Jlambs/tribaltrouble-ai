@@ -901,6 +901,22 @@ class Strategy {
      */
     int reinforce_gather = 0;
     boolean reinforce_march = false;
+    /**
+     * retreat_regroup (strength, 0 = off): an army that would turn back (worn, outmatched, or before contact) with
+     * that much strength of reinforcements on their way within retreat_regroup_reach cells of it falls back on them
+     * instead of walking home: its units that are not in a fight walk to the nearest of them, they keep coming, and
+     * once those have joined or fallen, or after retreat_regroup_ticks, the army is weighed anew (the worn retreat
+     * against what it is then). No second one within retreat_regroup_cooldown_ticks of the last. As written, a
+     * retreat sends the reinforcements on their way home with the army: at a worn retreat the army is 16 strong and
+     * 21 are on their way to it, at an outmatched one 26 and 16 (rt2log-vs16, 2.6 retreats an hour of game, 49
+     * reinforcements an hour turned back), and the next attack leaves 65 s (median) after the army is home, with 49.
+     */
+    float retreat_regroup = 0f;
+    /** retreat_regroup only when the army with those reinforcements would not have turned back. */
+    boolean retreat_regroup_need = true;
+    int retreat_regroup_reach = 120;
+    float retreat_regroup_ticks = 4500f; // 90 s
+    float retreat_regroup_cooldown_ticks = 3000f; // 60 s
     /** Shepherds hold their spot (flee at 9 cells, not 12) while their copy's launch is imminent (Shepherd). */
     boolean shepherd_hold = false;
     /**
@@ -3054,6 +3070,12 @@ class Strategy {
         reinforce_route = params.getBoolean("reinforce_route", reinforce_route);
         reinforce_gather = params.getInt("reinforce_gather", reinforce_gather);
         reinforce_march = params.getBoolean("reinforce_march", reinforce_march);
+        retreat_regroup = (float) params.getDouble("retreat_regroup", retreat_regroup);
+        retreat_regroup_need = params.getBoolean("retreat_regroup_need", retreat_regroup_need);
+        retreat_regroup_reach = params.getInt("retreat_regroup_reach", retreat_regroup_reach);
+        retreat_regroup_ticks = (float) params.getDouble("retreat_regroup_ticks", retreat_regroup_ticks);
+        retreat_regroup_cooldown_ticks = (float) params.getDouble("retreat_regroup_cooldown_ticks",
+                retreat_regroup_cooldown_ticks);
         shepherd_hold = params.getBoolean("shepherd_hold", shepherd_hold);
         tower_reaim = params.getBoolean("tower_reaim", tower_reaim);
         tower_prequeue_any = params.getBoolean("tower_prequeue_any", tower_prequeue_any);
