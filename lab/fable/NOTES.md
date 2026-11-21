@@ -214,6 +214,18 @@ maps never used it wins 331 of 450 for 310 (+53 -32), and at N=17 162 of 300 for
 `@f13`: **72.3 % at N=16** (217 of 300 fresh maps, `@f12` 204 on the same), **54.0 % at N=17** and **33.7 % at
 N=18** (101 of 300 maps of its own). `hold_levels`, `hold_far` and `threat_sappers` were built with it and stay off.
 
+The reinforcements round (2026-11-21, user: the next pick; "The reinforcements, traced" below). `ReinforceTrace`
+follows every group from the armory to the army. A group of twelve is everyone in role army wherever they stand, 48
+cells from end to end from its first second, and it never closes up; it meets the enemy a few at a time and kills
+0.84 for one of its own, 86 dead of 497 sent an hour. Gathering it first (`reinforce_gather`) closes it up and
+loses: five more warriors stand at home at any moment, an eighth fewer reach the army, 97 wins of 150 for 109. What
+looked like waste is the home army being emptied into the attack as fast as it fills, and a wait costs here what
+every wait has cost. Two repairs that wait for nothing work and win nothing: a group that fights as one body
+(`reinforce_march`, 1.4 for one) and an army that falls back on the reinforcements on their way instead of taking
+them home (`retreat_regroup`, a tenth more of them joined). Together 210 of 300 for 213 at N=16 and 160 of 300 for
+162 at N=17: the default since, as waste removed that shows no harm, frozen as `@f14`. Found on the way: two thirds
+of the attack army's time is the walk between targets with nothing near.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2793,6 +2805,119 @@ with the four options off `@f12`'s (8 of 8 on 26001..26008, `chk13b-vs16`).
 - The sappers' threats: the home army's nearest warriors are sent towards the attack's own front, and the threat
   is over within seconds. A long walk begun and called off, not a fight.
 
+### The reinforcements, traced: a group that is no group, and what closing it up costs (2026-11-21)
+
+The user's pick after the home army round: the reinforcements, 83 lost an hour on their way, two thirds of them alone
+or in small company. A log-only tracer first. `Military` numbers the groups as `considerReinforcing` sends them
+(`reinforce_groups`), and `ReinforceTrace` writes a "REIN start" line when a group leaves (where each member stands
+and what gave it its last order before), a "REIN s" line a second while a member is on its way (those on the way,
+joined, dead and turned back; len, the widest distance between two of them; how many fight and walk; the enemy
+warriors within 14 cells of any of them by `HomeTrace`'s kind; the cells to our nearest building and to the army) and
+a "REIN end" line. `HomeTrace`'s kill lines name the group whose member was throwing. Read by
+`lab/fable/reinforce.py`: a meeting is a run of seconds with three and more enemy warriors within 14 cells of a
+member.
+
+**What the reinforcements are** (`@f13` at N=16, 12 logged games on 22001..22012, `rt2log-vs16`; an hour of game).
+38.6 groups of 12.9 warriors, to an army 76 strong and 167 cells away (medians). Of 497 warriors sent 360 join, 86 die
+on the way and 49 turn back because the attack ended first. They kill 72 enemy warriors on the way: 0.84 for one of
+theirs, where the army and the home army trade 1.6. A group is on its way for 112 s (median): 46,000 warrior-seconds
+an hour, 13 warriors at any moment.
+
+- A group is everyone in role army, wherever they stand. Five seconds after it is sent its two members farthest
+  apart are 48 cells from each other (the median of 487 groups; quartiles 28 and 74), and 42 after a minute: all
+  walk at one speed, so it never closes up. Of the 497 members 324 stand within 10 cells of the middle one, 61 within
+  11 to 20, 60 within 21 to 40 and 52 farther. The far ones are fresh warriors at another armory's door (54 of the
+  280 that had no order yet stand more than 20 cells off), half of the 60 that were answering harassment, and 15 of
+  the 88 at a post.
+- 76 of the 86 deaths fall in 18.6 meetings an hour. A group strung over more than 30 cells (12.1 meetings) loses 51
+  for 40 kills, over 17 to 30 cells 19 for 18, over 16 and less 6 for 7. By the enemy's strength for one of the
+  group there: up to a half 3.8 deaths for 8.2 kills, a half to one 9.3 for 9.3, one to two 33.5 for 27.9, two to
+  four 25.3 for 17.8. By what the enemy was doing when they met: walking (a wave on its way) 30 deaths, parked 21,
+  hunting a warrior of ours 11, hunting a peon 9. 30 of the deaths fall more than 100 cells from every building of
+  ours, 23 within 46 to 100, 23 nearer.
+
+**Two repairs, built behind options** (both off):
+
+- `reinforce_gather=10`: while the attack is out the idle warriors at home that defend nothing walk to the staging
+  point, as they do in HOME mode (`gatherHome`), and a group is the warriors within 10 cells of the one with the most
+  about it (`densest`); the rest wait for the next.
+- `reinforce_march`: a group on its way fights as one body (`marchGroup`). With an enemy warrior within 10 cells of a
+  member every member goes at the enemies about the group, each at its nearest (`engageSpread`, as the army does);
+  and a member more than 12 cells nearer the army than the one a third of the way back stands until the rest are up.
+
+Logged (12 games each on the same maps; the games differ once the decisions do), an hour of game:
+
+| | sent | joined | dead on the way | turned back | enemy warriors they kill | for a death | len at 5 s | the home army, warrior-seconds |
+|---|---|---|---|---|---|---|---|---|
+| `rt2log` `@f13` | 497 | 360 | 86 | 49 | 72 | 0.84 | 48 | 36,100 |
+| `rg1log` `reinforce_gather=10` | 364 | 249 | 55 | 58 | 54 | 0.98 | 13 | 52,000 |
+| `rm1log` and `reinforce_march` | 493 | 341 | 87 | 63 | 128 | 1.47 | 13 | 54,500 |
+| `ro1log` `reinforce_march` alone | 516 | 375 | 85 | 54 | 119 | 1.40 | 48 | 36,600 |
+
+- The gather does what it is for (len 13, and 19 after a minute), and by itself changes little in the fights: the
+  members of a compact group still fight one by one, each at what it sees itself (0.98).
+- The march is what the kills come from: 1.4 for a death against up to twice the group's strength and 1.0 against
+  more, with the group as strung out as before (with the gather 1.6 to 2.4, and 1.0). It costs no time: 700
+  warrior-seconds an hour standing.
+
+On 150 maps that no choice had been made on (30001..30150), an hour of game:
+
+| | wins | against `rb3-vs16` | sent | joined | lost on the way | home army lost | kills | iron |
+|---|---|---|---|---|---|---|---|---|
+| `rb3-vs16` `@f13` | 109 | | 519 | 372 | 88 | 94 | 2,681 | 879 |
+| `rg3` `reinforce_gather=10` | 97 | +12 -24 | 461 | 331 | 71 | 118 | 2,735 | 849 |
+| `rm3` and `reinforce_march` | 105 | +16 -20 | 460 | 328 | 69 | 115 | 2,721 | 841 |
+| `ro3` `reinforce_march` alone | 109 | +12 -12 | 527 | 362 | 94 | 101 | 2,702 | 883 |
+| `rq3` `retreat_regroup=8` | 108, 1 draw | +6 -7 | 540 | 408 | 92 | 86 | 2,672 | 877 |
+| `rs3` `retreat_regroup=8,reinforce_march=true` | 107 | +11 -13 | 565 | 420 | 102 | 91 | 2,732 | 899 |
+
+- **The gather costs what it was meant to save.** It keeps five more warriors at home at any moment (36,100
+  warrior-seconds an hour become 52,000 to 54,500): 6,000 of them are the walk to the staging point and the wait for
+  the cluster, 10,000 to 13,000 are defenders that stay at their post or in their fight, where the group as sent
+  takes them along from wherever they stand. An eighth fewer warriors reach the army (328 to 331 for 372), the home
+  army loses 21 to 24 more an hour, and no fewer buildings fall (14.0 and 15.6 for 13.6). 97 wins for 109 (z -2.0).
+- It is the result of every wait measured here before (`capped_clump`, `late_reinforce_min`, `bank`, `convoy`,
+  `siege`, and the routed reinforcements' longer way): at the unit cap a warrior that stands is a slot that neither
+  fights nor gathers. What looked like waste, warriors leaving from wherever they stand, is the home army being
+  emptied into the attack as fast as it fills.
+- The march alone is level: 109 for 109 (+12 -12), 21 more kills an hour, as many joined.
+
+**The retreat and the reinforcements.** A retreat (`beginRetreat`) sends the reinforcements on their way home with
+the army. An hour of game has 2.6 of them (`rt2log-vs16`): 1.0 worn (the army 16 strong, 21 reinforcements on their
+way to it), 0.8 outmatched (26, 16 on their way, the enemy 55) and 0.8 before contact (28 against 34, 9 on their
+way). Those are the 49 reinforcements an hour that turn back. `retreat_regroup=8`: an army that would turn back with
+8 and more of strength on their way within 120 cells of it, and with them strong enough not to
+(`retreat_regroup_need`), falls back on them instead. Its units that are not in a fight walk to the nearest of them,
+they keep coming, and once they have joined the army is weighed anew, the worn retreat against what it is then; no
+second one within 60 s. Logged (`rq1log-vs16`): 0.94 regroups an hour (worn 0.34, outmatched 0.40, before contact
+0.20), all joined, in 10 to 58 s; 33 reinforcements an hour turn back for 49 and 388 join for 360. Half of them are
+followed by a retreat within two minutes all the same, and an outmatched army is smaller after one than before
+with what joined it (31 and 17 make 21).
+
+- The time with no attack out is not what it buys back. HOME mode is 21 % of the time, and 15 of the 21 are the
+  lost games' last stretch, a threat in the base and three warriors at home; in the games won the next attack
+  leaves at once (1.6 % of the time).
+- On the 150 maps: 108 and a draw for 109 (+6 -7), 408 reinforcements joined an hour for 372. With the march 107
+  (+11 -13), 420 joined, 51 more kills an hour and 2 % more iron.
+
+**Confirmed as harmless and made the default** (`forGame`, large maps, more than one enemy: `reinforce_march=true`,
+`retreat_regroup=8`; frozen as `@f14`), under the rule of 2026-11-19: waste removed that shows no harm is adopted.
+At N=16 on 30151..30300, used for nothing before: 103 wins for 104 (`ru4-vs16` against `rb4-vs16`, +19 -20); with
+the 150 before, 210 of 300 for 213 (+30 -33). At N=17 on 27001..27300: 160 of 300 for 162 (`ru5-vs17` against
+`hu5-vs17`, +37 -39). An hour of game: 405 reinforcements joined for 358 at N=16 and 360 for 337 at N=17, 19 and 64
+more kills, the losses and the buildings lost the same. `fable` without params plays the arm's games (12 of 12 on 30151..30162, `chk14a-vs16`),
+and with the two options off `@f13`'s (8 of 8 on 30151..30158, `chk14b-vs16`).
+
+**The attack army's time** (the "battle:" lines, every 4 s while an attack is out; `rt2log-vs16`). 198,000
+warrior-seconds an hour, 55 warriors. By what stands within 22 cells of its centre: nothing, and more than 40 m from
+its target, 66.6 % (26.5 % more than 250 m from the target, 20.7 % at 121 to 250 m, 19.4 % at 41 to 120 m); three
+and more enemy warriors 19.0 %; a tower with fewer than three warriors 7.6 %; nothing, at the target, 6.9 %. With
+nothing near, its centre moves 1.3 to 1.5 cells a second (the median; under 0.8 to 1.0 a quarter of the time), where
+a group of reinforcements with nothing near moves 1.9. Two thirds of the army's time is the walk between targets,
+at seven tenths of a warrior's pace; the reinforcements' way is 46,000 warrior-seconds more and the home army
+36,000. Not looked into: which legs those are, how often the target changes under way, and what the slow quarter
+is.
+
 ## Reproduce
 
 ```bash
@@ -2824,6 +2949,7 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./aisim.sh freeze f11 fable                    # the micro round's three defaults, at commit abb99be6
 ./aisim.sh freeze f12 fable                    # and flight_keep, chief_bystander, at commit 5e14c475
 ./aisim.sh freeze f13 fable                    # and the home army's post, at commit 49939d96
+./aisim.sh freeze f14 fable                    # and reinforce_march, retreat_regroup=8
 ./lab/fable/dev.sh tw0log-vs16 "fable vs hard*16" 22001..22012 --logs   # the tower round's logged runs: st*log (storm), bt*log (bait)
 python lab/fable/towers.py tw0log-vs16 st1log-vs16             # contacts with manned enemy towers, from TowerTrace
 ./lab/fable/dev.sh sa2-vs16 "fable:storm=17 vs hard*16" 25151..25300    # sb2..si2, ba2..bc2: the specs are in each run.json
@@ -2839,6 +2965,12 @@ python lab/fable/home.py ha4log-vs16 hu1log-vs16               # what the home a
 ./lab/fable/dev.sh hu4-vs16 "@f13 vs hard*16" 28151..28450     # played as fable:hold_multi=true,hold_ratio=0.3,hold_stick=12,hold_commit=20
 ./lab/fable/dev.sh hu5-vs17 "@f13 vs hard*17" 27001..27300
 ./lab/fable/dev.sh f13-vs18 "@f13 vs hard*18" 29001..29300
+./lab/fable/dev.sh rt2log-vs16 "@f13 vs hard*16" 22001..22012 --logs   # the reinforcements round's logged runs (made as fable): rg1log, rm1log, ro1log, rq1log; the specs are in each run.json
+python lab/fable/reinforce.py rt2log-vs16 ro1log-vs16          # what becomes of the reinforcements, from ReinforceTrace
+./lab/fable/dev.sh rb3-vs16 "@f13 vs hard*16" 30001..30150     # rg3, rm3, ro3, rq3, rs3: the specs are in each run.json
+./lab/fable/dev.sh rb4-vs16 "@f13 vs hard*16" 30151..30300
+./lab/fable/dev.sh ru4-vs16 "@f14 vs hard*16" 30151..30300     # played as fable:reinforce_march=true,retreat_regroup=8
+./lab/fable/dev.sh ru5-vs17 "@f14 vs hard*17" 27001..27300
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
@@ -2910,6 +3042,14 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   reinforcements, 83 lost an hour on their way, two thirds of them alone or in small company: the same lens says
   of them what it said of the home army, and `reinforce_route`, which walked them round the enemy, did not win.
   N=17 stands at 54.0 % [48.3, 59.6] and N=18 at 33.7 %: the next N needs about 16 points.
+- After the reinforcements round (2026-11-21, "The reinforcements, traced" above): the reinforcements' own fights
+  are repaired (1.4 for one) and it is nothing in the wins, as the routed way was. Open: (1) the march: two thirds
+  of the attack army's 198,000 warrior-seconds an hour are a walk between targets with nothing near, at seven
+  tenths of a warrior's pace, and nobody has looked at which legs they are, how often the target changes under way
+  or what holds the slow quarter up; (2) the meetings against twice a group's strength and more, a wave on its
+  way as a rule (32 of the 85 deaths on the way for 34 kills), seen from 30 cells off and walked into; (3) the size
+  of a group: 12 wait 9,400 warrior-seconds an hour at the armory door, and a group that fights as one body may
+  not need to be 12 (`reinforce_min=6` was 37 wins for 40 at N=15 without the march).
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
