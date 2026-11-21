@@ -6384,7 +6384,9 @@ final class Economy {
 
         if (armory == null) {
             // Nothing to gather for yet: spare peons speed up a quarters that is below its reserve.
-            Project ahead = ai.strategy().opening_prewalk > 0 ? prewalkProject() : null;
+            // opening_prewalk_first: nobody walks ahead while the first quarters is still going up
+            Project ahead = ai.strategy().opening_prewalk > 0 && !(ai.strategy().opening_prewalk_first
+                    && intel.quarters.isEmpty() && hasFirstQuarters()) ? prewalkProject() : null;
             List<Unit> walkers = new ArrayList<>();
             List<Unit> rest = new ArrayList<>();
             for (Unit u : free) {

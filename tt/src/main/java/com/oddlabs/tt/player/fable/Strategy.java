@@ -1790,6 +1790,14 @@ class Strategy {
      */
     int opening_prewalk = 300;
     /**
+     * opening_prewalk_first: no peon walks ahead before the first quarters stands. The walk ahead is for the peons
+     * left over once it does; but a peon that carries the first quarters' site and reaches it while another still
+     * moves on its ground drops the site and stands idle until the last one puts it down, and the walk ahead took
+     * those for left over: ot3log-vs16 s22001 (armory 351 m out), 9 of the 13 builders walk off at 3 to 12 s and the
+     * first quarters, built by one peon until they are back at 84 s, stands at 160 s.
+     */
+    boolean opening_prewalk_first = false;
+    /**
      * opening_join: before the first armory stands, builders set out for a site while its carrier is still on the way
      * (an order to an unplaced site makes a peon carry it too), instead of waiting for it to be put down. Off: on
      * top of idle_builders=40 it wins 87 and 61 of 100 maps at N=12 and 15 against 90 and 64 (ibj-vsN against
@@ -3431,6 +3439,7 @@ class Strategy {
         armory_route_ticks = (float) params.getDouble("armory_route_ticks", armory_route_ticks);
         opening_move_m = params.getInt("opening_move_m", opening_move_m);
         opening_prewalk = params.getInt("opening_prewalk", opening_prewalk);
+        opening_prewalk_first = params.getBoolean("opening_prewalk_first", opening_prewalk_first);
         opening_join = params.getBoolean("opening_join", opening_join);
         idle_builders = params.getInt("idle_builders", idle_builders);
         opening_builders = params.getInt("opening_builders", opening_builders);
