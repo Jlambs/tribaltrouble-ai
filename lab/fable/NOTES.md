@@ -248,8 +248,8 @@ opening builds, where six breed more than they would build. With the four repair
 `shepherd_lead_ticks=7000`, `rush_response` off, `hold_build` and `hold_early` 6) an opening has 24 %, 17 % and 10 %
 more warriors at minutes 6, 8 and 10 and is at the cap half a minute sooner; whole games have 6 to 10 more warriors
 through minute 10 and 0.2 to 0.4 fewer copies housed from minute 8 to 20; and on three blocks of 150 maps never used
-it wins 107 for 105 and 112 for 106 at N=16 and 92 for 84 at N=17 (+57 -41, every block ahead). The default since,
-frozen as `@f15`. What did not help: quarters by the start before the walk to a far armory, tree claims between the
+it wins 107 for 105 and 112 for 106 at N=16 and 92 for 84 at N=17 (+57 -41, every block ahead), and at N=18 46 for
+43. The default since, frozen as `@f15`. What did not help: quarters by the start before the walk to a far armory, tree claims between the
 sites, more builders on the last quarters, the armory a quarters earlier or later, a seventh quarters, the true
 harvest time in the cost model. What decides an opening's speed beyond all this is how far the armory stands from
 the start: 117 units at minute 5 under 45 cells, 75 at 90 cells and more, a quarter of the maps.
@@ -3148,6 +3148,10 @@ copies housed 0.1 to 0.4 fewer from minute 8 to 20 (beyond twice the error), and
 warriors at minute 20 and 35 fewer at minute 30. Frozen as `@f15`. With no params the code plays `ow5-vs16`'s games
 (`chk16a-vs16`, 12 of 12), and with the five settings put back `ow4-vs16`'s (`chk16b-vs16`, 8 of 8).
 
+At N=18 on 34001..34150 `@f15` wins 46 of 150 for `@f14`'s 43 (`oz1-vs18` against `oz0-vs18`, +17 -14), with 6 to
+10 more warriors at minutes 6 to 10, 0.2 to 0.4 fewer copies housed from minute 8 on and 40 fewer warriors of the
+copies at minutes 25 and 30. Over the four blocks 357 of 600 for 338, +74 -55 (z 1.7).
+
 What the corrected harvest time did (`harvest_ticks`, 500 in the cost model where the trace measures 180): 0.8 and
 1.6 more warriors at minutes 6 and 8, 2.9 fewer at minute 10 and 2.6 less iron (`os30-vs16`): left as it is.
 
@@ -3217,6 +3221,7 @@ python lab/fable/openspeed.py os0-vs16 os1-vs16 os10-vs16 os18-vs16             
 ./lab/fable/dev.sh ow0-vs16 "@f14 vs hard*16" 32001..32150     # ow1, ow2, ow3: the specs are in each run.json
 ./lab/fable/dev.sh ow4-vs16 "@f14 vs hard*16" 32151..32300     # ow5: @f15
 ./lab/fable/dev.sh ow6-vs17 "@f14 vs hard*17" 33001..33150     # ow7: @f15
+./lab/fable/dev.sh oz0-vs18 "@f14 vs hard*18" 34001..34150     # oz1: @f15; oz2: fable:hold_mid=6 (on @f15's defaults)
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
