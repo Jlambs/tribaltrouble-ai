@@ -1046,6 +1046,14 @@ class Strategy {
      */
     int opening_claim = 0;
     /**
+     * opening_toward: what the first quarters' site is charged for every metre between it and the armory's site, in
+     * game ticks (3: .06 s; a metre from the start is charged 10, the .2 s a peon walks it in). Every builder of the
+     * first quarters walks on towards the armory when it stands, so a metre the wrong way costs the opening the same
+     * .2 s again: ot5log-vs16 s22054, a start with few trees, raises its first quarters 91 m from the start and 18
+     * cells farther from the armory than the start is.
+     */
+    float opening_toward = 3f;
+    /**
      * opening_chain (0 = off): when the armory's site is opening_chain_m metres and more of walking beyond the first
      * quarters, this many of the opening's quarters stand along the way there, at even steps, instead of around the
      * armory: the builders then walk a step before each instead of the whole way before the second (the armory 90
@@ -1054,6 +1062,13 @@ class Strategy {
      */
     int opening_chain = 0;
     int opening_chain_m = 150;
+    /**
+     * opening_chain_trees: a quarters of the chain needs this many trees within 7 cells of its site, else it is
+     * planned around the armory as without the chain. ot5log-vs16 s22078, a start with no trees: the chain's first
+     * quarters, none within 16 cells, is built by six peons (builders_floor) fetching wood 15 to 19 cells away and
+     * stands at 498 s.
+     */
+    int opening_chain_trees = 0;
     /**
      * opening_home_quarters: this many of the opening's quarters go up by the start, the first included (1: only the
      * first), before the builders walk to the armory's site (53 cells on average, 21 s with nothing built: the walk
@@ -3280,7 +3295,9 @@ class Strategy {
         opening_route_sum = params.getBoolean("opening_route_sum", opening_route_sum);
         opening_floor = params.getInt("opening_floor", opening_floor);
         opening_chain = params.getInt("opening_chain", opening_chain);
+        opening_toward = (float) params.getDouble("opening_toward", opening_toward);
         opening_chain_m = params.getInt("opening_chain_m", opening_chain_m);
+        opening_chain_trees = params.getInt("opening_chain_trees", opening_chain_trees);
         opening_claim = params.getInt("opening_claim", opening_claim);
         opening_home_quarters = params.getInt("opening_home_quarters", opening_home_quarters);
         opening_home_m = params.getInt("opening_home_m", opening_home_m);

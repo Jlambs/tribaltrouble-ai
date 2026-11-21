@@ -165,14 +165,16 @@ final class Economy {
         }
         boolean moved = q1 != null;
         // The walk weights are in game ticks per meter (.2 and .06 s here, .25 and .02 s below).
+        // opening_toward: what a metre between the first quarters and the armory's site costs, in game ticks
+        float toward = strategy.opening_toward;
         if (!moved)
             q1 = planner.findQuartersSite(reserved, sx, sy, 110, planner.getStartField(), ax, ay, first_builders, 10f,
-                    3f);
+                    toward);
         // The score is minus the game ticks until the quarters stands; when that is poor nearby, a walk to better
         // ground pays off, and the walk is already part of the score.
         if (!moved && (q1 == null || -q1.score > 5500f)) { // 110 s
             Site further = planner.findQuartersSite(reserved, sx, sy, 400, planner.getStartField(), ax, ay,
-                    first_builders, 10f, 3f);
+                    first_builders, 10f, toward);
             if (further != null && (q1 == null || further.score > q1.score))
                 q1 = further;
         }
@@ -231,6 +233,11 @@ final class Economy {
                 if (w != null)
                     q = planner.findQuartersSite(reserved, w[0], w[1], CHAIN_REACH_M, null, ax, ay,
                             strategy.quarters_builders, 12.5f, 1f);
+                // opening_chain_trees: not where there is no wood on the way; that quarters goes by the armory
+                if (q != null && ai.map().treesAround(q.x, q.y, 7) < strategy.opening_chain_trees) {
+                    ai.aiLog().count("opening_chain_bare"); // quarters of a chain planned by the armory instead
+                    q = null;
+                }
                 if (q != null && ai.logging())
                     ai.log("chain: quarters " + i + " of " + chain + " by " + w[0] + "," + w[1] + ", " + at + " m of " + chain_to + " from the start");
             }
