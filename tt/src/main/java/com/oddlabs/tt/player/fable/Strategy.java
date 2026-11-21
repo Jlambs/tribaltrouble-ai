@@ -1054,6 +1054,12 @@ class Strategy {
     /** Peons to keep inside each quarters to speed up reproduction, early and later in the game. */
     int hold_early = 4;
     /**
+     * hold_build (-1: two, or hold_early if that is less): the peons a quarters keeps while the opening still builds
+     * without an armory and a site is short of builders. The third and fourth peon inside breed .015 a second each;
+     * as builders they are a five-hundredth of what a quarters takes (590 to 990 builder-seconds, OpeningTrace).
+     */
+    int hold_build = -1;
+    /**
      * hold_mid 10 (was 14): peons wait in quarters while the armory has ore for them; vs hard*11 elim +.013 / +.030
      * (hm10-vs11-hv, -b), W 16 vs 11 over 400; N=8 neutral (W 114 vs 111).
      */
@@ -3210,6 +3216,7 @@ class Strategy {
         pressure_response = params.getBoolean("pressure_response", pressure_response);
         pressure_ticks = (float) params.getDouble("pressure_ticks", pressure_ticks);
         hold_early = params.getInt("hold_early", hold_early);
+        hold_build = params.getInt("hold_build", hold_build);
         hold_mid = params.getInt("hold_mid", hold_mid);
         seed_quarters_ticks = (float) params.getDouble("seed_quarters_ticks", seed_quarters_ticks);
         seed_quarters_reach = params.getInt("seed_quarters_reach", seed_quarters_reach);
