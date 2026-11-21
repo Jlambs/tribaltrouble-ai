@@ -1019,11 +1019,23 @@ class Strategy {
      */
     int opening_floor = 0;
     /**
+     * opening_claim (0 = off): when the opening is laid out, every site planned claims this many of the trees nearest
+     * it (a building is 40 pieces of wood, four trees), and the sites planned after it are scored on the trees left.
+     * Without it each site counts the same trees: the sites stand 15 cells apart with 4 to 5 trees within 8 cells of
+     * each at the start, 1 to 2 when the fifth and sixth quarters are built, some with none within 16 (ot1log-vs16
+     * s22011), and their builders fetch wood 16 to 26 cells away.
+     */
+    int opening_claim = 0;
+    /**
      * opening_home_quarters: this many of the opening's quarters go up by the start, the first included (1: only the
      * first), before the builders walk to the armory's site (53 cells on average, 21 s with nothing built: the walk
      * is then made with that many quarters breeding).
      */
     int opening_home_quarters = 1;
+    /**
+     * opening_home_m: opening_home_quarters only when the armory's site is this many metres of walking from the start.
+     */
+    int opening_home_m = 0;
     /**
      * When the enemy arms early (six warriors out, or an armory up with fewer than rush_quarters quarters) while ours
      * is not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
@@ -3189,7 +3201,9 @@ class Strategy {
         opening_near_start = params.getBoolean("opening_near_start", opening_near_start);
         opening_route = params.getBoolean("opening_route", opening_route);
         opening_floor = params.getInt("opening_floor", opening_floor);
+        opening_claim = params.getInt("opening_claim", opening_claim);
         opening_home_quarters = params.getInt("opening_home_quarters", opening_home_quarters);
+        opening_home_m = params.getInt("opening_home_m", opening_home_m);
         rush_response = params.getBoolean("rush_response", rush_response);
         rush_quarters = params.getInt("rush_quarters", rush_quarters);
         rush_ticks = (float) params.getDouble("rush_ticks", rush_ticks);

@@ -147,6 +147,10 @@ final class Economy {
             reserved.add(armory_site.withHalf(SitePlanner.RaceSizes.ARMORY));
         if (armory_site != null && planner.hotRoute(ax, ay))
             ai.aiLog().count("route_hot"); // armory_route_clear: no site with a clear walk was worth it
+        // opening_claim: a site planned is built of the trees nearest it, which the next sites cannot count on
+        int claim = strategy.opening_claim;
+        if (claim > 0 && armory_site != null)
+            ai.map().claimTrees(ax, ay, claim, CLAIM_CELLS);
 
         // The freeze squad (Freeze) walks off at the start: it builds nothing until the strike ends.
         int first_builders = Math.max(1, intel.peons.size() - strategy.scouts - intel.strikers.size());
@@ -186,6 +190,8 @@ final class Economy {
             reserved.add(q1);
             Project p = addProject(Race.BUILDING_QUARTERS, q1, 0);
             p.first = true;
+            if (claim > 0)
+                ai.map().claimTrees(q1.x, q1.y, claim, CLAIM_CELLS);
         }
         // Before the armory come the quarters_before_armory first quarters; builders go to one site at a time.
         int armory_priority = 1 + 2 * Math.max(0, strategy.quarters_before_armory - 1);
@@ -194,10 +200,18 @@ final class Economy {
             p.use_scout = true;
         }
         List<Project> later = new ArrayList<>();
+        // opening_home_m: only when the armory is that far to walk from the start
+        home_quarters = armory_site != null && q1 != null && !moved && planner.getStartField().get(ax,
+                ay) >= strategy.opening_home_m ? Math.max(1, strategy.opening_home_quarters) : 1;
+        if (home_quarters > 1) {
+            ai.aiLog().count("opening_home"); // openings with quarters by the start before the walk to the armory
+            ai.log("home quarters: " + home_quarters + " by the start, the armory is " + planner.getStartField().get(ax,
+                    ay) + " m out");
+        }
         for (int i = 1; i < strategy.initial_quarters; i++) {
             Site q;
             // opening_home_quarters: the first of them go up by the first quarters, before the walk to the armory
-            if ((strategy.opening_near_start || i < strategy.opening_home_quarters) && q1 != null)
+            if ((strategy.opening_near_start || i < home_quarters) && q1 != null)
                 q = planner.findQuartersSite(reserved, q1.x, q1.y, 80, planner.getStartField(), ax, ay,
                         strategy.quarters_builders, 12.5f, 1f);
             else if (a_field != null)
@@ -213,7 +227,10 @@ final class Economy {
             p.use_scout = true;
             p.opening = true;
             later.add(p);
+            if (claim > 0)
+                ai.map().claimTrees(q.x, q.y, claim, CLAIM_CELLS);
         }
+        ai.map().clearTreeClaims();
         if (strategy.opening_route && q1 != null)
             routeOpening(q1, later);
 
@@ -255,7 +272,7 @@ final class Economy {
      */
     private void routeOpening(@NonNull Site q1, @NonNull List<@NonNull Project> later) {
         Strategy strategy = ai.strategy();
-        int home = Math.min(later.size(), Math.max(0, strategy.opening_home_quarters - 1));
+        int home = Math.min(later.size(), Math.max(0, home_quarters - 1));
         int n = later.size();
         if (n - home < 2)
             return;
@@ -336,6 +353,11 @@ final class Economy {
         return len;
     }
 
+    /** opening_home_quarters: the quarters this opening raises by the start, the first included. */
+    private int home_quarters = 1;
+
+    /** opening_claim: a site claims trees within this many cells. */
+    private static final int CLAIM_CELLS = 35;
     private static final int ROUTE_STEP_M = 8;
 
     /**

@@ -196,6 +196,46 @@ final class MapAnalysis {
      * Meters to the nearest `count` standing trees around a cell, as the crow flies, looking at most `radius` cells
      * away. Trees missing within the radius count as `missing` meters. Returns the average.
      */
+    /** opening_claim: trees a planned site will be built of; averageTreeDistance passes them over. */
+    private final java.util.Set<TreeSupply> claimed = new java.util.LinkedHashSet<>();
+
+    /** opening_claim: claims the count unclaimed trees nearest (x, y) within radius cells. */
+    void claimTrees(int x, int y, int count, int radius) {
+        TreeSupply[] best = new TreeSupply[count];
+        int[] best_d2 = new int[count];
+        java.util.Arrays.fill(best_d2, Integer.MAX_VALUE);
+        int bx0 = Math.max(0, (x - radius) / TREE_BUCKET);
+        int by0 = Math.max(0, (y - radius) / TREE_BUCKET);
+        int bx1 = Math.min(tree_buckets_side - 1, (x + radius) / TREE_BUCKET);
+        int by1 = Math.min(tree_buckets_side - 1, (y + radius) / TREE_BUCKET);
+        for (int by = by0; by <= by1; by++) {
+            for (int bx = bx0; bx <= bx1; bx++) {
+                for (TreeSupply t : tree_buckets.get(by * tree_buckets_side + bx)) {
+                    if (t.isEmpty() || claimed.contains(t))
+                        continue;
+                    int d2 = dist2(x, y, t.getGridX(), t.getGridY());
+                    if (d2 > radius * radius || d2 >= best_d2[count - 1])
+                        continue;
+                    int i = count - 1;
+                    while (i > 0 && best_d2[i - 1] > d2) {
+                        best[i] = best[i - 1];
+                        best_d2[i] = best_d2[i - 1];
+                        i--;
+                    }
+                    best[i] = t;
+                    best_d2[i] = d2;
+                }
+            }
+        }
+        for (TreeSupply t : best)
+            if (t != null)
+                claimed.add(t);
+    }
+
+    void clearTreeClaims() {
+        claimed.clear();
+    }
+
     float averageTreeDistance(int x, int y, int count, int radius, float missing) {
         return averageTreeDistance(x, y, count, radius, missing, null);
     }
@@ -206,6 +246,7 @@ final class MapAnalysis {
      * the field's source.
      */
     float averageTreeDistance(int x, int y, int count, int radius, float missing, @Nullable DistanceField field) {
+        boolean claims = !claimed.isEmpty();
         int site = field != null ? field.getAround(x, y, 1) : DistanceField.UNREACHABLE;
         if (site == DistanceField.UNREACHABLE)
             field = null;
@@ -220,7 +261,7 @@ final class MapAnalysis {
             for (int bx = bx0; bx <= bx1; bx++) {
                 List<TreeSupply> bucket = tree_buckets.get(by * tree_buckets_side + bx);
                 for (TreeSupply t : bucket) {
-                    if (t.isEmpty())
+                    if (t.isEmpty() || (claims && claimed.contains(t)))
                         continue;
                     int d2 = dist2(x, y, t.getGridX(), t.getGridY());
                     if (d2 > r2)
