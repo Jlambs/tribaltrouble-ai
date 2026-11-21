@@ -1068,7 +1068,9 @@ class Strategy {
      * armories 2.3, 3.4, 3.1 and 10 more units at minute 5); three no better than two, one half as good. In whole
      * games two from 60 m have 1.3, 4.4 and 2.2 more warriors at minutes 6, 8 and 10 at N=16 (1.0, 1.7, 0.6 at
      * N=17), the copies housed are the same at every minute, and they win 111 of 150 for 112 at N=16 and 83 for 83
-     * at N=17 (oc1-vs16, oc3-vs17: +21 -22).
+     * at N=17 (oc1-vs16, oc3-vs17: +21 -22). With opening_chain_trees 3 and opening_prewalk_first on two more
+     * blocks 126 for 124 and 92 for 92 (od1-vs16, od3-vs17: +24 -22). The default against several enemies on large
+     * maps since 2026-11-22 (forGame): two, from 60 m.
      */
     int opening_chain = 0;
     int opening_chain_m = 150;
@@ -1076,7 +1078,7 @@ class Strategy {
      * opening_chain_trees: a quarters of the chain needs this many trees within 7 cells of its site, else it is
      * planned around the armory as without the chain. ot5log-vs16 s22078, a start with no trees: the chain's first
      * quarters, none within 16 cells, is built by six peons (builders_floor) fetching wood 15 to 19 cells away and
-     * stands at 498 s.
+     * stands at 498 s. 3 with the chain since 2026-11-22 (forGame; os44-vs16: the other openings as they were).
      */
     int opening_chain_trees = 0;
     /**
@@ -1821,7 +1823,9 @@ class Strategy {
      * left over once it does; but a peon that carries the first quarters' site and reaches it while another still
      * moves on its ground drops the site and stands idle until the last one puts it down, and the walk ahead took
      * those for left over: ot3log-vs16 s22001 (armory 351 m out), 9 of the 13 builders walk off at 3 to 12 s and the
-     * first quarters, built by one peon until they are back at 84 s, stands at 160 s.
+     * first quarters, built by one peon until they are back at 84 s, stands at 160 s. On against several enemies on
+     * large maps since 2026-11-22 (forGame): of 100 openings that one changes, 88 units at minute 5 for 44 and 47
+     * warriors at minute 8 for 5 (os43-vs16).
      */
     boolean opening_prewalk_first = false;
     /**
@@ -3728,6 +3732,17 @@ class Strategy {
                 strategy.rush_response = false;
                 strategy.hold_build = 6;
                 strategy.hold_early = 6;
+                // Two of the quarters before the armory stand along the way to it, wherever it is 60 m and more
+                // beyond the first quarters, on ground with trees; and nobody walks ahead to a far armory site
+                // before the first quarters stands (a fault that took its builders in one opening of 100). The
+                // second quarters stands 16 s sooner and an opening has 1.9, 3.1 and 2.3 more warriors at minutes
+                // 6, 8 and 10 (os38-vs16); in whole games 1 to 4 more through minute 10 and the same wins: on four
+                // blocks of 150 maps never used 111 for 112 and 126 for 124 at N=16, 83 for 83 and 92 for 92 at
+                // N=17 (oc1, od1-vs16, oc3, od3-vs17: +45 -44). Walking taken out that shows no harm.
+                strategy.opening_chain = 2;
+                strategy.opening_chain_m = 60;
+                strategy.opening_chain_trees = 3;
+                strategy.opening_prewalk_first = true;
             }
         }
         return strategy;
