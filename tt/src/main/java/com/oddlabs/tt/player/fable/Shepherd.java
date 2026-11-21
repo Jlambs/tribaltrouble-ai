@@ -2454,7 +2454,8 @@ final class Shepherd {
     }
 
     /** Log only (K2): a unit's job, as the Shepherd, the economy or the military sees it. */
-    private @NonNull String roleOf(@NonNull Unit u) {
+    @NonNull
+    String roleOf(@NonNull Unit u) {
         Intel intel = ai.intel();
         for (Flock f : flocks)
             if (f.shepherd == u)

@@ -2117,6 +2117,49 @@ class Strategy {
      */
     int shred_lurk = 0;
     /**
+     * shred_press: charged, with a blob to blast and its cast point within shred_press_cells, the strict chieftain is
+     * not turned back by an awake enemy warrior within 9 cells: he walks on to the cast point with whatever hunts
+     * him behind him, and blasts once the fill is reached or he is hit with shred_min in reach. Walking home does not
+     * shake a hunter (it walks as fast as he does, and only the blast or our towers end it): 10 times an hour of game
+     * one to seven of them turn him back, 330 s of a charged blast, with a blob of 15 and more within a 15 s walk in
+     * 60 % (cf0log-vs16, ChiefTrace).
+     */
+    boolean shred_press = false;
+    int shred_press_cells = 30;
+    /** shred_press: while he is being hit (2 s after a hit) he walks on only to a cast point this near. */
+    int shred_press_fire_cells = 12;
+    /** shred_press: only with this many hunters of his within 12 cells or fewer; more of them turn him back. */
+    int shred_press_hunters = 3;
+    /**
+     * shred_stick (factor, 1 = off): the blob chosen within the last 10 s scores this much more than the others
+     * (Chieftain.findBlob scores members / (30 + cells)). The sizes jump with every launch, and without it he turns
+     * round between blobs 100 and more cells apart every few seconds: a cast point jumps 3.9 times, 119 cells, in a
+     * walk that ends in a blast (cf0log-vs16, s22005 at 1119-1207 s).
+     */
+    float shred_stick = 1f;
+    /**
+     * shred_sidestep: the strict chieftain keeps out of sight of enemy warriors on an attack-move: when the next 14
+     * cells of one's way come within 10 cells (Chebyshev; a walking warrior scans 8) of him or of his next 4 cells, he
+     * steps to the nearest of 32 cells about him that is clear of every such way, and his waiting points are chosen
+     * clear of them. 24 times an hour of game an enemy warrior begins to hunt him, 16 of them with a walking wave
+     * within 17 cells the second before and 8 with parked warriors only (cf2log-vs16, ChiefTrace): the waves that
+     * walk past see him, not the blobs he walks up to.
+     */
+    boolean shred_sidestep = false;
+    /**
+     * shred_defend (0 = off): within 2 s of a hit, a charged strict chieftain blasts from where he stands with this
+     * many in reach instead of shred_min: whoever hits him follows him as fast as he walks.
+     */
+    int shred_defend = 0;
+    /**
+     * shred_point_blank: with an awake enemy warrior within 9 cells, an enemy within 5 cells of him does not rule out
+     * a blast from where he stands (castValue's rule for cast points: what stands that near throws before the blast
+     * lands). Whatever is that near has seen him already, and with it there he could not blast at all: charged with 8
+     * and more in reach he stands 64 s an hour of game under that rule, and 1.1 of his 1.7 deaths an hour come with
+     * the blast charged (cf0log-vs16, cp1log-vs16, ChiefTrace).
+     */
+    boolean shred_point_blank = false;
+    /**
      * shred_ahead: with shred_lurk and no blob, he waits by the target of the biggest group of enemy warriors on one
      * attack-move (shred_min or more, the target within shred_range of our armory): where they will stand parked.
      * With the blast charged he has no blob in 730 s of a 70-minute game and walks to cast points for 700 s, at 1.4
@@ -2628,6 +2671,14 @@ class Strategy {
         shred_bait = params.getBoolean("shred_bait", shred_bait);
         shred_from_ticks = (float) params.getDouble("shred_from_ticks", shred_from_ticks);
         shred_lurk = params.getInt("shred_lurk", shred_lurk);
+        shred_press = params.getBoolean("shred_press", shred_press);
+        shred_press_cells = params.getInt("shred_press_cells", shred_press_cells);
+        shred_press_fire_cells = params.getInt("shred_press_fire_cells", shred_press_fire_cells);
+        shred_press_hunters = params.getInt("shred_press_hunters", shred_press_hunters);
+        shred_stick = (float) params.getDouble("shred_stick", shred_stick);
+        shred_sidestep = params.getBoolean("shred_sidestep", shred_sidestep);
+        shred_defend = params.getInt("shred_defend", shred_defend);
+        shred_point_blank = params.getBoolean("shred_point_blank", shred_point_blank);
         shred_ahead = params.getBoolean("shred_ahead", shred_ahead);
         shred_gate = params.getBoolean("shred_gate", shred_gate);
         giants_from_ticks = (float) params.getDouble("giants_from_ticks", giants_from_ticks);

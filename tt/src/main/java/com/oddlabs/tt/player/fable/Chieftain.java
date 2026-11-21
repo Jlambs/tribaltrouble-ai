@@ -27,8 +27,25 @@ final class Chieftain {
     private static final int TOWER_CAUGHT2 = 300;
 
     private final @NonNull FableAI ai;
+    /**
+     * Log only (ChiefTrace), never read by a decision: what the mission did with him at the last round, what den did
+     * at its last, the kind of his last blast and the cast point he walks to.
+     */
+    @NonNull
+    String trace_mission = "";
+    @NonNull
+    String trace_den = "";
+    @NonNull
+    String trace_blast = "";
+    int @Nullable [] trace_point;
+    boolean trace_side;
     private float last_move = -5000f;
     private float last_cast = -5000f;
+    /** Counters only: the enemy warriors hunting him within 30 cells at the last round. */
+    private int hunted_before;
+    /** shred_press: when he last lost hit points, and how long after it he counts as under fire (2 s). */
+    private float last_hit = -5000f;
+    private static final float PRESS_HIT_TICKS = 100f;
     private boolean had_chief;
     /** Enemy warriors in reach when the last stun was cast, checked once it has gone off. */
     private final java.util.List<@NonNull Unit> cast_candidates = new java.util.ArrayList<>();
@@ -107,8 +124,52 @@ final class Chieftain {
         return null;
     }
 
+    /**
+     * Counters only: when the last shred blast was ordered (-1: none being followed) and the enemy warriors within
+     * its reach when it took its targets (BLAST_TAKES_TICKS after the order), counted dead or alive once its ring has
+     * passed (BLAST_DONE_TICKS).
+     */
+    private float blast_follow = -1f;
+    private java.util.@Nullable List<@NonNull Unit> blast_taken;
+    private static final float BLAST_TAKES_TICKS = 110f;
+    private static final float BLAST_DONE_TICKS = 250f;
+
+    private void followBlast() {
+        if (blast_follow < 0f)
+            return;
+        float since = ai.now() - blast_follow;
+        java.util.List<Unit> taken = blast_taken;
+        if (taken == null) {
+            if (since < BLAST_TAKES_TICKS)
+                return;
+            Unit chief = ai.intel().chieftain;
+            if (chief == null || chief.isDead()) {
+                ai.aiLog().count("shred_cast_lost"); // he died before the blast took its targets
+                blast_follow = -1f;
+                return;
+            }
+            taken = new java.util.ArrayList<>();
+            for (Unit e : ai.intel().enemy_warriors)
+                if (!e.isDead() && MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), e.getGridX(),
+                        e.getGridY()) <= 18 * 18) {
+                            taken.add(e);
+                            ai.aiLog().count("shred_taken");
+                        }
+            blast_taken = taken;
+            return;
+        }
+        if (since < BLAST_DONE_TICKS)
+            return;
+        for (Unit e : taken)
+            if (e.isDead())
+                ai.aiLog().count("shred_killed");
+        blast_follow = -1f;
+        blast_taken = null;
+    }
+
     void tick() {
         checkCatch();
+        followBlast();
         Unit chief = ai.intel().chieftain;
         if (chief == null) {
             if (had_chief) {
@@ -147,6 +208,17 @@ final class Chieftain {
             last_useful = ai.now();
         }
         had_chief = true;
+        // counters only: an enemy warrior begins to hunt him with none after him within 30 cells the round before
+        int after_him = huntersAt(chief, 30);
+        if (after_him > 0 && hunted_before == 0)
+            ai.aiLog().count(chief.canDoMagic(
+                    RacesResources.INDEX_MAGIC_BLAST) ? "chief_spotted_charged" : "chief_spotted");
+        hunted_before = after_him;
+        if (chief.getHitPoints() < last_hp) {
+            last_hit = ai.now();
+            for (int i = last_hp - chief.getHitPoints(); i > 0; i--)
+                ai.aiLog().count("chief_hp_lost");
+        }
         last_hp = chief.getHitPoints();
         if (ai.logging() && ai.periodDue(hp_trace, 3000f)) {
             hp_trace = ai.now();
@@ -156,10 +228,17 @@ final class Chieftain {
                     refresh_state == RefreshState.NONE ? "" : ", refresh " + refresh_state.name().toLowerCase(
                             java.util.Locale.ROOT)));
         }
-        if (refresh(chief))
+        trace_point = null;
+        trace_side = false;
+        if (refresh(chief)) {
+            trace_mission = "refresh";
             return;
-        if (Intel.isStunned(chief))
+        }
+        if (Intel.isStunned(chief)) {
+            trace_mission = "stunned";
             return;
+        }
+        trace_mission = "none";
         if (ai.strategy().blast && isViking() && chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST)
                 && shouldBlast(chief)) {
             ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
@@ -196,10 +275,125 @@ final class Chieftain {
         }
         if (ai.dodges().chiefBusy())
             return;
-        if (strictShred())
-            den(chief);
-        else
+        if (strictShred()) {
+            if (!sidestepped(chief, chief.getGridX(), chief.getGridY()))
+                den(chief);
+        } else
             position(chief);
+    }
+
+    /** shred_sidestep: Chebyshev cells he keeps from a walking enemy warrior's way, and the cells of it looked at. */
+    private static final int SIDESTEP_CLEAR = 10;
+    private static final int SIDESTEP_AHEAD = 14;
+    private static final int SIDESTEP_RANGE = 34;
+    private float sidestep_at = -5000f;
+    private int sidestep_x;
+    private int sidestep_y;
+
+    /** Whether an enemy warrior walks on an attack-move and scans as it goes (one that hunts something does not). */
+    private static boolean isWalker(@NonNull Unit e) {
+        return e.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.WalkController w && w.isAgressive();
+    }
+
+    /**
+     * shred_sidestep: the next SIDESTEP_AHEAD cells of the straight way of every walking enemy warrior within
+     * SIDESTEP_RANGE cells of (cx, cy), as {x0, y0, x1, y1}.
+     */
+    private java.util.@NonNull List<int @NonNull []> walkerWays(int cx, int cy) {
+        java.util.List<int[]> ways = new java.util.ArrayList<>();
+        if (!ai.strategy().shred_sidestep)
+            return ways;
+        for (Unit e : ai.intel().enemy_warriors) {
+            if (e.isDead() || !isWalker(e))
+                continue;
+            int ex = e.getGridX();
+            int ey = e.getGridY();
+            if (MapAnalysis.dist2(cx, cy, ex, ey) > SIDESTEP_RANGE * SIDESTEP_RANGE)
+                continue;
+            com.oddlabs.tt.util.Target t = ((com.oddlabs.tt.model.behaviour.WalkController) e.getCurrentController()).getTarget();
+            int[] end = MapAnalysis.towards(ex, ey, t.getGridX(), t.getGridY(), SIDESTEP_AHEAD);
+            ways.add(new int[]{ex, ey, end[0], end[1]});
+        }
+        return ways;
+    }
+
+    /** The least Chebyshev distance from (x, y) to the ways, sampled every 2 cells; 99 with none. */
+    private static int wayClear(int x, int y, java.util.@NonNull List<int @NonNull []> ways) {
+        int best = 99;
+        for (int[] w : ways) {
+            int steps = Math.max(1, (Math.max(Math.abs(w[2] - w[0]), Math.abs(w[3] - w[1])) + 1) / 2);
+            for (int i = 0; i <= steps; i++) {
+                int px = w[0] + (w[2] - w[0]) * i / steps;
+                int py = w[1] + (w[3] - w[1]) * i / steps;
+                best = Math.min(best, Math.max(Math.abs(px - x), Math.abs(py - y)));
+            }
+        }
+        return best;
+    }
+
+    /**
+     * shred_sidestep: on his way to (gx, gy) (his own cell: he stands), orders him out of the way of walking enemy
+     * warriors when his cell or the one 4 cells on is within SIDESTEP_CLEAR of a way; true while he is stepping aside.
+     * Of 32 cells about him (16 headings, 5 and 9 cells), passable, 9 cells (Chebyshev) from every enemy warrior that
+     * does not walk and 18 from enemy towers: the one nearest the goal among those clear of the ways, else the
+     * clearest.
+     */
+    private boolean sidestepped(@NonNull Unit chief, int gx, int gy) {
+        if (!ai.strategy().shred_sidestep || ai.military().isDodging(chief))
+            return false;
+        int cx = chief.getGridX();
+        int cy = chief.getGridY();
+        java.util.List<int[]> ways = walkerWays(cx, cy);
+        if (ways.isEmpty())
+            return false;
+        int[] next = MapAnalysis.towards(cx, cy, gx, gy, 4);
+        int here = wayClear(cx, cy, ways);
+        if (here > SIDESTEP_CLEAR && wayClear(next[0], next[1], ways) > SIDESTEP_CLEAR)
+            return false;
+        Intel intel = ai.intel();
+        int size = ai.map().getSize();
+        int best_x = cx;
+        int best_y = cy;
+        float best = here > SIDESTEP_CLEAR ? 1000f - (float) Math.sqrt(MapAnalysis.dist2(cx, cy, gx, gy)) : here;
+        for (int r = 5; r <= 9; r += 4)
+            for (int a = 0; a < 16; a++) {
+                double ang = a * Math.PI / 8;
+                int x = cx + (int) Math.round(r * Math.cos(ang));
+                int y = cy + (int) Math.round(r * Math.sin(ang));
+                if (x < 3 || y < 3 || x > size - 4 || y > size - 4 || !ai.map().passable(x, y))
+                    continue;
+                int clear = wayClear(x, y, ways);
+                float score = clear > SIDESTEP_CLEAR ? 1000f - (float) Math.sqrt(MapAnalysis.dist2(x, y, gx,
+                        gy)) : clear;
+                if (score <= best)
+                    continue;
+                boolean seen = false;
+                for (Unit e : intel.enemy_warriors)
+                    if (!e.isDead() && !isWalker(e) && !huntsElse(e) && Math.abs(e.getGridX() - x) <= 9 && Math.abs(
+                            e.getGridY() - y) <= 9) {
+                                seen = true;
+                                break;
+                            }
+                for (Building t : intel.enemy_towers)
+                    if (!seen && MapAnalysis.dist2(x, y, t.getGridX(), t.getGridY()) <= 18 * 18)
+                        seen = true;
+                if (seen)
+                    continue;
+                best = score;
+                best_x = x;
+                best_y = y;
+            }
+        ai.aiLog().count("shred_sidestep"); // chieftain rounds (0.5 s) he keeps out of a walking wave's way
+        trace_side = true;
+        // a new order when the step changes, else one a second
+        if (MapAnalysis.dist2(best_x, best_y, sidestep_x, sidestep_y) > 2 * 2 || ai.periodDue(sidestep_at, 50f)) {
+            ai.landscapeOrder(Selectable.newArray(chief), best_x, best_y, Action.MOVE, false);
+            sidestep_at = ai.now();
+            sidestep_x = best_x;
+            sidestep_y = best_y;
+        }
+        last_move = ai.now();
+        return true;
     }
 
     /**
@@ -251,8 +445,10 @@ final class Chieftain {
                 ai.aiLog().count("shred_lurk"); // chieftain move rounds (1.5 s)
             }
         }
+        trace_den = lurking ? "lurk" : "home";
         if (lurking ? nearestAwakeDistance(chief.getGridX(), chief.getGridY()) <= 16 : nearestWarriorDistance(
                 chief.getGridX(), chief.getGridY()) <= 16) {
+            trace_den = lurking ? "lurk_back" : "home_back";
             Building armory = ai.intel().armory();
             if (armory != null) {
                 tx = armory.getGridX();
@@ -262,8 +458,10 @@ final class Chieftain {
             tx = away[0];
             ty = away[1];
         }
-        if (MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), tx, ty) <= 4 * 4)
+        if (MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), tx, ty) <= 4 * 4) {
+            trace_den += "_there";
             return;
+        }
         last_move = ai.now();
         ai.landscapeOrder(Selectable.newArray(chief), tx, ty, Action.MOVE, false);
     }
@@ -281,6 +479,7 @@ final class Chieftain {
         int size = ai.map().getSize();
         int[] best = null;
         int best_d = Integer.MAX_VALUE;
+        java.util.List<int[]> ways = walkerWays(cx, cy);
         for (int r = lurk; r <= lurk + 12; r += 4) {
             for (int a = 0; a < 24; a++) {
                 double ang = a * Math.PI / 12;
@@ -290,6 +489,9 @@ final class Chieftain {
                     continue;
                 int d = MapAnalysis.dist2(x, y, cx, cy);
                 if (d >= best_d)
+                    continue;
+                // shred_sidestep: not where a walking wave will pass
+                if (wayClear(x, y, ways) <= SIDESTEP_CLEAR)
                     continue;
                 boolean seen = false;
                 for (Unit e : intel.enemy_warriors)
@@ -340,6 +542,8 @@ final class Chieftain {
 
     /** shred_bait: set while blastHere values the chieftain's own cell with awake warriors at him. */
     private boolean cast_hunted;
+    /** shred_defend: the fewest in reach castValue accepts (0: shred_min); set while blastHere values his own cell. */
+    private int cast_floor;
 
     /**
      * shred_ahead: where the biggest wave on its way will stand: {x, y, 0, warriors}, the target that the most enemy
@@ -386,8 +590,10 @@ final class Chieftain {
     /** Cells to the nearest enemy warrior that is neither parked nor stunned, or a large number. */
     private int nearestAwakeDistance(int x, int y) {
         int best = Integer.MAX_VALUE;
+        boolean sidestep = ai.strategy().shred_sidestep;
         for (Unit e : ai.intel().enemy_warriors)
-            if (!e.isDead() && !Intel.isParked(e) && !Intel.isStunned(e) && !huntsOther(e))
+            if (!e.isDead() && !Intel.isParked(e) && !Intel.isStunned(e) && !huntsOther(e) && !(sidestep && isWalker(
+                    e)))
                 best = Math.min(best, MapAnalysis.dist2(x, y, e.getGridX(), e.getGridY()));
         return best == Integer.MAX_VALUE ? 1000 : (int) Math.sqrt(best);
     }
@@ -435,7 +641,7 @@ final class Chieftain {
         boolean charged = chief.canDoMagic(RacesResources.INDEX_MAGIC_BLAST);
         if (ai.logging() && ai.periodDue(shred_trace, 1000f)) {
             shred_trace = ai.now();
-            int[] b = findBlob(chief.getGridX(), chief.getGridY());
+            int[] b = findBlob(chief.getGridX(), chief.getGridY(), false);
             ai.log(String.format("shred: charged %b hp %d blast %.2f blob %s", charged, chief.getHitPoints(),
                     chief.getMagicProgress(RacesResources.INDEX_MAGIC_BLAST),
                     b == null ? "none" : b[3] + " at " + b[0] + "," + b[1] + " nearest " + b[2]));
@@ -443,6 +649,7 @@ final class Chieftain {
         if (!charged || chief.getHitPoints() <= strategy.shred_min_hp) {
             // shred_t_*: the mission's rounds by what he does in them
             ai.aiLog().count(charged ? "shred_t_weak" : "shred_t_charging");
+            trace_mission = charged ? "weak" : "charging";
             shred_target = null;
             return false;
         }
@@ -451,6 +658,8 @@ final class Chieftain {
         // Anything awake coming at him ends the mission.
         if (strategy.shred_strict && blastHere(chief, cx, cy))
             return true;
+        boolean pressed = false;
+        boolean had_target = shred_target != null;
         for (Unit e : ai.intel().enemy_warriors) {
             if (e.isDead() || Intel.isParked(e))
                 continue;
@@ -460,16 +669,21 @@ final class Chieftain {
                     ai.aiLog().count("chief_bystander"); // chieftain rounds a hunter of another passed within 9
                     continue;
                 }
-                if (shred_target != null)
-                    ai.aiLog().count("shred_abort");
-                ai.aiLog().count("shred_t_awake");
-                shred_target = null;
-                return false;
+                // shred_press: decided below, once the blob and its cast point are known
+                if (strategy.shred_press && strategy.shred_strict && huntersAt(chief,
+                        12) <= strategy.shred_press_hunters) {
+                    pressed = true;
+                    continue;
+                }
+                return calledOff(had_target);
             }
         }
         int[] blob = findBlob(cx, cy);
+        if (blob == null && pressed)
+            return calledOff(had_target);
         if (blob == null) {
             ai.aiLog().count("shred_t_noblob");
+            trace_mission = "noblob";
             if (ai.logging() && ai.periodDue(noblob_trace, 1000f)) { // 20 s
                 noblob_trace = ai.now();
                 traceNoBlob(cx, cy);
@@ -508,22 +722,37 @@ final class Chieftain {
                         blob[3], blob[0], blob[1], fc, seen_by[0], seen_by[1], seen_by[2],
                         seen_by[3]));
             }
+            // shred_press: under fire only to a cast point near by
+            int press_cells = ai.now() - last_hit > PRESS_HIT_TICKS ? strategy.shred_press_cells : strategy.shred_press_fire_cells;
+            if (pressed && (at == null || MapAnalysis.dist2(cx, cy, at[0], at[1]) > press_cells * press_cells))
+                return calledOff(had_target);
             if (at == null) {
                 ai.aiLog().count("shred_nopoint");
+                trace_mission = "nopoint";
                 return false;
             }
             ai.aiLog().count("shred_t_walk");
+            if (pressed)
+                ai.aiLog().count("shred_press"); // chieftain rounds he walks on with an awake warrior within 9
+            trace_mission = pressed ? "press" : "walk";
+            trace_point = at;
             if (MapAnalysis.dist2(cx, cy, at[0], at[1]) <= 1 && at[2] >= strategy.shred_min) {
                 ai.log(String.format("chieftain blasts a parked blob at %d,%d from %d,%d (%d in reach)", blob[0],
                         blob[1], cx, cy, at[2]));
+                trace_mission = "blast";
+                trace_blast = "point";
                 ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
                 last_useful = ai.now();
                 last_cast = ai.now();
                 last_move = ai.now();
                 ai.aiLog().count("shred_blast");
+                blast_follow = ai.now();
+                blast_taken = null;
                 shred_target = null;
                 return true;
             }
+            if (sidestepped(chief, at[0], at[1]))
+                return true;
             if (ai.periodDue(last_move, 50f) && !ai.military().isDodging(chief)) {
                 ai.landscapeOrder(Selectable.newArray(chief), at[0], at[1], Action.MOVE, false);
                 last_move = ai.now();
@@ -540,6 +769,8 @@ final class Chieftain {
             last_cast = ai.now();
             last_move = ai.now();
             ai.aiLog().count("shred_blast");
+            blast_follow = ai.now();
+            blast_taken = null;
             shred_target = null;
             return true;
         }
@@ -550,6 +781,26 @@ final class Chieftain {
             last_move = ai.now();
         }
         return true;
+    }
+
+    /** Enemy warriors locked in a hunt on our chieftain within r cells of him. */
+    private int huntersAt(@NonNull Unit chief, int r) {
+        int n = 0;
+        for (Unit e : ai.intel().enemy_warriors)
+            if (!e.isDead() && e.getCurrentController() instanceof HuntController h && h.getTarget() == chief
+                    && MapAnalysis.dist2(chief.getGridX(), chief.getGridY(), e.getGridX(), e.getGridY()) <= r * r)
+                n++;
+        return n;
+    }
+
+    /** The mission's round ends with him turned back by an awake enemy warrior within sight of him. */
+    private boolean calledOff(boolean had_target) {
+        if (had_target)
+            ai.aiLog().count("shred_abort");
+        ai.aiLog().count("shred_t_awake");
+        trace_mission = "awake";
+        shred_target = null;
+        return false;
     }
 
     /**
@@ -960,12 +1211,18 @@ final class Chieftain {
         for (Selectable<?> s : ai.owner().getUnits().getSet())
             if (!s.isDead() && s != chief)
                 ours.add(s);
-        // shred_bait: with awake warriors at him only the blast is left, however near they stand
-        cast_hunted = ai.strategy().shred_bait && awakeWithin(cx, cy, 9) > 0;
+        // shred_bait, shred_point_blank: with awake warriors at him only the blast is left, however near they stand
+        cast_hunted = (ai.strategy().shred_bait || ai.strategy().shred_point_blank) && awakeWithin(cx, cy, 9) > 0;
+        // shred_defend: being hit, he blasts for fewer (castValue's own floor is shred_min)
+        boolean defend = ai.strategy().shred_defend > 0 && ai.now() - last_hit <= PRESS_HIT_TICKS;
+        cast_floor = defend ? ai.strategy().shred_defend : ai.strategy().shred_min;
         int here = castValue(cx, cy, enemies, java.util.List.of(), ours, null);
         cast_hunted = false;
-        if (here < ai.strategy().shred_min)
+        cast_floor = ai.strategy().shred_min;
+        if (here < (defend ? ai.strategy().shred_defend : ai.strategy().shred_min))
             return false;
+        if (here < ai.strategy().shred_min)
+            ai.aiLog().count("shred_defend");
         // shred_fill: not from the blob's edge while its cast point promises more and nothing awake is at him
         float fill = ai.strategy().shred_fill;
         if (fill > 0f) {
@@ -976,20 +1233,34 @@ final class Chieftain {
                             hunted = true;
                             break;
                         }
-            int[] blob = hunted ? null : findBlob(cx, cy);
+            // shred_press: hunted, he still goes on to a cast point within reach until he is hit
+            // (only with shred_press_hunters or fewer after him: more of them cost more than the fill gains)
+            boolean press = hunted && ai.strategy().shred_press && ai.now() - last_hit > PRESS_HIT_TICKS
+                    && huntersAt(chief, 12) <= ai.strategy().shred_press_hunters;
+            int[] blob = hunted && !press ? null : findBlob(cx, cy);
             int[] at = blob != null ? castPoint(blob, cx, cy) : null;
+            int press2 = ai.strategy().shred_press_cells * ai.strategy().shred_press_cells;
+            if (press && at != null && MapAnalysis.dist2(cx, cy, at[0], at[1]) > press2)
+                at = null;
             if (at != null && here < fill * at[2]) {
-                ai.aiLog().count("shred_fill_wait"); // chieftain rounds with enough in reach and more at the point
+                // chieftain rounds with enough in reach and more at the point
+                ai.aiLog().count(press ? "shred_press_wait" : "shred_fill_wait");
                 return false;
             }
             ai.aiLog().count(hunted ? "shred_blast_hunted" : at == null ? "shred_blast_nopoint" : "shred_blast_full");
+            trace_blast = hunted ? press && at != null ? "pressed" : "hunted" : at == null ? "nopoint" : "full";
+        } else {
+            trace_blast = "here";
         }
+        trace_mission = "blast";
         ai.log(String.format("chieftain blasts from %d,%d (%d enemy warriors in reach)", cx, cy, here));
         ai.owner().doMagic(chief, RacesResources.INDEX_MAGIC_BLAST);
         last_useful = ai.now();
         last_cast = ai.now();
         last_move = ai.now();
         ai.aiLog().count("shred_blast");
+        blast_follow = ai.now();
+        blast_taken = null;
         for (int i = 0; i < here; i++)
             ai.aiLog().count("shred_caught");
         shred_target = null;
@@ -1053,7 +1324,7 @@ final class Chieftain {
                 why[3]++;
             return -1;
         }
-        if (hit < ai.strategy().shred_min) {
+        if (hit < (cast_floor > 0 ? cast_floor : ai.strategy().shred_min)) {
             if (why != null)
                 why[4]++;
             return -1;
@@ -1111,6 +1382,25 @@ final class Chieftain {
             ai.aiLog().count("shred_nopoint_" + new String[]{"ground", "seen", "tower", "friends", "few"}[m]);
         }
         return best;
+    }
+
+    /** Log only (ChiefTrace): what rules out a blast from where he stands, as castValue sees it. */
+    @NonNull
+    String traceHere(@NonNull Unit chief) {
+        java.util.List<Unit> enemies = new java.util.ArrayList<>(ai.intel().enemy_warriors);
+        enemies.addAll(ai.intel().enemy_chieftains);
+        enemies.addAll(ai.intel().enemy_peons);
+        java.util.List<Selectable<?>> ours = new java.util.ArrayList<>();
+        for (Selectable<?> s : ai.owner().getUnits().getSet())
+            if (!s.isDead() && s != chief)
+                ours.add(s);
+        int[] why = new int[5];
+        if (castValue(chief.getGridX(), chief.getGridY(), enemies, java.util.List.of(), ours, why) >= 0)
+            return "ok";
+        for (int i = 0; i < why.length; i++)
+            if (why[i] > 0)
+                return new String[]{"ground", "seen", "tower", "friends", "few"}[i];
+        return "ok";
     }
 
     private float noblob_trace = -5000f;
@@ -1176,6 +1466,16 @@ final class Chieftain {
      * warrior within 16 cells, no enemy tower within 22, and none of our units within 20 (the blast hits friends too).
      */
     private int @Nullable [] findBlob(int cx, int cy) {
+        return findBlob(cx, cy, true);
+    }
+
+    /** shred_stick: the centre of the blob last chosen and when, -1 before; a log's question leaves it (commit). */
+    private int stick_x = -1;
+    private int stick_y;
+    private float stick_at;
+    private static final float STICK_TICKS = 500f; // 10 s
+
+    private int @Nullable [] findBlob(int cx, int cy, boolean commit) {
         Intel intel = ai.intel();
         Strategy strategy = ai.strategy();
         Building armory = intel.armory();
@@ -1198,6 +1498,7 @@ final class Chieftain {
         int[] best = null;
         float best_score = 0f;
         int range2 = strategy.shred_range * strategy.shred_range;
+        boolean sticky = strategy.shred_stick > 1f && stick_x >= 0 && ai.now() - stick_at <= STICK_TICKS;
         for (Unit seed : parked) {
             int sx = seed.getGridX();
             int sy = seed.getGridY();
@@ -1220,6 +1521,9 @@ final class Chieftain {
                 continue;
             float d = (float) Math.sqrt(MapAnalysis.dist2(cx, cy, bx, by));
             float score = n / (30f + d);
+            // shred_stick: the blob he is on his way to counts for more than one he would turn round for
+            if (sticky && MapAnalysis.dist2(bx, by, stick_x, stick_y) <= 12 * 12)
+                score *= strategy.shred_stick;
             if (score > best_score) {
                 int nearest = Integer.MAX_VALUE;
                 for (Unit e : parked)
@@ -1227,6 +1531,14 @@ final class Chieftain {
                 best_score = score;
                 best = new int[]{bx, by, (int) Math.sqrt(nearest), n};
             }
+        }
+        if (commit && best != null && strategy.shred_stick > 1f) {
+            if (stick_x >= 0 && ai.now() - stick_at <= STICK_TICKS && MapAnalysis.dist2(best[0], best[1], stick_x,
+                    stick_y) > 12 * 12)
+                ai.aiLog().count("shred_switch"); // another blob chosen within 10 s of the last
+            stick_x = best[0];
+            stick_y = best[1];
+            stick_at = ai.now();
         }
         return best;
     }
