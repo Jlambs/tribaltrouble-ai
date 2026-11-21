@@ -1019,6 +1019,12 @@ class Strategy {
      */
     boolean opening_route = false;
     /**
+     * opening_route_sum: opening_route takes the order with the least sum of the walks to each site (every building
+     * as early as can be, the near ones first) instead of the least walk in all, which with opening_chain went past
+     * a quarters on the way and came back for it (ot4log-vs16 s22003).
+     */
+    boolean opening_route_sum = false;
+    /**
      * opening_floor (0 = off): the quarters planned at the start may have up to 20 builders each, and never fewer than
      * this, also once the armory stands (quarters_builders then caps a quarters at 12) and when the trees within 12
      * cells are cut (four builders a tree, builders_floor at least). ot1log-vs16: the fifth and sixth quarters are
@@ -3263,6 +3269,7 @@ class Strategy {
         quarters_before_armory = params.getInt("quarters_before_armory", quarters_before_armory);
         opening_near_start = params.getBoolean("opening_near_start", opening_near_start);
         opening_route = params.getBoolean("opening_route", opening_route);
+        opening_route_sum = params.getBoolean("opening_route_sum", opening_route_sum);
         opening_floor = params.getInt("opening_floor", opening_floor);
         opening_chain = params.getInt("opening_chain", opening_chain);
         opening_chain_m = params.getInt("opening_chain_m", opening_chain_m);

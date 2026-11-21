@@ -359,24 +359,29 @@ final class Economy {
         }
         projects.sort(java.util.Comparator.comparingInt(p -> p.priority));
         ai.aiLog().count("opening_route"); // openings whose build order was changed
-        ai.log("route: quarters in the order " + order + ", " + best_len + " m of walking instead of " + planned);
+        ai.log("route: quarters in the order " + order + ", " + best_len + (strategy.opening_route_sum ? " m of walks to the sites summed instead of " : " m of walking instead of ") + planned);
     }
 
     /** The walk from stop 0 through the quarters in this order, the armory (stop n + 1) after armory_turn of them. */
-    private static int routeLength(int @NonNull [] @NonNull [] walk, int @NonNull [] perm, int armory_turn, int n) {
+    private int routeLength(int @NonNull [] @NonNull [] walk, int @NonNull [] perm, int armory_turn, int n) {
+        // opening_route_sum: the sum of the walks to each stop, so that the near ones come first
+        boolean sum = ai.strategy().opening_route_sum;
         int len = 0;
+        int total = 0;
         int at = 0;
         for (int j = 0; j <= n; j++) {
             if (j == armory_turn) {
                 len += walk[at][n + 1];
+                total += len;
                 at = n + 1;
             }
             if (j < n) {
                 len += walk[at][perm[j] + 1];
+                total += len;
                 at = perm[j] + 1;
             }
         }
-        return len;
+        return sum ? total : len;
     }
 
     /** opening_chain: a quarters on the way is looked for within this many metres of its point on the way. */
