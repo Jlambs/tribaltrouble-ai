@@ -1021,7 +1021,8 @@ class Strategy {
     /**
      * opening_route_sum: opening_route takes the order with the least sum of the walks to each site (every building
      * as early as can be, the near ones first) instead of the least walk in all, which with opening_chain went past
-     * a quarters on the way and came back for it (ot4log-vs16 s22003).
+     * a quarters on the way and came back for it (ot4log-vs16 s22003). Off: the openings are the same to half a unit
+     * and half a warrior, with the chain and without (os40, os41-vs16).
      */
     boolean opening_route_sum = false;
     /**
@@ -1050,7 +1051,8 @@ class Strategy {
      * game ticks (3: .06 s; a metre from the start is charged 10, the .2 s a peon walks it in). Every builder of the
      * first quarters walks on towards the armory when it stands, so a metre the wrong way costs the opening the same
      * .2 s again: ot5log-vs16 s22054, a start with few trees, raises its first quarters 91 m from the start and 18
-     * cells farther from the armory than the start is.
+     * cells farther from the armory than the start is. Left at 3: 6 gives 0.9 units at minute 6 and 1.3 warriors at
+     * minute 10, inside the error, and 10 costs 2.4 units at minute 5 and 1.3 warriors at minute 6 (os45, os46-vs16).
      */
     float opening_toward = 3f;
     /**
@@ -1059,6 +1061,14 @@ class Strategy {
      * armory: the builders then walk a step before each instead of the whole way before the second (the armory 90
      * cells and more from the start, a quarter of the maps: the second quarters at 201 s for 106 to 133 and 75 units
      * at minute 5 for 100 to 117, os0-vs16).
+     *
+     * On 100 openings cut at minute 10, against @f15 (os32..os39-vs16 against os18-vs16): two from 60 m (nine
+     * openings in ten) put the second quarters up 16 s sooner, with 5 more units at minute 5 and 1.9, 3.1 and 2.3
+     * more warriors at minutes 6, 8 and 10; from 100 m 1.3, 2.0, 1.8; from 150 m 0.8, 1.1, 1.0 (on the 32 far
+     * armories 2.3, 3.4, 3.1 and 10 more units at minute 5); three no better than two, one half as good. In whole
+     * games two from 60 m have 1.3, 4.4 and 2.2 more warriors at minutes 6, 8 and 10 at N=16 (1.0, 1.7, 0.6 at
+     * N=17), the copies housed are the same at every minute, and they win 111 of 150 for 112 at N=16 and 83 for 83
+     * at N=17 (oc1-vs16, oc3-vs17: +21 -22).
      */
     int opening_chain = 0;
     int opening_chain_m = 150;
@@ -1119,7 +1129,9 @@ class Strategy {
      * 2.3 with the armory 8 s later; 8 and 10 give 9 to 13 units, no more warriors and the armory 13 and 18 s later.
      * With hold_early 6 too (the hold between the armory and hold_mid_ticks): 2.7, 5.2 and 3.9 warriors. hold_mid 6
      * and 8 on top (from 240 s) move the army later: 2.4 and 4.5 warriors fewer at minute 6, 4.0 and 4.7 more at
-     * minute 10 (os22, os23-vs16 against os18-vs16); not tried in whole games.
+     * minute 10 (os22, os23-vs16 against os18-vs16). In whole games hold_mid 6 has 2.2 warriors fewer at minute 6 and
+     * 2.3 to 4.2 more at minutes 8 to 12, the copies housed are the same, and it wins 52 of 150 for 46 at N=18, 112
+     * for 112 at N=16 and 81 for 83 at N=17 (oz2-vs18, oc4-vs16, oc5-vs17: +53 -49): left at 4.
      */
     int hold_build = -1;
     /**
