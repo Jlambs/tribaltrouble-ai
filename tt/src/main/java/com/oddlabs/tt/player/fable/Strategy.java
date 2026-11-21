@@ -1040,6 +1040,15 @@ class Strategy {
      */
     int opening_claim = 0;
     /**
+     * opening_chain (0 = off): when the armory's site is opening_chain_m metres and more of walking beyond the first
+     * quarters, this many of the opening's quarters stand along the way there, at even steps, instead of around the
+     * armory: the builders then walk a step before each instead of the whole way before the second (the armory 90
+     * cells and more from the start, a quarter of the maps: the second quarters at 201 s for 106 to 133 and 75 units
+     * at minute 5 for 100 to 117, os0-vs16).
+     */
+    int opening_chain = 0;
+    int opening_chain_m = 150;
+    /**
      * opening_home_quarters: this many of the opening's quarters go up by the start, the first included (1: only the
      * first), before the builders walk to the armory's site (53 cells on average, 21 s with nothing built: the walk
      * is then made with that many quarters breeding).
@@ -3255,6 +3264,8 @@ class Strategy {
         opening_near_start = params.getBoolean("opening_near_start", opening_near_start);
         opening_route = params.getBoolean("opening_route", opening_route);
         opening_floor = params.getInt("opening_floor", opening_floor);
+        opening_chain = params.getInt("opening_chain", opening_chain);
+        opening_chain_m = params.getInt("opening_chain_m", opening_chain_m);
         opening_claim = params.getInt("opening_claim", opening_claim);
         opening_home_quarters = params.getInt("opening_home_quarters", opening_home_quarters);
         opening_home_m = params.getInt("opening_home_m", opening_home_m);

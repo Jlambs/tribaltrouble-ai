@@ -208,10 +208,36 @@ final class Economy {
             ai.log("home quarters: " + home_quarters + " by the start, the armory is " + planner.getStartField().get(ax,
                     ay) + " m out");
         }
+        // opening_chain: with the armory far out, the quarters before it stand along the way there
+        int chain = 0;
+        int chain_from = 0;
+        int chain_to = 0;
+        DistanceField chain_field = null;
+        if (strategy.opening_chain > 0 && armory_site != null && q1 != null && !moved && home_quarters <= 1) {
+            chain_from = planner.getStartField().getAround(q1.x, q1.y, 2);
+            chain_to = planner.getStartField().getAround(ax, ay, 2);
+            if (chain_from != DistanceField.UNREACHABLE && chain_to != DistanceField.UNREACHABLE
+                    && chain_to - chain_from >= strategy.opening_chain_m) {
+                chain = Math.min(strategy.opening_chain, strategy.initial_quarters - 1);
+                chain_field = ai.map().computeField(ax, ay, chain_to + 100);
+                ai.aiLog().count("opening_chain"); // openings with quarters along the way to the armory
+            }
+        }
         for (int i = 1; i < strategy.initial_quarters; i++) {
-            Site q;
-            // opening_home_quarters: the first of them go up by the first quarters, before the walk to the armory
-            if ((strategy.opening_near_start || i < home_quarters) && q1 != null)
+            Site q = null;
+            if (i <= chain && chain_field != null) {
+                int at = chain_from + (chain_to - chain_from) * i / (chain + 1);
+                int[] w = chainPoint(planner.getStartField(), chain_field, at, chain_to, sx, sy, ax, ay);
+                if (w != null)
+                    q = planner.findQuartersSite(reserved, w[0], w[1], CHAIN_REACH_M, null, ax, ay,
+                            strategy.quarters_builders, 12.5f, 1f);
+                if (q != null && ai.logging())
+                    ai.log("chain: quarters " + i + " of " + chain + " by " + w[0] + "," + w[1] + ", " + at + " m of " + chain_to + " from the start");
+            }
+            if (q != null) {
+                // placed on the way
+            } else if ((strategy.opening_near_start || i < home_quarters) && q1 != null)
+                // opening_home_quarters: the first of them go up by the first quarters, before the walk to the armory
                 q = planner.findQuartersSite(reserved, q1.x, q1.y, 80, planner.getStartField(), ax, ay,
                         strategy.quarters_builders, 12.5f, 1f);
             else if (a_field != null)
@@ -351,6 +377,35 @@ final class Economy {
             }
         }
         return len;
+    }
+
+    /** opening_chain: a quarters on the way is looked for within this many metres of its point on the way. */
+    private static final int CHAIN_REACH_M = 60;
+
+    /**
+     * opening_chain: the cell on a shortest walk from the start to the armory site that is {@code at} metres from the
+     * start ({@code total} is the whole walk), within the box of the two and 30 cells around it; null if none.
+     */
+    private int @Nullable [] chainPoint(@NonNull DistanceField from_start, @NonNull DistanceField to_armory, int at,
+            int total, int sx, int sy, int ax, int ay) {
+        int[] best = null;
+        int best_cost = Integer.MAX_VALUE;
+        for (int y = Math.min(sy, ay) - 30; y <= Math.max(sy, ay) + 30; y++) {
+            for (int x = Math.min(sx, ax) - 30; x <= Math.max(sx, ax) + 30; x++) {
+                if (!ai.map().inside(x, y))
+                    continue;
+                int a = from_start.get(x, y);
+                int b = to_armory.get(x, y);
+                if (a == DistanceField.UNREACHABLE || b == DistanceField.UNREACHABLE)
+                    continue;
+                int cost = 2 * Math.max(0, a + b - total) + Math.abs(a - at);
+                if (cost < best_cost) {
+                    best_cost = cost;
+                    best = new int[]{x, y};
+                }
+            }
+        }
+        return best;
     }
 
     /** opening_home_quarters: the quarters this opening raises by the start, the first included. */
