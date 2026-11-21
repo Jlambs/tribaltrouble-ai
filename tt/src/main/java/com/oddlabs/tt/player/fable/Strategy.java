@@ -996,7 +996,11 @@ class Strategy {
     float home_guard = 0f;
     boolean focus_finish = false;
     int sites_parallel = 2;
-    /** Quarters completed before builders move to the armory. */
+    /**
+     * Quarters completed before builders move to the armory. With the opening of 2026-11-22: 3 puts the armory up
+     * 30 s sooner and has 1.6, 2.9 and 2.4 fewer warriors at minutes 6, 8 and 10; 5 puts it up 26 s later with the
+     * same warriors and 4 more units (os27, os28-vs16 against os18-vs16).
+     */
     int quarters_before_armory = 4;
     /** Raise the opening quarters next to the first one instead of next to the armory site. */
     boolean opening_near_start = false;
@@ -1008,6 +1012,10 @@ class Strategy {
      * cells from their nearest neighbour but are visited in the order they were planned, 127 cells of walking after
      * the first far quarters where the shortest order has 77; the buildings after the first cost 750 to 1,100
      * builder-seconds each where the first costs 590.
+     *
+     * The default against several enemies on large maps since 2026-11-22 (forGame): on 100 openings cut at minute
+     * 10 the sixth quarters stands 18 s sooner and the armory 8 s, with 4 to 7 more units through minutes 5 to 7 and
+     * 1.8, 3.0 and 1.3 more warriors at minutes 6, 8 and 10 (os1-vs16 against os0-vs16, lab/fable/openspeed.py).
      */
     boolean opening_route = false;
     /**
@@ -1016,6 +1024,9 @@ class Strategy {
      * cells are cut (four builders a tree, builders_floor at least). ot1log-vs16: the fifth and sixth quarters are
      * built by 9.2 and 5.8 peons and stand 45 and 73 s after the armory, the sixth 50 to 150 s after the fifth in a
      * quarter of the games. builders_floor itself, for every site all game long, was level at N=15 (bfl-12/16-vs15).
+     *
+     * Off: most of that lag was the rush alarm's three builders (rush_response). With the alarm off, 16 gives 2
+     * units more at minute 7 and a warrior fewer at minute 6 (os11-vs16 against os10-vs16).
      */
     int opening_floor = 0;
     /**
@@ -1024,12 +1035,20 @@ class Strategy {
      * Without it each site counts the same trees: the sites stand 15 cells apart with 4 to 5 trees within 8 cells of
      * each at the start, 1 to 2 when the fifth and sixth quarters are built, some with none within 16 (ot1log-vs16
      * s22011), and their builders fetch wood 16 to 26 cells away.
+     *
+     * Off: with 4 the openings are the same to half a unit and half a warrior (os12-vs16 against os6-vs16).
      */
     int opening_claim = 0;
     /**
      * opening_home_quarters: this many of the opening's quarters go up by the start, the first included (1: only the
      * first), before the builders walk to the armory's site (53 cells on average, 21 s with nothing built: the walk
      * is then made with that many quarters breeding).
+     *
+     * Off: the second quarters stands 21 s sooner (51 s where the armory is 180 m and more out) and by minute 8
+     * there are no more units and fewer warriors, since everything bred at home walks out. For every opening, two:
+     * +1.7 units at minute 5, nothing after (os3-vs16). For the 32 far armories of 100 (opening_home_m 180): two
+     * +3.6 units at minute 5, -1.6 warriors at minute 8, -4 iron by minute 10; three and four -5 and -8 warriors and
+     * -12 and -17 iron (os7, os8, os9-vs16 against os6-vs16).
      */
     int opening_home_quarters = 1;
     /**
@@ -1040,6 +1059,12 @@ class Strategy {
      * When the enemy arms early (six warriors out, or an armory up with fewer than rush_quarters quarters) while ours
      * is not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
      * rush_ticks game ticks.
+     *
+     * Off against several enemies on large maps since 2026-11-22 (forGame): six warriors among sixteen copies are
+     * the first copy's first ten, not a rush. The alarm went off in 7 of 48 openings, those whose armory was not up
+     * by 255 to 285 s, and their last quarters was then built by three peons for two minutes (ot1log-vs16 s22025:
+     * 61 to 196 hit points from 260 to 400 s, eight builders on each tower meanwhile). Without it 3 more units at
+     * minute 8 over all openings and 1.6 more warriors at minute 10 (os10-vs16 against os6-vs16).
      */
     boolean rush_response = true;
     int rush_quarters = 2;
@@ -1057,9 +1082,20 @@ class Strategy {
      * hold_build (-1: two, or hold_early if that is less): the peons a quarters keeps while the opening still builds
      * without an armory and a site is short of builders. The third and fourth peon inside breed .015 a second each;
      * as builders they are a five-hundredth of what a quarters takes (590 to 990 builder-seconds, OpeningTrace).
+     *
+     * 6 against several enemies on large maps since 2026-11-22 (forGame), with hold_early 6. On 100 openings cut at
+     * minute 10 (os13..os21-vs16 against os10-vs16): 3 gives 3 units more through minute 7 and 1.0, 2.1 and 1.4
+     * warriors more at minutes 6, 8 and 10; 4 gives 5 units and 1.1, 2.0, 1.8; 6 gives 7 to 9 units and 1.9, 4.8,
+     * 2.3 with the armory 8 s later; 8 and 10 give 9 to 13 units, no more warriors and the armory 13 and 18 s later.
+     * With hold_early 6 too (the hold between the armory and hold_mid_ticks): 2.7, 5.2 and 3.9 warriors. hold_mid 6
+     * and 8 on top (from 240 s) move the army later: 2.4 and 4.5 warriors fewer at minute 6, 4.0 and 4.7 more at
+     * minute 10 (os22, os23-vs16 against os18-vs16); not tried in whole games.
      */
     int hold_build = -1;
-    /** hold_build_ramp (0 = off): hold_build, but at most this many peons for every quarters that stands. */
+    /**
+     * hold_build_ramp (0 = off): hold_build, but at most this many peons for every quarters that stands. Off: 2 and
+     * 3 give a unit or two fewer than the plain six and the same warriors (os24, os25, os26-vs16).
+     */
     int hold_build_ramp = 0;
     /**
      * hold_mid 10 (was 14): peons wait in quarters while the armory has ore for them; vs hard*11 elim +.013 / +.030
@@ -2357,6 +2393,14 @@ class Strategy {
      * warrior, its shepherd is recruited only once it would reach its spot shepherd_lead_margin_ticks before the copy's
      * armory time plus shepherd_lead_ticks (walking shepherd_cells_per_tick, plus 5 s), never before shepherd_ticks.
      * Flocks then watch for the copies' armories from 90 s, and far copies are tended first (Shepherd.tend).
+     *
+     * 7000 (140 s) against several enemies on large maps since 2026-11-22 (forGame). A Hard copy's first wave of ten
+     * leaves 146 s and more after its armory stands (the fastest twentieth of 690; the median 169, the least 110;
+     * ot1log-vs16), and without the lead a shepherd leaves when that armory stands, whatever his walk: he is at his
+     * spot 11 s after the first launch as it is (the median), and the wave goes to him on his way. With it 300
+     * shepherd-seconds fewer of 8,150 in ten minutes, 681 of 692 first waves still go to a shepherd where 683 of
+     * 690 did (ot2log-vs16), the sixth quarters stands 10 s sooner and there are 1.4, 1.5 and 2.6 more warriors at
+     * minutes 6, 8 and 10 (os6-vs16 against os1-vs16).
      */
     float shepherd_lead_ticks = 0f;
     float shepherd_lead_margin_ticks = 750f; // 15 s
@@ -2778,6 +2822,8 @@ class Strategy {
     /**
      * Game ticks a gatherer spends at the supply per load, in the gather cost model (armory site and crew split): 10
      * hits of 51 ticks without the swing restart; 10 of 15 ticks (150 ticks, 3 s) plus settling in with it.
+     * OpeningTrace measures 3.6 s of chopping a piece; with 180 or 300 here the opening has 0.8 and 1.6 more
+     * warriors at minutes 6 and 8 and 2.9 fewer at minute 10, with 2.6 less iron (os30, os31-vs16): left at 500.
      */
     float harvest_ticks = 500f; // 10 s
     boolean stun_cancel = true;
@@ -3612,6 +3658,20 @@ class Strategy {
                 // 300 for 162 (ru5-vs17: +37 -39). Waste removed that shows no harm.
                 strategy.reinforce_march = true;
                 strategy.retreat_regroup = 8f;
+                // The opening (lab/fable/NOTES.md, the opening traced): its quarters are built in the order of the
+                // shortest walk; a shepherd leaves only in time for his copy's first wave, which comes 146 s and
+                // more after its armory stands; six warriors among several copies raise no rush alarm, which cut the
+                // quarters' builders to three in the slowest openings; and a quarters keeps six peons, not two,
+                // while the opening builds, and six until 240 s. On 100 openings 24 %, 17 % and 10 % more warriors
+                // at minutes 6, 8 and 10 and the cap half a minute sooner (os18-vs16); in whole games 6 to 10 more
+                // warriors through minute 10, 0.2 to 0.4 fewer copies housed from minute 8 to 20, and on three
+                // blocks of 150 maps never used 107 wins for 105 and 112 for 106 at N=16 and 92 for 84 at N=17
+                // (ow3, ow5-vs16, ow7-vs17: +57 -41).
+                strategy.opening_route = true;
+                strategy.shepherd_lead_ticks = 7000f; // 140 s
+                strategy.rush_response = false;
+                strategy.hold_build = 6;
+                strategy.hold_early = 6;
             }
         }
         return strategy;
