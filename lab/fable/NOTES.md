@@ -2988,7 +2988,8 @@ On 150 maps that no choice had been made on (31001..31150), an hour of game:
 
 **Confirmed as level, and left off.** On 31151..31300, used for nothing before, `march_past=20` wins 97 and a draw
 for 104 (`mp6-vs16` against `mb6-vs16`, +13 -20, 9.42 copies housed at minute 20 for 9.50); with the 150 before, 209
-and two draws of 300 for 213 (+30 -34). The default stays `@f14`.
+and two draws of 300 for 213 (+30 -34). The default stays `@f14`; `fable` with the tracer and the three options off
+plays its games (8 of 8 on 31151..31158, `chk15-vs16`).
 
 - **A faster campaign is not a won one.** With both turns off 0.3 more copies have lost their last quarters and
   armory by minute 20, the reading that sorts the games best (9 housed: 86 % won, 11: 22 %), and as many games are
