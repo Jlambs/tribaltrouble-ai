@@ -188,8 +188,8 @@ orders a warrior onto a tower. Three counters were built and none is a default. 
 are the ones that cut the copy down. The sappers alone, sooner or more of them, are even or worse. And a tower site
 of ours as a bait (`bait`): the garrison throws at the first thing it finds until that is dead, a mended site
 holds it for a minute and the towers razed under it cost 0 to 3 warriors for 9; but the site has to stand before
-the army comes, which worked for one tower in fifteen, and the building slot it needs is a tower fewer at home,
-which alone costs 22 games. `fable` still plays `@f12`'s games.
+the army comes, which worked for one tower in fifteen, and as built (two building slots kept free, ten peons
+with the army) it costs 22 games of 150. `fable` still plays `@f12`'s games.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -2492,10 +2492,13 @@ It is not a counter yet, because it has to stand before the first warrior enters
 
 With all of it (`bt10log`): 16 jobs an hour of game, 8 sites placed, 3.4 garrisons locked, 1.2 towers razed under
 lock, the garrison at a building 45 s a game where it is at a warrior 386 s. And on 150 maps it costs 22 to 24 wins, with the hold or
-without (`ba2` 86, `bb2` with the storm on locked towers 87, `bc2` without the hold 88, against 110: +9 -31). Not by
-what it does in the field: by the two building slots, which are 1.4 towers fewer at home from minute 12 (12.0 to
-10.6) and 24 to 32 more of the home army lost an hour, and the ten peons that stand with the army. Taking them
-away is also a measure of what a home tower is worth: up to 15 wins of 150 a tower.
+without (`ba2` 86, `bb2` with the storm on locked towers 87, `bc2` without the hold 88, against 110: +9 -31). What
+that cost is made of is not isolated. The two building slots are 1.4 towers fewer at home from minute 12 (12.0 to
+10.6), ten peons stand with the army and 80 sappers are lost an hour for 34, and the home army loses 24 to 32 more
+an hour. The slots alone are not it: with seven quarters, which is a tower fewer too (11.0), the default wins 104
+(`q72-vs16`, +13 -19), and with five quarters and 13 towers 105 (`q52-vs16`, +15 -20): six quarters sits on a
+plateau. Left: the standing squad, and the sites themselves, which a Hard copy's waves take for our nearest
+building (`Decoys`).
 
 **3. What a garrison cannot reach.** The scan square's corners are out of its throw (15.9 cells; a corner is 19.8):
 a warrior of ours there is found, cannot be thrown at, and is found again at every scan as long as no warrior
@@ -2596,8 +2599,8 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   found takes them back without costing more. Open: (1) a bait or a corner decoy that is in place before the army,
   from a crew that waits at the next copy instead of racing the army to this one, and without a home tower's slot
   (a slot freed for the minute it is needed); (2) the stun, 10 to 30 s for every garrison within 18 cells, if the
-  chieftain's place is ever reopened; (3) home towers: 1.4 fewer cost 22 wins of 150 here, so the twentieth
-  building slot and the quarters that hold six of them are worth another look.
+  chieftain's place is ever reopened; (3) what the bait's 22 games are made of: not the slots alone (five or
+  seven quarters for six, a tower more or fewer, are 105 and 104 for 110), so the standing squad or the sites.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
