@@ -211,8 +211,8 @@ hundred cells and more from the base. Gauntlet's old post (`hold_ratio`, `hold_m
 building nearest to it, a tower if one is close), off since a screen at N=15, takes a third of those deaths away. As
 written it changed buildings every 15 s; `hold_stick` and `hold_commit` keep it in place. At N=16 on two blocks of
 maps never used it wins 331 of 450 for 310 (+53 -32), and at N=17 162 of 300 for 156. The default since, frozen as
-`@f13`: **72.3 % at N=16** (217 of 300 fresh maps, `@f12` 204 on the same) and **54.0 % at N=17**. `hold_levels`,
-`hold_far` and `threat_sappers` were built with it and stay off.
+`@f13`: **72.3 % at N=16** (217 of 300 fresh maps, `@f12` 204 on the same), **54.0 % at N=17** and **33.7 % at
+N=18** (101 of 300 maps of its own). `hold_levels`, `hold_far` and `threat_sappers` were built with it and stay off.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -2775,8 +2775,10 @@ On 150 maps from the first start that no choice had been made on (28001..28150),
 68.0 %; with the 150 before, 331 of 450 for 310 (+53 -32, z 2.3), 73.6 % for 68.9 %. An hour of game on the 300: 94
 home warriors lost for 146, 1,041 units for 1,109, 2,673 kills for 2,745, 863 iron for 893, 14.1 buildings lost for
 15.1, CPU 36.0 s for 38.4. **At N=17 on 27001..27300: 162 of 300 = 54.0 %** for `@f12`'s 156 (`hu5-vs17` against
-`f12n-vs17`, +39 -33), 111 home warriors lost an hour for 160. `fable` without params plays the arm's games (12 of
-12 on 28151..28162, `chk13a-vs16`), and with the four options off `@f12`'s (8 of 8 on 26001..26008, `chk13b-vs16`).
+`f12n-vs17`, +39 -33), 111 home warriors lost an hour for 160. **At N=18 on 29001..29300, maps of its own: 101 of
+300 = 33.7 %** [28.7, 39.4] and a draw (`f13-vs18`; no earlier default was played there, `@f3` won 9.6 % of 1,000
+other maps at N=18). `fable` without params plays the arm's games (12 of 12 on 28151..28162, `chk13a-vs16`), and
+with the four options off `@f12`'s (8 of 8 on 26001..26008, `chk13b-vs16`).
 
 **Looked at and left:**
 
@@ -2836,6 +2838,7 @@ python lab/fable/home.py ha4log-vs16 hu1log-vs16               # what the home a
 ./lab/fable/dev.sh hb4-vs16 "@f12 vs hard*16" 28151..28450
 ./lab/fable/dev.sh hu4-vs16 "@f13 vs hard*16" 28151..28450     # played as fable:hold_multi=true,hold_ratio=0.3,hold_stick=12,hold_commit=20
 ./lab/fable/dev.sh hu5-vs17 "@f13 vs hard*17" 27001..27300
+./lab/fable/dev.sh f13-vs18 "@f13 vs hard*18" 29001..29300
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
@@ -2905,8 +2908,8 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   enemy; (2) the warriors that leave the armory one by one into a base with four enemies for each of ours, 13
   deaths an hour for 9 kills: held in until they make a clump or the towers have thinned the wave; (3) the
   reinforcements, 83 lost an hour on their way, two thirds of them alone or in small company: the same lens says
-  of them what it said of the home army, and `reinforce_route`, which walked them round the enemy, did not win;
-  (4) N=18 has no measurement with any default since `@f3`.
+  of them what it said of the home army, and `reinforce_route`, which walked them round the enemy, did not win.
+  N=17 stands at 54.0 % [48.3, 59.6] and N=18 at 33.7 %: the next N needs about 16 points.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
