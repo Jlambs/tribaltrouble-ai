@@ -3155,6 +3155,38 @@ copies at minutes 25 and 30. Over the four blocks 357 of 600 for 338, +74 -55 (z
 What the corrected harvest time did (`harvest_ticks`, 500 in the cost model where the trace measures 180): 0.8 and
 1.6 more warriors at minutes 6 and 8, 2.9 fewer at minute 10 and 2.6 less iron (`os30-vs16`): left as it is.
 
+**After `@f15`: quarters along the way, and the slowest openings one by one.**
+
+- **The chain** (`opening_chain`). The walk from the first quarters to the armory's ground is made before the
+  second building; with the quarters that come before the armory at even steps along that way, it is made a step
+  before each. Two along the way wherever the armory is 60 m and more beyond the first quarters (nine openings in
+  ten): the second quarters stands 16 s sooner, 5 units more at minute 5 and 6 at minute 7, and 1.9, 3.1 and 2.3
+  more warriors at minutes 6, 8 and 10 (`os38-vs16` against `os18-vs16`; errors 0.5 to 1.2), with the iron and the
+  armory where they were: 32 %, 23 % and 13 % more warriors than `@f14`'s opening. From 100 m and 150 m less of
+  the same (+1.3 / +2.0 / +1.8 and +0.8 / +1.1 / +1.0); three along the way no better than two (the last warriors
+  and the iron slip), one half as good. On the 32 far armories of 100 two give 10 units more at minute 5 and 2.3,
+  3.4 and 3.1 warriors, where quarters by the start cost warriors. The route's order makes no difference to it
+  (`opening_route_sum`, the sum of the walks to each site instead of the walk in all: the same to half a unit, with
+  the chain and without, `os40`, `os41-vs16`).
+- **A walk ahead that took the first quarters' builders** (`opening_prewalk_first`). `ot3log-vs16` s22001, the
+  slowest opening of 48, armory 351 m out: the first quarters, placed at 11 s, stands at 160 s. A peon carrying its
+  site that reaches the spot while another still moves on it drops the site and stands idle until the last one
+  puts it down (the engine's placing test); `opening_prewalk` (peons left over walk ahead to an armory site 300 m
+  and more out) took those for left over, and 9 of the 13 builders walked off at 3 to 12 s, to come back at 84 s.
+  With no walk ahead before the first quarters stands one opening of 100 changes, that one: 88 units at minute 5
+  for 44, 47 warriors at minute 8 for 5 (`os43-vs16`).
+- **A chain through bare ground** (`opening_chain_trees`). `ot5log-vs16` (the sixteen slowest openings, logged)
+  s22078, a start with no tree within 16 cells of the first sites: the chain's first quarters is built by six
+  peons (`builders_floor`) fetching wood 15 to 19 cells away and stands at 498 s. A quarters of the chain now needs
+  three trees within 7 cells or is planned by the armory as before (`os44-vs16`: the same openings elsewhere).
+- **The first quarters' pull towards the armory** (`opening_toward`, 3 game ticks a metre where the walk is 10):
+  s22054, few trees by the start, raises it 91 m out and 18 cells farther from the armory than the start is. At 6
+  nothing to speak of (+0.9 units at minute 6, +1.3 warriors at minute 10, inside the error), at 10 worse (-2.4
+  units at minute 5, -1.3 warriors at minute 6): left at 3.
+
+What is left of the slow openings after these is the ground itself: starts with two trees or none in reach (the
+first quarters at 59 to 98 s for the others' 38 to 50), armories 300 m out, and a neighbour next door.
+
 ## Reproduce
 
 ```bash
