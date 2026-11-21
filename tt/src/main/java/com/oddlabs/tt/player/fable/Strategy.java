@@ -1001,6 +1001,30 @@ class Strategy {
     /** Raise the opening quarters next to the first one instead of next to the armory site. */
     boolean opening_near_start = false;
     /**
+     * opening_route: the opening's quarters after the first are built, and placed, in the order that makes the
+     * builders' walk through them the shortest (the armory keeps its turn), instead of the order the planner found
+     * their sites in. The opening traced (OpeningTrace, lab/fable/opentrace.py; ot1log-vs16, 48 openings at N=16):
+     * every outside peon builds until the armory stands, 20 to a site, one site after the other, and the sites lie 15
+     * cells from their nearest neighbour but are visited in the order they were planned, 127 cells of walking after
+     * the first far quarters where the shortest order has 77; the buildings after the first cost 750 to 1,100
+     * builder-seconds each where the first costs 590.
+     */
+    boolean opening_route = false;
+    /**
+     * opening_floor (0 = off): the quarters planned at the start may have up to 20 builders each, and never fewer than
+     * this, also once the armory stands (quarters_builders then caps a quarters at 12) and when the trees within 12
+     * cells are cut (four builders a tree, builders_floor at least). ot1log-vs16: the fifth and sixth quarters are
+     * built by 9.2 and 5.8 peons and stand 45 and 73 s after the armory, the sixth 50 to 150 s after the fifth in a
+     * quarter of the games. builders_floor itself, for every site all game long, was level at N=15 (bfl-12/16-vs15).
+     */
+    int opening_floor = 0;
+    /**
+     * opening_home_quarters: this many of the opening's quarters go up by the start, the first included (1: only the
+     * first), before the builders walk to the armory's site (53 cells on average, 21 s with nothing built: the walk
+     * is then made with that many quarters breeding).
+     */
+    int opening_home_quarters = 1;
+    /**
      * When the enemy arms early (six warriors out, or an armory up with fewer than rush_quarters quarters) while ours
      * is not up yet, move the armory ahead of the remaining opening quarters and put weapons before quarters for up to
      * rush_ticks game ticks.
@@ -3163,6 +3187,9 @@ class Strategy {
         tower_wood_ticks = (float) params.getDouble("tower_wood_ticks", tower_wood_ticks);
         quarters_before_armory = params.getInt("quarters_before_armory", quarters_before_armory);
         opening_near_start = params.getBoolean("opening_near_start", opening_near_start);
+        opening_route = params.getBoolean("opening_route", opening_route);
+        opening_floor = params.getInt("opening_floor", opening_floor);
+        opening_home_quarters = params.getInt("opening_home_quarters", opening_home_quarters);
         rush_response = params.getBoolean("rush_response", rush_response);
         rush_quarters = params.getInt("rush_quarters", rush_quarters);
         rush_ticks = (float) params.getDouble("rush_ticks", rush_ticks);

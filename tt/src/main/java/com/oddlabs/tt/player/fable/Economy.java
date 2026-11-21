@@ -193,9 +193,11 @@ final class Economy {
             Project p = addProject(Race.BUILDING_ARMORY, armory_site, armory_priority);
             p.use_scout = true;
         }
+        List<Project> later = new ArrayList<>();
         for (int i = 1; i < strategy.initial_quarters; i++) {
             Site q;
-            if (strategy.opening_near_start && q1 != null)
+            // opening_home_quarters: the first of them go up by the first quarters, before the walk to the armory
+            if ((strategy.opening_near_start || i < strategy.opening_home_quarters) && q1 != null)
                 q = planner.findQuartersSite(reserved, q1.x, q1.y, 80, planner.getStartField(), ax, ay,
                         strategy.quarters_builders, 12.5f, 1f);
             else if (a_field != null)
@@ -209,7 +211,11 @@ final class Economy {
             reserved.add(q);
             Project p = addProject(Race.BUILDING_QUARTERS, q, 2 * i);
             p.use_scout = true;
+            p.opening = true;
+            later.add(p);
         }
+        if (strategy.opening_route && q1 != null)
+            routeOpening(q1, later);
 
         // One peon walks ahead to lay out the armory and later quarters; the rest raise the first quarters at once.
         Unit best_scout = null;
@@ -240,6 +246,94 @@ final class Economy {
                 ai.log("route to armory#1 passes " + c[0] + " cells from the start of s" + c[1] + " after " + c[2] + "m");
             }
         }
+    }
+
+    /**
+     * opening_route: the opening's quarters after the first are all alike, so they are built, and placed, in the order
+     * that makes the builders' walk from the first quarters through them the shortest, the armory keeping its turn
+     * (after quarters_before_armory quarters) and the quarters by the first one (opening_home_quarters) theirs.
+     */
+    private void routeOpening(@NonNull Site q1, @NonNull List<@NonNull Project> later) {
+        Strategy strategy = ai.strategy();
+        int home = Math.min(later.size(), Math.max(0, strategy.opening_home_quarters - 1));
+        int n = later.size();
+        if (n - home < 2)
+            return;
+        // stops: 0 the first quarters, 1..n the later ones, n + 1 the armory
+        List<Site> stops = new ArrayList<>();
+        stops.add(q1);
+        for (Project p : later)
+            stops.add(p.site);
+        Site armory = armory_site;
+        if (armory != null)
+            stops.add(armory);
+        int m = stops.size();
+        int[][] walk = new int[m][m];
+        for (int i = 0; i < m; i++) {
+            DistanceField f = ai.map().computeField(stops.get(i).x, stops.get(i).y, 400);
+            for (int j = 0; j < m; j++) {
+                int d = f.getAround(stops.get(j).x, stops.get(j).y, 2);
+                walk[i][j] = d == DistanceField.UNREACHABLE ? 2000 : d;
+            }
+        }
+        int armory_turn = armory == null ? -1 : Math.min(n, Math.max(0, strategy.quarters_before_armory - 1));
+        int[] perm = new int[n];
+        for (int i = 0; i < n; i++)
+            perm[i] = i;
+        int[] best = perm.clone();
+        int planned = routeLength(walk, perm, armory_turn, n);
+        int best_len = planned;
+        // every order of the quarters after the home ones (Heap's algorithm)
+        int k = n - home;
+        int[] c = new int[k];
+        int i = 0;
+        while (i < k) {
+            if (c[i] < i) {
+                int a = home + (i % 2 == 0 ? 0 : c[i]);
+                int b = home + i;
+                int t = perm[a];
+                perm[a] = perm[b];
+                perm[b] = t;
+                int len = routeLength(walk, perm, armory_turn, n);
+                if (len < best_len) {
+                    best_len = len;
+                    best = perm.clone();
+                }
+                c[i]++;
+                i = 0;
+            } else {
+                c[i] = 0;
+                i++;
+            }
+        }
+        if (best_len >= planned)
+            return;
+        StringBuilder order = new StringBuilder();
+        for (int j = 0; j < n; j++) {
+            Project p = later.get(best[j]);
+            p.priority = 2 * (j + 1);
+            order.append(j == 0 ? "" : ", ").append('#').append(p.id);
+        }
+        projects.sort(java.util.Comparator.comparingInt(p -> p.priority));
+        ai.aiLog().count("opening_route"); // openings whose build order was changed
+        ai.log("route: quarters in the order " + order + ", " + best_len + " m of walking instead of " + planned);
+    }
+
+    /** The walk from stop 0 through the quarters in this order, the armory (stop n + 1) after armory_turn of them. */
+    private static int routeLength(int @NonNull [] @NonNull [] walk, int @NonNull [] perm, int armory_turn, int n) {
+        int len = 0;
+        int at = 0;
+        for (int j = 0; j <= n; j++) {
+            if (j == armory_turn) {
+                len += walk[at][n + 1];
+                at = n + 1;
+            }
+            if (j < n) {
+                len += walk[at][perm[j] + 1];
+                at = perm[j] + 1;
+            }
+        }
+        return len;
     }
 
     private static final int ROUTE_STEP_M = 8;
@@ -1282,6 +1376,8 @@ final class Economy {
         int priority;
         boolean first;
         boolean use_scout;
+        /** opening_floor: one of the quarters planned at the start (openingPlan). */
+        boolean opening;
         /** expansion_iron_crew: peons that walk out with the placer, itself included (0: the placer alone). */
         int crew;
         /** A tower out by the enemy's gatherers, built under the army's cover. */
@@ -2364,6 +2460,13 @@ final class Economy {
             case Race.BUILDING_QUARTERS -> armsRace() ? 3 : have_armory ? strategy.quarters_builders : MAX_BUILDERS;
             default -> strategy.tower_builders;
         };
+        // opening_floor: the opening's own quarters keep their builders when the armory stands and their trees are cut
+        if (strategy.opening_floor > 0 && p.opening && p.type == Race.BUILDING_QUARTERS && !armsRace()) {
+            int wanted = Math.min(MAX_BUILDERS, Math.max(feedable, strategy.opening_floor));
+            if (wanted > Math.min(cap, feedable))
+                ai.aiLog().count("opening_floor_s"); // economy ticks (1 s) a site was allowed more builders
+            return wanted;
+        }
         return Math.min(cap, feedable);
     }
 
@@ -4100,6 +4203,12 @@ final class Economy {
             if ((q.reloc || q.lock) && !q.isPlaced())
                 return q;
         return null;
+    }
+
+    /** Log only: the projects, in priority order. */
+    @NonNull
+    List<@NonNull Project> traceProjects() {
+        return projects;
     }
 
     /** retire: builders on the building (Intel.builder_sites). */
