@@ -70,6 +70,19 @@ final class Military {
     private final Map<String, Integer> trace_harassed = new java.util.TreeMap<>();
     private int trace_post_y = -1;
     private final Map<@NonNull Unit, TraceOrder> trace_orders = new LinkedHashMap<>();
+    /** The group each reinforcement on its way left with, numbered from 1 as they are sent (reinforce_march). */
+    private final Map<@NonNull Unit, Integer> reinforce_groups = new LinkedHashMap<>();
+    private int reinforce_group_count;
+    /** Log only (ReinforceTrace): what had given each reinforcement its last order when it was sent. */
+    private final Map<@NonNull Unit, String> trace_before = new LinkedHashMap<>();
+    /** reinforce_gather: this round's defenders (defend), which are not called to the staging point. */
+    private final java.util.Set<@NonNull Unit> defending = new java.util.LinkedHashSet<>();
+    /** reinforce_march: the reinforcements told to stand until the rest of their group has caught up. */
+    private final java.util.Set<@NonNull Unit> halted = new java.util.LinkedHashSet<>();
+    private static final int MARCH_AHEAD = 12;
+    private static final int MARCH_RESUME = 6;
+    private static final int MARCH_CONTACT = 10;
+    private static final int MARCH_ENGAGE = 18;
 
     /** Log only: an order's why, when the warrior first got one under that why and where it stood, and where to. */
     private static final class TraceOrder {
@@ -761,6 +774,7 @@ final class Military {
         // sortie_ratio: before defend, so that its evacuatePeons already leaves the peons coming out alone
         if (ai.strategy().sortie_ratio > 0f)
             sorties();
+        defending.clear();
         if (threat_level > 0)
             defend();
         trace_why = "raiders";
@@ -779,6 +793,10 @@ final class Military {
             case MUSTER -> muster();
             case ATTACK -> attack();
             case RETREAT -> retreat();
+        }
+        if (mode == Mode.ATTACK && ai.strategy().reinforce_gather > 0) {
+            trace_why = "gather";
+            gatherHome();
         }
         if (ai.strategy().split > 0f) {
             considerSplit();
@@ -892,6 +910,12 @@ final class Military {
                 trace_orders.remove(u);
             }
         }
+        if (!reinforce_groups.isEmpty())
+            reinforce_groups.keySet().removeIf(u -> roles.get(u) != Role.REINFORCE);
+        if (!trace_before.isEmpty())
+            trace_before.keySet().removeIf(u -> roles.get(u) != Role.REINFORCE);
+        if (!halted.isEmpty())
+            halted.removeIf(u -> roles.get(u) != Role.REINFORCE);
         for (Iterator<Map.Entry<Unit, Building>> it = tower_assignments.entrySet().iterator(); it.hasNext();) {
             Map.Entry<Unit, Building> e = it.next();
             Unit u = e.getKey();
@@ -955,10 +979,10 @@ final class Military {
                 "order %s for %.0f s to %d,%d from %d,%d", order.why, FableAI.seconds(ai.now() - order.since), order.x,
                 order.y, order.from_x, order.from_y);
         ai.log(String.format(
-                "lost %s at %d,%d: %d foes within 14 (%d parked), %d towers, %d mates within 12, " + "%d cells to the army, %d home, %d to our nearest building, mode %s, state %s, %s, zone %s, " + "threat %d eng %d str %.1f at %d,%d",
+                "lost %s at %d,%d: %d foes within 14 (%d parked), %d towers, %d mates within 12, " + "%d cells to the army, %d home, %d to our nearest building, mode %s, state %s, %s, zone %s, " + "threat %d eng %d str %.1f at %d,%d, group %d",
                 role.name().toLowerCase(java.util.Locale.ROOT), x, y, foes, parked, towers, mates, to_army, to_home,
                 to_own, mode, intel.warrior_states.get(u), sent, HomeTrace.zone(intel, x, y), threat_level,
-                engage_state, threat_strength, threat_x, threat_y));
+                engage_state, threat_strength, threat_x, threat_y, traceGroup(u)));
     }
 
     private void updateStaging() {
@@ -1203,6 +1227,7 @@ final class Military {
                 picked += Combat.value(defenders.get(n++));
             defenders = new ArrayList<>(defenders.subList(0, n));
         }
+        defending.addAll(defenders);
         float ours = Combat.total(defenders);
         float towers = 0f;
         for (Building t : intel.towers)
@@ -7168,6 +7193,14 @@ final class Military {
             group.add(u);
         }
         group = beyondGuard(group);
+        // reinforce_gather: only the warriors that stand together leave, as one group
+        int gather = ai.strategy().reinforce_gather;
+        int apart = 0;
+        if (gather > 0 && group.size() > 1) {
+            int all = group.size();
+            group = densest(group, gather);
+            apart = all - group.size();
+        }
         float home = Combat.total(group);
         if (group.isEmpty())
             return;
@@ -7195,12 +7228,112 @@ final class Military {
             roles.put(u, Role.REINFORCE);
             if (to_wing)
                 wing_bound.add(u);
+            reinforce_groups.put(u, reinforce_group_count + 1);
+            if (ai.logging())
+                trace_before.put(u, traceWhy(u));
             ai.aiLog().count(to_wing ? "reinforce_sent_wing" : "reinforce_sent");
         }
+        reinforce_group_count++;
+        ai.aiLog().count("reinforce_groups");
+        if (apart > 0)
+            ai.aiLog().count("reinforce_gather_apart"); // groups that left warriors standing elsewhere behind
         if (to_wing)
             ai.log(String.format("reinforcing the second force (%.1f) with %.1f", wing, home));
         else
             ai.log(String.format("reinforcing the attack (%.1f) with %.1f", away, home));
+    }
+
+    /** reinforce_gather: the warriors within r cells of the one with the most strength about it, itself included. */
+    private @NonNull List<@NonNull Unit> densest(@NonNull List<@NonNull Unit> units, int r) {
+        Unit seed = null;
+        float best = -1f;
+        for (Unit u : units) {
+            float s = 0f;
+            for (Unit v : units)
+                if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), v.getGridX(), v.getGridY()) <= r * r)
+                    s += Combat.value(v);
+            if (s > best) {
+                best = s;
+                seed = u;
+            }
+        }
+        List<Unit> cluster = new ArrayList<>();
+        if (seed == null)
+            return cluster;
+        for (Unit v : units)
+            if (MapAnalysis.dist2(seed.getGridX(), seed.getGridY(), v.getGridX(), v.getGridY()) <= r * r)
+                cluster.add(v);
+        return cluster;
+    }
+
+    /**
+     * reinforce_gather: while the attack is out, the idle warriors at home that defend nothing walk to the staging
+     * point, as they do in HOME mode, so that the next group of reinforcements forms in one place.
+     */
+    private void gatherHome() {
+        if (threat_level >= 2)
+            return;
+        for (Map.Entry<Unit, Role> e : roles.entrySet()) {
+            if (e.getValue() != Role.ARMY)
+                continue;
+            Unit u = e.getKey();
+            if (defending.contains(u) || ai.intel().warrior_states.get(u) != WarriorState.IDLE)
+                continue;
+            if (MapAnalysis.dist2(u.getGridX(), u.getGridY(), staging_x, staging_y) > 7 * 7) {
+                attackGround(u, staging_x, staging_y, false);
+                ai.aiLog().count("reinforce_gather_walk"); // warrior-rounds (0.5 s) idle away from the staging point
+            }
+        }
+    }
+
+    /**
+     * reinforce_march: a group of reinforcements walks and fights as one body. With an enemy warrior within
+     * MARCH_CONTACT cells of a member, every member goes at the enemies about the group, each at its nearest, as the
+     * army does. Otherwise all walk to the goal, and a member more than MARCH_AHEAD cells nearer to it than the one a
+     * third of the way back from the front stands until that one is within MARCH_RESUME.
+     */
+    private void marchGroup(@NonNull List<@NonNull Unit> members, int gx, int gy) {
+        int[] c = MapAnalysis.centroid(members);
+        List<Unit> foes = new ArrayList<>();
+        boolean contact = false;
+        for (Unit e : ai.intel().enemy_warriors) {
+            if (e.isDead())
+                continue;
+            int near = Integer.MAX_VALUE;
+            for (Unit u : members)
+                near = Math.min(near, MapAnalysis.dist2(u.getGridX(), u.getGridY(), e.getGridX(), e.getGridY()));
+            if (near <= MARCH_CONTACT * MARCH_CONTACT)
+                contact = true;
+            if (near <= MARCH_CONTACT * MARCH_CONTACT || MapAnalysis.dist2(c[0], c[1], e.getGridX(),
+                    e.getGridY()) <= MARCH_ENGAGE * MARCH_ENGAGE)
+                foes.add(e);
+        }
+        if (contact) {
+            halted.removeAll(members);
+            engageSpread(members, foes, c[0], c[1], true);
+            ai.aiLog().count("reinforce_march_engage"); // group-rounds (0.5 s)
+            return;
+        }
+        List<Integer> ranked = new ArrayList<>();
+        for (Unit u : members)
+            ranked.add((int) Math.sqrt(MapAnalysis.dist2(u.getGridX(), u.getGridY(), gx, gy)));
+        ranked.sort(null);
+        int pivot = ranked.get(ranked.size() / 3);
+        for (Unit u : members) {
+            int d = (int) Math.sqrt(MapAnalysis.dist2(u.getGridX(), u.getGridY(), gx, gy));
+            boolean was = halted.contains(u);
+            if (d < pivot - (was ? MARCH_RESUME : MARCH_AHEAD)) {
+                ai.aiLog().count("reinforce_march_halted"); // warrior-rounds (0.5 s)
+                if (!was) {
+                    halted.add(u);
+                    if (ai.intel().warrior_states.get(u) != WarriorState.FIGHT)
+                        queueOrder(u, u.getGridX(), u.getGridY(), true);
+                }
+                continue;
+            }
+            halted.remove(u);
+            attackGround(u, gx, gy, false);
+        }
     }
 
     /**
@@ -7255,6 +7388,10 @@ final class Military {
         boolean intercept = ai.strategy().reinforce_intercept;
         boolean routed = false;
         List<Unit> attackers = null;
+        // reinforce_march: the walkers of each group, and where they go
+        boolean march = ai.strategy().reinforce_march;
+        Map<Integer, List<Unit>> convoys = new java.util.TreeMap<>();
+        int[] convoy_goal = null;
         for (Map.Entry<Unit, Role> e : roles.entrySet()) {
             if (e.getValue() != Role.REINFORCE)
                 continue;
@@ -7305,6 +7442,12 @@ final class Military {
             // While the army marches calmly, head for where it is going (its march waypoint), which it has just
             // cleared, instead of chasing its centre.
             int[] goal = intercept && march_wp != null && ai.now() - march_calm_time < 100f ? march_wp : front;
+            if (march) {
+                Integer id = reinforce_groups.get(u);
+                convoys.computeIfAbsent(id == null ? 0 : id, k -> new ArrayList<>()).add(u);
+                convoy_goal = goal;
+                continue;
+            }
             if (ai.strategy().reinforce_route) {
                 // reinforce_route: along the way that keeps clear of the enemy
                 SafeField field = reinforce_field;
@@ -7325,6 +7468,9 @@ final class Military {
             }
             attackGround(u, goal[0], goal[1], false);
         }
+        if (convoy_goal != null)
+            for (List<Unit> members : convoys.values())
+                marchGroup(members, convoy_goal[0], convoy_goal[1]);
     }
 
     /** reinforce_route: the ways to the attacking army. */
@@ -8076,6 +8222,32 @@ final class Military {
 
     int engageState() {
         return engage_state;
+    }
+
+    @NonNull
+    Map<@NonNull Unit, Integer> traceGroups() {
+        return reinforce_groups;
+    }
+
+    int traceGroupCount() {
+        return reinforce_group_count;
+    }
+
+    /** Log only (ReinforceTrace): what had given reinforcement u its last order when it was sent. */
+    @NonNull
+    String traceBefore(@NonNull Unit u) {
+        String why = trace_before.get(u);
+        return why == null ? "none" : why;
+    }
+
+    /** The group warrior u left with as a reinforcement and is still on its way with, 0 for none. */
+    int traceGroup(@NonNull Unit u) {
+        Integer g = reinforce_groups.get(u);
+        return g == null ? 0 : g;
+    }
+
+    float traceAttackStrength() {
+        return attackStrength();
     }
 
     @NonNull

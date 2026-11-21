@@ -111,6 +111,7 @@ def main(runs):
                         m = KILL.match(line.rstrip('\n'))
                         if m:
                             parts = [part.rsplit('=', 1) for part in m.group(5).split()]
+                            parts = [('reinforce' if k.startswith('reinforce:') else k, n) for k, n in parts]
                             total = sum(WEIGHT.get(k, 1.0) * int(n) for k, n in parts)
                             for k, n in parts:
                                 kills[(k, m.group(4))] += WEIGHT.get(k, 1.0) * int(n) / total

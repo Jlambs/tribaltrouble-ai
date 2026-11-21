@@ -887,6 +887,20 @@ class Strategy {
      * (rn5-vs16), 75 in 92 more than 60 cells from the army and 54 by a group on the move (ft1log-vs16).
      */
     boolean reinforce_route = false;
+    /**
+     * reinforce_gather (cells, 0 = off): while the attack is out, the idle warriors at home walk to the staging point
+     * (Military.gatherHome), and a group of reinforcements is the warriors within that many cells of the one with the
+     * most about it: the rest wait for the next. As sent, a group is everyone in role army wherever they stand: its
+     * two members farthest apart are 48 cells from each other in the first seconds (the median of 487 groups;
+     * quartiles 28 and 74) and still 42 after a minute, and it meets the enemy a few at a time: 86 of 497 sent in an
+     * hour of game die on the way for 72 enemy warriors, 0.84 for one where the army and the home army trade 1.6
+     * (lab/fable/reinforce.py rt1log-vs16; lab/fable/NOTES.md, the reinforcements traced).
+     * reinforce_march: a group on its way fights as one body, every member at the enemies about it once one comes
+     * within 10 cells of any of them, and a member more than 12 cells ahead of the one a third of the way back
+     * stands until the rest are up (Military.marchGroup).
+     */
+    int reinforce_gather = 0;
+    boolean reinforce_march = false;
     /** Shepherds hold their spot (flee at 9 cells, not 12) while their copy's launch is imminent (Shepherd). */
     boolean shepherd_hold = false;
     /**
@@ -3038,6 +3052,8 @@ class Strategy {
         tower_front_entry = params.getBoolean("tower_front_entry", tower_front_entry);
         reinforce_intercept = params.getBoolean("reinforce_intercept", reinforce_intercept);
         reinforce_route = params.getBoolean("reinforce_route", reinforce_route);
+        reinforce_gather = params.getInt("reinforce_gather", reinforce_gather);
+        reinforce_march = params.getBoolean("reinforce_march", reinforce_march);
         shepherd_hold = params.getBoolean("shepherd_hold", shepherd_hold);
         tower_reaim = params.getBoolean("tower_reaim", tower_reaim);
         tower_prequeue_any = params.getBoolean("tower_prequeue_any", tower_prequeue_any);

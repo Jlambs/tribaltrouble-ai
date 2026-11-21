@@ -25,7 +25,8 @@ import java.util.TreeMap;
  * parked, hunt_b, hunt_w or hunt_p (locked in a hunt on a building, a warrior or another unit of ours), walk or other.
  * The deaths are Military's "lost" lines. And a "HOME kill" line for every enemy warrior
  * that dies: its zone and who of ours was throwing at it half a second before (tower, peon, or a warrior's role, with
- * the why for role army), none when nobody was (a blast, or an axe on its way).
+ * the why for role army and the group for a reinforcement, see ReinforceTrace), none when nobody was (a blast, or an
+ * axe on its way).
  */
 final class HomeTrace {
     private static final int TOWER_CELLS = 16;
@@ -57,7 +58,7 @@ final class HomeTrace {
         return best <= BASE_CELLS * BASE_CELLS ? "base" : best <= NEAR_CELLS * NEAR_CELLS ? "near" : "far";
     }
 
-    private static @NonNull String kind(@NonNull Unit e) {
+    static @NonNull String kind(@NonNull Unit e) {
         if (Intel.isParked(e))
             return "parked";
         if (e.getCurrentController() instanceof HuntController h)
@@ -97,7 +98,8 @@ final class HomeTrace {
             if (by == null)
                 continue;
             String role = military.roleOf(u);
-            by.merge("army".equals(role) ? "army:" + military.traceWhy(u) : String.valueOf(role), 1, Integer::sum);
+            by.merge("army".equals(role) ? "army:" + military.traceWhy(u) : "reinforce".equals(
+                    role) ? "reinforce:" + military.traceGroup(u) : String.valueOf(role), 1, Integer::sum);
         }
         for (Unit u : intel.peons) {
             if (u.isDead() || !(u.getCurrentController() instanceof HuntController h)
