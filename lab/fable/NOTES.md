@@ -2949,7 +2949,7 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./aisim.sh freeze f11 fable                    # the micro round's three defaults, at commit abb99be6
 ./aisim.sh freeze f12 fable                    # and flight_keep, chief_bystander, at commit 5e14c475
 ./aisim.sh freeze f13 fable                    # and the home army's post, at commit 49939d96
-./aisim.sh freeze f14 fable                    # and reinforce_march, retreat_regroup=8
+./aisim.sh freeze f14 fable                    # and reinforce_march, retreat_regroup=8, at commit 1d944e36
 ./lab/fable/dev.sh tw0log-vs16 "fable vs hard*16" 22001..22012 --logs   # the tower round's logged runs: st*log (storm), bt*log (bait)
 python lab/fable/towers.py tw0log-vs16 st1log-vs16             # contacts with manned enemy towers, from TowerTrace
 ./lab/fable/dev.sh sa2-vs16 "fable:storm=17 vs hard*16" 25151..25300    # sb2..si2, ba2..bc2: the specs are in each run.json
