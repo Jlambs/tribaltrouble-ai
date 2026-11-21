@@ -22,7 +22,8 @@ import java.util.TreeMap;
  * warriors by why/zone/act and the enemy warriors within 45 cells of a building of ours by zone/kind. why is what
  * gave the warrior its last order (Military.traceWhy), zone is tower (within 16 cells of a manned tower of ours), base
  * (within 28 of a building of ours), near (within 45) or far, act is fight (hunting a target), walk or idle, kind is
- * parked, hunt, walk or other. The deaths are Military's "lost" lines. And a "HOME kill" line for every enemy warrior
+ * parked, hunt_b, hunt_w or hunt_p (locked in a hunt on a building, a warrior or another unit of ours), walk or other.
+ * The deaths are Military's "lost" lines. And a "HOME kill" line for every enemy warrior
  * that dies: its zone and who of ours was throwing at it half a second before (tower, peon, or a warrior's role, with
  * the why for role army), none when nobody was (a blast, or an axe on its way).
  */
@@ -59,8 +60,9 @@ final class HomeTrace {
     private static @NonNull String kind(@NonNull Unit e) {
         if (Intel.isParked(e))
             return "parked";
-        if (e.getCurrentController() instanceof HuntController)
-            return "hunt";
+        if (e.getCurrentController() instanceof HuntController h)
+            return h.getTarget() instanceof Building ? "hunt_b" : h.getTarget().getAbilities().hasAbilities(
+                    com.oddlabs.tt.model.Abilities.THROW) ? "hunt_w" : "hunt_p";
         if (e.getCurrentController() instanceof WalkController)
             return "walk";
         return "other";

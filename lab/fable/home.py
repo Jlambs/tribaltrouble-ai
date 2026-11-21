@@ -213,7 +213,7 @@ def main(runs):
             print(f"  the post (hold_ratio): {posts['seconds'] / h:.0f} s, moved to another building {posts['moves'] / h:.0f} times, "
                   f"{posts['cells'] / max(1, posts['moves']):.0f} cells a move, once in {posts['seconds'] / max(1, posts['moves']):.0f} s")
         print('  enemy warriors near our buildings, warrior-seconds: ' + ', '.join(
-            f'{z}/{k} {foes[(z, k)] / h:.0f}' for z in ZONES for k in ('parked', 'hunt', 'walk', 'other') if foes[(z, k)]))
+            f'{z}/{k} {foes[(z, k)] / h:.0f}' for z in ZONES for k in ('parked', 'hunt', 'hunt_b', 'hunt_w', 'hunt_p', 'walk', 'other') if foes[(z, k)]))
         print('  warriors dead by zone (the game record), theirs / ours: ' + ', '.join(
             f'{z} {rec[("theirs", z)] / h:.0f} / {rec[("ours", z)] / h:.0f}' for z in ZONES))
 
