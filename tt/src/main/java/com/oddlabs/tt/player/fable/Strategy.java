@@ -2490,9 +2490,10 @@ class Strategy {
      * before the army comes: the garrison throws at the first thing it finds until that is dead, and does not look
      * again meanwhile (Bait). It holds a garrison when it is in place in time (bt2log-vs16: a site mended from 1 to
      * 43 hit points under a garrison's throws for 50 s; towers razed under it cost 0 to 3 warriors for 9), which is
-     * one tower in fifteen (bt10log-vs16: 3.4 garrisons an hour of game, 1.2 towers razed under one), and the
-     * building slots it keeps free are 1.4 towers fewer at home: 86 to 88 wins of 150 for 110 with the hold, without
-     * it, and with the storm on the towers it holds (ba2, bc2, bb2 against ml2-vs16). Off.
+     * one tower in fifteen (bt10log-vs16: 3.4 garrisons an hour of game, 1.2 towers razed under one). As built (two
+     * building slots kept free, ten sappers with the army) it wins 86 to 88 of 150 for 110, with the hold, without
+     * it, and with the storm on the towers it holds (ba2, bc2, bb2 against ml2-vs16); the slots alone are not the
+     * cost (q72-vs16: seven quarters and a tower fewer, 104). Off.
      */
     boolean bait = false;
     /** bait: towers baited at a time (each takes a building slot our towers leave free), sappers a crew. */
