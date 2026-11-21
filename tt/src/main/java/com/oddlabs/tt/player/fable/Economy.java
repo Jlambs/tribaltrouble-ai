@@ -3244,15 +3244,24 @@ final class Economy {
         // Training takes 40 breed ticks of the trainer, 440 / n^(1/3) s with n inside, and goes on at the unit cap.
         if (training && (strategy.chief_topup_any || ai.chieftain().retrainLate()))
             return trainerHold();
-        if (pop >= max - 2)
+        if (pop >= max - 2) {
+            cap_reached = true;
             return 0;
+        }
         if (training)
             return trainerHold();
-        if (ai.intel().armories.isEmpty() && !ai.intel().quarters.isEmpty() && needsBuilders())
+        if (ai.intel().armories.isEmpty() && !ai.intel().quarters.isEmpty() && needsBuilders()) {
+            int[] steps = strategy.hold_build_steps;
+            if (steps.length > 0)
+                return steps[Math.min(steps.length, ai.intel().quarters.size()) - 1];
             return strategy.hold_build < 0 ? Math.min(2, strategy.hold_early) : strategy.hold_build_ramp > 0 ? Math.min(
                     strategy.hold_build, strategy.hold_build_ramp * ai.intel().quarters.size()) : strategy.hold_build;
+        }
         int hold;
-        if (pop > max * 7 / 10)
+        if (strategy.hold_payback > 0f && !cap_reached
+                && (strategy.hold_payback_until <= 0f || ai.now() < strategy.hold_payback_until))
+            hold = paybackHold(pop, max);
+        else if (pop > max * 7 / 10)
             hold = strategy.hold_late;
         else {
             hold = ai.now() < strategy.hold_mid_ticks ? strategy.hold_early : strategy.hold_mid;
@@ -3274,6 +3283,43 @@ final class Economy {
             hold = strategy.rock_real_hold;
         return hold;
     }
+
+    private float payback_time = -1f;
+    private int payback_hold;
+    /** hold_payback: the unit cap has been reached once; from then on a peon bred replaces one lost. */
+    private boolean cap_reached;
+
+    /** The peons inside that a quarters breeds with: the engine counts an empty one as half a peon. */
+    private static double breedRate(int inside) {
+        return Math.cbrt(Math.max(inside, .5)) / 11.0;
+    }
+
+    /**
+     * hold_payback: the k-th peon inside a quarters adds breedRate(k) - breedRate(k - 1) peons a second, so it has
+     * bred one more peon after the inverse of that: 53, 42, 60, 76, 90, 103 s for the first six, 33 k^(2/3) s
+     * further on. A peon bred is of use until the unit cap is reached, so the k-th is kept while that payback time
+     * is under hold_payback times the seconds left to the cap at the pace the quarters breed at now. Worked out once
+     * a game second. Only until the cap is first reached: after that a peon bred takes the place of one lost and is
+     * of use for as long as it lives, and hold_late stands.
+     */
+    private int paybackHold(int pop, int max) {
+        if (payback_time == ai.now())
+            return payback_hold;
+        double pace = 0.0;
+        for (Building q : ai.intel().quarters)
+            if (!q.isDead() && q.isComplete() && !evacuating.containsKey(q) && !retire.isDoomed(q))
+                pace += breedRate(q.getUnitContainer().getNumSupplies());
+        double left = pace > 0.0 ? (max - pop) / pace : 0.0;
+        int k = 0;
+        int most = Math.min(PAYBACK_MOST, ai.strategy().hold_payback_most);
+        while (k < most && ai.strategy().hold_payback * left * (breedRate(k + 1) - breedRate(k)) >= 1.0)
+            k++;
+        payback_time = ai.now();
+        payback_hold = k;
+        return k;
+    }
+
+    private static final int PAYBACK_MOST = 30;
 
     /**
      * rush_hold_armory: whether a holdFor since manageQuarters began kept a hold the alarm's cut would have lowered.
@@ -6273,6 +6319,10 @@ final class Economy {
             ai.aiLog().count("builders_released"); // peon-seconds a builder of a finished building was free for
         }
 
+        // seed_build: a quarters just up takes some of its builders in before they walk on to the next site
+        if (armory == null && ai.strategy().seed_build > 0)
+            seedBuild(free, transit);
+
         // 1. Construction.
         boolean wood_drop = ai.strategy().tower_wood_drop && ai.now() >= ai.strategy().tower_wood_ticks;
         List<Unit> carriers = new ArrayList<>();
@@ -6789,6 +6839,56 @@ final class Economy {
 
     /** seed_quarters: when each quarters was first seen complete, and the idle peons sent into one (and when). */
     private final Map<@NonNull Building, Float> quarters_done = new LinkedHashMap<>();
+
+    /** seed_build: a quarters takes builders in for this long after it stands (game ticks). */
+    private static final float SEED_BUILD_TICKS = 500f; // 10 s
+
+    /**
+     * seed_build: while the opening builds without an armory, a quarters that stood less than SEED_BUILD_TICKS ago
+     * takes the free peons nearest its door (its builders, within seed_quarters_reach cells; those carrying no wood
+     * first) until it has seed_build inside or on their way in, its hold at most. The peons sent, and those sent
+     * before and still walking in, are taken out of the lists the building sites choose from.
+     */
+    private void seedBuild(@NonNull List<@NonNull Unit> free, @NonNull List<@NonNull Unit> transit) {
+        Strategy st = ai.strategy();
+        float now = ai.now();
+        seed_sent.keySet().removeIf(u -> u.isDead() || now - seed_sent_time.getOrDefault(u, now) > 1500f); // 30 s
+        seed_sent_time.keySet().retainAll(seed_sent.keySet());
+        transit.removeIf(seed_sent::containsKey);
+        int reach2 = st.seed_quarters_reach * st.seed_quarters_reach;
+        for (Building q : ai.intel().quarters) {
+            if (q.isDead() || !q.isComplete() || evacuating.containsKey(q))
+                continue;
+            float done = quarters_done.computeIfAbsent(q, b -> now);
+            if (now - done > SEED_BUILD_TICKS)
+                continue;
+            int sent = 0;
+            for (Building b : seed_sent.values())
+                if (b == q)
+                    sent++;
+            int need = Math.min(st.seed_build, holdFor(q)) - q.getUnitContainer().getNumSupplies() - sent;
+            if (need <= 0)
+                continue;
+            List<Unit> bare = new ArrayList<>();
+            List<Unit> loaded = new ArrayList<>();
+            for (Unit u : free)
+                if (u != scout && MapAnalysis.dist2(u.getGridX(), u.getGridY(), q.getGridX(), q.getGridY()) <= reach2)
+                    (carriesWood(u) ? loaded : bare).add(u);
+            List<Unit> chosen = new ArrayList<>();
+            takeNearest(bare, chosen, need, q.getGridX(), q.getGridY());
+            takeNearest(loaded, chosen, need - chosen.size(), q.getGridX(), q.getGridY());
+            if (chosen.isEmpty())
+                continue;
+            free.removeAll(chosen);
+            order(chosen, q, ai.enterAction(q));
+            for (Unit u : chosen) {
+                seed_sent.put(u, q);
+                seed_sent_time.put(u, now);
+                ai.aiLog().count("seed_build_sent"); // builders sent into a quarters just up
+            }
+        }
+    }
+
     private final Map<@NonNull Unit, @NonNull Building> seed_sent = new LinkedHashMap<>();
     private final Map<@NonNull Unit, Float> seed_sent_time = new LinkedHashMap<>();
 

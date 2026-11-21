@@ -1142,6 +1142,30 @@ class Strategy {
      */
     int hold_build_ramp = 0;
     /**
+     * hold_build_steps (empty = off): hold_build by the quarters standing, "a/b/c/d": a with one, b with two, and the
+     * last from then on.
+     */
+    int[] hold_build_steps = {};
+    /**
+     * hold_payback (0 = off), once the armory stands: a quarters keeps its k-th peon while the time that peon takes
+     * to breed one more (53, 42, 60, 76, 90, 103 s for the first six, 33 k^(2/3) s further on) is under hold_payback
+     * times the seconds left to the unit cap at the pace of now, in place of hold_early, hold_mid and hold_late. At
+     * 1 it is the hold that leaves the most peon-seconds of work before the cap, if a second of work is worth the
+     * same whenever it is done: (seconds left / 33)^(3/2), 27 with five minutes left, 7 with two, 2 with one and none
+     * in the last 42 s. Under 1, work now counts for more than work later. hold_payback_until (game ticks, 0 =
+     * always): only before that time.
+     */
+    float hold_payback = 0f;
+    float hold_payback_until = 0f;
+    /** hold_payback_most: hold_payback keeps no more than this many in a quarters. */
+    int hold_payback_most = 30;
+    /**
+     * seed_build (0 = off): while the opening builds without an armory, a quarters takes this many of its builders
+     * in the moment it stands (its hold at most), instead of breeding its hold up from empty: an empty quarters
+     * breeds .072 a second and one with six .165, and it takes 54 s to breed six.
+     */
+    int seed_build = 0;
+    /**
      * hold_mid 10 (was 14): peons wait in quarters while the armory has ore for them; vs hard*11 elim +.013 / +.030
      * (hm10-vs11-hv, -b), W 16 vs 11 over 400; N=8 neutral (W 114 vs 111).
      */
@@ -3325,6 +3349,17 @@ class Strategy {
         hold_early = params.getInt("hold_early", hold_early);
         hold_build = params.getInt("hold_build", hold_build);
         hold_build_ramp = params.getInt("hold_build_ramp", hold_build_ramp);
+        String steps = params.getString("hold_build_steps", "");
+        if (!steps.isEmpty()) {
+            String[] parts = steps.split("/");
+            hold_build_steps = new int[parts.length];
+            for (int i = 0; i < parts.length; i++)
+                hold_build_steps[i] = Integer.parseInt(parts[i].trim());
+        }
+        hold_payback = (float) params.getDouble("hold_payback", hold_payback);
+        hold_payback_until = (float) params.getDouble("hold_payback_until", hold_payback_until);
+        hold_payback_most = params.getInt("hold_payback_most", hold_payback_most);
+        seed_build = params.getInt("seed_build", seed_build);
         hold_mid = params.getInt("hold_mid", hold_mid);
         seed_quarters_ticks = (float) params.getDouble("seed_quarters_ticks", seed_quarters_ticks);
         seed_quarters_reach = params.getInt("seed_quarters_reach", seed_quarters_reach);
