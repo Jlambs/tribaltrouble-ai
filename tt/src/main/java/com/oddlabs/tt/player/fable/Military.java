@@ -758,6 +758,8 @@ final class Military {
         restoreDodge();
         towerFire();
         razeTick();
+        ai.bait().tick();
+        stormTick();
         if (ai.strategy().breach) {
             breachRefill();
             breachTick();
@@ -4424,12 +4426,13 @@ final class Military {
                 continue;
             boolean by_target = target != null && !target.isDead() && MapAnalysis.dist2(t.getGridX(), t.getGridY(),
                     target.getGridX(), target.getGridY()) <= 30 * 30;
-            if (by_target || MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) <= 40 * 40)
+            // bait: the squad stands, with the army before it meets a tower
+            if (s.bait || by_target || MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) <= 40 * 40)
                 towers++;
         }
         if (towers == 0)
             return;
-        int want = Math.min(s.sapper_max, Math.max(s.sapper_min, s.sapper_per_tower * towers));
+        int want = Math.min(s.sapper_max, Math.max(s.sapper_min, s.bait ? 0 : s.sapper_per_tower * towers));
         int need = want - intel.sappers.size();
         if (need < 2)
             return;
@@ -4443,8 +4446,14 @@ final class Military {
         }
         if (pool.size() < need + 15)
             return;
-        pool.sort((a, b) -> Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), c[0], c[1]),
-                MapAnalysis.dist2(b.getGridX(), b.getGridY(), c[0], c[1])));
+        // bait: its crews are the sappers that carry wood
+        boolean wood_first = s.bait;
+        pool.sort((a, b) -> {
+            if (wood_first && Bait.hasWood(a) != Bait.hasWood(b))
+                return Bait.hasWood(a) ? -1 : 1;
+            return Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), c[0], c[1]), MapAnalysis.dist2(
+                    b.getGridX(), b.getGridY(), c[0], c[1]));
+        });
         for (Unit p : pool.subList(0, need)) {
             intel.sappers.add(p);
             intel.peon_states.put(p, PeonState.SAPPER);
@@ -4480,6 +4489,23 @@ final class Military {
                     c[1]) <= 20 * 20)
                 ours += Combat.value(e.getKey());
         int[] back = MapAnalysis.towards(c[0], c[1], staging_x, staging_y, 6);
+        boolean leading = false;
+        if (ai.strategy().storm > 0 && ai.strategy().storm_lead) {
+            boolean tower_near = false;
+            for (Building t : intel.enemy_towers)
+                if (Intel.isTowerManned(t) && MapAnalysis.dist2(t.getGridX(), t.getGridY(), c[0], c[1]) <= 45 * 45) {
+                    tower_near = true;
+                    break;
+                }
+            int[] head = tower_near ? breachHead(withRole(Role.ATTACK)) : null;
+            if (head != null) {
+                // a little ahead of the head: it walks on while they come up
+                DistanceField f = target_field;
+                back = f != null ? f.stepTowardsSource(head[0], head[1], 8) : head;
+                leading = true;
+                ai.aiLog().count("storm_lead");
+            }
+        }
         creepTick(c, ours);
         Building site = creep_site;
         for (Unit p : intel.sappers) {
@@ -4496,8 +4522,11 @@ final class Military {
                     tower = t;
                 }
             }
+            // storm: on a tower with the warriors; bait: its crew and its helpers
+            if (storm_assign.containsKey(p) || ai.bait().busy(p))
+                continue;
             Float last = sapper_orders.get(p);
-            if (last != null && !ai.periodDue(last, 150f))
+            if (last != null && !ai.periodDue(last, leading ? 50f : 150f))
                 continue;
             // Already swinging at a tower: leave it be, a new order would start the swing over.
             if (tower != null && p.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.AttackController)
@@ -4508,7 +4537,8 @@ final class Military {
             else if (site != null
                     && !(p.getCurrentController() instanceof com.oddlabs.tt.model.behaviour.RepairController))
                 ai.owner().setTarget(Selectable.newArray(p), site, Action.DEFAULT, false);
-            else if (site == null && MapAnalysis.dist2(p.getGridX(), p.getGridY(), back[0], back[1]) > 6 * 6)
+            else if (site == null
+                    && MapAnalysis.dist2(p.getGridX(), p.getGridY(), back[0], back[1]) > (leading ? 3 * 3 : 6 * 6))
                 move(p, back[0], back[1]);
         }
     }
@@ -4943,6 +4973,254 @@ final class Military {
                 ai.aiLog().count("raze_order");
             ai.owner().setTarget(e.getValue().toArray(new Selectable<?>[0]), b, Action.ATTACK, false);
         }
+    }
+
+    /** storm: the tower each warrior or sapper is on, when it was last ordered there, and when each storm began. */
+    private final Map<@NonNull Unit, @NonNull Building> storm_assign = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, Float> storm_orders = new LinkedHashMap<>();
+    private final Map<@NonNull Building, Float> storm_started = new LinkedHashMap<>();
+    private static final float STORM_REORDER_TICKS = 75f; // 1.5 s
+    /** storm_close: the walk up to the tower, when each was last sent, and its distance a second ago. */
+    private final Map<@NonNull Unit, Float> storm_moves = new LinkedHashMap<>();
+    private final Map<@NonNull Unit, float[]> storm_dist = new LinkedHashMap<>();
+    /** A warrior throws at a tower from 8.9 cells; within this it surely can. */
+    private static final float STORM_THROW_CELLS = 8.5f;
+    private static final int STORM_SAPPER_CELLS = 30;
+
+    /**
+     * storm: a manned enemy tower with warriors of the attack in its reach is what kills them there, and nothing else
+     * orders them onto it (Strategy.storm). All of the attack within storm_join cells of it are sent at it, but for
+     * those with an enemy warrior or chieftain in throwing reach, and the sappers near go in with them.
+     */
+    private void stormTick() {
+        Strategy strategy = ai.strategy();
+        if (strategy.storm <= 0)
+            return;
+        storm_assign.entrySet().removeIf(e -> e.getKey().isDead() || e.getValue().isDead());
+        storm_orders.keySet().removeIf(Unit::isDead);
+        storm_moves.keySet().removeIf(u -> u.isDead() || !storm_assign.containsKey(u));
+        storm_dist.keySet().removeIf(u -> u.isDead() || !storm_assign.containsKey(u));
+        for (Iterator<Map.Entry<Building, Float>> it = storm_started.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<Building, Float> e = it.next();
+            if (!e.getKey().isDead())
+                continue;
+            ai.aiLog().count("storm_down");
+            ai.log(String.format("storm: tower at %d,%d down %.1f s after the first order", e.getKey().getGridX(),
+                    e.getKey().getGridY(), (ai.now() - e.getValue()) / 50f));
+            it.remove();
+        }
+        if (mode != Mode.ATTACK) {
+            storm_assign.clear();
+            return;
+        }
+        Intel intel = ai.intel();
+        List<Unit> army = withRole(Role.ATTACK);
+        if (army.isEmpty()) {
+            storm_assign.clear();
+            return;
+        }
+        int reach2 = strategy.storm * strategy.storm;
+        int join2 = strategy.storm_join * strategy.storm_join;
+        List<Building> goals = new ArrayList<>();
+        for (Building t : intel.enemy_towers) {
+            if (!Intel.isTowerManned(t))
+                continue;
+            int in = 0;
+            int near = 0;
+            for (Unit u : army) {
+                int d = MapAnalysis.dist2(u.getGridX(), u.getGridY(), t.getGridX(), t.getGridY());
+                if (d <= reach2)
+                    in++;
+                if (d <= join2)
+                    near++;
+            }
+            if (strategy.storm_locked) {
+                // only a tower whose garrison is on a bait: it throws at nothing else while that stands
+                if (near > 0 && ai.bait().locked(t))
+                    goals.add(t);
+                continue;
+            }
+            if (in > 0 && near >= strategy.storm_min)
+                goals.add(t);
+            else if (in > 0)
+                ai.aiLog().count("storm_few");
+        }
+        if (goals.isEmpty()) {
+            storm_assign.clear();
+            return;
+        }
+        int[] c = MapAnalysis.centroid(army);
+        List<Unit> foes = new ArrayList<>();
+        for (List<Unit> group : List.of(intel.enemy_warriors, intel.enemy_chieftains))
+            for (Unit e : group)
+                if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0], c[1]) <= 90 * 90)
+                    foes.add(e);
+        int throw2 = THROW_CELLS * THROW_CELLS;
+        Map<Building, List<Unit>> squads = new LinkedHashMap<>();
+        List<Unit> released = new ArrayList<>();
+        Map<Building, List<Unit>> picked = new LinkedHashMap<>();
+        for (Unit u : army) {
+            WarriorState st = intel.warrior_states.get(u);
+            if (st == WarriorState.STUNNED || st == WarriorState.ENTER)
+                continue;
+            int ux = u.getGridX();
+            int uy = u.getGridY();
+            Building goal = null;
+            int best = join2;
+            for (Building t : goals) {
+                int d = MapAnalysis.dist2(ux, uy, t.getGridX(), t.getGridY());
+                if (d <= best) {
+                    best = d;
+                    goal = t;
+                }
+            }
+            if (goal == null) {
+                storm_assign.remove(u);
+                continue;
+            }
+            boolean foe = false;
+            for (Unit e : foes)
+                if (!e.isDead() && MapAnalysis.dist2(ux, uy, e.getGridX(), e.getGridY()) <= throw2) {
+                    foe = true;
+                    break;
+                }
+            if (foe) {
+                // fights what throws back first; one still on the tower or on nothing gets its target here
+                boolean was_on = storm_assign.remove(u) != null;
+                if (was_on && !(u.getCurrentController() instanceof HuntController hunt
+                        && hunt.getTarget() instanceof Unit))
+                    released.add(u);
+                continue;
+            }
+            picked.computeIfAbsent(goal, k -> new ArrayList<>()).add(u);
+        }
+        List<Unit> chosen = new ArrayList<>();
+        if (strategy.storm_per < 0) {
+            // the sappers alone: the warriors go on with what they do
+            for (List<Unit> list : picked.values())
+                for (Unit u : list)
+                    storm_assign.remove(u);
+            picked.clear();
+        }
+        for (Map.Entry<Building, List<Unit>> e : picked.entrySet()) {
+            Building t = e.getKey();
+            List<Unit> list = e.getValue();
+            if (strategy.storm_per > 0 && list.size() > strategy.storm_per) {
+                // those on it stay on it, then the nearest
+                list.sort((a, b) -> {
+                    int on_a = storm_assign.get(a) == t ? 0 : 1;
+                    int on_b = storm_assign.get(b) == t ? 0 : 1;
+                    if (on_a != on_b)
+                        return Integer.compare(on_a, on_b);
+                    return Integer.compare(MapAnalysis.dist2(a.getGridX(), a.getGridY(), t.getGridX(), t.getGridY()),
+                            MapAnalysis.dist2(b.getGridX(), b.getGridY(), t.getGridX(), t.getGridY()));
+                });
+                for (Unit u : list.subList(strategy.storm_per, list.size()))
+                    storm_assign.remove(u);
+                list = list.subList(0, strategy.storm_per);
+            }
+            chosen.addAll(list);
+        }
+        for (Unit u : chosen) {
+            int ux = u.getGridX();
+            int uy = u.getGridY();
+            Building goal = null;
+            int best = join2;
+            for (Building t : goals) {
+                int d = MapAnalysis.dist2(ux, uy, t.getGridX(), t.getGridY());
+                if (d <= best) {
+                    best = d;
+                    goal = t;
+                }
+            }
+            if (goal == null)
+                continue;
+            // its order of this round would walk it off the tower
+            for (List<Unit> pending : pending_orders.values())
+                pending.remove(u);
+            boolean on = u.getCurrentController() instanceof HuntController hunt && hunt.getTarget() == goal;
+            Building was = storm_assign.put(u, goal);
+            hunt_targets.remove(u);
+            Float last = storm_orders.get(u);
+            if (on)
+                continue;
+            if (strategy.storm_close > 0f) {
+                float d = (float) Math.sqrt(best);
+                // no nearer than a second ago: the way in is taken
+                float[] seen = storm_dist.get(u);
+                boolean stuck = false;
+                if (seen == null || was != goal)
+                    storm_dist.put(u, new float[]{d, ai.now()});
+                else if (ai.now() - seen[1] >= 50f) {
+                    stuck = seen[0] - d < 1f;
+                    seen[0] = d;
+                    seen[1] = ai.now();
+                }
+                if (d > strategy.storm_close && !(stuck && d <= STORM_THROW_CELLS)) {
+                    Float moved = storm_moves.get(u);
+                    boolean walking = u.getCurrentBehaviour() instanceof WalkBehaviour;
+                    if (was == goal && moved != null
+                            && !ai.periodDue(moved, walking ? 2 * STORM_REORDER_TICKS : STORM_REORDER_TICKS / 3))
+                        continue;
+                    storm_moves.put(u, ai.now());
+                    last_order.put(u, ai.now());
+                    int[] slot = MapAnalysis.towards(goal.getGridX(), goal.getGridY(), ux, uy, Math.max(3,
+                            (int) strategy.storm_close - 1));
+                    ai.landscapeOrder(Selectable.newArray(u), slot[0], slot[1], Action.MOVE, false);
+                    ai.aiLog().count("storm_move");
+                    continue;
+                }
+                if (stuck && d > strategy.storm_close)
+                    ai.aiLog().count("storm_stuck");
+            }
+            if (was == goal && last != null && !ai.periodDue(last, STORM_REORDER_TICKS))
+                continue;
+            storm_orders.put(u, ai.now());
+            last_order.put(u, ai.now());
+            intel.warrior_states.put(u, WarriorState.FIGHT);
+            squads.computeIfAbsent(goal, k -> new ArrayList<>()).add(u);
+            ai.aiLog().count("storm_order");
+        }
+        if (strategy.storm_sappers) {
+            int sap2 = STORM_SAPPER_CELLS * STORM_SAPPER_CELLS;
+            for (Unit p : intel.sappers) {
+                if (p.isDead() || ai.bait().busy(p))
+                    continue;
+                Building goal = null;
+                int best = sap2;
+                for (Building t : goals) {
+                    int d = MapAnalysis.dist2(p.getGridX(), p.getGridY(), t.getGridX(), t.getGridY());
+                    if (d <= best) {
+                        best = d;
+                        goal = t;
+                    }
+                }
+                if (goal == null) {
+                    storm_assign.remove(p);
+                    continue;
+                }
+                boolean on = p.getCurrentController() instanceof HuntController hunt && hunt.getTarget() == goal;
+                Building was = storm_assign.put(p, goal);
+                Float last = storm_orders.get(p);
+                if (on || (was == goal && last != null && !ai.periodDue(last, STORM_REORDER_TICKS)))
+                    continue;
+                storm_orders.put(p, ai.now());
+                squads.computeIfAbsent(goal, k -> new ArrayList<>()).add(p);
+                ai.aiLog().count("storm_sapper_order");
+            }
+        }
+        for (Map.Entry<Building, List<Unit>> e : squads.entrySet()) {
+            Building b = e.getKey();
+            if (!storm_started.containsKey(b)) {
+                storm_started.put(b, ai.now());
+                ai.aiLog().count("storm_begun");
+                ai.log(String.format("storm: %d on the tower at %d,%d (%d hp)", e.getValue().size(), b.getGridX(),
+                        b.getGridY(), b.getHitPoints()));
+            }
+            ai.owner().setTarget(e.getValue().toArray(new Selectable<?>[0]), b, Action.ATTACK, false);
+        }
+        if (!released.isEmpty() && strategy.micro_targets)
+            assignTargets(released, foes);
     }
 
     /** breach: a tower's garrison reaches this far (15.9 cells), and a sapper this near the army is with it. */
@@ -8145,6 +8423,22 @@ final class Military {
         if (target != null && !target.isDead())
             return new int[]{target.getGridX(), target.getGridY()};
         return attackCenter();
+    }
+
+    /** bait: the attack's warriors, its head (the warriors farthest along its path), and one's order of this round. */
+    @NonNull
+    List<@NonNull Unit> attackArmy() {
+        return withRole(Role.ATTACK);
+    }
+
+    int @Nullable [] attackHead() {
+        return mode == Mode.ATTACK ? breachHead(withRole(Role.ATTACK)) : null;
+    }
+
+    void dropOrder(@NonNull Unit u) {
+        for (List<Unit> pending : pending_orders.values())
+            pending.remove(u);
+        last_order.put(u, ai.now());
     }
 
     /** Middle of the attacking army, or null when it is at home. */

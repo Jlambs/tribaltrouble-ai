@@ -78,6 +78,29 @@ final class MapAnalysis {
         return trees;
     }
 
+    /** The nearest standing tree within radius cells of (x, y), or null. */
+    @Nullable
+    TreeSupply nearestTree(int x, int y, int radius) {
+        int bx0 = Math.max(0, (x - radius) / TREE_BUCKET);
+        int by0 = Math.max(0, (y - radius) / TREE_BUCKET);
+        int bx1 = Math.min(tree_buckets_side - 1, (x + radius) / TREE_BUCKET);
+        int by1 = Math.min(tree_buckets_side - 1, (y + radius) / TREE_BUCKET);
+        TreeSupply best = null;
+        int best_d = radius * radius;
+        for (int by = by0; by <= by1; by++)
+            for (int bx = bx0; bx <= bx1; bx++)
+                for (TreeSupply t : tree_buckets.get(by * tree_buckets_side + bx)) {
+                    if (t.isEmpty())
+                        continue;
+                    int d = dist2(x, y, t.getGridX(), t.getGridY());
+                    if (d <= best_d) {
+                        best_d = d;
+                        best = t;
+                    }
+                }
+        return best;
+    }
+
     /** builder_tree: cells around the box of the peon and the site in which treeOnWay looks for trees. */
     private static final int TREE_WAY_MARGIN = 24;
 

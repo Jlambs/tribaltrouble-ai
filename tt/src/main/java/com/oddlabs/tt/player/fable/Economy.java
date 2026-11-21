@@ -2591,7 +2591,7 @@ final class Economy {
                 false) - forward_towers.size() - countForward() - ai.military().creepTowerCount() - sniper_towers.size() - countSniper();
         int tower_parallel = time >= strategy.tower_parallel_late_ticks ? strategy.tower_parallel_late : strategy.tower_parallel;
         boolean may = tower_count < target_towers && countProjects(Race.BUILDING_TOWER, true) < tower_parallel
-                && ai.owner().canBuild(Race.BUILDING_TOWER) && time >= tower_hold_until;
+                && ai.canBuildTower() && time >= tower_hold_until;
         Project waiter = may ? slotWaiter() : null;
         if (waiter != null) {
             may = false;
@@ -2688,7 +2688,7 @@ final class Economy {
             return;
         last_sniper = ai.now();
         Player owner = ai.owner();
-        if (!owner.canBuild(Race.BUILDING_TOWER)
+        if (!ai.canBuildTower()
                 || owner.getBuildingCountContainer().getNumSupplies() + 2 >= owner.getWorld().getMaxBuildingCount())
             return;
         Intel intel = ai.intel();
@@ -2828,7 +2828,7 @@ final class Economy {
         }
         if (strategy.forward_towers <= 0 || ai.now() < strategy.forward_tower_ticks || countForward() > 0
                 || forward_towers.size() >= strategy.forward_towers || !military.canEscort()
-                || !ai.owner().canBuild(Race.BUILDING_TOWER))
+                || !ai.canBuildTower())
             return;
         int[] spot = military.forwardTarget();
         if (spot == null)

@@ -2469,6 +2469,57 @@ class Strategy {
      * building.
      */
     int raze = 0;
+    /**
+     * storm (cells, 0 = off): a manned enemy tower kills the warriors in its reach (15.9 cells; they throw 8.9 at it)
+     * and nothing orders them onto it: the army attack-moves, and the engine's scan takes any warrior or peon within
+     * 8 cells before a tower. TowerTrace, 12 logged games at N=16 (tw0log-vs16): 16 towers razed a game, each standing
+     * 29.5 s from the first warrior in its reach (19 s before anything damages it) for 9.4 warriors; of the
+     * warrior-seconds in reach 8 % throw at the tower, 21 % chase peons, 25 % walk. With storm every warrior of the
+     * attack within storm_join cells of a manned tower that has one of them within storm cells is ordered onto it (a
+     * hunt: it walks up without scanning and throws), once storm_min of them are within storm_join; one with an enemy
+     * warrior or chieftain in throwing reach fights that first. storm_sappers: the sappers within 30 cells go in
+     * with them (the garrison takes warriors before peons). storm_close (cells, 0 = off): a hunt stops at the first
+     * cell in reach, 8.9 from the tower, so the first dozen warriors of a column stand in an arc there and the rest
+     * behind them, in the tower's reach and out of their own (st1log-vs16: half the warrior-seconds in reach are the
+     * walk up, 12 throw while 30 wait). With it a warrior walks to within storm_close cells of the tower first, on its
+     * own bearing, and throws from there, or from where it stands in reach once it gets no nearer.
+     */
+    int storm = 0;
+    /**
+     * bait: a tower site of ours within an enemy garrison's scan square, placed and kept up by a crew of the sappers
+     * before the army comes: the garrison throws at the first thing it finds until that is dead, and does not look
+     * again meanwhile (Bait).
+     */
+    boolean bait = false;
+    /** bait: towers baited at a time (each takes a building slot our towers leave free), sappers a crew. */
+    int bait_jobs = 2;
+    int bait_crew = 5;
+    /** bait: a job starts on a manned tower this near the attack's head, or twice as far by its target. */
+    int bait_start = 60;
+    /** bait: how long the attack's warriors are kept out of a tower's square for its bait, once a tower. */
+    float bait_hold_ticks = 1000f; // 20 s
+    /** storm_locked: the storm goes only for towers whose garrison is on a bait. */
+    boolean storm_locked = false;
+    float storm_close = 0f;
+    /**
+     * storm_per (0 = all): the warriors on one tower, the nearest. All of them is worse than none: 95 wins of 150 for
+     * 110 (sa2-vs16 against ml2-vs16, +11 -26; with storm_close the same, sb2-vs16), with 0.27 more copies housed
+     * at minute 20. A dozen to two dozen throw from the arc at 8.9 cells and fifty more stand behind it for the ten
+     * seconds the tower lasts, and those fifty are the ones that cut the copy's peons down and pull its quarters
+     * down meanwhile. The garrison kills one in four seconds however many stand in its reach. With 24 the same 95
+     * (sc2-vs16), with 12 103 (sd2-vs16). Below 0: no warrior, the sappers alone.
+     */
+    int storm_per = 0;
+    /**
+     * storm_lead: a sapper's swing does 6 to a tower every 2.2 s, as much as 3.6 warriors throwing, but the sappers
+     * trail six cells behind the army's centre and reach a stormed tower as it falls (st1log-vs16: 792 sapper-seconds
+     * in reach a game, 96 of them swinging). With it they walk with the army's head while a manned enemy tower stands
+     * within 45 cells of its centre.
+     */
+    boolean storm_lead = false;
+    int storm_join = 24;
+    int storm_min = 8;
+    boolean storm_sappers = true;
     int raze_min = 6;
     boolean raze_towers = true;
     int raze_per = 0;
@@ -2657,6 +2708,19 @@ class Strategy {
         breach_solo_foes = params.getInt("breach_solo_foes", breach_solo_foes);
         raze = params.getInt("raze", raze);
         raze_min = params.getInt("raze_min", raze_min);
+        storm = params.getInt("storm", storm);
+        bait = params.getBoolean("bait", bait);
+        bait_jobs = params.getInt("bait_jobs", bait_jobs);
+        bait_crew = params.getInt("bait_crew", bait_crew);
+        bait_start = params.getInt("bait_start", bait_start);
+        bait_hold_ticks = (float) params.getDouble("bait_hold_ticks", bait_hold_ticks);
+        storm_locked = params.getBoolean("storm_locked", storm_locked);
+        storm_close = (float) params.getDouble("storm_close", storm_close);
+        storm_per = params.getInt("storm_per", storm_per);
+        storm_lead = params.getBoolean("storm_lead", storm_lead);
+        storm_join = params.getInt("storm_join", storm_join);
+        storm_min = params.getInt("storm_min", storm_min);
+        storm_sappers = params.getBoolean("storm_sappers", storm_sappers);
         raze_towers = params.getBoolean("raze_towers", raze_towers);
         raze_per = params.getInt("raze_per", raze_per);
         split = (float) params.getDouble("split", split);

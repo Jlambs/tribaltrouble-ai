@@ -88,6 +88,7 @@ final class Intel {
     final List<@NonNull Building> decoy_sites = new ArrayList<>();
     @Nullable
     Decoys decoys;
+    Bait bait;
 
     // Own units
     final List<@NonNull Unit> peons = new ArrayList<>();
@@ -230,6 +231,8 @@ final class Intel {
             case Race.BUILDING_QUARTERS -> (complete ? quarters : quarters_sites).add(building);
             case Race.BUILDING_ARMORY -> (complete ? armories : armory_sites).add(building);
             case Race.BUILDING_TOWER -> {
+                if (bait != null && bait.isBait(building))
+                    break;
                 if (!complete && decoys != null && decoys.isDecoy(building))
                     decoy_sites.add(building);
                 else

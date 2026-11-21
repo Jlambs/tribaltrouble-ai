@@ -62,6 +62,7 @@ public final class FableAI extends AI {
     private @Nullable Military military;
     private @Nullable Chieftain chieftain;
     private @Nullable Decoys decoys;
+    private @Nullable Bait bait;
     private @Nullable Shepherd shepherd;
     private @Nullable Lures lures;
     private @Nullable Dodges dodges;
@@ -70,6 +71,7 @@ public final class FableAI extends AI {
     private @Nullable PeonLedger ledger;
     private @Nullable FightTrace fight_trace;
     private @Nullable ThrashTrace thrash_trace;
+    private @Nullable TowerTrace tower_trace;
     /** Stalled enemy armies and parked enemies (giant_keepout, giant_stun_hold, giant_shred). */
     private @Nullable Giants giants;
     private @Nullable Freeze freeze;
@@ -184,6 +186,8 @@ public final class FableAI extends AI {
                 fight_trace.tick();
             if (thrash_trace != null)
                 thrash_trace.tick();
+            if (tower_trace != null)
+                tower_trace.tick();
         }
         if (due_economy) {
             next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
@@ -245,6 +249,8 @@ public final class FableAI extends AI {
         military = new Military(this);
         chieftain = new Chieftain(this);
         decoys = new Decoys(this);
+        bait = new Bait(this);
+        intel.bait = bait;
         shepherd = new Shepherd(this);
         lures = new Lures(this);
         dodges = new Dodges(this);
@@ -252,6 +258,7 @@ public final class FableAI extends AI {
         ledger = new PeonLedger(this);
         fight_trace = new FightTrace(this);
         thrash_trace = new ThrashTrace(this);
+        tower_trace = new TowerTrace(this);
         intel.decoys = decoys;
     }
 
@@ -477,6 +484,22 @@ public final class FableAI extends AI {
     Freeze freeze() {
         assert freeze != null;
         return freeze;
+    }
+
+    /** bait: our towers leave it a building slot (the one a standing bait is in counts as left). */
+    boolean canBuildTower() {
+        Player owner = getOwner();
+        if (!owner.canBuild(com.oddlabs.tt.model.Race.BUILDING_TOWER))
+            return false;
+        if (!strategy.bait || bait == null)
+            return true;
+        return owner.getBuildingCountContainer().getNumSupplies() + strategy.bait_jobs - bait.standing() < owner.getWorld().getMaxBuildingCount();
+    }
+
+    @NonNull
+    Bait bait() {
+        assert bait != null;
+        return bait;
     }
 
     @NonNull
