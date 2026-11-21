@@ -789,6 +789,21 @@ class Strategy {
      * last 2 s and fewer than half of it is parked; 0: whenever the distance to it shrinks, our own march included.
      */
     int hold_closing = 0;
+    /**
+     * hold_approach: the attack holds for an enemy group that closes on it at all (Military.holdForApproachingEnemy).
+     */
+    boolean hold_approach = true;
+    /**
+     * march_past (cells, 0 = off): while the army's centre is farther than that from its target, enemy peons and
+     * buildings within 14 cells of the centre do not turn the whole army on them; its units still take what comes
+     * within their own sight on the way. engage_min (strength, 0 = off): nor do enemy warriors within 22 cells of the
+     * centre that are worth less than that together. As written the army turns as one body on anything there: of its
+     * 2,760 s out in an hour of game 260 go to peons with no enemy warrior within 14 cells of any of its units (187
+     * of them more than 40 m from the target, 66 warriors about 6 peons) and 201 to one or two enemy warriors
+     * (lab/fable/march.py mt2log-vs16; lab/fable/NOTES.md, the march traced).
+     */
+    int march_past = 0;
+    float engage_min = 0f;
     /** hold_ratio's posts against several enemies too (Military.holdAtPost). */
     boolean hold_multi = false;
     /**
@@ -3053,6 +3068,9 @@ class Strategy {
         parked_scan_econ = params.getInt("parked_scan_econ", parked_scan_econ);
         parked_scan_threat = params.getInt("parked_scan_threat", parked_scan_threat);
         hold_closing = params.getInt("hold_closing", hold_closing);
+        hold_approach = params.getBoolean("hold_approach", hold_approach);
+        march_past = params.getInt("march_past", march_past);
+        engage_min = (float) params.getDouble("engage_min", engage_min);
         hold_multi = params.getBoolean("hold_multi", hold_multi);
         hold_levels = params.getInt("hold_levels", hold_levels);
         threat_sappers = params.getBoolean("threat_sappers", threat_sappers);

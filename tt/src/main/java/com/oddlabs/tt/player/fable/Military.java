@@ -73,6 +73,9 @@ final class Military {
     /** The group each reinforcement on its way left with, numbered from 1 as they are sent (reinforce_march). */
     private final Map<@NonNull Unit, Integer> reinforce_groups = new LinkedHashMap<>();
     private int reinforce_group_count;
+    /** Log only (MarchTrace): the branch of attack() that gave this round's orders, and what enemyFocus found. */
+    private @NonNull String trace_phase = "none";
+    private @NonNull String trace_focus = "";
     /** Log only (ReinforceTrace): what had given each reinforcement its last order when it was sent. */
     private final Map<@NonNull Unit, String> trace_before = new LinkedHashMap<>();
     /** reinforce_gather: this round's defenders (defend), which are not called to the staging point. */
@@ -4927,7 +4930,7 @@ final class Military {
                             wing_target.getGridY())), danger));
         }
         // fight what is close, as the army does
-        int[] focus = enemyFocus(c[0], c[1]);
+        int[] focus = enemyFocus(c[0], c[1], true);
         if (focus != null) {
             List<Selectable<?>> fighters = new ArrayList<>();
             int r2 = (ENGAGE_RADIUS + 8) * (ENGAGE_RADIUS + 8);
@@ -6014,6 +6017,7 @@ final class Military {
     private void attack() {
         Intel intel = ai.intel();
         List<Unit> army = withRole(Role.ATTACK);
+        trace_phase = "none";
         if (army.isEmpty()) {
             endAttack();
             return;
@@ -6059,17 +6063,25 @@ final class Military {
         float worn_base = wornBasis(total);
         if (ai.logging() && ai.periodDue(last_trace, 200f))
             traceBattle(army, c, total, local_enemy);
-        if (regroup_until >= 0f && regroup(army, c, total))
+        if (regroup_until >= 0f && regroup(army, c, total)) {
+            trace_phase = "regroup";
             return;
+        }
         // stall_engaged_ticks: the wedge watchdog looks before any of the paths below can return.
-        if (engagedWatch() && wedgeWatch(army, c, pinned))
+        if (engagedWatch() && wedgeWatch(army, c, pinned)) {
+            trace_phase = "wedge";
             return;
+        }
         // Enemies lying stunned nearby cannot fight back for a while. As long as we can take on the ones still awake,
         // run the stunned down instead of weighing the odds, which would count them as awake again soon.
-        if (!pinned && ai.strategy().exploit_stun && chargeStunned(army, c, total))
+        if (!pinned && ai.strategy().exploit_stun && chargeStunned(army, c, total)) {
+            trace_phase = "charge";
             return;
-        if (ai.strategy().siege && !pinned && siege(army, c, total))
+        }
+        if (ai.strategy().siege && !pinned && siege(army, c, total)) {
+            trace_phase = "siege";
             return;
+        }
         if (!all_in && !toot && !pinned && ai.strategy().precontact_ratio > 0f && !anyFighting(army)) {
             // Before contact, look at everything that can defend the area, not just what is next to us: turning
             // back now costs nothing, walking into a stronger defense costs the army.
@@ -6092,8 +6104,10 @@ final class Military {
         float retreat_ratio = strategy.retreat_ratio / late;
         boolean outmatched = local_enemy > retreat_ratio * Math.max(weighed, 1f);
         boolean worn = total < strategy.worn_ratio * late * worn_base && local_enemy > total;
-        if (!toot && !pinned && (outmatched || worn) && pillage(army, c, total))
+        if (!toot && !pinned && (outmatched || worn) && pillage(army, c, total)) {
+            trace_phase = "pillage";
             return;
+        }
         if (!toot && !pinned && !outmatched && !split_guard_counted
                 && local_enemy > retreat_ratio * Math.max(ours, 1f)) {
             split_guard_counted = true;
@@ -6133,7 +6147,19 @@ final class Military {
             // remnant_ladder_ticks: the copy whose site or remnant fell is finished before anything else
             Selectable<?> next = ladder_owner != null ? remnantNext(target, c) : null;
             if (next == null) {
+                if (ai.logging())
+                    explain = new ArrayList<>();
                 next = retarget(c);
+                List<String> why = explain;
+                explain = null;
+                if (why != null && next != null) {
+                    why.sort(null);
+                    int cx = c[0];
+                    int cy = c[1];
+                    int size = army.size();
+                    ai.aiLog().log("MARCH", () -> String.format("pick from %d,%d army %d of %d: %s", cx, cy, size,
+                            why.size(), String.join("; ", why.subList(0, Math.min(8, why.size())))));
+                }
                 noteDecapitate(next, "next");
             }
             if (next == null) {
@@ -6146,11 +6172,19 @@ final class Military {
         if (decapitating())
             followChief(c);
         // An enemy army walking at us: wait for it on the best ground nearby instead of running uphill into it.
-        if (holdForApproachingEnemy(army, c))
+        if (ai.strategy().hold_approach && holdForApproachingEnemy(army, c)) {
+            trace_phase = "hold";
             return;
-        // Fight what is close, otherwise keep marching as one clump.
-        int[] focus = enemyFocus(c[0], c[1]);
+        }
+        // Fight what is close, otherwise keep marching as one clump. march_past: away from the target, peons and
+        // buildings by the way do not stop the army.
+        int past = ai.strategy().march_past;
+        boolean at_target = past <= 0 || MapAnalysis.dist2(c[0], c[1], target_x, target_y) <= past * past;
+        int[] focus = enemyFocus(c[0], c[1], at_target);
+        if (focus == null && !at_target && enemyFocus(c[0], c[1], true) != null)
+            ai.aiLog().count("march_past_rounds"); // military rounds (0.5 s)
         if (focus != null) {
+            trace_phase = "engage_" + trace_focus;
             List<Selectable<?>> fighters = new ArrayList<>();
             for (Unit e : intel.enemy_warriors)
                 if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), c[0],
@@ -6191,10 +6225,13 @@ final class Military {
         march_calm_time = ai.now();
         // reinforce_intercept: a reinforcement group worth 40 % of the army within 80 cells is waited for (20 s at
         // most per target) instead of being left to chase the army across the field at the same speed.
-        if (ai.strategy().reinforce_intercept && waitForReinforcements(c, total))
+        if (ai.strategy().reinforce_intercept && waitForReinforcements(c, total)) {
+            trace_phase = "wait";
             return;
+        }
         // unjam: a jammed army marches as a column (see noteBlocked); the idle plug at a pass exit walks on too.
         boolean column = field != null && ai.now() < column_until;
+        trace_phase = column ? "column" : "march";
         if (column_until >= 0f && !column)
             endColumnMarch(dist, c);
         for (Unit u : army) {
@@ -7220,20 +7257,38 @@ final class Military {
     }
 
     /** Where the nearest enemies around the army are, preferring warriors, then towers, peons and buildings. */
-    private int @Nullable [] enemyFocus(int x, int y) {
+    /**
+     * What the army turns on as one body: the nearest group of enemy warriors within ENGAGE_RADIUS cells of (x, y)
+     * (engage_min: worth that much there, or none), else a chieftain or a tower there, else, with {@code all}, peons
+     * or a building within 14 cells.
+     */
+    private int @Nullable [] enemyFocus(int x, int y, boolean all) {
         Intel intel = ai.intel();
+        trace_focus = "warrior";
         int[] w = nearestGroup(intel.enemy_warriors, x, y, ENGAGE_RADIUS);
+        float min = ai.strategy().engage_min;
+        if (w != null && min > 0f && enemyStrengthNear(x, y, ENGAGE_RADIUS) < min) {
+            if (all)
+                ai.aiLog().count("engage_min_rounds"); // military rounds (0.5 s)
+            w = null;
+        }
         if (w != null)
             return w;
+        trace_focus = "chieftain";
         int[] ch = nearestGroup(intel.enemy_chieftains, x, y, ENGAGE_RADIUS);
         if (ch != null)
             return ch;
+        trace_focus = "tower";
         int[] t = nearestGroup(intel.enemy_towers, x, y, ENGAGE_RADIUS);
         if (t != null)
             return t;
+        if (!all)
+            return null;
+        trace_focus = "peon";
         int[] p = nearestGroup(intel.enemy_peons, x, y, 14);
         if (p != null)
             return p;
+        trace_focus = "building";
         return nearestGroup(intel.enemy_buildings, x, y, 14);
     }
 
@@ -8354,6 +8409,32 @@ final class Military {
 
     int traceGroupCount() {
         return reinforce_group_count;
+    }
+
+    /** Log only (MarchTrace). */
+    @NonNull
+    String tracePhase() {
+        return trace_phase;
+    }
+
+    @NonNull
+    List<@NonNull Unit> traceAttackers() {
+        return withRole(Role.ATTACK);
+    }
+
+    @Nullable
+    Selectable<?> traceTarget() {
+        return target;
+    }
+
+    @Nullable
+    DistanceField traceTargetField() {
+        return target_field;
+    }
+
+    int tracePivotDist() {
+        DistanceField f = target_field;
+        return f == null ? DistanceField.UNREACHABLE : attackPivotDist(f);
     }
 
     /** Log only (ReinforceTrace): what had given reinforcement u its last order when it was sent. */
