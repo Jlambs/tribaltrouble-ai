@@ -237,6 +237,23 @@ without the hold. All off; the default stays `@f14`. Copies taken out sooner are
 how a game stands. Where the games are lost: the slowest fifth of the openings, the far armories of the second
 session, wins 40 % and the rest 79 %.
 
+The opening round (2026-11-21/22, user: openings next, "feels like the most important phase of the game"; "The
+opening, traced" below). `OpeningTrace` follows every peon through the first ten minutes, and games cut at minute 10
+measure an opening in minutes (`lab/fable/openspeed.py`). Nobody stands in the default's opening, but its builders
+walk more than half their time and four things were plainly off: the sites are visited in the order they were
+planned (127 cells of walking where the shortest order has 77); the shepherds leave when their copy's armory stands,
+though its first wave comes 146 s and more after it; a rush alarm made for one enemy goes off in the slowest seventh
+of the openings and cuts their quarters to three builders for four minutes; and a quarters keeps two peons while the
+opening builds, where six breed more than they would build. With the four repaired (`opening_route`,
+`shepherd_lead_ticks=7000`, `rush_response` off, `hold_build` and `hold_early` 6) an opening has 24 %, 17 % and 10 %
+more warriors at minutes 6, 8 and 10 and is at the cap half a minute sooner; whole games have 6 to 10 more warriors
+through minute 10 and 0.2 to 0.4 fewer copies housed from minute 8 to 20; and on three blocks of 150 maps never used
+it wins 107 for 105 and 112 for 106 at N=16 and 92 for 84 at N=17 (+57 -41, every block ahead). The default since,
+frozen as `@f15`. What did not help: quarters by the start before the walk to a far armory, tree claims between the
+sites, more builders on the last quarters, the armory a quarters earlier or later, a seventh quarters, the true
+harvest time in the cost model. What decides an opening's speed beyond all this is how far the armory stands from
+the start: 117 units at minute 5 under 45 cells, 75 at 90 cells and more, a quarter of the maps.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -3006,6 +3023,134 @@ openings are iron behind water" above, and they are 53 of the 128 games lost. In
 grow from 545 at minute 20 to 589 at minute 25 while ours fall from 88 to 52; in the games won theirs stand at 425
 and ours fall from 100 to 72.
 
+### The opening, traced: the builders' walk, a rush alarm that is no rush, and how many to keep inside (2026-11-21/22)
+
+The user's word after the march round: openings next, "lots of potential there, feels like the most important phase
+of the game". A log-only tracer first. `OpeningTrace` writes an "OPEN s" line a second for the first ten minutes:
+the units, the peons inside each quarters (with the hold it is to keep) and each armory, then every peon outside a
+building once by what it does that second (strike, shepherd, carrying a site, the builders by their part of the
+piece of wood: seeking a tree, chopping, carrying, hammering; walking into a building, idle, the gatherers by kind),
+then every site going up with its hit points, its builders by part, how far from it they chop and the trees about
+it. Read by `lab/fable/opentrace.py`. And a quick measure: a ten-minute game is enough to read an opening, so
+`lab/fable/openspeed.py` compares runs of 100 maps cut at minute 10 (`--minutes 10`, five to seven minutes a run)
+on our units at minutes 3 to 8, our warriors at 6, 8 and 10, the iron by 10 and when the quarters and the armory
+stood, paired by map, with errors of half a unit to one and a half.
+
+**The engine's opening, measured** (`ot1log-vs16`, 48 logged openings of `@f14` at N=16):
+
+- A building is 40 pieces of wood, 5 hit points each. A piece is 3.6 s of chopping (the swing restart, a hit every
+  15 ticks) and 5 s of hammering; the first quarters, with its trees 6 cells away, costs 590 builder-seconds, 14.7
+  a piece: 39 % of it is the walk to the tree and back.
+- A quarters breeds n^(1/3) / 11 a second with n inside (the peons it has bred and not let out count): .072 empty,
+  .115 with two, .144 with four, .165 with six, .182 with eight. A peon more inside is worth .024 a second as the
+  second, .015 as the third or fourth, .009 as the sixth.
+- The Hard copies: armory at 120 to 222 s (the median 159), the first wave of ten 146 s and more after it (the
+  fastest twentieth; the median 169, the least 110), so the first launch of a game comes at 280 to 311 s and a
+  copy's first at 334 s (the median); its ten warriors come out together in the last half minute.
+
+**The default's opening** (300 games, `mb5`, `mb6-vs16`): 20 units for a minute, 23 at 90 s, 31 at 150, 48 at 210,
+78 at 270, 99 at 300, then 45 a minute to the cap at 8 minutes. The quarters stand at 50, 127, 168, 202, 268 and
+281 s (medians), the armory at 233 s. Peon-seconds of the first five minutes (12,270 a game, `ot1log-vs16`):
+
+| | share | |
+|---|---|---|
+| inside the quarters | 15.6 % | breeding |
+| builders carrying a piece | 15.6 % | |
+| shepherds | 14.9 % | 5.7 of 36 units out at 150-180 s, 11.5 of 44 at 180-210 s, 14.5 from then on |
+| builders hammering | 11.4 % | 1,396 a game: seven buildings of 199 |
+| builders walking to a tree | 8.9 % | |
+| builders chopping | 8.2 % | |
+| inside the armory | 6.5 % | |
+| the strike on the nearest copy | 5.0 % | six peons for two minutes |
+| gatherers | 8.4 % | |
+| walking into a building | 2.7 % | |
+| carrying a site, idle, other | 2.7 % | idle 0.6 % |
+
+Nobody stands: until the armory is up every peon outside builds, twenty to a site and the rest on the next. What
+the builders lose is the walk. Of their time 44 % is work (hammer and chop) and 56 % walking, where the first
+quarters has 61 % work: the buildings after it cost 1,105, 851, 835, 747, 746 and 757 builder-seconds for its 590.
+
+- **The sites are visited in the order they were planned.** The later quarters lie around the armory site, 15 cells
+  from their nearest neighbour, and the builders go from one to the next in the order the planner found them:
+  after the 53 cells from the first quarters to the first far one, 127 cells of walking where the shortest order
+  through the same sites has 77 (44 openings; the armory keeping its turn). `opening_route` builds and places them
+  in the shortest order (every order of the five is tried, on walking distances).
+- **The walk from the first quarters to the armory's ground** is the map's: 53 cells on average, and it decides how
+  fast an opening is more than anything else. By the armory's distance from the start (100 maps, `os0-vs16`):
+  under 45 cells 117 units at minute 5, 45 to 65 cells 113, 65 to 90 cells 100, 90 and more (26 maps of 100) 75,
+  with the second quarters at 106, 113, 133 and 201 s. Raising quarters by the start first does not undo it
+  (`opening_home_quarters`, with `opening_home_m` for the far armories alone): the second quarters stands 21 s
+  sooner, 51 s on the far maps, and by minute 8 there are no more units and fewer warriors, since everything bred
+  at home walks out (two home quarters +3.6 units at minute 5 and -1.6 warriors at minute 8 on the 32 far maps;
+  three and four -5 and -8 warriors and -12 and -17 iron by minute 10). The second session's `opening_near_far`
+  found the same.
+- **A rush alarm that is no rush.** `checkRush` (Gauntlet's, from one enemy) raises the alarm when six enemy
+  warriors are out before our armory stands, and for four minutes the quarters then get three builders and keep
+  two peons ("weapons before quarters"). Against sixteen copies six warriors are simply the first copy's first
+  ten: the alarm goes off in 7 of 48 openings, the ones whose armory is not up by 255 to 285 s, and their last
+  quarters is then built by three peons for two minutes while eight build each tower (s22025: 61 to 196 hit
+  points from 260 to 400 s). Off against more than one enemy (`rush_response`).
+- **Two peons inside while the opening builds.** `holdFor` keeps two in each quarters while a site is short of
+  builders and no armory stands (hard-coded). A third and a fourth breed .015 a second each; as builders they add
+  a five-hundredth of a quarters a second between them. A small model of the build phase said four to six, and so
+  do the games (`hold_build`): six instead of two gives 9 units more at minute 4 and 7 to 9 through minute 7, the
+  armory 8 s later, and 1.9, 4.8 and 2.3 warriors more at minutes 6, 8 and 10. Eight and ten give no more
+  warriors; a hold that grows with the quarters standing (`hold_build_ramp`) gives nothing over six. With
+  `hold_early` 6 as well (the hold between the armory and 240 s) 2.7, 5.2 and 3.9.
+- **The shepherds leave when their copy's armory stands**, whatever the walk: recruited at 172 s (the median), at
+  their spot at 336 s, 11 s after their copy's first launch (the median again: four in five are still walking when
+  it launches, and 683 of 690 first waves go to the shepherd all the same, since he is the nearest unit of ours).
+  `shepherd_lead_ticks` (Gauntlet's, never switched on here, its timing "a guess") sends a shepherd only in time to
+  stand on his spot 15 s before his copy's armory time plus that lead. With 140 s (7000), from the timing above:
+  300 shepherd-seconds fewer of 8,150 in ten minutes, the first recruits at 182 s, and 681 of 692 first waves
+  still go to a shepherd (`ot2log-vs16`).
+
+What did not help: `opening_floor` (the last quarters keep up to twenty builders after the armory stands and when
+their trees are cut: +0.8 units at minute 5, a warrior fewer at minute 6), `opening_claim` (each planned site
+claims its four trees, the next are scored on the rest: +0.4 units), the armory a quarters earlier (30 s sooner, 1.6
+to 2.9 warriors fewer at minutes 6 to 10) or later (26 s later, the same warriors), a seventh quarters (3.3 warriors
+fewer at minute 6, 3.7 more at minute 10). The hold after 240 s (`hold_mid`, 4) moves the army later, as the model
+of that phase says it must (its total work is flat from 3 to 12): at 6 and 8, 2.4 and 4.5 warriors fewer at minute 6,
+1.5 and 3.2 more at minute 8, 4.0 and 4.7 more at minute 10, the cap 45 s sooner.
+
+**The speed of each step** (100 maps of 22001..22100 cut at minute 10; differences to the default, paired):
+
+| | units at 5 / 7 min | warriors at 6 / 8 / 10 min | iron by 10 | sixth quarters | armory |
+|---|---|---|---|---|---|
+| `os0-vs16` the default | 100.0 / 190.8 | 23.3 / 54.8 / 89.3 | 146.6 | 319 s | 244 s |
+| `os1` `opening_route` | +4.2 / +6.8 | +1.8 / +3.0 / +1.3 | +2.4 | -18 s | -8 s |
+| `os6` and `shepherd_lead_ticks=7000` | +5.9 / +9.9 | +3.2 / +4.5 / +3.9 | +5.0 | -28 s | -11 s |
+| `os10` and `rush_response=false` | +5.9 / +11.5 | +2.9 / +4.1 / +5.5 | +6.5 | -33 s | -11 s |
+| `os15` and `hold_build=6` | +13.5 / +20.4 | +4.9 / +8.9 / +7.8 | +10.4 | -24 s | -2 s |
+| `os18` and `hold_early=6` | +15.3 / +22.0 | +5.6 / +9.4 / +9.4 | +11.4 | -25 s | -5 s |
+| `os22` and `hold_mid=6` | +20.5 / +36.2 | +3.3 / +10.9 / +13.4 | +14.2 | -25 s | -5 s |
+
+The errors are 0.5 to 1.5 on every figure but the sixth quarters (4 to 5 s). `os18` has 24 %, 17 % and 10 % more
+warriors than the default at minutes 6, 8 and 10.
+
+**In whole games** (150 maps no choice had been made on, 32001..32150, N=16):
+
+| | wins | against `ow0-vs16` | our warriors at 6 / 8 / 10 / 12 min | copies housed at 12 / 15 / 20 / 25 min |
+|---|---|---|---|---|
+| `ow0-vs16` the default | 105 | | 22.9 / 54.4 / 88.5 / 99.3 | 12.8 / 11.5 / 9.6 / 8.8 |
+| `ow1` route, no rush alarm | 100 | +14 -19 | +2.3 / +2.7 / +5.0 / +5.1 | 0.0 / -0.1 / -0.1 / 0.0 |
+| `ow2` and the shepherds' lead | 108 | +17 -14 | +3.3 / +2.8 / +5.0 / +2.1 | -0.1 / -0.2 / -0.2 / -0.3 |
+| `ow3` and six inside (`hold_build`, `hold_early`) | 107 | +16 -14 | +6.1 / +8.4 / +9.1 / +6.0 | -0.3 / -0.3 / -0.2 / -0.4 |
+
+The opening's gain is there in the whole games (every warrior figure of `ow3` and its copies housed from minute 12
+on are beyond twice their error), and 150 maps cannot tell what it is worth in wins: one run's error is 5.5.
+
+**Confirmed, and the default since.** On 32151..32300, used for nothing before, the whole of it (`ow5-vs16`: the
+route, the lead, no alarm, six inside) wins 112 and a draw for the default's 106 and a draw (`ow4-vs16`, +18 -12),
+and at N=17 on 33001..33150 it wins 92 for 84 (`ow7-vs17` against `ow6-vs17`, +23 -15). With the first block 311 of
+450 for 295, +57 -41 (z 1.6), every block ahead; in each the warriors are 6 to 10 more at minutes 6 to 10 and the
+copies housed 0.1 to 0.4 fewer from minute 8 to 20 (beyond twice the error), and at N=17 the copies have 18 fewer
+warriors at minute 20 and 35 fewer at minute 30. Frozen as `@f15`. With no params the code plays `ow5-vs16`'s games
+(`chk16a-vs16`, 12 of 12), and with the five settings put back `ow4-vs16`'s (`chk16b-vs16`, 8 of 8).
+
+What the corrected harvest time did (`harvest_ticks`, 500 in the cost model where the trace measures 180): 0.8 and
+1.6 more warriors at minutes 6 and 8, 2.9 fewer at minute 10 and 2.6 less iron (`os30-vs16`): left as it is.
+
 ## Reproduce
 
 ```bash
@@ -3064,6 +3209,14 @@ python lab/fable/march.py mt3log-vs16 me1log-vs16              # what the attack
 python lab/fable/openwin.py mb5-vs16 rb3-vs16 rb4-vs16         # the wins by the opening's milestones
 ./lab/fable/dev.sh mb5-vs16 "@f14 vs hard*16" 31001..31150     # mp5, me5, mh5: the specs are in each run.json
 ./lab/fable/dev.sh mb6-vs16 "@f14 vs hard*16" 31151..31300     # mp6: fable:march_past=20
+./aisim.sh freeze f15 fable                    # and the opening round's five settings, at commit 2c1a1319
+./lab/fable/dev.sh ot1log-vs16 "@f14 vs hard*16" 22001..22048 --logs --minutes 10   # the opening traced (made as fable); ot2log, ot3log: the specs are in each run.json
+python lab/fable/opentrace.py ot1log-vs16      # where the opening's peon time goes, and every opening building
+./lab/fable/dev.sh os0-vs16 "@f14 vs hard*16" 22001..22100 --minutes 10             # the speed runs os0..os31 (made as fable): the specs are in each run.json
+python lab/fable/openspeed.py os0-vs16 os1-vs16 os10-vs16 os18-vs16                 # an opening's speed, run against run
+./lab/fable/dev.sh ow0-vs16 "@f14 vs hard*16" 32001..32150     # ow1, ow2, ow3: the specs are in each run.json
+./lab/fable/dev.sh ow4-vs16 "@f14 vs hard*16" 32151..32300     # ow5: @f15
+./lab/fable/dev.sh ow6-vs17 "@f14 vs hard*17" 33001..33150     # ow7: @f15
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
@@ -3153,6 +3306,17 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   minute 20 (545 to 589 by minute 25) while ours fall to 52, and in the games won ours fall too, from 124 at minute
   16 to 72 at minute 25: the army is not rebuilt as fast as it is spent, at 600 weapons an hour from a pool of 60
   peons.
+- After the opening round (2026-11-22, "The opening, traced" above): (a) of the last bullet is half answered. The
+  build phase is now near what the layout allows: a building after the first still costs 750 to 970
+  builder-seconds for its 590, which is twenty builders walking a 15-cell leg at every change of site and the 53
+  cells from the first quarters to the armory's ground. Open: (1) the far armories, 90 cells and more from the
+  start on a quarter of the maps, have 75 units at minute 5 where the others have 100 to 117; quarters by the start
+  do not help and the second session's three ways did not either, so what is left is the site itself (what a metre
+  of the armory's distance costs the opening is now measured: a fifth of a second of everything) or quarters strung
+  along the way; (2) `hold_mid` 6 and a seventh quarters both move the army later, 4 more warriors at minute 10 for
+  2 to 3 fewer at minute 6: only whole games can price that; (3) the shepherds are 12 % of all peon time before
+  minute 5 and 23 units of 240 at minute 8, the price of sixteen copies, and four in five are still walking when
+  their copy first launches.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
