@@ -64,6 +64,9 @@ final class Military {
     private final Map<@NonNull Unit, Float> last_order = new LinkedHashMap<>();
     /** Log only (HomeTrace): the part of a round that gives orders now, and what gave each warrior its last one. */
     private @NonNull String trace_why = "";
+    /** Log only (HomeTrace): this round's post of holdAtPost, -1 without one. */
+    private int trace_post_x = -1;
+    private int trace_post_y = -1;
     private final Map<@NonNull Unit, TraceOrder> trace_orders = new LinkedHashMap<>();
 
     /** Log only: an order's why, when the warrior first got one under that why and where it stood, and where to. */
@@ -749,6 +752,8 @@ final class Military {
         updateStaging();
         updateThreat();
         trace_why = "other";
+        trace_post_x = -1;
+        trace_post_y = -1;
         tendEvaders();
         manTowers();
         // sortie_ratio: before defend, so that its evacuatePeons already leaves the peons coming out alone
@@ -1239,6 +1244,7 @@ final class Military {
         float hold = ai.strategy().hold_ratio;
         // Against several enemies attacks come from every side, and a post would leave the rest of the base open.
         if (engage && hold > 0f && (ai.enemiesAlive() == 1 || ai.strategy().hold_multi)
+                && (ai.strategy().hold_levels == 0 || ai.strategy().hold_levels == Math.min(threat_level, 2))
                 && enemy >= hold * Math.max(1f, ours)
                 && holdAtPost(defenders)) {
             if (ai.enemiesAlive() != 1)
@@ -1272,6 +1278,9 @@ final class Military {
      * Meets a strong threat at the building of ours nearest to it, a tower if one is close: defenders gather there and
      * fight what comes within reach of it rather than walk out to the enemy. Returns false without a post.
      */
+    private @Nullable Building hold_post;
+    private float hold_post_time = -5000f;
+
     private boolean holdAtPost(@NonNull List<@NonNull Unit> defenders) {
         Intel intel = ai.intel();
         Building post = null;
@@ -1291,8 +1300,32 @@ final class Military {
         }
         if (post == null)
             return false;
+        // hold_stick: the post of a moment ago, unless this one is that much nearer the threat
+        int stick = ai.strategy().hold_stick;
+        Building last = hold_post;
+        if (stick > 0 && last != null && last != post && !last.isDead() && ai.now() - hold_post_time < 250f) {
+            double d_last = Math.sqrt(MapAnalysis.dist2(last.getGridX(), last.getGridY(), threat_x, threat_y));
+            double d_new = Math.sqrt(MapAnalysis.dist2(post.getGridX(), post.getGridY(), threat_x, threat_y));
+            if (d_last <= d_new + stick) {
+                post = last;
+                ai.aiLog().count("hold_post_kept"); // military rounds (0.5 s)
+            }
+        }
+        if (post != last && last != null && ai.now() - hold_post_time < 250f)
+            ai.aiLog().count("hold_post_moved");
+        hold_post = post;
+        hold_post_time = ai.now();
         int px = post.getGridX();
         int py = post.getGridY();
+        // hold_far: no post for harassment far from every building of ours
+        int far = ai.strategy().hold_far;
+        if (far > 0 && threat_level < 2 && MapAnalysis.dist2(px, py, threat_x, threat_y) > far * far) {
+            ai.aiLog().count("hold_far_skip"); // military rounds (0.5 s)
+            return true;
+        }
+        trace_why = "post";
+        trace_post_x = px;
+        trace_post_y = py;
         List<Unit> close = new ArrayList<>();
         for (Unit e : threats)
             if (!e.isDead() && MapAnalysis.dist2(e.getGridX(), e.getGridY(), px, py) <= 14 * 14)
@@ -8019,6 +8052,14 @@ final class Military {
 
     int engageState() {
         return engage_state;
+    }
+
+    int tracePostX() {
+        return trace_post_x;
+    }
+
+    int tracePostY() {
+        return trace_post_y;
     }
 
     float baseThreatStrength() {

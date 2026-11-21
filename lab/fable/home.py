@@ -27,7 +27,7 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 SEC = re.compile(r'^\s*([\d.]+) s0 HOME\s+s lvl (\d) eng (-?\d) str ([\d.]+) base ([\d.]+) real ([\d.]+) at (-?\d+),(-?\d+) '
-                 r'own (-?\d+) mode (\w+) n (\d+) \|(.*)\|(.*)$')
+                 r'own (-?\d+) mode (\w+) n (\d+)(?: post (-?\d+),(-?\d+))? \|(.*)\|(.*)$')
 LOST = re.compile(r'^\s*([\d.]+) s0 AI\s+lost (\w+) at (\d+),(\d+): (\d+) foes within 14 \((\d+) parked\), (\d+) towers, '
                   r'(\d+) mates within 12, (-?\d+) cells to the army, (-?\d+) home, (-?\d+) to our nearest building, '
                   r'mode (\w+), state (\w+), order (\w+)(?: for (\d+) s to (\d+),(\d+) from (\d+),(\d+))?, zone (\w+), '
@@ -93,10 +93,12 @@ def main(runs):
         rec = collections.Counter()     # (side, zone) -> warriors dead
         modes = collections.Counter()
         kills = collections.Counter()   # (label, zone) -> credited kills
+        posts = collections.Counter()   # seconds with a post, its moves and the cells it moved
         for log in sorted(glob.glob(os.path.join(ROOT, run, 'g', 's*-ai-s0.log'))):
             games += 1
             ours, deaths, end = buildings(log[:-len('-ai-s0.log')] + '.jsonl')
             hours += end / 3600
+            last_post = None
             for d in deaths:
                 n = d['rock'] + d['iron'] + d['rubber']
                 if n:
@@ -115,14 +117,21 @@ def main(runs):
                     level, eng = int(m.group(2)), int(m.group(3))
                     counted, real, own = float(m.group(4)), float(m.group(6)), int(m.group(9))
                     modes[m.group(10)] += int(m.group(11))
-                    for part in m.group(12).split():
+                    for part in m.group(14).split():
                         key, n = part.rsplit('=', 1)
                         why, zone, act = key.split('/')
                         ws[(why, zone)] += int(n)
                         acts[(why, act)] += int(n)
-                    for part in m.group(13).split():
+                    for part in m.group(15).split():
                         key, n = part.rsplit('=', 1)
                         foes[tuple(key.split('/'))] += int(n)
+                    if m.group(12) is not None and int(m.group(12)) >= 0:
+                        post = (int(m.group(12)), int(m.group(13)))
+                        posts['seconds'] += 1
+                        if last_post is not None and float(m.group(1)) - last_post[0] < 3 and post != last_post[1]:
+                            posts['moves'] += 1
+                            posts['cells'] += ((post[0] - last_post[1][0]) ** 2 + (post[1] - last_post[1][1]) ** 2) ** .5
+                        last_post = (float(m.group(1)), post)
                     if level > 0:
                         ob = '<=16' if own <= 16 else '<=28' if own <= 28 else '<=45' if own <= 45 else '<=100' if own <= 100 else '>100'
                         k = (level, 'engage' if eng > 0 else 'fall back', ob)
@@ -190,6 +199,9 @@ def main(runs):
         print('  the threat: seconds by level, decision and the centre\'s cells from our nearest building; share with twice the counted strength within 15 cells; median real / counted')
         for k in sorted(threat, key=lambda k: (k[0], k[1], ('<=16', '<=28', '<=45', '<=100', '>100').index(k[2]))):
             print(f'    level {k[0]} {k[1]:<9} {k[2]:>6}: {threat[k] / h:7.0f} s, {100 * under[k] / threat[k]:3.0f} %, {statistics.median(ratio[k]):4.1f}')
+        if posts['seconds']:
+            print(f"  the post (hold_ratio): {posts['seconds'] / h:.0f} s, moved to another building {posts['moves'] / h:.0f} times, "
+                  f"{posts['cells'] / max(1, posts['moves']):.0f} cells a move, once in {posts['seconds'] / max(1, posts['moves']):.0f} s")
         print('  enemy warriors near our buildings, warrior-seconds: ' + ', '.join(
             f'{z}/{k} {foes[(z, k)] / h:.0f}' for z in ZONES for k in ('parked', 'hunt', 'walk', 'other') if foes[(z, k)]))
         print('  warriors dead by zone (the game record), theirs / ours: ' + ', '.join(

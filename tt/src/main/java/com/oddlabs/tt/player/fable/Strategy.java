@@ -792,6 +792,23 @@ class Strategy {
     /** hold_ratio's posts against several enemies too (Military.holdAtPost). */
     boolean hold_multi = false;
     /**
+     * hold_levels: which threats hold_ratio's posts answer: 0 all, 1 only harassment away from the base (threat level
+     * 1), 2 only threats in the base (level 2).
+     */
+    int hold_levels = 0;
+    /**
+     * hold_stick (cells, 0 = off): the post of the last 5 s stays the post until another building of ours is this
+     * much nearer the threat. Without it the post follows the centre of the most dangerous group from building to
+     * building: once in 15 s, 24 cells a move, and the defenders walk 65 % of their time at it (hp3log-vs16).
+     */
+    int hold_stick = 0;
+    /**
+     * hold_far (cells, 0 = off): against harassment away from the base (threat level 1) a post farther than this from
+     * the threat is no post: the warriors picked for it get no order. In 78 % of such a post's seconds it stands more
+     * than 28 cells from the threat (hp3log-vs16): they walk to a building and stand there.
+     */
+    int hold_far = 0;
+    /**
      * On a retreat, warriors in a fight or with an enemy warrior within 9 cells finish it first (Military). Vs hard*11
      * elim +.004 (z 2.0), kd +.018 (rearg-vs11-hv); in the base2 stack.
      */
@@ -2981,6 +2998,9 @@ class Strategy {
         parked_scan_threat = params.getInt("parked_scan_threat", parked_scan_threat);
         hold_closing = params.getInt("hold_closing", hold_closing);
         hold_multi = params.getBoolean("hold_multi", hold_multi);
+        hold_levels = params.getInt("hold_levels", hold_levels);
+        hold_stick = params.getInt("hold_stick", hold_stick);
+        hold_far = params.getInt("hold_far", hold_far);
         retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
         rush_opening_only = params.getBoolean("rush_opening_only", rush_opening_only);
         rush_hold_armory = params.getBoolean("rush_hold_armory", rush_hold_armory);

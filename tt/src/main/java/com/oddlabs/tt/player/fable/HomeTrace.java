@@ -163,11 +163,11 @@ final class HomeTrace {
                         own = Math.min(own, MapAnalysis.dist2(tx, ty, b.getGridX(), b.getGridY()));
         StringBuilder sb = new StringBuilder();
         sb.append(String.format(Locale.ROOT,
-                "s lvl %d eng %d str %.1f base %.1f real %.1f at %d,%d own %d mode %s n %d |",
+                "s lvl %d eng %d str %.1f base %.1f real %.1f at %d,%d own %d mode %s n %d post %d,%d |",
                 level, military.engageState(), level > 0 ? military.threatStrength() : 0f,
                 military.baseThreatStrength(),
                 real, level > 0 ? tx : -1, level > 0 ? ty : -1, own == Integer.MAX_VALUE ? -1 : (int) Math.sqrt(own),
-                military.modeName(), n));
+                military.modeName(), n, military.tracePostX(), military.tracePostY()));
         for (Map.Entry<String, Integer> e : army.entrySet())
             sb.append(' ').append(e.getKey()).append('=').append(e.getValue());
         sb.append(" |");
