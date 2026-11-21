@@ -1059,6 +1059,8 @@ class Strategy {
      * as builders they are a five-hundredth of what a quarters takes (590 to 990 builder-seconds, OpeningTrace).
      */
     int hold_build = -1;
+    /** hold_build_ramp (0 = off): hold_build, but at most this many peons for every quarters that stands. */
+    int hold_build_ramp = 0;
     /**
      * hold_mid 10 (was 14): peons wait in quarters while the armory has ore for them; vs hard*11 elim +.013 / +.030
      * (hm10-vs11-hv, -b), W 16 vs 11 over 400; N=8 neutral (W 114 vs 111).
@@ -3217,6 +3219,7 @@ class Strategy {
         pressure_ticks = (float) params.getDouble("pressure_ticks", pressure_ticks);
         hold_early = params.getInt("hold_early", hold_early);
         hold_build = params.getInt("hold_build", hold_build);
+        hold_build_ramp = params.getInt("hold_build_ramp", hold_build_ramp);
         hold_mid = params.getInt("hold_mid", hold_mid);
         seed_quarters_ticks = (float) params.getDouble("seed_quarters_ticks", seed_quarters_ticks);
         seed_quarters_reach = params.getInt("seed_quarters_reach", seed_quarters_reach);

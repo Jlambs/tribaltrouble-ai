@@ -3182,7 +3182,8 @@ final class Economy {
         if (training)
             return trainerHold();
         if (ai.intel().armories.isEmpty() && !ai.intel().quarters.isEmpty() && needsBuilders())
-            return strategy.hold_build >= 0 ? strategy.hold_build : Math.min(2, strategy.hold_early);
+            return strategy.hold_build < 0 ? Math.min(2, strategy.hold_early) : strategy.hold_build_ramp > 0 ? Math.min(
+                    strategy.hold_build, strategy.hold_build_ramp * ai.intel().quarters.size()) : strategy.hold_build;
         int hold;
         if (pop > max * 7 / 10)
             hold = strategy.hold_late;
