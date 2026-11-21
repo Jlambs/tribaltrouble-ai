@@ -793,7 +793,8 @@ class Strategy {
     boolean hold_multi = false;
     /**
      * hold_levels: which threats hold_ratio's posts answer: 0 all, 1 only harassment away from the base (threat level
-     * 1), 2 only threats in the base (level 2).
+     * 1), 2 only threats in the base (level 2). On 150 maps at N=16 the post won 113 for the default's 106, 110
+     * against harassment alone and 103 against threats in the base alone (hp3, hr3, hq3-vs16).
      */
     int hold_levels = 0;
     /**
@@ -801,7 +802,9 @@ class Strategy {
      * away from the base (false: it is not, as by a shepherd or a chicken hunter). The sappers march with the attack:
      * of the enemy-seconds that make a threat of level 1, 1,108 an hour of game stand by a sapper, 792 of them more
      * than 100 cells from every building of ours, and the home army sends its nearest warriors there (ha3log-vs16,
-     * HomeTrace). No sapper flees such a threat either (evacuatePeons leaves them alone).
+     * HomeTrace). No sapper flees such a threat either (evacuatePeons leaves them alone). Left on: those walks are
+     * called off within seconds, and without them the same warriors answer the threats by far gatherers instead (60
+     * deaths an hour for 42, sp1log-vs16); 108 wins of 150 for 106, and 115 for 114 with the post (hw3, hx3-vs16).
      */
     boolean threat_sappers = true;
     /**
@@ -820,7 +823,8 @@ class Strategy {
     /**
      * hold_far (cells, 0 = off): against harassment away from the base (threat level 1) a post farther than this from
      * the threat is no post: the warriors picked for it get no order. In 78 % of such a post's seconds it stands more
-     * than 28 cells from the threat (hp3log-vs16): they walk to a building and stand there.
+     * than 28 cells from the threat (hp3log-vs16): they walk to a building and stand there. Off: 107 wins of 150 for
+     * 114 without it (hv3, hu3-vs16): the post's order is also what calls them off the walk they were on.
      */
     int hold_far = 0;
     /**

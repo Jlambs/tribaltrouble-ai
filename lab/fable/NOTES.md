@@ -202,6 +202,18 @@ no arm wins more games than the default (101 to 108 of 150 for its 110; 210 of 3
 (`shred_from_ticks`) never reaches a tower and is ten seconds from where he may stand. `fable` still plays `@f12`'s
 games.
 
+The home army round (2026-11-20, user: the home army's lopsided fights; "The home army, traced" below). `HomeTrace`,
+and on every warrior's death the order it had: the home army's fights trade 1.6 enemy warriors for one of ours, as
+the attack's do, and 1.7 to 2.0 at every ratio of numbers when it engages in the base. What was lopsided was the
+company: half its 155 deaths an hour of game came with seven mates or fewer about, because each defender walked to
+the enemy nearest to it from where it stood, and a fifth of its time went into answering enemies by peons up to a
+hundred cells and more from the base. Gauntlet's old post (`hold_ratio`, `hold_multi`: meet a threat at our
+building nearest to it, a tower if one is close), off since a screen at N=15, takes a third of those deaths away. As
+written it changed buildings every 15 s; `hold_stick` and `hold_commit` keep it in place. At N=16 on two blocks of
+maps never used it wins 331 of 450 for 310 (+53 -32), and at N=17 162 of 300 for 156. The default since, frozen as
+`@f13`: **72.3 % at N=16** (217 of 300 fresh maps, `@f12` 204 on the same) and **54.0 % at N=17**. `hold_levels`,
+`hold_far` and `threat_sappers` were built with it and stay off.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2652,6 +2664,133 @@ targets within his 140 cells are transient (a blob launches as soon as its copy 
 that pass see him, and every way to blast more often stands him six seconds among what hunts him. The mission as it
 is uses 12 of the 33 casts his time allows; the repairs here reach 13 to 14.
 
+### The home army, traced: its fights are sound, its walk to them is not (2026-11-20)
+
+The user's direction after the chieftain round: the home army's lopsided fights (218 of its warriors dead a game, 134
+of them at two to one and worse). Again a log-only tracer first. `Military` notes what gave every warrior its last
+order (`trace_why`: engage1, the answer to an enemy by a peon away from the base, threat level 1; engage2, the
+answer to a threat in the base; fall, the walk back to the armory from one that is too strong; post, `holdAtPost`;
+the army's mode otherwise), and its "lost ROLE at ..." line now ends with that order, how long the warrior had it,
+where to and from where, the zone and the threat then. `HomeTrace` writes a "HOME s" line a second (the threat as
+the military sees it; the warriors in role army by why/zone/act; the enemy warriors within 45 cells of a building
+of ours by zone and kind; the peons the enemies of a level-1 threat stand by; the post) and a "HOME kill" line for
+every enemy warrior that dies, with who of ours was throwing at it half a second before. Zones: tower (within 16
+cells of a manned tower of ours), base (within 28 of a building of ours), near (within 45), far. Read by
+`lab/fable/home.py`.
+
+**What the home army is and what it does** (`@f12` at N=16, 12 logged games on 22001..22012, `ha2log-vs16`; an hour
+of game). Role army is the army at home in the modes HOME and MUSTER, and in ATTACK and RETREAT the warriors that
+wait at the armory until 12 of strength may leave together as reinforcements. 37,800 warrior-seconds an hour (10.5
+warriors at any moment: 16,000 in ATTACK, 9,300 in HOME, 8,400 in RETREAT, 4,100 in MUSTER) and 155 deaths (138 on
+the 150 maps of `hb3-vs16`), a seventh of our 1,100.
+
+| the last order | warrior-seconds | deaths: tower / base / near / far zone | all | enemy warriors killed | for a death |
+|---|---|---|---|---|---|
+| engage2 | 10,990 | 30.5 / 45.2 / 10.4 / 3.9 | 90.0 | 156 | 1.73 |
+| engage1 | 7,840 | 1.5 / 10.1 / 13.4 / 16.8 | 41.8 | 64 | 1.54 |
+| fall | 6,360 | 15.4 / 6.9 / 0.2 / 0.1 | 22.6 | 26 | 1.13 |
+| none yet, or the mode's own | 12,640 | | 1.1 | | |
+
+- The kills of an hour, by who was throwing: the attack 555, our towers 432, nobody 555 (the blast's 200, axes on
+  their way, and 220 within 16 cells of a tower), the home army 246, reinforcements on their way 55. By the game
+  record, theirs for ours: 687 / 51 in the tower zone, 257 / 68 in the base zone, 127 / 42 near, 778 / 418 far.
+- So the home army trades 1.6 for one, as the attack does or better, and an engaged fight in the base trades 1.7
+  to 2.0 at every ratio of numbers from one of ours for four of theirs up (`ratio.py` of the session: the seconds
+  of threat level 2 by home warriors for one enemy warrior in the tower and base zones). The fights are not the
+  leak.
+- What is lopsided is the company a warrior dies in. Of the 90 deaths under engage2, 18 have at most two mates
+  within 12 cells and 27 have three to seven; of the 42 under engage1, 14 and 18. `engageSpread` sends each
+  defender to the enemy nearest to it from wherever it stands, and they arrive one by one: 62 % of the
+  warrior-seconds under engage2 and 75 % under engage1 are a walk.
+- The answer to harassment (engage1) is a fifth of the home army's time. 53 % of its seconds answer a threat more
+  than 45 cells from our nearest building and 23 % one more than 100 cells away; in half of the seconds twice the
+  counted strength stands within 15 cells of the threat's centre, because the threat list holds only the enemies
+  within 12 cells of a peon. The enemies that make such a threat stand by a sapper in 1,108 enemy-seconds an hour
+  (792 of them more than 100 cells from every building of ours: the attack's own front), by an iron gatherer in
+  995, by a peon on its way into a building in 595 and by a tree gatherer in 312 (`ha3log-vs16`).
+- With one of ours for four and more of theirs in the base (507 s an hour, 2.9 home warriors) the army falls back:
+  12.9 deaths for 9.3 kills, while the towers kill 240. Those are the warriors that leave the armory one by one
+  into a base that is being overrun; the game is lost by then.
+- Where a game is lost (`cz2-vs16`, 150 maps; won 110, lost 40): the lost games lose 5.3 / 7.6 / 6.1 towers in
+  minutes 20-30 / 30-40 / 40-50, 97 % of them an armory, the first at minute 28 (median); the won games 1.8 / 1.0 /
+  0.7 towers, and half of them an armory at some time.
+
+**The post** (`hold_ratio`, `hold_multi`: Gauntlet's flags, screened once at N=15 on the defaults of then, "Screen
+`pc1`" above: -1.2 +- 2.7 wins of 100). With `hold_multi=true,hold_ratio=0.3` the defenders of a threat that is at
+least 0.3 of their own strength walk to the building of ours nearest the threat, a manned tower counting somewhat
+nearer (a tower in 87 % of the post's seconds), and fight what comes within 14 cells of it; a weaker threat they walk
+out to as before (3.2 kills for a death). It applies to both levels: against harassment the warriors picked for it
+(twice its strength and 2) take the post when two and more enemies are counted, and in 78 % of those seconds the
+post stands more than 28 cells from the threat: they do not walk out at all.
+
+Logged, an hour of game (12 games each; the games differ once the decisions do):
+
+| run | home army lost | under engage2 and post | under engage1 | under fall | enemy warriors it kills | the post moves | buildings lost |
+|---|---|---|---|---|---|---|---|
+| `ha2log` `@f12` | 155 | 90 | 42 | 23 | 246 | | 21.0 |
+| `hp2log` `hold_ratio=1.2` | 159 | 89 | 41 | 26 | 229 | | |
+| `hp3log` `hold_ratio=0.3` | 100 | 65 | 4 | 26 | 169 | once in 15 s | 13.6 |
+| `hs1log` and `hold_stick=12` | 65 | 51 | 3 | 11 | 120 | once in 42 s | 9.1 |
+| `hc1log` and `hold_commit=20` | 95 | 67 | 5 | 20 | 160 | once in 27 s | 18.1 |
+| `hu1log` both | 77 | 52 | 2 | 21 | 112 | once in 64 s | 19.0 |
+| `sp1log` `threat_sappers=false` alone | 165 | 80 | 60 | 21 | 241 | | 18.5 |
+
+- The deaths in small company go: under engage2 and post together, 7 with at most two mates for 18 and 13 with
+  three to seven for 27, 40 in a group of eight and more for 45; under engage1 10 for 42.
+- As written the post follows the centre of the most dangerous group: it moves to another building once in 15 s,
+  24 cells a move, and the defenders walk 72 % of their time at it (`hp3log-vs16`; s22006 at 2053-2104 s: eleven
+  of them between three towers). `hold_stick=12` (the post of the last 5 s stays until another building is 12 cells
+  nearer the threat): once in 42 s. `hold_commit=20` (it stays while a threat stands within 20 cells of it): once in
+  27 s. Both: once in 39 s on the 150 maps.
+- `hold_far=30` (against harassment a post more than 30 cells from the threat is no post, and the warriors picked
+  get no order) and `threat_sappers=false` (an enemy by a sapper alone is no threat, as one by a shepherd or a
+  chicken hunter is none): see the table. The sappers' threats are far walks that are called off within seconds;
+  without them the same warriors answer the threats by the far gatherers instead (logged, `sp1log-vs16`: 60 deaths
+  an hour under engage1 for 42, the threats more than 100 cells out 54 s an hour for 174).
+
+On 150 maps from the first start that no choice had been made on (28001..28150), an hour of game:
+
+| | wins | against `hb3-vs16` | home army lost | units lost | buildings lost | iron |
+|---|---|---|---|---|---|---|
+| `hb3-vs16` `@f12` | 106 | | 138 | 1,086 | 14.1 | 890 |
+| `hp3` the post (`hold_multi=true,hold_ratio=0.3`) | 113 | +19 -12 | 91 | 1,040 | 12.0 | 863 |
+| `hq3` the post against threats in the base only (`hold_levels=2`) | 103 | +14 -17 | 126 | 1,090 | 14.1 | 893 |
+| `hr3` the post against harassment only (`hold_levels=1`) | 110 | +18 -14 | 111 | 1,053 | 13.0 | 873 |
+| `hu3` the post, `hold_stick=12,hold_commit=20` | **114** | +19 -11 | 90 | 1,053 | 12.1 | 880 |
+| `hv3` and `hold_far=30` | 107, 1 draw | +17 -16 | 104 | 1,088 | 13.2 | 857 |
+| `hw3` `threat_sappers=false` alone | 108, 2 draws | +17 -15 | 147 | 1,110 | 12.3 | 886 |
+| `hx3` `hu3` and `threat_sappers=false` | 115, 1 draw | +23 -14 | 96 | 1,062 | 12.1 | 864 |
+
+- The answer to harassment is the larger part: 27 of the 46 home warriors an hour that the post saves, and 110 wins
+  with it alone for 103 with the base's part alone. Both together are what was confirmed.
+- `hold_far` loses what the post gains against harassment. The post's order is also what calls the picked warriors
+  off the walk they were on; without an order they finish it.
+- `threat_sappers=false` saves no home warrior alone (147 for 138) and adds nothing that 150 maps can tell on top of
+  the post. Off.
+- The post that stays is no worse than the one that jumps and walks less. It is the one confirmed.
+
+**Confirmed and made the default** (`forGame`, large maps, more than one enemy: `hold_multi=true`,
+`hold_ratio=0.3`, `hold_stick=12`, `hold_commit=20`; commit 49939d96, frozen as `@f13`). At N=16 on the 300 maps
+28151..28450, used for nothing before: **217 wins for 204** (`hu4-vs16` against `hb4-vs16`, +34 -21), 72.3 % for
+68.0 %; with the 150 before, 331 of 450 for 310 (+53 -32, z 2.3), 73.6 % for 68.9 %. An hour of game on the 300: 94
+home warriors lost for 146, 1,041 units for 1,109, 2,673 kills for 2,745, 863 iron for 893, 14.1 buildings lost for
+15.1, CPU 36.0 s for 38.4. **At N=17 on 27001..27300: 162 of 300 = 54.0 %** for `@f12`'s 156 (`hu5-vs17` against
+`f12n-vs17`, +39 -33), 111 home warriors lost an hour for 160. `fable` without params plays the arm's games (12 of
+12 on 28151..28162, `chk13a-vs16`), and with the four options off `@f12`'s (8 of 8 on 26001..26008, `chk13b-vs16`).
+
+**Looked at and left:**
+
+- The fall back: 21 deaths an hour at one kill for a death. The warriors walk to the armory and wait there until the
+  enemy comes to them.
+- Enemy warriors locked in a hunt on a building of ours answer nothing until it is down (`HuntController`), and the
+  military counts them at full strength. In the tower and base zones they are 6,300 enemy-seconds an hour, with
+  4,260 locked on a peon and 1,700 on a warrior (`ha4log-vs16`), and for 185 s an hour five and more home warriors
+  stand back from such a group. But each locked enemy has three to four about it that are not (10 on a building
+  and 40 others for 17 of ours, `locked.py` of the session): counting them for less would not turn the decision. Not
+  built.
+- The sappers' threats: the home army's nearest warriors are sent towards the attack's own front, and the threat
+  is over within seconds. A long walk begun and called off, not a fight.
+
 ## Reproduce
 
 ```bash
@@ -2682,6 +2821,7 @@ python lab/fable/seat0.py f6 pb6 --n 8..16                                      
 ./aisim.sh freeze f10 fable                    # the same with the goal's hot blocks free, at commit 00f7ed2b
 ./aisim.sh freeze f11 fable                    # the micro round's three defaults, at commit abb99be6
 ./aisim.sh freeze f12 fable                    # and flight_keep, chief_bystander, at commit 5e14c475
+./aisim.sh freeze f13 fable                    # and the home army's post, at commit 49939d96
 ./lab/fable/dev.sh tw0log-vs16 "fable vs hard*16" 22001..22012 --logs   # the tower round's logged runs: st*log (storm), bt*log (bait)
 python lab/fable/towers.py tw0log-vs16 st1log-vs16             # contacts with manned enemy towers, from TowerTrace
 ./lab/fable/dev.sh sa2-vs16 "fable:storm=17 vs hard*16" 25151..25300    # sb2..si2, ba2..bc2: the specs are in each run.json
@@ -2690,7 +2830,13 @@ python lab/fable/chief.py cf2log-vs16 cb1log-vs16              # what the chieft
 ./lab/fable/dev.sh cz2-vs16 "fable vs hard*16" 25151..25300    # ml2-vs16's games with the blast counters; pb2, sj2, sk2, sr2, pp2, ha2, sv2: the specs are in each run.json
 ./lab/fable/dev.sh pbm-vs16 "fable:shred_point_blank=true vs hard*16" 26001..26300
 python lab/fable/rates.py --re "shred_(blast$|taken|killed)|chief_" cz2-vs16 pb2-vs16
-./lab/fable/dev.sh f12m-vs16 "fable vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
+./lab/fable/dev.sh ha4log-vs16 "@f12 vs hard*16" 22001..22012 --logs   # the home army round's logged runs (made as fable, then @f12): ha2log..ha4log; the post: hp1log..hp3log, hs1log, hc1log, hu1log; sp1log
+python lab/fable/home.py ha4log-vs16 hu1log-vs16               # what the home army does and where it dies, from HomeTrace
+./lab/fable/dev.sh hb3-vs16 "@f12 vs hard*16" 28001..28150     # hp3, hq3, hr3, hu3, hv3, hw3, hx3: the specs are in each run.json
+./lab/fable/dev.sh hb4-vs16 "@f12 vs hard*16" 28151..28450
+./lab/fable/dev.sh hu4-vs16 "@f13 vs hard*16" 28151..28450     # played as fable:hold_multi=true,hold_ratio=0.3,hold_stick=12,hold_commit=20
+./lab/fable/dev.sh hu5-vs17 "@f13 vs hard*17" 27001..27300
+./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
 ./lab/fable/dev.sh rtm-vs16 "@f8:... vs hard*16" 26001..26300   # on d2686e1c: fable:shepherd_route=true; rte-vs16 on 25001..25300
@@ -2754,6 +2900,13 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   chieftains lost) and 9 wins under the default over 450 maps on which the default's options were chosen; a pair
   on maps of their own would settle it. What would change his size is a blob brought to him whole, a wave's
   worth at one known cell with nothing awake about, and the shepherds lead the waves the other way.
+- After the home army round (2026-11-20, "The home army, traced" above): 94 home warriors lost an hour of game
+  for 146. Open: (1) the fall back, 21 deaths an hour at one for one, the warriors waiting at the armory for the
+  enemy; (2) the warriors that leave the armory one by one into a base with four enemies for each of ours, 13
+  deaths an hour for 9 kills: held in until they make a clump or the towers have thinned the wave; (3) the
+  reinforcements, 83 lost an hour on their way, two thirds of them alone or in small company: the same lens says
+  of them what it said of the home army, and `reinforce_route`, which walked them round the enemy, did not win;
+  (4) N=18 has no measurement with any default since `@f3`.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
