@@ -1157,6 +1157,16 @@ class Strategy {
      */
     float hold_payback = 0f;
     float hold_payback_until = 0f;
+    /**
+     * hold_share (0 = off), once the armory stands and until the unit cap is first reached: the quarters keep
+     * between them this share of the units still missing to the cap, in place of hold_early, hold_mid and hold_late.
+     * With a quarters breeding in proportion to n^(1/3), a half is the hold that leaves the most peon-seconds of work
+     * before the cap, if a second of work is worth the same whenever it is done (the k-th peon inside is worth
+     * keeping while the seconds left to the cap exceed the 33 k^(2/3) s it takes to breed one more; following that
+     * rule down to the cap, the peons inside are always half the units missing, whatever the number of quarters:
+     * lab/fable/NOTES.md, what a quarters should keep). Under a half, work now counts for more than work later.
+     */
+    float hold_share = 0f;
     /** hold_payback_most: hold_payback keeps no more than this many in a quarters. */
     int hold_payback_most = 30;
     /**
@@ -3357,6 +3367,7 @@ class Strategy {
                 hold_build_steps[i] = Integer.parseInt(parts[i].trim());
         }
         hold_payback = (float) params.getDouble("hold_payback", hold_payback);
+        hold_share = (float) params.getDouble("hold_share", hold_share);
         hold_payback_until = (float) params.getDouble("hold_payback_until", hold_payback_until);
         hold_payback_most = params.getInt("hold_payback_most", hold_payback_most);
         seed_build = params.getInt("seed_build", seed_build);

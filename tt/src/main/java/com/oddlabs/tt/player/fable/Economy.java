@@ -3258,7 +3258,9 @@ final class Economy {
                     strategy.hold_build, strategy.hold_build_ramp * ai.intel().quarters.size()) : strategy.hold_build;
         }
         int hold;
-        if (strategy.hold_payback > 0f && !cap_reached
+        if (strategy.hold_share > 0f && !cap_reached)
+            hold = shareHold(pop, max);
+        else if (strategy.hold_payback > 0f && !cap_reached
                 && (strategy.hold_payback_until <= 0f || ai.now() < strategy.hold_payback_until))
             hold = paybackHold(pop, max);
         else if (pop > max * 7 / 10)
@@ -3320,6 +3322,22 @@ final class Economy {
     }
 
     private static final int PAYBACK_MOST = 30;
+
+    /**
+     * hold_share: the quarters keep between them that share of the units still missing to the cap, each the same.
+     * One peon alone is never kept: the engine breeds an empty quarters as if it held half a peon, so the first
+     * inside adds less than the second (it has bred one more after 53 s, the second after 42 s).
+     */
+    private int shareHold(int pop, int max) {
+        int quarters = 0;
+        for (Building q : ai.intel().quarters)
+            if (!q.isDead() && q.isComplete() && !evacuating.containsKey(q) && !retire.isDoomed(q))
+                quarters++;
+        if (quarters == 0)
+            return 0;
+        double each = ai.strategy().hold_share * (max - pop) / quarters;
+        return each < 1.5 ? 0 : Math.min(PAYBACK_MOST, (int) Math.floor(each + .5));
+    }
 
     /**
      * rush_hold_armory: whether a holdFor since manageQuarters began kept a hold the alarm's cut would have lowered.
