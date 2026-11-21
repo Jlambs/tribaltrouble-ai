@@ -226,6 +226,17 @@ them home (`retreat_regroup`, a tenth more of them joined). Together 210 of 300 
 162 at N=17: the default since, as waste removed that shows no harm, frozen as `@f14`. Found on the way: two thirds
 of the attack army's time is the walk between targets with nothing near.
 
+The march round (2026-11-21, user: yes to that lead; "The march, traced" below). `MarchTrace` follows the attacking
+army second by second. The walk is the map's: the units walk at a warrior's pace, the targets are the nearest, the
+way is the straight line, and what is left is 274 m between one copy and the next, 13.6 times an hour; it is a third
+of the time out in the first campaign and two thirds only past the hour. What the army does stop for is small: 260 s
+an hour for peons with no enemy warrior near, 200 s for one or two warriors, 29 holds. Three options take those away
+(`march_past`, `engage_min`, `hold_approach`), the campaign gets faster by a third of a copy at minute 20, and the
+wins do not move: 209 of 300 for 213 with `march_past`, 108 of 150 for 109 with `engage_min` too, 104 for 109
+without the hold. All off; the default stays `@f14`. Copies taken out sooner are not games won: that reading tells
+how a game stands. Where the games are lost: the slowest fifth of the openings, the far armories of the second
+session, wins 40 % and the rest 79 %.
+
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
 ## Benchmark (user, 2026-11-15: the same as Gauntlet's)
@@ -2918,6 +2929,82 @@ at seven tenths of a warrior's pace; the reinforcements' way is 46,000 warrior-s
 36,000. Not looked into: which legs those are, how often the target changes under way, and what the slow quarter
 is.
 
+### The march, traced: the walk between copies is the map's, and a faster campaign is not a won one (2026-11-21)
+
+The lead of the reinforcements round: two thirds of the attack army's time is a walk with nothing near. A log-only
+tracer first. `MarchTrace` writes a "MARCH s" line a second while an attack is out (the branch of `Military.attack`
+that gave the round's orders, `trace_phase`: march, column, engage_warrior / chieftain / tower / peon / building by
+what `enemyFocus` found, hold, regroup; the army's size and centre, the straight line to the target and the walking
+distance to it of the pivot, the front and the last unit; what the units do and what their hunts are after; the
+enemy about; of the walking units the mean cells moved and metres of walking distance gained), a "MARCH target" line
+when the target changes and a "MARCH pick" line with the eight best candidates when `retarget` chooses. Read by
+`lab/fable/march.py`.
+
+**The army's time** (`@f14` at N=16, 12 logged games on 22001..22012, `mt3log-vs16`; an hour of game). An attack is
+out 2,759 s of the hour with 84 warriors (233,000 warrior-seconds, 65 warriors over the whole hour).
+
+| the round's orders | seconds | warrior-seconds | share | throwing | closing | walking |
+|---|---|---|---|---|---|---|
+| march (and column) | 1,256 | 141,100 | 60.7 % | 2 % | 1 % | 96 % |
+| engage: enemy warriors | 850 | 51,400 | 22.1 % | 39 % | 19 % | 42 % |
+| engage: peons, no warrior within 22 cells | 260 | 17,100 | 7.4 % | 38 % | 11 % | 51 % |
+| engage: a tower | 111 | 7,500 | 3.2 % | 36 % | 14 % | 50 % |
+| hold for a group that closes | 119 | 6,500 | 2.8 % | 15 % | 6 % | 72 % |
+| engage: a chieftain | 74 | 5,600 | 2.4 % | 30 % | 11 % | 59 % |
+| engage: a building | 38 | 2,100 | 0.9 % | 53 % | 13 % | 34 % |
+| regroup | 50 | 1,100 | 0.5 % | | | |
+
+- **The march is the map's.** The units walk: 96.5 % of them, 0.3 % stand and 0.2 % are blocked, at 1.82 cells a
+  second (a lone group 1.9) and 3.05 m a second of walking distance gained, so a sixth of the walk is sideways (the
+  flanks converging on one waypoint, the trees). The targets are the nearest: of 17.5 picks an hour one takes a
+  target 60 m and more past a nearer one, and the one taken is 156 m off where the nearest of its best eight is 145.
+  The walk is the line: 1.06 times it (the median), 1.5 times and more for one target an hour. What is left is the
+  distance between copies: 13.6 legs an hour to another copy at 274 m of walking each, 12.3 to the next building of
+  the same copy at 38 m, 3.6 launches from home at 289 m.
+- By the minute the march is a third of the time out until minute 15 and a quarter until minute 30 (at the target
+  38 %, 33 %, 29 %, 26 % in minutes 5.5-10, 10-15, 15-20, 20-30; fights with warriors away from it 7 %, 17 %, 25 %,
+  31 %); it is 64 % past the hour, when a won game walks to the far copies. The two thirds of the last round's
+  reading are the long games' ends.
+- **What stops the army for little.** `enemyFocus` turns the whole army on anything by its centre: enemy warriors,
+  a chieftain or a tower within 22 cells, peons or a building within 14. Away from the target (more than 40 m) that
+  is 187 s an hour for peons with no enemy warrior within 14 cells of any unit (68 warriors about 6 peons, 41 % of
+  them hunting one), 97 s for one or two enemy warriors, 47 s for a tower by the way and 36 s for a chieftain; and
+  29 holds an hour, 119 s, for a group that the army closes on (`hold_closing=0`: its own march counts).
+
+**Three options** (all off): `march_past=20` (while the centre is more than 20 cells from the target, peons and
+buildings by it do not turn the whole army; its units still take what comes within their own sight), `engage_min=3`
+(nor do enemy warriors worth less than 3 together within 22 cells), `hold_approach=false` (no hold). Logged
+(`mp1log`, `me1log`, `mh1log-vs16`): the army's seconds on peons 260 -> 102, on warriors 850 -> 557 with both, the
+hold gone; 144 and 265 s an hour of turns not taken (`march_past_rounds`, `engage_min_rounds`).
+
+On 150 maps that no choice had been made on (31001..31150), an hour of game:
+
+| | wins | against `mb5-vs16` | copies housed at minute 20 | kills | reinforcements joined |
+|---|---|---|---|---|---|
+| `mb5-vs16` `@f14` | 109 | | 9.56 | 2,696 | 413 |
+| `mp5` `march_past=20` | 112, 1 draw | +17 -14 | 9.45 | 2,672 | 391 |
+| `me5` `march_past=20,engage_min=3` | 108 | +14 -15 | 9.27 | 2,709 | 392 |
+| `mh5` `hold_approach=false` | 104, 1 draw | +10 -15 | 9.34 | 2,718 | 399 |
+
+**Confirmed as level, and left off.** On 31151..31300, used for nothing before, `march_past=20` wins 97 and a draw
+for 104 (`mp6-vs16` against `mb6-vs16`, +13 -20, 9.42 copies housed at minute 20 for 9.50); with the 150 before, 209
+and two draws of 300 for 213 (+30 -34). The default stays `@f14`.
+
+- **A faster campaign is not a won one.** With both turns off 0.3 more copies have lost their last quarters and
+  armory by minute 20, the reading that sorts the games best (9 housed: 86 % won, 11: 22 %), and as many games are
+  won. The copies housed at minute 20 tell how the game stands; taking them out sooner by passing their peons and
+  their stragglers does not change it. It is what `reinforce_min=6` showed at N=15 ("more copies out, no more
+  wins").
+- The hold is worth what it costs or more (104 for 109): the army that stands lets the group come to it.
+
+**Where the games are lost instead** (`lab/fable/openwin.py` on the 450 games of `mb5`, `rb3`, `rb4-vs16`: 322 won).
+The slowest fifth of the openings (under 86 units at minute 5) wins 35 of 88 and the rest 287 of 362: 40 % and 79 %.
+Its armory stands 114 cells from the start (the median; the others 60), its second quarters at 173 s for 119, its
+sixth at 438 s for 272, and a quarter of it has lost ten peons by minute 4. Those are the far plans of "The slow
+openings are iron behind water" above, and they are 53 of the 128 games lost. In the games lost the enemy's warriors
+grow from 545 at minute 20 to 589 at minute 25 while ours fall from 88 to 52; in the games won theirs stand at 425
+and ours fall from 100 to 72.
+
 ## Reproduce
 
 ```bash
@@ -2971,6 +3058,11 @@ python lab/fable/reinforce.py rt2log-vs16 ro1log-vs16          # what becomes of
 ./lab/fable/dev.sh rb4-vs16 "@f13 vs hard*16" 30151..30300
 ./lab/fable/dev.sh ru4-vs16 "@f14 vs hard*16" 30151..30300     # played as fable:reinforce_march=true,retreat_regroup=8
 ./lab/fable/dev.sh ru5-vs17 "@f14 vs hard*17" 27001..27300
+./lab/fable/dev.sh mt3log-vs16 "@f14 vs hard*16" 22001..22012 --logs   # the march round's logged runs (made as fable): mp1log, me1log, mh1log; the specs are in each run.json
+python lab/fable/march.py mt3log-vs16 me1log-vs16              # what the attacking army does with its time, from MarchTrace
+python lab/fable/openwin.py mb5-vs16 rb3-vs16 rb4-vs16         # the wins by the opening's milestones
+./lab/fable/dev.sh mb5-vs16 "@f14 vs hard*16" 31001..31150     # mp5, me5, mh5: the specs are in each run.json
+./lab/fable/dev.sh mb6-vs16 "@f14 vs hard*16" 31151..31300     # mp6: fable:march_past=20
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
 python lab/fable/rates.py rn5m-vs16 mbm-vs16   # the counters per hour of game; evades.py, fighttime.py on runs with --logs
@@ -3050,6 +3142,16 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   way as a rule (32 of the 85 deaths on the way for 34 kills), seen from 30 cells off and walked into; (3) the size
   of a group: 12 wait 9,400 warrior-seconds an hour at the armory door, and a group that fights as one body may
   not need to be 12 (`reinforce_min=6` was 37 wins for 40 at N=15 without the march).
+- After the march round (2026-11-21, "The march, traced" above): (1) of the last bullet is closed. The walk is
+  the distance between copies, and the army's stops for peons, for a warrior or two and for a group it closes on
+  cost a third of a copy at minute 20 and no game. Two rounds in a row have made the army's and the reinforcements'
+  time better spent by a tenth with nothing in the wins: at N=16 the games are not lost there. Where they are: (a)
+  the slowest fifth of the openings (armory 114 cells from the start, the sixth quarters at 438 s) wins 40 % for
+  the others' 79 % and is 53 of 128 losses; the second session tried three ways to the far iron and none held, and
+  the any-seat measure sets those starts aside; (b) in the games lost the copies' warriors keep growing after
+  minute 20 (545 to 589 by minute 25) while ours fall to 52, and in the games won ours fall too, from 124 at minute
+  16 to 72 at minute 25: the army is not rebuilt as fast as it is spent, at 600 weapons an hour from a pool of 60
+  peons.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,

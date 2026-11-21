@@ -791,6 +791,7 @@ class Strategy {
     int hold_closing = 0;
     /**
      * hold_approach: the attack holds for an enemy group that closes on it at all (Military.holdForApproachingEnemy).
+     * 29 holds an hour of game, 119 s; without them 104 wins of 150 for 109 (mh5-vs16, +10 -15): it stays.
      */
     boolean hold_approach = true;
     /**
@@ -800,7 +801,10 @@ class Strategy {
      * centre that are worth less than that together. As written the army turns as one body on anything there: of its
      * 2,760 s out in an hour of game 260 go to peons with no enemy warrior within 14 cells of any of its units (187
      * of them more than 40 m from the target, 66 warriors about 6 peons) and 201 to one or two enemy warriors
-     * (lab/fable/march.py mt2log-vs16; lab/fable/NOTES.md, the march traced).
+     * (lab/fable/march.py mt2log-vs16; lab/fable/NOTES.md, the march traced). With march_past=20 the turns for peons
+     * fall to 102 s and the campaign is a tenth of a copy faster at minute 20, with engage_min=3 too a third of a
+     * copy; the wins do not move: 209 and two draws of 300 for 213 (mp5-vs16, mp6-vs16: +30 -34), and 108 of 150 for
+     * 109 with both (me5-vs16). Off.
      */
     int march_past = 0;
     float engage_min = 0f;
