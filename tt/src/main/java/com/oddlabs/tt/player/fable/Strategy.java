@@ -3471,6 +3471,18 @@ class Strategy {
             // 108 wins for 105 on 150 maps (mf2-vs16).
             strategy.flight_keep = true;
             strategy.chief_bystander = true;
+            // The home army meets a threat at the building of ours nearest to it, a tower if one is close, instead
+            // of each warrior walking out to the enemy nearest to it from where it stands, and it stays at that
+            // building until the enemies by it are gone (lab/fable/NOTES.md, the home army traced). Half its deaths
+            // came in the company of seven mates or fewer, a third of them while answering enemies by far peons. At
+            // N=16 on two blocks of maps never used 114 wins of 150 for 106 and 217 of 300 for 204 (hu3-vs16,
+            // hu4-vs16: +53 -32), 94 home warriors lost an hour of game for 146.
+            if (enemies > 1) {
+                strategy.hold_multi = true;
+                strategy.hold_ratio = .3f;
+                strategy.hold_stick = 12;
+                strategy.hold_commit = 20;
+            }
         }
         return strategy;
     }
