@@ -27,7 +27,7 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'aisim', 'runs')
 SEC = re.compile(r'^\s*([\d.]+) s0 HOME\s+s lvl (\d) eng (-?\d) str ([\d.]+) base ([\d.]+) real ([\d.]+) at (-?\d+),(-?\d+) '
-                 r'own (-?\d+) mode (\w+) n (\d+)(?: post (-?\d+),(-?\d+))? \|(.*)\|(.*)$')
+                 r'own (-?\d+) mode (\w+) n (\d+)(?: post (-?\d+),(-?\d+))? \|([^|]*)\|([^|]*)(?:\|(.*))?$')
 LOST = re.compile(r'^\s*([\d.]+) s0 AI\s+lost (\w+) at (\d+),(\d+): (\d+) foes within 14 \((\d+) parked\), (\d+) towers, '
                   r'(\d+) mates within 12, (-?\d+) cells to the army, (-?\d+) home, (-?\d+) to our nearest building, '
                   r'mode (\w+), state (\w+), order (\w+)(?: for (\d+) s to (\d+),(\d+) from (\d+),(\d+))?, zone (\w+), '
@@ -93,6 +93,7 @@ def main(runs):
         rec = collections.Counter()     # (side, zone) -> warriors dead
         modes = collections.Counter()
         kills = collections.Counter()   # (label, zone) -> credited kills
+        harassed = collections.Counter()  # (peon state, own bucket) -> enemy-seconds at level 1
         posts = collections.Counter()   # seconds with a post, its moves and the cells it moved
         for log in sorted(glob.glob(os.path.join(ROOT, run, 'g', 's*-ai-s0.log'))):
             games += 1
@@ -132,6 +133,11 @@ def main(runs):
                             posts['moves'] += 1
                             posts['cells'] += ((post[0] - last_post[1][0]) ** 2 + (post[1] - last_post[1][1]) ** 2) ** .5
                         last_post = (float(m.group(1)), post)
+                    if level == 1 and m.group(16):
+                        ob = '<=28' if own <= 28 else '<=45' if own <= 45 else '<=100' if own <= 100 else '>100'
+                        for part in m.group(16).split():
+                            key, n = part.rsplit('=', 1)
+                            harassed[(key, ob)] += int(n)
                     if level > 0:
                         ob = '<=16' if own <= 16 else '<=28' if own <= 28 else '<=45' if own <= 45 else '<=100' if own <= 100 else '>100'
                         k = (level, 'engage' if eng > 0 else 'fall back', ob)
@@ -199,6 +205,10 @@ def main(runs):
         print('  the threat: seconds by level, decision and the centre\'s cells from our nearest building; share with twice the counted strength within 15 cells; median real / counted')
         for k in sorted(threat, key=lambda k: (k[0], k[1], ('<=16', '<=28', '<=45', '<=100', '>100').index(k[2]))):
             print(f'    level {k[0]} {k[1]:<9} {k[2]:>6}: {threat[k] / h:7.0f} s, {100 * under[k] / threat[k]:3.0f} %, {statistics.median(ratio[k]):4.1f}')
+        if harassed:
+            print('  threat level 1: the enemies away from the base, enemy-seconds by the state of the peon each stands by and the cells from the threat to our nearest building (<=28 <=45 <=100 >100)')
+            for k in sorted({k for k, _ in harassed}, key=lambda k: -sum(harassed[(k, o)] for o in ('<=28', '<=45', '<=100', '>100'))):
+                print(f'    {k:<16}' + ''.join(f'{harassed[(k, o)] / h:8.0f}' for o in ('<=28', '<=45', '<=100', '>100')))
         if posts['seconds']:
             print(f"  the post (hold_ratio): {posts['seconds'] / h:.0f} s, moved to another building {posts['moves'] / h:.0f} times, "
                   f"{posts['cells'] / max(1, posts['moves']):.0f} cells a move, once in {posts['seconds'] / max(1, posts['moves']):.0f} s")

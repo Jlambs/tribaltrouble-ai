@@ -173,6 +173,9 @@ final class HomeTrace {
         sb.append(" |");
         for (Map.Entry<String, Integer> e : foes.entrySet())
             sb.append(' ').append(e.getKey()).append('=').append(e.getValue());
+        sb.append(" |");
+        for (Map.Entry<String, Integer> e : military.traceHarassed().entrySet())
+            sb.append(' ').append(e.getKey()).append('=').append(e.getValue());
         ai.aiLog().log("HOME", sb::toString);
     }
 }

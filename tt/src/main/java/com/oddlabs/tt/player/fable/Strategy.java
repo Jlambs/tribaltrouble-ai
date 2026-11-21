@@ -797,11 +797,26 @@ class Strategy {
      */
     int hold_levels = 0;
     /**
+     * threat_sappers: an enemy within 12 cells of a sapper of ours is a threat to answer, as one by any other peon
+     * away from the base (false: it is not, as by a shepherd or a chicken hunter). The sappers march with the attack:
+     * of the enemy-seconds that make a threat of level 1, 1,108 an hour of game stand by a sapper, 792 of them more
+     * than 100 cells from every building of ours, and the home army sends its nearest warriors there (ha3log-vs16,
+     * HomeTrace). No sapper flees such a threat either (evacuatePeons leaves them alone).
+     */
+    boolean threat_sappers = true;
+    /**
      * hold_stick (cells, 0 = off): the post of the last 5 s stays the post until another building of ours is this
      * much nearer the threat. Without it the post follows the centre of the most dangerous group from building to
      * building: once in 15 s, 24 cells a move, and the defenders walk 65 % of their time at it (hp3log-vs16).
      */
     int hold_stick = 0;
+    /**
+     * hold_commit (cells, 0 = off): the post of the last 5 s stays the post while a threat stands within this many
+     * cells of it: the defenders finish at one building before they walk to the next. With two groups on two sides of
+     * the base the most dangerous one changes by the second, and hold_stick does not hold a post between buildings 40
+     * cells apart (hs1log-vs16, s22006 at 2053-2104 s: eleven defenders walking between three towers).
+     */
+    int hold_commit = 0;
     /**
      * hold_far (cells, 0 = off): against harassment away from the base (threat level 1) a post farther than this from
      * the threat is no post: the warriors picked for it get no order. In 78 % of such a post's seconds it stands more
@@ -2999,7 +3014,9 @@ class Strategy {
         hold_closing = params.getInt("hold_closing", hold_closing);
         hold_multi = params.getBoolean("hold_multi", hold_multi);
         hold_levels = params.getInt("hold_levels", hold_levels);
+        threat_sappers = params.getBoolean("threat_sappers", threat_sappers);
         hold_stick = params.getInt("hold_stick", hold_stick);
+        hold_commit = params.getInt("hold_commit", hold_commit);
         hold_far = params.getInt("hold_far", hold_far);
         retreat_rearguard = params.getBoolean("retreat_rearguard", retreat_rearguard);
         rush_opening_only = params.getBoolean("rush_opening_only", rush_opening_only);

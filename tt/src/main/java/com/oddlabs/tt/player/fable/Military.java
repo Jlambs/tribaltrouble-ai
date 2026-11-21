@@ -66,6 +66,8 @@ final class Military {
     private @NonNull String trace_why = "";
     /** Log only (HomeTrace): this round's post of holdAtPost, -1 without one. */
     private int trace_post_x = -1;
+    /** Log only (HomeTrace): this round's enemies away from the base by the state of the peon each stands by. */
+    private final Map<String, Integer> trace_harassed = new java.util.TreeMap<>();
     private int trace_post_y = -1;
     private final Map<@NonNull Unit, TraceOrder> trace_orders = new LinkedHashMap<>();
 
@@ -1003,14 +1005,18 @@ final class Military {
         int np = 0;
         int[] pxs = new int[intel.peons.size()];
         int[] pys = new int[intel.peons.size()];
+        PeonState[] pss = new PeonState[intel.peons.size()];
+        trace_harassed.clear();
         for (Unit p : intel.peons) {
             PeonState s = intel.peon_states.get(p);
             if (s == PeonState.GATHER_CHICKEN || s == PeonState.SHEPHERD)
                 continue;
+            pss[np] = s;
             pxs[np] = p.getGridX();
             pys[np++] = p.getGridY();
         }
         float memory = ai.strategy().harass_memory_ticks;
+        boolean sappers = ai.strategy().threat_sappers;
         float now = ai.now();
         if (memory > 0f)
             harassers.entrySet().removeIf(h -> h.getKey().isDead() || now - h.getValue() > memory);
@@ -1033,15 +1039,24 @@ final class Military {
                 }
             }
             boolean near_peons = false;
+            boolean near_sapper = false;
             if (!near_base) {
                 for (int k = 0; k < np; k++) {
                     if (MapAnalysis.dist2(e.getGridX(), e.getGridY(), pxs[k], pys[k]) <= 12 * 12) {
+                        // threat_sappers: one that marches with the attack is no reason to send the home army
+                        if (!sappers && pss[k] == PeonState.SAPPER) {
+                            near_sapper = true;
+                            continue;
+                        }
                         if (box != Integer.MAX_VALUE && Math.max(Math.abs(e.getGridX() - pxs[k]), Math.abs(
                                 e.getGridY() - pys[k])) > box) {
                             exempt = true;
                             continue;
                         }
                         near_peons = true;
+                        if (ai.logging())
+                            trace_harassed.merge(String.valueOf(pss[k]).toLowerCase(java.util.Locale.ROOT), 1,
+                                    Integer::sum);
                         break;
                     }
                 }
@@ -1058,6 +1073,8 @@ final class Military {
                 ai.aiLog().count("harass_remembered"); // threat-ticks (0.5 s)
             } else if (exempt) {
                 ai.aiLog().count("parked_exempt");
+            } else if (near_sapper) {
+                ai.aiLog().count("threat_sapper_exempt"); // enemy-rounds (0.5 s) by a sapper and nothing else of ours
             }
         }
         // Enemy peons tearing down towers count too, and so do peons raiding the base far from any building of
@@ -1310,6 +1327,13 @@ final class Military {
                 post = last;
                 ai.aiLog().count("hold_post_kept"); // military rounds (0.5 s)
             }
+        }
+        // hold_commit: the post of a moment ago while a threat stands by it
+        int commit = ai.strategy().hold_commit;
+        if (commit > 0 && last != null && last != post && !last.isDead() && ai.now() - hold_post_time < 250f
+                && threatNear(last.getGridX(), last.getGridY(), commit)) {
+            post = last;
+            ai.aiLog().count("hold_post_committed"); // military rounds (0.5 s)
         }
         if (post != last && last != null && ai.now() - hold_post_time < 250f)
             ai.aiLog().count("hold_post_moved");
@@ -8052,6 +8076,11 @@ final class Military {
 
     int engageState() {
         return engage_state;
+    }
+
+    @NonNull
+    Map<String, Integer> traceHarassed() {
+        return trace_harassed;
     }
 
     int tracePostX() {
