@@ -73,6 +73,7 @@ public final class FableAI extends AI {
     private @Nullable ThrashTrace thrash_trace;
     private @Nullable TowerTrace tower_trace;
     private @Nullable ChiefTrace chief_trace;
+    private @Nullable HomeTrace home_trace;
     /** Stalled enemy armies and parked enemies (giant_keepout, giant_stun_hold, giant_shred). */
     private @Nullable Giants giants;
     private @Nullable Freeze freeze;
@@ -191,6 +192,8 @@ public final class FableAI extends AI {
                 tower_trace.tick();
             if (chief_trace != null)
                 chief_trace.tick();
+            if (home_trace != null)
+                home_trace.tick();
         }
         if (due_economy) {
             next_economy = nextRound(next_economy, ECONOMY_PERIOD_TICKS);
@@ -263,6 +266,7 @@ public final class FableAI extends AI {
         thrash_trace = new ThrashTrace(this);
         tower_trace = new TowerTrace(this);
         chief_trace = new ChiefTrace(this);
+        home_trace = new HomeTrace(this);
         intel.decoys = decoys;
     }
 

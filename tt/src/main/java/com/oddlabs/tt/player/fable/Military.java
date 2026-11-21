@@ -62,6 +62,29 @@ final class Military {
     private final Map<@NonNull Unit, @NonNull Role> roles = new LinkedHashMap<>();
     private final Map<@NonNull Unit, @NonNull Building> tower_assignments = new LinkedHashMap<>();
     private final Map<@NonNull Unit, Float> last_order = new LinkedHashMap<>();
+    /** Log only (HomeTrace): the part of a round that gives orders now, and what gave each warrior its last one. */
+    private @NonNull String trace_why = "";
+    private final Map<@NonNull Unit, TraceOrder> trace_orders = new LinkedHashMap<>();
+
+    /** Log only: an order's why, when the warrior first got one under that why and where it stood, and where to. */
+    private static final class TraceOrder {
+        final @NonNull String why;
+        final float since;
+        final int from_x;
+        final int from_y;
+        int x;
+        int y;
+
+        TraceOrder(@NonNull String why, float since, int from_x, int from_y, int x, int y) {
+            this.why = why;
+            this.since = since;
+            this.from_x = from_x;
+            this.from_y = from_y;
+            this.x = x;
+            this.y = y;
+        }
+    }
+
     private final Map<@NonNull Unit, Float> chief_orders = new LinkedHashMap<>();
     private final Map<@NonNull Unit, int @NonNull []> last_spots = new LinkedHashMap<>();
     private final Map<Long, List<@NonNull Unit>> pending_orders = new LinkedHashMap<>();
@@ -725,6 +748,7 @@ final class Military {
         provokeProbe();
         updateStaging();
         updateThreat();
+        trace_why = "other";
         tendEvaders();
         manTowers();
         // sortie_ratio: before defend, so that its evacuatePeons already leaves the peons coming out alone
@@ -732,10 +756,12 @@ final class Military {
             sorties();
         if (threat_level > 0)
             defend();
+        trace_why = "raiders";
         if (!raiders.isEmpty())
             answerRaiders();
         if (mode != Mode.ATTACK && siege_start >= 0f)
             endSiege();
+        trace_why = mode.name().toLowerCase(java.util.Locale.ROOT);
         switch (mode) {
             case HOME -> {
                 if (sweep_until >= 0f)
@@ -751,8 +777,11 @@ final class Military {
             considerSplit();
             wingTick();
         }
+        trace_why = "reinforce";
         reinforce();
+        trace_why = "raid";
         raid();
+        trace_why = "other";
         chase();
         peonRush();
         restoreDodge();
@@ -853,6 +882,7 @@ final class Military {
                 last_order.remove(u);
                 last_spots.remove(u);
                 chief_orders.remove(u);
+                trace_orders.remove(u);
             }
         }
         for (Iterator<Map.Entry<Unit, Building>> it = tower_assignments.entrySet().iterator(); it.hasNext();) {
@@ -913,10 +943,15 @@ final class Military {
                 if (!b.isDead())
                     own = Math.min(own, MapAnalysis.dist2(x, y, b.getGridX(), b.getGridY()));
         int to_own = own == Integer.MAX_VALUE ? -1 : (int) Math.sqrt(own);
+        TraceOrder order = trace_orders.get(u);
+        String sent = order == null ? "order none" : String.format(java.util.Locale.ROOT,
+                "order %s for %.0f s to %d,%d from %d,%d", order.why, FableAI.seconds(ai.now() - order.since), order.x,
+                order.y, order.from_x, order.from_y);
         ai.log(String.format(
-                "lost %s at %d,%d: %d foes within 14 (%d parked), %d towers, %d mates within 12, " + "%d cells to the army, %d home, %d to our nearest building, mode %s, state %s",
+                "lost %s at %d,%d: %d foes within 14 (%d parked), %d towers, %d mates within 12, " + "%d cells to the army, %d home, %d to our nearest building, mode %s, state %s, %s, zone %s, " + "threat %d eng %d str %.1f at %d,%d",
                 role.name().toLowerCase(java.util.Locale.ROOT), x, y, foes, parked, towers, mates, to_army, to_home,
-                to_own, mode, intel.warrior_states.get(u)));
+                to_own, mode, intel.warrior_states.get(u), sent, HomeTrace.zone(intel, x, y), threat_level,
+                engage_state, threat_strength, threat_x, threat_y));
     }
 
     private void updateStaging() {
@@ -1192,6 +1227,7 @@ final class Military {
                     threat_strength, threat_x, threat_y, ours, towers, engage ? "engage" : "fall back"));
         }
         engage_state = engage ? 1 : -1;
+        trace_why = !engage ? "fall" : threat_level >= 2 ? "engage2" : "engage1";
         if (ai.strategy().defend_exploit_stun && engage && chargeStunned(defenders, threat_x, threat_y)) {
             evacuatePeons();
             return;
@@ -7952,11 +7988,46 @@ final class Military {
                 survive.merge(best, 1f - best_p, (a, b) -> a * b);
             hunt_targets.put(w, best);
             last_order.put(w, ai.now());
+            if (ai.logging())
+                traceOrder(w, best.getGridX(), best.getGridY());
             ai.intel().warrior_states.put(w, WarriorState.FIGHT);
             ai.owner().setTarget(Selectable.newArray(w), best, Action.ATTACK, true);
             targeted.add(w);
         }
         return targeted;
+    }
+
+    /**
+     * Log only: notes what gave warrior u an order to (x, y); the same why as its last order keeps that one's start.
+     */
+    private void traceOrder(@NonNull Unit u, int x, int y) {
+        TraceOrder last = trace_orders.get(u);
+        if (last != null && last.why.equals(trace_why)) {
+            last.x = x;
+            last.y = y;
+        } else {
+            trace_orders.put(u, new TraceOrder(trace_why, ai.now(), u.getGridX(), u.getGridY(), x, y));
+        }
+    }
+
+    /** Log only (HomeTrace): what gave warrior u its last order, "none" before its first. */
+    @NonNull
+    String traceWhy(@NonNull Unit u) {
+        TraceOrder last = trace_orders.get(u);
+        return last == null ? "none" : last.why;
+    }
+
+    int engageState() {
+        return engage_state;
+    }
+
+    float baseThreatStrength() {
+        return base_threat_strength;
+    }
+
+    @NonNull
+    String modeName() {
+        return mode.name();
     }
 
     /** Whether warrior w can throw at e from where it stands (HuntController's own test). */
@@ -8359,6 +8430,8 @@ final class Military {
     private void queueOrder(@NonNull Unit u, int x, int y, boolean aggressive) {
         last_order.put(u, ai.now());
         last_spots.put(u, new int[]{x, y});
+        if (ai.logging())
+            traceOrder(u, x, y);
         long key = ((long) x << 32) | ((long) y << 1) | (aggressive ? 1 : 0);
         pending_orders.computeIfAbsent(key, k -> new ArrayList<>()).add(u);
     }
