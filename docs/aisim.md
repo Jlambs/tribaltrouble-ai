@@ -491,13 +491,17 @@ ships.
 `gui hard` records games against the stock Hard AI for comparison. The Hard-slot swap only works in developer mode,
 which `./aisim.sh gui` sets; started any other way, the game's Hard AI is the stock one.
 
+`./aisim.sh gui --slot easy SPEC` (or `--slot normal`) gives the AI the Easy (or Normal) slots instead, and the Hard
+slots stay the stock Hard AI, so that one game can hold both. The menus still say Easy.
+
 ### Multiplayer play-tests
 
 ```bash
 ./aisim.sh gui --multiplayer myai
 ```
 
-lets that AI play the Hard slots of multiplayer games too. Every machine of a multiplayer game runs the AIs itself
+lets that AI play its slots (Hard, or those `--slot` names) in multiplayer games too. Every machine of a
+multiplayer game runs the AIs itself
 and only the players' orders travel, so **every machine in the game, spectators included, must run the same commit,
 built the same way and started with this same command line** (the same SPEC with the same params). A machine started
 any other way runs the stock Hard AI in those slots, and the game desyncs for everyone in it: play such games only
@@ -577,7 +581,7 @@ The same list as `./aisim.sh help`:
 ./aisim.sh export  RUN [RUN...]
 ./aisim.sh lab     FILE.java [args]
 ./aisim.sh freeze  TAG NAME|CLASS [--from DIR|JAR]
-./aisim.sh gui     [--stale-ok] [--multiplayer] SPEC [game args]
+./aisim.sh gui     [--stale-ok] [--multiplayer] [--slot easy|normal|hard] SPEC [game args]
 --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
   A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
   is left, or to the time limit.

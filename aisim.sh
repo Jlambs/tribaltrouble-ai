@@ -55,19 +55,27 @@ case "${1:-help}" in
         # The game itself, with SPEC in single-player "Hard" slots (PlayTest).
         shift
         # --stale-ok is for guicheck, not for the game: com.oddlabs.tt.Main rejects flags it does not know.
-        # --multiplayer lets SPEC play the Hard slots of multiplayer games too (PlayTest): every machine in such a game
-        # must run the same build with the same SPEC and this flag.
+        # --multiplayer lets SPEC play its slots in multiplayer games too (PlayTest): every machine in such a game
+        # must run the same build with the same SPEC and these flags. --slot easy|normal: SPEC plays those slots
+        # instead of the Hard ones, which stay the stock Hard AI.
         stale_ok=
         multiplayer=
+        slot=
         while [ $# -gt 0 ]; do
             case "$1" in
                 --stale-ok) stale_ok=--stale-ok; shift ;;
                 --multiplayer) multiplayer=-Dcom.oddlabs.tt.hard_ai.multiplayer=true; shift ;;
+                --slot)
+                    case "${2:-}" in
+                        easy|normal|hard) slot="-Dcom.oddlabs.tt.hard_ai.slot=$2" ;;
+                        *) echo "aisim: gui --slot takes easy, normal or hard" >&2; exit 2 ;;
+                    esac
+                    shift 2 ;;
                 *) break ;;
             esac
         done
         if [ $# -eq 0 ]; then
-            echo "aisim: usage: ./aisim.sh gui [--stale-ok] [--multiplayer] SPEC [game args]" >&2
+            echo "aisim: usage: ./aisim.sh gui [--stale-ok] [--multiplayer] [--slot easy|normal|hard] SPEC [game args]" >&2
             exit 2
         fi
         spec=$1
@@ -84,7 +92,8 @@ case "${1:-help}" in
         [ "$(uname)" = Darwin ] && GUI_OPTS+=(-XstartOnFirstThread)
         # the game finds its resources relative to tt/, as under gradlew :tt:run
         cd tt
-        exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" ${multiplayer:+"$multiplayer"}             "-Daisim.snap=$snap" \
+        exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" ${multiplayer:+"$multiplayer"} \
+            ${slot:+"$slot"} "-Daisim.snap=$snap" \
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/gui" "@../$cp_args" com.oddlabs.tt.Main "$@"
         ;;
     lab)

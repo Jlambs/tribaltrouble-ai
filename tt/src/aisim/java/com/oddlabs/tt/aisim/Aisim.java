@@ -91,9 +91,10 @@ public final class Aisim {
               export  RUN [RUN...]               a run's games as census.csv and events.csv, for scripts
               lab     FILE.java [args]           run your own tool (lab/NAME/) on the last build's class path
               freeze  TAG NAME|CLASS [--from DIR|JAR]   freeze an AI package as opponent @TAG
-              gui     [--stale-ok] [--multiplayer] SPEC [game args]
+              gui     [--stale-ok] [--multiplayer] [--slot easy|normal|hard] SPEC [game args]
                                                         play the game yourself; SPEC plays the skirmish Hard slots
-                                                        (--multiplayer: those of multiplayer games too)
+                                                        (--slot: the Easy or Normal ones instead; --multiplayer:
+                                                        those of multiplayer games too)
             --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
               A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
               is left, or to the time limit.
