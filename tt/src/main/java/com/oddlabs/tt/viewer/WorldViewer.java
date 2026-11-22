@@ -316,9 +316,12 @@ public final class WorldViewer implements Animated, AutoCloseable {
         if (slot.getType() == PlayerSlot.AI) {
             AI ai = null;
             switch (slot.getAIDifficulty()) {
-                case PlayerSlot.AI_NORMAL -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_NORMAL);
-                case PlayerSlot.AI_HARD -> ai = PlayTest.hardAi(player, unit_info, ingame_info, world_params);
-                case PlayerSlot.AI_EASY -> ai = new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_EASY);
+                case PlayerSlot.AI_NORMAL -> ai = PlayTest.slotAi(player, unit_info, ingame_info, world_params,
+                        AdvancedAI.DIFFICULTY_NORMAL);
+                case PlayerSlot.AI_HARD -> ai = PlayTest.slotAi(player, unit_info, ingame_info, world_params,
+                        AdvancedAI.DIFFICULTY_HARD);
+                case PlayerSlot.AI_EASY -> ai = PlayTest.slotAi(player, unit_info, ingame_info, world_params,
+                        AdvancedAI.DIFFICULTY_EASY);
                 case PlayerSlot.AI_BATTLE_TUTORIAL -> ai = new PassiveAI(player, unit_info, true);
                 case PlayerSlot.AI_TOWER_TUTORIAL -> {
                 }

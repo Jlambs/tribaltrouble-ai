@@ -25,13 +25,13 @@ import java.util.logging.Logger;
 
 /**
  * Play-testing an AI in the real game. {@code ./aisim.sh gui SPEC} starts the game in developer mode with the system
- * property {@value #HARD_AI_PROPERTY} set to SPEC; then that AI plays every "Hard" slot of a single-player skirmish,
- * and the game is recorded next to the session logs in the same format as harness games ({@link GameRecorder}), with
- * the AI logs beside it.
+ * property {@value #HARD_AI_PROPERTY} set to SPEC; then that AI plays every "Hard" slot of a single-player skirmish
+ * (or with {@code --slot} every Easy or Normal one), and the game is recorded next to the session logs in the same
+ * format as harness games ({@link GameRecorder}), with the AI logs beside it.
  *
- * <p>The game calls in twice, from WorldViewer: {@link #hardAi} for each Hard slot, and {@link #leave} when the world
- * closes. For every other game both change nothing. Multiplayer games are never affected, so lockstep peers cannot
- * diverge.
+ * <p>The game calls in twice, from WorldViewer: {@link #slotAi} for each Easy, Normal and Hard slot, and
+ * {@link #leave} when the world closes. For every other game both change nothing. A multiplayer game is affected
+ * only when started with {@code --multiplayer}, which every machine in it must then be (see {@link #slotAi}).
  */
 public final class PlayTest {
     /** The system property naming the AI for the Hard slots; aisim.sh gui sets it. */
@@ -41,6 +41,11 @@ public final class PlayTest {
      * sets it.
      */
     private static final String MULTIPLAYER_PROPERTY = "com.oddlabs.tt.hard_ai.multiplayer";
+    /**
+     * The system property naming the stock slots that AI plays instead of the Hard ones: easy, normal or hard;
+     * aisim.sh gui --slot sets it.
+     */
+    private static final String SLOT_PROPERTY = "com.oddlabs.tt.hard_ai.slot";
     /** The system property naming the aisim snapshot the game runs from; aisim.sh gui sets it. */
     private static final String SNAP_PROPERTY = "aisim.snap";
     private static final Logger logger = Logger.getLogger(PlayTest.class.getName());
@@ -64,36 +69,43 @@ public final class PlayTest {
     }
 
     /**
-     * The AI of a skirmish "Hard" slot. The stock Hard AI, unless {@value #HARD_AI_PROPERTY} is set, the game runs in
-     * developer mode ({@code -Dcom.oddlabs.tt.developer=true}, which {@code ./aisim.sh gui} passes) and this is a
-     * single-player skirmish: then that AI plays the slot and the game is recorded. Requiring developer mode too means
-     * a stray property in a normal launch cannot swap the Hard AI.
+     * The AI of a skirmish slot of the stock difficulty {@code difficulty} (AdvancedAI.DIFFICULTY_*). The stock AI,
+     * unless {@value #HARD_AI_PROPERTY} is set, the slot is a Hard one (or of the difficulty {@value #SLOT_PROPERTY}
+     * names), the game runs in developer mode ({@code -Dcom.oddlabs.tt.developer=true}, which {@code ./aisim.sh gui}
+     * passes) and this is a single-player skirmish: then that AI plays the slot and the game is recorded. Requiring
+     * developer mode too means a stray property in a normal launch cannot swap an AI.
      *
-     * With {@value #MULTIPLAYER_PROPERTY} set to true as well, it plays the Hard slots of multiplayer games too, on
-     * the machines of players and spectators alike. Every machine of a game runs the AIs itself, so every machine in
-     * such a game must run the same build, started with the same AI and this property: one without them runs the
-     * stock Hard AI and the game desyncs. That is why a plain play-test never swaps the AI of a multiplayer game.
+     * With {@value #MULTIPLAYER_PROPERTY} set to true as well, it plays those slots of multiplayer games too, on the
+     * machines of players and spectators alike. Every machine of a game runs the AIs itself, so every machine in such
+     * a game must run the same build, started with the same AI and these properties: one without them runs the stock
+     * AI and the game desyncs. That is why a plain play-test never swaps the AI of a multiplayer game.
      */
-    public static @NonNull AI hardAi(@NonNull Player player, @NonNull UnitInfo unit_info, @NonNull InGameInfo game,
-            @NonNull WorldParameters params) {
+    public static @NonNull AI slotAi(@NonNull Player player, @NonNull UnitInfo unit_info, @NonNull InGameInfo game,
+            @NonNull WorldParameters params, int difficulty) {
         String spec = System.getProperty(HARD_AI_PROPERTY);
-        if (spec == null || !Settings.getSettings().inDeveloperMode() || !(game instanceof DefaultInGameInfo)
+        if (spec == null || difficulty != swappedDifficulty() || !Settings.getSettings().inDeveloperMode()
+                || !(game instanceof DefaultInGameInfo)
                 || (game.isMultiplayer() && !Boolean.getBoolean(MULTIPLAYER_PROPERTY))) {
-            return stockHard(player, unit_info);
+            return new AdvancedAI(player, unit_info, difficulty);
         }
         try {
             AiSpec.check(spec); // ./aisim.sh gui checks it before starting the game; this is the fallback
         } catch (RuntimeException | LinkageError e) {
-            logger.log(Level.SEVERE, "Bad AI '" + spec + "' for the Hard slot; the stock Hard AI plays", e);
-            return stockHard(player, unit_info);
+            logger.log(Level.SEVERE, "Bad AI '" + spec + "' for the slot; the stock AI plays", e);
+            return new AdvancedAI(player, unit_info, difficulty);
         }
         attach(player, spec, params);
-        // A constructor that throws propagates: its units may already exist, and a broken AI must not pass for Hard.
+        // A constructor that throws propagates: its units may already exist, and a broken AI must not pass for stock.
         return AiSpec.create(spec, player, unit_info);
     }
 
-    private static @NonNull AI stockHard(@NonNull Player player, @NonNull UnitInfo unit_info) {
-        return new AdvancedAI(player, unit_info, AdvancedAI.DIFFICULTY_HARD);
+    /** The stock difficulty whose slots the play-test's AI takes: {@value #SLOT_PROPERTY}, else Hard. */
+    private static int swappedDifficulty() {
+        return switch (System.getProperty(SLOT_PROPERTY, "hard")) {
+            case "easy" -> AdvancedAI.DIFFICULTY_EASY;
+            case "normal" -> AdvancedAI.DIFFICULTY_NORMAL;
+            default -> AdvancedAI.DIFFICULTY_HARD;
+        };
     }
 
     /**
