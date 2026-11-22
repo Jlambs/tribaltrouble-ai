@@ -491,6 +491,24 @@ ships.
 `gui hard` records games against the stock Hard AI for comparison. The Hard-slot swap only works in developer mode,
 which `./aisim.sh gui` sets; started any other way, the game's Hard AI is the stock one.
 
+### Multiplayer play-tests
+
+```bash
+./aisim.sh gui --multiplayer myai
+```
+
+lets that AI play the Hard slots of multiplayer games too. Every machine of a multiplayer game runs the AIs itself
+and only the players' orders travel, so **every machine in the game, spectators included, must run the same commit,
+built the same way and started with this same command line** (the same SPEC with the same params). A machine started
+any other way runs the stock Hard AI in those slots, and the game desyncs for everyone in it: play such games only
+with people you have agreed this with, in a game nobody else can join. Each machine records the game and the AI's
+decision log in its own session log folder, as in a skirmish.
+
+The AI must decide the same on every machine (the AI guide, Determinism). Between machines that also means
+`StrictMath`, not `Math`, for `sin`, `cos`, `atan2`, `pow`, `exp`, `log` and `hypot` wherever a decision depends on
+the result: `Math` may differ in the last bit from one processor type to another, which `replay` on one machine
+cannot show.
+
 Re-simulating a play-test with full logs: `./aisim.sh gui SPEC --eventload normal <folder>/event.log` replays the
 recorded input with SPEC on the latest snapshot, so do it before you rebuild: the header's `snap` must equal the first
 word of `aisim/snap/latest`. The game runs in `tt/`, so give the path to `event.log` as an absolute path or relative
@@ -559,7 +577,7 @@ The same list as `./aisim.sh help`:
 ./aisim.sh export  RUN [RUN...]
 ./aisim.sh lab     FILE.java [args]
 ./aisim.sh freeze  TAG NAME|CLASS [--from DIR|JAR]
-./aisim.sh gui     [--stale-ok] SPEC [game args]
+./aisim.sh gui     [--stale-ok] [--multiplayer] SPEC [game args]
 --players: the teams, separated by vs, each one or more players P; 2..32 players in all. Teams are named
   A, B, C, ... in that order; team A is the one summary and compare report. Games play on until one team
   is left, or to the time limit.

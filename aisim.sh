@@ -54,14 +54,20 @@ case "${1:-help}" in
     gui)
         # The game itself, with SPEC in single-player "Hard" slots (PlayTest).
         shift
-        # --stale-ok is for guicheck, not for the game: com.oddlabs.tt.Main rejects flags it does not know
+        # --stale-ok is for guicheck, not for the game: com.oddlabs.tt.Main rejects flags it does not know.
+        # --multiplayer lets SPEC play the Hard slots of multiplayer games too (PlayTest): every machine in such a game
+        # must run the same build with the same SPEC and this flag.
         stale_ok=
-        if [ "${1:-}" = --stale-ok ]; then
-            stale_ok=--stale-ok
-            shift
-        fi
+        multiplayer=
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --stale-ok) stale_ok=--stale-ok; shift ;;
+                --multiplayer) multiplayer=-Dcom.oddlabs.tt.hard_ai.multiplayer=true; shift ;;
+                *) break ;;
+            esac
+        done
         if [ $# -eq 0 ]; then
-            echo "aisim: usage: ./aisim.sh gui [--stale-ok] SPEC [game args]" >&2
+            echo "aisim: usage: ./aisim.sh gui [--stale-ok] [--multiplayer] SPEC [game args]" >&2
             exit 2
         fi
         spec=$1
@@ -78,7 +84,7 @@ case "${1:-help}" in
         [ "$(uname)" = Darwin ] && GUI_OPTS+=(-XstartOnFirstThread)
         # the game finds its resources relative to tt/, as under gradlew :tt:run
         cd tt
-        exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" "-Daisim.snap=$snap" \
+        exec "$JDK/bin/java" "${GUI_OPTS[@]}" "-Dcom.oddlabs.tt.hard_ai=$spec" ${multiplayer:+"$multiplayer"}             "-Daisim.snap=$snap" \
             "-Dorg.lwjgl.system.SharedLibraryExtractPath=../aisim/natives/gui" "@../$cp_args" com.oddlabs.tt.Main "$@"
         ;;
     lab)
