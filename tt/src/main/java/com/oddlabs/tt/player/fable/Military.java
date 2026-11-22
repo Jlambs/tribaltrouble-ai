@@ -858,10 +858,9 @@ final class Military {
         easeCaution();
         if (mode == Mode.HOME && threat_level < 2 && ai.strategy().strikes)
             considerStrike();
-        // Against many copies the base is rarely quiet: a small raid (next to the whole army) does not hold it back.
-        boolean small_threat = threat_level >= 2
-                && base_threat_strength < ai.strategy().attack_threat_ratio / lateCaution() * (ai.strategy().launch_recheck ? stagingStrength(
-                        40) : armyStrength());
+        boolean small_threat = smallThreat();
+        hold_why = null;
+        hold_detail = null;
         if (mode == Mode.HOME && (threat_level < 2 || small_threat) && sweep_until < 0f)
             considerAttack();
         else if (mode == Mode.HOME && sweep_until < 0f && ai.now() >= next_wave_time && pushDue()) {
@@ -882,6 +881,7 @@ final class Military {
                     allInMuster(weakest, true);
             }
         }
+        noteHold();
         // reinforce_threat_ratio: reinforce the attack with the base under threat too, while what stands in the base is
         // worth less than that share of our whole army.
         boolean reinforce_ok = threat_level < 2
@@ -892,6 +892,16 @@ final class Military {
             considerRaid();
         if (ai.strategy().chief_hunt && countRole(Role.CHASE) == 0 && ai.now() - last_chase_end >= 500f)
             considerChase();
+    }
+
+    /**
+     * Against many copies the base is rarely quiet: a raid of level 2 that is small next to the whole army
+     * (attack_threat_ratio) does not hold it back.
+     */
+    private boolean smallThreat() {
+        return threat_level >= 2
+                && base_threat_strength < ai.strategy().attack_threat_ratio / lateCaution() * (ai.strategy().launch_recheck ? stagingStrength(
+                        40) : armyStrength());
     }
 
     /** The counter of warriors lost in each role (lost_attack, lost_reinforce, ...). */
@@ -3717,6 +3727,30 @@ final class Military {
         return null;
     }
 
+    /**
+     * gate_next: of the buildings target choice scored other than {@code best}, the one with the best score that
+     * passes the muster's gate, or null.
+     */
+    private @Nullable Rung nextBuilding(@NonNull Selectable<?> best, @NonNull List<@NonNull Rung> rungs,
+            float potential,
+            float growth) {
+        List<Rung> list = new ArrayList<>();
+        for (Rung r : rungs)
+            if (r.t() != best && r.rung() == RUNG_BUILDING && !r.t().isDead())
+                list.add(r);
+        // stable: equal scores keep target choice's order
+        list.sort((a, b) -> Float.compare(a.score(), b.score()));
+        int others = othersRadius();
+        for (Rung r : list) {
+            float defense = r.defense();
+            if (ai.strategy().project_defense)
+                defense += growth;
+            if (musterGo(r.t(), potential, defense, others, false))
+                return r;
+        }
+        return null;
+    }
+
     private static boolean scoredAlready(@NonNull List<@NonNull Rung> rungs, @NonNull Building b) {
         for (Rung r : rungs)
             if (r.t() == b)
@@ -3873,6 +3907,36 @@ final class Military {
             enemy_history.removeFirst();
     }
 
+    /** Counters and log only: why the army is at home this planning round (considerAttack, plan), and the numbers. */
+    private @Nullable String hold_why;
+
+    private @Nullable String hold_detail;
+
+    private @Nullable String hold_logged;
+
+    private float hold_logged_at = -1500f;
+
+    /**
+     * Counters and log only: a hold_* counter for every planning round (3 s) the army spends at home, by what keeps it
+     * there (the 20 s between attacks, a threat at the base, an army under attack_min_strength, a target whose defense
+     * outweighs it, no target, a sweep), and a "hold:" line when that changes and every 30 s.
+     */
+    private void noteHold() {
+        if (mode != Mode.HOME) {
+            hold_logged = null;
+            return;
+        }
+        String why = hold_why != null ? hold_why : sweep_until >= 0f ? "sweep" : threat_level >= 2 ? "threat" : "other";
+        ai.aiLog().count("hold_" + why);
+        if (!ai.logging() || (why.equals(hold_logged) && !ai.periodDue(hold_logged_at, 1500f)))
+            return;
+        hold_logged = why;
+        hold_logged_at = ai.now();
+        String detail = hold_detail;
+        ai.log(String.format("hold: %s, army %.1f, threat %d of %.1f at the base%s", why, armyStrength(), threat_level,
+                base_threat_strength, detail != null ? "; " + detail : ""));
+    }
+
     private void considerAttack() {
         Strategy strategy = ai.strategy();
         all_in = false;
@@ -3891,7 +3955,9 @@ final class Military {
         // remnant_ladder_ticks: chooseTarget records the buildings it scores, for the ladder; mopup: likewise once no
         // copy has a base
         boolean ladder = strategy.remnant_ladder_ticks > 0f && ai.now() >= strategy.remnant_ladder_ticks || mopUp();
-        if (ladder) {
+        // gate_next: the buildings target choice scores, for the gate's second look
+        boolean next = strategy.gate_next && !ladder;
+        if (ladder || next) {
             scored = new ArrayList<>();
             ladder_fallback = false;
         }
@@ -3902,7 +3968,14 @@ final class Military {
         scored = null;
         boolean fallback = ladder_fallback;
         ladder_fallback = false;
+        List<Rung> second = null;
+        if (next) {
+            second = rungs;
+            rungs = null;
+            fallback = false;
+        }
         if (t == null && rungs == null) {
+            hold_why = "notarget";
             awayStrike();
             return;
         }
@@ -3942,6 +4015,21 @@ final class Military {
                         defense, describe(alt), copyStatus(alt.getOwner()), alt_defense));
                 t = alt;
                 defense = alt_defense;
+                go = true;
+            }
+        }
+        // gate_next: the best-scored building fails the gate, so the best-scored of the others that passes it. Only
+        // the one building was weighed, and one guarded base kept the army home with weaker ones in reach.
+        if (!go && t != null && second != null && ai.now() >= next_wave_time) {
+            Rung r = nextBuilding(t, second, potential, growth);
+            if (r != null) {
+                ai.aiLog().count("gate_next");
+                ai.log(String.format("gate: %s fails at %.1f against %.1f, so %s (defense %.1f, score %.0f)", describe(
+                        t), defense, potential, describe(r.t()), r.defense(), r.score()));
+                t = r.t();
+                defense = r.defense();
+                if (strategy.project_defense)
+                    defense += growth;
                 go = true;
             }
         }
@@ -3991,6 +4079,10 @@ final class Military {
             }
         }
         if (t == null || !go || ai.now() < next_wave_time) {
+            hold_why = ai.now() < next_wave_time ? "cooldown" : t == null ? "notarget" : potential < strategy.attack_min_strength ? "small" : "outweighed";
+            if (ai.logging() && t != null)
+                hold_detail = String.format("army %.1f + stock %.1f vs defense %.1f at %s", army, potential - army,
+                        defense, describe(t));
             awayStrike();
             return;
         }
@@ -4446,13 +4538,27 @@ final class Military {
             ai.aiLog().count("muster_dropped");
             return;
         }
+        // muster_threat: under a threat of level 2 the army answers it (defend) and nobody walks to the staging point,
+        // so a muster does not wait: with a threat that would not let one begin (smallThreat) it ends, and the attack
+        // is weighed again when the threat is over; with a small one it marches at once.
+        boolean threat_go = threat_level == 1;
+        if (ai.strategy().muster_threat && threat_level >= 2 && !all_in) {
+            if (!smallThreat()) {
+                mode = Mode.HOME;
+                ai.aiLog().count("muster_threat_drop");
+                ai.log(String.format("muster ends: %.1f in the base against an army of %.1f", base_threat_strength,
+                        armyStrength()));
+                return;
+            }
+            threat_go = true;
+        }
         boolean go = !stock_left && pending == 0 && gathered;
         if (ai.strategy().muster_share && !go && !timeout) {
             // muster_share: the weapons in stock and the warriors queued count as army not yet there, and four fifths
             // of it all standing by the staging point is enough (a forge at work always has one or two on their way
             // out). Under a small threat nobody is called to the staging point (holdStaging), so nobody is waited for.
             float coming = total + pending + (stock_left ? stockStrength() : 0f);
-            if (threat_level == 1) {
+            if (threat_go) {
                 go = true;
                 ai.aiLog().count("muster_threat_go");
             } else if (total > 0 && near >= .8f * coming) {
@@ -4467,8 +4573,9 @@ final class Military {
                 int queued = pending;
                 float waited = FableAI.seconds(ai.now() - muster_start);
                 ai.log(String.format(
-                        "muster ends after %.0f s (%s): %d of %d by the staging point, stock %s, %d queued",
-                        waited, go ? "gathered" : "timeout", n, all, stock_left ? "left" : "out", queued));
+                        "muster ends after %.0f s (%s): %d of %d by the staging point, stock %s, %d queued, threat %d of %.1f at the base",
+                        waited, go ? "gathered" : "timeout", n, all, stock_left ? "left" : "out", queued,
+                        threat_level, base_threat_strength));
             }
             launchAttack();
         }
@@ -6015,7 +6122,7 @@ final class Military {
         target = null;
         ladder_owner = null;
         all_in = false;
-        next_wave_time = ai.now() + (recalled ? ai.strategy().recall_cooldown_ticks : 1000f);
+        next_wave_time = ai.now() + (recalled ? ai.strategy().recall_cooldown_ticks : ai.strategy().wave_cooldown_ticks);
         recalled = false;
         strike = false;
     }
@@ -6135,7 +6242,9 @@ final class Military {
         float late = lateCaution();
         float retreat_ratio = strategy.retreat_ratio / late;
         boolean outmatched = local_enemy > retreat_ratio * Math.max(weighed, 1f);
-        boolean worn = total < strategy.worn_ratio * late * worn_base && local_enemy > total;
+        // worn_strength: a small army, whatever it was, with a stronger enemy around it
+        boolean worn = (strategy.worn_strength > 0f ? total < strategy.worn_strength * late : total < strategy.worn_ratio * late * worn_base)
+                && local_enemy > total;
         if (!toot && !pinned && (outmatched || worn) && pillage(army, c, total)) {
             trace_phase = "pillage";
             return;

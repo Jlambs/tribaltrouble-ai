@@ -763,6 +763,11 @@ class Strategy {
     float worn_window_ticks = 6000f; // 120 s
     float worn_ratio = .2f;
     /**
+     * worn_strength (0 = off): the worn retreat by the army's size alone: an army worth less than this turns back
+     * when the enemy around it is worth more than the army, instead of the test against worn_ratio of worn_basis.
+     */
+    float worn_strength = 0f;
+    /**
      * Enemy stun fear (Military.enemyThreatReady): an enemy chieftain counts as ready to stun
      * enemy_spell_recharge_ticks game ticks after he was seen casting, and with enemy_first_seen only that long after
      * he was first seen (newborns start with no charge); ready ones near a fight multiply its enemy by enemy_stun_mult,
@@ -1768,6 +1773,22 @@ class Strategy {
      * (pe1-vs16 against pc0-vs16); alone 0.3 more buildings by minute 10 (pe2-vs16). Whole games: forGame.
      */
     boolean muster_share = false;
+    /**
+     * muster_threat: a muster under a threat of level 2 does not wait for the gathering. With a threat that would not
+     * let a muster begin (attack_threat_ratio) it ends, and the attack is weighed again when the threat is over; with a
+     * small one the army marches at once.
+     *
+     * Under a threat every warrior at home answers it (Military.defend) and none is called to the staging point, so
+     * the muster stood out its 45 s and the attack then took the army out of the fight.
+     */
+    boolean muster_threat = false;
+    /**
+     * gate_next: when the best-scored building fails the muster's gate, the best-scored of the other buildings that
+     * passes it is attacked (Military.considerAttack). Only the one building was weighed.
+     */
+    boolean gate_next = false;
+    /** The wait after an attack ends before the next muster may begin (20 s; Military.endAttack). */
+    float wave_cooldown_ticks = 1000f;
     /**
      * sapper_refill: sappers (peons that pull down towers, 6 damage a swing) used to be recruited only when an attack
      * launched, and only if its first target stood under towers. Against many copies the campaign is one attack that
@@ -3302,6 +3323,7 @@ class Strategy {
         worn_basis = params.getInt("worn_basis", worn_basis);
         worn_window_ticks = (float) params.getDouble("worn_window_ticks", worn_window_ticks);
         worn_ratio = (float) params.getDouble("worn_ratio", worn_ratio);
+        worn_strength = (float) params.getDouble("worn_strength", worn_strength);
         enemy_stun_mult = (float) params.getDouble("enemy_stun_mult", enemy_stun_mult);
         enemy_spell_recharge_ticks = (float) params.getDouble("enemy_spell_recharge_ticks", enemy_spell_recharge_ticks);
         enemy_first_seen = params.getBoolean("enemy_first_seen", enemy_first_seen);
@@ -3554,6 +3576,9 @@ class Strategy {
         strikes = params.getBoolean("strikes", strikes);
         strike_on = params.getBoolean("strike_on", strike_on);
         muster_share = params.getBoolean("muster_share", muster_share);
+        muster_threat = params.getBoolean("muster_threat", muster_threat);
+        gate_next = params.getBoolean("gate_next", gate_next);
+        wave_cooldown_ticks = (float) params.getDouble("wave_cooldown_ticks", wave_cooldown_ticks);
         forward_towers = params.getInt("forward_towers", forward_towers);
         forward_tower_ticks = (float) params.getDouble("forward_tower_ticks", forward_tower_ticks);
         forward_ratio = (float) params.getDouble("forward_ratio", forward_ratio);
