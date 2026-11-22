@@ -2584,10 +2584,10 @@ final class Military {
             dy = ai.planner().getEnemyY() - ty;
             ai.aiLog().count("tower_face_fallback");
         }
-        double base = Math.atan2(dy, dx);
+        double base = StrictMath.atan2(dy, dx);
         for (double turn : new double[]{0, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2}) {
-            int fx = tx + (int) Math.round(3 * Math.cos(base + turn));
-            int fy = ty + (int) Math.round(3 * Math.sin(base + turn));
+            int fx = tx + (int) Math.round(3 * StrictMath.cos(base + turn));
+            int fy = ty + (int) Math.round(3 * StrictMath.sin(base + turn));
             if (!ai.map().passable(fx, fy))
                 continue;
             boolean hot = false;

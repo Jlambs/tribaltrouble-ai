@@ -1331,8 +1331,8 @@ final class Shepherd {
         for (int k = 0; k < 16; k++) {
             double ang = k * Math.PI / 8;
             for (int rr = r / 2; rr <= r; rr += Math.max(1, r / 2)) {
-                int x = sx + (int) Math.round(rr * Math.cos(ang));
-                int y = sy + (int) Math.round(rr * Math.sin(ang));
+                int x = sx + (int) Math.round(rr * StrictMath.cos(ang));
+                int y = sy + (int) Math.round(rr * StrictMath.sin(ang));
                 if (!reach.reachable(x, y) || !walkClear(sx, sy, x, y, intel))
                     continue;
                 float left = (float) Math.sqrt(MapAnalysis.dist2(x, y, spot[0], spot[1]));
@@ -1815,8 +1815,8 @@ final class Shepherd {
             double ang = h * Math.PI / 8;
             for (int k = 0; k < 2; k++) {
                 int r = k == 0 ? strategy.shepherd_flee_r : Math.round(.6f * strategy.shepherd_flee_r);
-                int x = sx + (int) Math.round(r * Math.cos(ang));
-                int y = sy + (int) Math.round(r * Math.sin(ang));
+                int x = sx + (int) Math.round(r * StrictMath.cos(ang));
+                int y = sy + (int) Math.round(r * StrictMath.sin(ang));
                 float gain = dist(x, y, cx, cy) - from_c;
                 if (gain < 6f || !fleeLegal(sx, sy, x, y, intel))
                     continue;
@@ -2130,8 +2130,8 @@ final class Shepherd {
         for (int r = r0; r <= r1; r += r < 22 ? 2 : 4) {
             for (int a = 0; a < angles; a++) {
                 double ang = a * Math.PI / half;
-                int x = ox + (int) Math.round(r * Math.cos(ang));
-                int y = oy + (int) Math.round(r * Math.sin(ang));
+                int x = ox + (int) Math.round(r * StrictMath.cos(ang));
+                int y = oy + (int) Math.round(r * StrictMath.sin(ang));
                 if (!reach.reachable(x, y)) {
                     if (rejections)
                         ai.aiLog().count("shepherd_rej_reach");

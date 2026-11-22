@@ -358,8 +358,8 @@ final class Chieftain {
         for (int r = 5; r <= 9; r += 4)
             for (int a = 0; a < 16; a++) {
                 double ang = a * Math.PI / 8;
-                int x = cx + (int) Math.round(r * Math.cos(ang));
-                int y = cy + (int) Math.round(r * Math.sin(ang));
+                int x = cx + (int) Math.round(r * StrictMath.cos(ang));
+                int y = cy + (int) Math.round(r * StrictMath.sin(ang));
                 if (x < 3 || y < 3 || x > size - 4 || y > size - 4 || !ai.map().passable(x, y))
                     continue;
                 int clear = wayClear(x, y, ways);
@@ -483,8 +483,8 @@ final class Chieftain {
         for (int r = lurk; r <= lurk + 12; r += 4) {
             for (int a = 0; a < 24; a++) {
                 double ang = a * Math.PI / 12;
-                int x = blob[0] + (int) Math.round(r * Math.cos(ang));
-                int y = blob[1] + (int) Math.round(r * Math.sin(ang));
+                int x = blob[0] + (int) Math.round(r * StrictMath.cos(ang));
+                int y = blob[1] + (int) Math.round(r * StrictMath.sin(ang));
                 if (x < 3 || y < 3 || x > size - 4 || y > size - 4 || !ai.map().passable(x, y))
                     continue;
                 int d = MapAnalysis.dist2(x, y, cx, cy);
@@ -537,7 +537,7 @@ final class Chieftain {
 
     /** What a sonic blast takes from a building d2 squared cells from the caster (SonicBlast: 150 at 0 m, 30 far). */
     private static float blastDamage(int d2) {
-        return 120f * (float) Math.pow(4.0 / 7.0, 2.0 * Math.sqrt(d2)) + 30f;
+        return 120f * (float) StrictMath.pow(4.0 / 7.0, 2.0 * Math.sqrt(d2)) + 30f;
     }
 
     /** shred_bait: set while blastHere values the chieftain's own cell with awake warriors at him. */
@@ -705,8 +705,8 @@ final class Chieftain {
                 for (int r = 10; r <= 24; r += 2)
                     for (int a = 0; a < 24; a++) {
                         double ang = a * Math.PI / 12;
-                        int x = blob[0] + (int) Math.round(r * Math.cos(ang));
-                        int y = blob[1] + (int) Math.round(r * Math.sin(ang));
+                        int x = blob[0] + (int) Math.round(r * StrictMath.cos(ang));
+                        int y = blob[1] + (int) Math.round(r * StrictMath.sin(ang));
                         cells++;
                         for (Unit e : enemies)
                             if (!e.isDead() && Math.abs(e.getGridX() - x) <= 8 && Math.abs(e.getGridY() - y) <= 8) {
@@ -948,7 +948,7 @@ final class Chieftain {
             @NonNull EnemyIndex index) {
         if (walkClear(cx, cy, at[0], at[1], index))
             return at;
-        int from = Math.floorMod((int) Math.round(Math.atan2(cy - blob[1], cx - blob[0]) / (Math.PI / 12)), 24);
+        int from = Math.floorMod((int) Math.round(StrictMath.atan2(cy - blob[1], cx - blob[0]) / (Math.PI / 12)), 24);
         int to = at[3];
         int d = Math.floorMod(to - from, 24);
         int dir = d <= 12 ? 1 : -1;
@@ -1138,8 +1138,8 @@ final class Chieftain {
         for (int a = 0; a < 24; a++) {
             giant_rays[a] = null;
             double ang = a * Math.PI / 12;
-            double dx = Math.cos(ang);
-            double dy = Math.sin(ang);
+            double dx = StrictMath.cos(ang);
+            double dy = StrictMath.sin(ang);
             int r0 = -1;
             for (int r = 4; r <= 80; r += 2) {
                 int x = blob[0] + (int) Math.round(r * dx);
@@ -1358,8 +1358,8 @@ final class Chieftain {
         for (int r = 10; r <= 24; r += 2) {
             for (int a = 0; a < 24; a++) {
                 double ang = a * Math.PI / 12;
-                int x = blob[0] + (int) Math.round(r * Math.cos(ang));
-                int y = blob[1] + (int) Math.round(r * Math.sin(ang));
+                int x = blob[0] + (int) Math.round(r * StrictMath.cos(ang));
+                int y = blob[1] + (int) Math.round(r * StrictMath.sin(ang));
                 int hit = castValue(x, y, enemies, parked, ours, why);
                 if (hit < 0)
                     continue;
@@ -2104,7 +2104,7 @@ final class Chieftain {
         ai.aiLog().count(refresh_state == RefreshState.CULL ? "chief_refresh_abort" : "chief_refresh_arm_abort");
         if (failed)
             refresh_failures++;
-        float wait = 3000f * (float) Math.pow(2, Math.min(4, failed ? refresh_failures - 1 : 0));
+        float wait = 3000f * (float) StrictMath.pow(2, Math.min(4, failed ? refresh_failures - 1 : 0));
         ai.log(String.format("chief refresh off (%s)%s; next try in %.0f s", why,
                 exits > 0 ? ", " + exits + " towers emptied" : "", FableAI.seconds(wait)));
         cull_towers.clear();

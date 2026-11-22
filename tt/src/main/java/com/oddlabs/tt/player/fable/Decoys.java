@@ -307,8 +307,8 @@ final class Decoys {
         for (int r = 14; r <= 24; r += 2) {
             for (int a = 0; a < 24; a++) {
                 double ang = a * Math.PI / 12;
-                int x = ox + (int) Math.round(r * Math.cos(ang));
-                int y = oy + (int) Math.round(r * Math.sin(ang));
+                int x = ox + (int) Math.round(r * StrictMath.cos(ang));
+                int y = oy + (int) Math.round(r * StrictMath.sin(ang));
                 if (MapAnalysis.dist2(x, y, ox, oy) >= limit)
                     continue;
                 if (!ai.map().inside(x, y) || !ai.planner().getStartField().reachable(x, y))
@@ -380,8 +380,8 @@ final class Decoys {
             for (int r = MIN_TOWER_CELLS; r <= MAX_TOWER_CELLS; r++) {
                 for (int a = 0; a < 24; a++) {
                     double ang = a * Math.PI / 12;
-                    int x = t.getGridX() + (int) Math.round(r * Math.cos(ang));
-                    int y = t.getGridY() + (int) Math.round(r * Math.sin(ang));
+                    int x = t.getGridX() + (int) Math.round(r * StrictMath.cos(ang));
+                    int y = t.getGridY() + (int) Math.round(r * StrictMath.sin(ang));
                     int d2 = MapAnalysis.dist2(x, y, ox, oy);
                     if (d2 >= limit) {
                         far++;

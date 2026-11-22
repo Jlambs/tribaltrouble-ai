@@ -282,8 +282,8 @@ final class Lures {
         for (int r = 8; r <= 15; r++) {
             for (int a = 0; a < 32; a++) {
                 double ang = a * Math.PI / 16;
-                int x = sx + (int) Math.round(r * Math.cos(ang));
-                int y = sy + (int) Math.round(r * Math.sin(ang));
+                int x = sx + (int) Math.round(r * StrictMath.cos(ang));
+                int y = sy + (int) Math.round(r * StrictMath.sin(ang));
                 if (!ai.map().passable(x, y))
                     continue;
                 int seers = 0;

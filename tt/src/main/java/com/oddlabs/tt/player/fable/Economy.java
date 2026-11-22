@@ -2003,7 +2003,7 @@ final class Economy {
         float[] live = ai.liveEnemyCenter();
         float ex = live != null ? live[0] : ai.planner().getEnemyX();
         float ey = live != null ? live[1] : ai.planner().getEnemyY();
-        double facing = Math.atan2(ey - home.getGridY(), ex - home.getGridX());
+        double facing = StrictMath.atan2(ey - home.getGridY(), ex - home.getGridX());
         com.oddlabs.tt.model.BuildingTemplate tower = ai.owner().getRace().getBuildingTemplate(Race.BUILDING_TOWER);
         List<Building> ours = new ArrayList<>();
         ours.addAll(intel.quarters);
@@ -2019,8 +2019,8 @@ final class Economy {
                 for (int more = 0; more <= 16; more += 8) {
                     double ang = facing + side * turn * Math.toRadians(25);
                     int d = ai.strategy().bastion_cells + more;
-                    int x = home.getGridX() + (int) Math.round(d * Math.cos(ang));
-                    int y = home.getGridY() + (int) Math.round(d * Math.sin(ang));
+                    int x = home.getGridX() + (int) Math.round(d * StrictMath.cos(ang));
+                    int y = home.getGridY() + (int) Math.round(d * StrictMath.sin(ang));
                     if (!ai.map().inside(x, y) || !ai.planner().getStartField().reachable(x, y)
                             || !ai.map().canPlace(tower, x, y))
                         continue;
@@ -2922,8 +2922,8 @@ final class Economy {
         for (int r = 11; r <= 15; r++) {
             for (int a = 0; a < 24; a++) {
                 double ang = a * Math.PI / 12;
-                int x = seed.getGridX() + (int) Math.round(r * Math.cos(ang));
-                int y = seed.getGridY() + (int) Math.round(r * Math.sin(ang));
+                int x = seed.getGridX() + (int) Math.round(r * StrictMath.cos(ang));
+                int y = seed.getGridY() + (int) Math.round(r * StrictMath.sin(ang));
                 if (!ai.map().inside(x, y) || !ai.planner().getStartField().reachable(x, y))
                     continue;
                 int reach = 0;

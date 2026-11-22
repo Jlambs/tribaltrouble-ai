@@ -369,7 +369,7 @@ final class Freeze {
             if (close && ai.periodDue(last_order, 50f)) {
                 double dx = c[0] - near.getGridX();
                 double dy = c[1] - near.getGridY();
-                double len = Math.max(1, Math.hypot(dx, dy));
+                double len = Math.max(1, StrictMath.hypot(dx, dy));
                 int hx = near.getGridX() + (int) Math.round(dx * (HOLD_CELLS + 2) / len);
                 int hy = near.getGridY() + (int) Math.round(dy * (HOLD_CELLS + 2) / len);
                 last_order = now;
