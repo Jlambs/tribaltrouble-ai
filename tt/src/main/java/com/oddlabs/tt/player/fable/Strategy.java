@@ -1143,20 +1143,10 @@ class Strategy {
     int hold_build_ramp = 0;
     /**
      * hold_build_steps (empty = off): hold_build by the quarters standing, "a/b/c/d": a with one, b with two, and the
-     * last from then on.
+     * last from then on. Off: 3/6/10/14 has 3 units more at minute 4, 1.4 warriors fewer at minute 6 and the rest as
+     * the flat six (ob4-vs16); in lab/fable/breed.py 2/2/4/6, 2/4/6/8 and 4/6/8/10 are within a warrior of it.
      */
     int[] hold_build_steps = {};
-    /**
-     * hold_payback (0 = off), once the armory stands: a quarters keeps its k-th peon while the time that peon takes
-     * to breed one more (53, 42, 60, 76, 90, 103 s for the first six, 33 k^(2/3) s further on) is under hold_payback
-     * times the seconds left to the unit cap at the pace of now, in place of hold_early, hold_mid and hold_late. At
-     * 1 it is the hold that leaves the most peon-seconds of work before the cap, if a second of work is worth the
-     * same whenever it is done: (seconds left / 33)^(3/2), 27 with five minutes left, 7 with two, 2 with one and none
-     * in the last 42 s. Under 1, work now counts for more than work later. hold_payback_until (game ticks, 0 =
-     * always): only before that time.
-     */
-    float hold_payback = 0f;
-    float hold_payback_until = 0f;
     /**
      * hold_share (0 = off), once the armory stands and until the unit cap is first reached: the quarters keep
      * between them this share of the units still missing to the cap, in place of hold_early, hold_mid and hold_late.
@@ -1165,14 +1155,28 @@ class Strategy {
      * keeping while the seconds left to the cap exceed the 33 k^(2/3) s it takes to breed one more; following that
      * rule down to the cap, the peons inside are always half the units missing, whatever the number of quarters:
      * lab/fable/NOTES.md, what a quarters should keep). Under a half, work now counts for more than work later.
+     *
+     * A quarter against several enemies on large maps since 2026-11-22 (forGame). On 100 openings cut at minute 10,
+     * with seed_build 2, against @f16 (oh1..oh6-vs16 against ob0-vs16; warriors at minutes 6 / 8 / 10): a fifth +2.6
+     * / +9.1 / +3.2, a quarter +2.0 / +10.7 / +5.2, a third +0.1 / +11.3 / +6.0, two fifths -0.8 / +12.8 / +5.1, a
+     * half -2.8 / +11.8 / +6.4; a third without the seed -1.6 / +8.8 / +3.5. A first form of the rule (the k-th peon
+     * kept while its payback time was under the seconds left to the cap at the pace of the moment; ob5..ob7,
+     * oe4..oe8, of1..of8-vs16, made at commit ab4433a8) gave the same figures and flipped between none and seven
+     * near the cap, an empty quarters breeding slowly and a full one fast: taken out again.
      */
     float hold_share = 0f;
-    /** hold_payback_most: hold_payback keeps no more than this many in a quarters. */
-    int hold_payback_most = 30;
     /**
      * seed_build (0 = off): while the opening builds without an armory, a quarters takes this many of its builders
      * in the moment it stands (its hold at most), instead of breeding its hold up from empty: an empty quarters
      * breeds .072 a second and one with six .165, and it takes 54 s to breed six.
+     *
+     * 2 against several enemies on large maps since 2026-11-22 (forGame). By the law, a quarters seeded with 1, 2,
+     * 3, 4, 6 has let out 1.3, 2.1, 2.5, 2.8, 3.0 peons more than an unseeded one by the time that one is full. On
+     * 100 openings cut at minute 10 against @f16 (ob1, oe1, ob2, ob3-vs16 against ob0-vs16): 2 gives 5.6 more units
+     * at minute 5 and 1.9, 3.0 and 0.9 more warriors at minutes 6, 8 and 10 with the armory 3 s later; 3 the same
+     * units and 1.9, 3.1, 3.0; 4 gives 2.1, 4.2, 2.2 and 6 gives 1.7, 3.4, 1.1, the armory 7 and 8 s later. With
+     * hold_share a quarter, a hold of 4 while building is worse (1.3, 8.3, 2.1 for 2.0, 10.7, 5.2) and 8 no better
+     * (oi1, oi2-vs16).
      */
     int seed_build = 0;
     /**
@@ -1180,6 +1184,11 @@ class Strategy {
      * (hm10-vs11-hv, -b), W 16 vs 11 over 400; N=8 neutral (W 114 vs 111).
      */
     int hold_mid = 10;
+    /**
+     * hold_late: above seven tenths of the unit cap. Before the cap is first reached hold_share stands in its place
+     * since 2026-11-22; 4 and 2 there gave 2.7 and 3.3 more warriors at minute 8 and the same at minutes 6 and 10
+     * (ob8, ob9-vs16).
+     */
     int hold_late = 8;
     float hold_mid_ticks = 12000f; // 240 s
     /**
@@ -3366,10 +3375,7 @@ class Strategy {
             for (int i = 0; i < parts.length; i++)
                 hold_build_steps[i] = Integer.parseInt(parts[i].trim());
         }
-        hold_payback = (float) params.getDouble("hold_payback", hold_payback);
         hold_share = (float) params.getDouble("hold_share", hold_share);
-        hold_payback_until = (float) params.getDouble("hold_payback_until", hold_payback_until);
-        hold_payback_most = params.getInt("hold_payback_most", hold_payback_most);
         seed_build = params.getInt("seed_build", seed_build);
         hold_mid = params.getInt("hold_mid", hold_mid);
         seed_quarters_ticks = (float) params.getDouble("seed_quarters_ticks", seed_quarters_ticks);
@@ -3789,6 +3795,17 @@ class Strategy {
                 strategy.opening_chain_m = 60;
                 strategy.opening_chain_trees = 3;
                 strategy.opening_prewalk_first = true;
+                // What a quarters keeps inside (lab/fable/NOTES.md, what a quarters should keep): one that has just
+                // gone up takes two of its builders in, instead of breeding its six up from empty over 55 s; and
+                // from the armory to the first time at the unit cap the quarters keep between them a quarter of
+                // the units still missing, where they kept four each and then eight above 175 units (the hold that
+                // leaves the most work before the cap falls with the units missing: half of them, if work is worth
+                // the same whenever it is done). An opening has 2.0, 10.7 and 5.2 more warriors at minutes 6, 8 and
+                // 10 (oh1-vs16); whole games have them too and are won as often: on five blocks of 150 maps never
+                // used 222 of 300 for 220 at N=16, 179 for 179 at N=17, 50 for 55 at N=18 (og1, oj1-vs16, og3,
+                // oj3-vs17, oj5-vs18: +97 -100). Waste taken out that shows no harm.
+                strategy.seed_build = 2;
+                strategy.hold_share = .25f;
             }
         }
         return strategy;

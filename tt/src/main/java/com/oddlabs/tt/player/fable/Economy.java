@@ -3260,9 +3260,6 @@ final class Economy {
         int hold;
         if (strategy.hold_share > 0f && !cap_reached)
             hold = shareHold(pop, max);
-        else if (strategy.hold_payback > 0f && !cap_reached
-                && (strategy.hold_payback_until <= 0f || ai.now() < strategy.hold_payback_until))
-            hold = paybackHold(pop, max);
         else if (pop > max * 7 / 10)
             hold = strategy.hold_late;
         else {
@@ -3286,42 +3283,13 @@ final class Economy {
         return hold;
     }
 
-    private float payback_time = -1f;
-    private int payback_hold;
-    /** hold_payback: the unit cap has been reached once; from then on a peon bred replaces one lost. */
-    private boolean cap_reached;
-
-    /** The peons inside that a quarters breeds with: the engine counts an empty one as half a peon. */
-    private static double breedRate(int inside) {
-        return Math.cbrt(Math.max(inside, .5)) / 11.0;
-    }
-
     /**
-     * hold_payback: the k-th peon inside a quarters adds breedRate(k) - breedRate(k - 1) peons a second, so it has
-     * bred one more peon after the inverse of that: 53, 42, 60, 76, 90, 103 s for the first six, 33 k^(2/3) s
-     * further on. A peon bred is of use until the unit cap is reached, so the k-th is kept while that payback time
-     * is under hold_payback times the seconds left to the cap at the pace the quarters breed at now. Worked out once
-     * a game second. Only until the cap is first reached: after that a peon bred takes the place of one lost and is
+     * hold_share: the unit cap has been reached once; from then on a peon bred takes the place of one lost and is
      * of use for as long as it lives, and hold_late stands.
      */
-    private int paybackHold(int pop, int max) {
-        if (payback_time == ai.now())
-            return payback_hold;
-        double pace = 0.0;
-        for (Building q : ai.intel().quarters)
-            if (!q.isDead() && q.isComplete() && !evacuating.containsKey(q) && !retire.isDoomed(q))
-                pace += breedRate(q.getUnitContainer().getNumSupplies());
-        double left = pace > 0.0 ? (max - pop) / pace : 0.0;
-        int k = 0;
-        int most = Math.min(PAYBACK_MOST, ai.strategy().hold_payback_most);
-        while (k < most && ai.strategy().hold_payback * left * (breedRate(k + 1) - breedRate(k)) >= 1.0)
-            k++;
-        payback_time = ai.now();
-        payback_hold = k;
-        return k;
-    }
+    private boolean cap_reached;
 
-    private static final int PAYBACK_MOST = 30;
+    private static final int SHARE_MOST = 30;
 
     /**
      * hold_share: the quarters keep between them that share of the units still missing to the cap, each the same.
@@ -3336,7 +3304,7 @@ final class Economy {
         if (quarters == 0)
             return 0;
         double each = ai.strategy().hold_share * (max - pop) / quarters;
-        return each < 1.5 ? 0 : Math.min(PAYBACK_MOST, (int) Math.floor(each + .5));
+        return each < 1.5 ? 0 : Math.min(SHARE_MOST, (int) Math.floor(each + .5));
     }
 
     /**
