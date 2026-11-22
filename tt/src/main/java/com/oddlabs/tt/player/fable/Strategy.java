@@ -3867,7 +3867,8 @@ class Strategy {
                 // nothing queued, up to 45 s. The first attack leaves at 322 s for 333 (the median) and the campaign
                 // has a tenth more buildings down by minute 10 (pe1-vs16). In whole games on four blocks of 150 maps
                 // never used 118 wins for 117 and 112 for 106 at N=16, 94 for 92 at N=17, 68 for 62 at N=18 (qa1,
-                // qc1-vs16, qa3-vs17, qc3-vs18: +68 -53), and the games both win are over 6 to 10 minutes sooner.
+                // qc1-vs16, qa3-vs17, qc3-vs18: +68 -53); the games both win are over 6, 10 and 19 minutes sooner on
+                // three of the blocks and as late on one.
                 strategy.strikes = false;
                 strategy.muster_share = true;
             }
