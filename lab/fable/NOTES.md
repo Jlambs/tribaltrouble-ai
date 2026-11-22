@@ -253,11 +253,24 @@ it wins 107 for 105 and 112 for 106 at N=16 and 92 for 84 at N=17 (+57 -41, ever
 (`opening_chain`), which puts the second quarters up 16 s sooner and adds 2 to 3 warriors through minute 10, and
 nobody walks ahead to a far armory site before the first quarters stands (a fault that took the first quarters'
 builders in one opening of 100): level in whole games, 412 of 600 for 411 on four blocks never used at N=16 and 17,
-and adopted as walking taken out with no harm. The default since, frozen as `@f16`. `hold_mid` 6 (six inside after
-240 s too) moves the army later and wins nothing (+53 -49). What did not help: quarters by the start before the walk to a far armory, tree claims between the
+and adopted as walking taken out with no harm. Frozen as `@f16`. `hold_mid` 6 (six inside after 240 s too) moves
+the army later and wins nothing (+53 -49). What did not help: quarters by the start before the walk to a far armory,
+tree claims between the
 sites, more builders on the last quarters, the armory a quarters earlier or later, a seventh quarters, the true
 harvest time in the cost model. What decides an opening's speed beyond all this is how far the armory stands from
 the start: 117 units at minute 5 under 45 cells, 75 at 90 cells and more, a quarter of the maps.
+
+What a quarters should keep (2026-11-22, the user: can the six be proved, would a value that changes with the game
+do better, is seeding worth another look; "What a quarters should keep inside" below). There is a proof for the
+growth to the cap: if work is worth the same whenever it is done, the quarters should keep between them half the
+units still missing, whatever their number; the optimum is flat (1.8 % of the work), and its message is the shape,
+a hold that falls towards the cap where the old one rose to eight. While the opening builds there is only a
+plateau, four to eight, in the games and in a model of the opening fitted to them (`lab/fable/breed.py`). Seeding
+a new quarters with two of its builders is worth two peons a quarters by the law and 1.9, 3.0 and 0.9 warriors at
+minutes 6, 8 and 10 in the games; with a quarter of the missing units kept from the armory to the cap, 2.0, 10.7
+and 5.2. In whole games those warriors are there (ten to twelve more at minute 8 on every one of five blocks) and
+the wins are the same, 451 of 750 for 454: they come after the first attack has left. The default since, as waste
+taken out with no harm, frozen as `@f17`.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -3220,6 +3233,132 @@ which by the user's rule of 2026-11-19 is adopted. Frozen as `@f16` (at commit d
 `od1-vs16`'s games (`chk17a-vs16`, 12 of 12), and with the chain and the two repairs off `od0-vs16`'s
 (`chk17b-vs16`, 8 of 8).
 
+### What a quarters should keep inside: the payback rule, a share of the missing units, and seeding (2026-11-22)
+
+The user's questions after the opening round: can the six of `hold_build` be proved optimal, would a value that
+changes over the game do better, and is it worth seeding a new quarters with some of its builders.
+
+**The law, and what a peon inside is worth.** A quarters with n inside breeds r(n) = max(n, 1/2)^(1/3) / 11 peons a
+second (the newborn counts until it is let out, which takes half a second). The k-th peon inside adds r(k) - r(k-1)
+a second, so it has bred one more peon after the inverse of that:
+
+| k-th peon inside | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 16 | 20 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| has bred one more after | 53 s | 42 s | 60 s | 76 s | 90 s | 103 s | 126 s | 148 s | 168 s | 205 s | 239 s |
+
+Further on it is 33 k^(2/3) s. The first is worth less than the second because the engine breeds an empty quarters
+as if it held half a peon: one peon alone is never the right number, it is none or two and more.
+
+**The growth to the cap has an exact answer.** With Q quarters standing, P units and a cap of C, let every quarters
+keep n and the other P - Qn work, and suppose a second of work is worth the same whenever it is done. A peon kept
+inside for a second costs a second of work and breeds r'(n) peons; a peon bred at time t is of use until the cap is
+reached at T (from then on both courses of the game have C units), so keeping the peon pays while r'(n) (T - t) >=
+1: n = ((T - t) / 33)^(3/2), 27 with five minutes to go, 13 with three, 7 with two, 2.4 with one and none in the
+last 42 s. Following that rule back from the cap, dP/dt = Q r(n) gives C - P = Q (T - t)^(3/2) / 94.8, and dividing
+the two: Q n = (C - P) / 2. **The quarters keep between them half the units still missing to the cap**, whatever
+the number of quarters and whatever the constant of the law. (For a law r = c n^a the share is a / (1 - a); a third
+gives a half.) Checked by playing the growth out from 80 units with six quarters (peon-seconds outside by 600 s):
+
+| kept inside | cap after | work by 600 s | outside after one / two minutes |
+|---|---|---|---|
+| the schedule till now: 4 each, 8 above 175 units | 179 s | 128,043 | 108 of 132 / 138 of 186 |
+| a fifth of the missing units | 245 s | +0.5 % | 112 of 135 / 169 of 182 |
+| a quarter | 230 s | +1.0 % | 111 of 139 / 173 of 189 |
+| a third | 211 s | +1.5 % | 109 of 144 / 180 of 197 |
+| a half | 186 s | +1.8 %, the most | 104 of 153 / 191 of 210 |
+| three quarters | 166 s | +1.5 % | 93 of 160 / 202 of 222 |
+
+So the proof is of a shape more than of a number: the optimum is flat (1.8 % of the work between the old schedule
+and the best), and what the shape says is that the hold should fall as the cap comes near, where the old schedule
+raised it to eight above 175 units, 48 peons inside for the last 75. And the premise is a choice: weigh work now
+above work later and the share drops under a half: played out with a second of work worth in proportion to the
+time left on a fixed clock, the best share is .35, with the square root of it .40. After the cap is first reached
+the premise is gone, since a peon bred then takes the place of one lost and is of use for as long as it lives: the
+rule is for the opening.
+
+**While the opening builds there is no such number, only a plateau.** A builder's second is not worth "a second of
+work": it brings every building still to come forward. To first order it is worth N r(n) / B peons, with N quarters
+still to build and B builders, which makes the hold B / 3N: one at the first quarters, five to ten at the last.
+But that leaves out that what is bred builds too, that a quarters fills itself slowly from empty, and that a peon
+let out at the first quarters walks half a minute to the others. `lab/fable/breed.py` plays an opening with all of
+that (the engine's law, the buildings one after the other with twenty builders each, the walks, the strikers back
+and the shepherds gone, a weapon line that makes .04 x the square root of its peons a second, as measured). Fitted
+to the default with two inside and to what six did to it, it gives the units of the eleven hold settings measured
+on 100 maps to one or two (holds of 3, 4, 6, 8, 10: +3, +7, +9, +11, +14 units at minute 4 for +3.3, +5.4, +8.8,
++11.1, +12.8 measured; `hold_mid` 6 and 8: +25 and +34 at minute 7 for +24.7 and +29.7), the armory's delay half
+as much again as measured, and the warriors' direction. Its weapons by minute 6 / 8 / 10: 27.4 / 70.9 / 122.2 with
+two, 28.4 / 73.2 / 124.1 with four, 27.7 / 73.2 / 124.0 with six, 26.7 / 72.8 / 123.7 with eight: four to six is
+the top of a hill a warrior high, as the games had it. Holds that rise with the quarters standing (2/2/4/6,
+2/4/6/8, 4/6/8/10, 3/6/10/14) are within a warrior of the flat six in the model, and in the games 3/6/10/14 has 1.4
+warriors fewer at minute 6 and the rest the same (`ob4-vs16`; `hold_build_steps`).
+
+**Seeding.** A quarters that keeps six and starts empty takes 55 s to breed them, and lets nobody out meanwhile.
+With s of its builders sent in the moment it stands it breeds at r(s) from the first second:
+
+| seeded with | full after | let out by second 55 | against no seed | builders short for the first |
+|---|---|---|---|---|
+| 1 | 41 s | 2.3 | +1.3 peons | 47 s |
+| 2 | 30 s | 4.1 | +2.1 | 42 s |
+| 3 | 21 s | 5.5 | +2.5 | 39 s |
+| 4 | 13 s | 6.8 | +2.8 | 38 s |
+| 6 | at once | 9.0 | +3.0 | 36 s |
+
+Two get seven tenths of what six get, for a third of the builders taken off the next site. `seed_quarters_ticks`
+did this only once the armory stood (its record says "before the first armory, idle peons already fill quarters
+below their hold"; they did not, the sites took them first). `seed_build` does it while the opening builds: the
+free peons nearest the door, those without wood first, go in within five seconds (`ot6log-vs16` s22003: two inside
+at 48 s where the unseeded one has one at 64 s; six at 84 s for 112 s).
+
+**Measured** (100 maps of 22001..22100 cut at minute 10, differences to `@f16`, `ob0-vs16`: 120.6 units at minute
+5; 30.7, 67.4 and 101.8 warriors at minutes 6, 8 and 10; armory at 236 s; errors 0.3 to 1.3):
+
+| | units at 5 / 7 min | warriors at 6 / 8 / 10 min | armory |
+|---|---|---|---|
+| `seed_build` 2 (`ob1`) | +5.6 / +6.1 | +1.9 / +3.0 / +0.9 | 3 s later |
+| `seed_build` 3 (`oe1`) | +5.6 / +6.4 | +1.9 / +3.1 / +3.0 | 7 s later |
+| `seed_build` 4 (`ob2`) | +5.7 / +6.5 | +2.1 / +4.2 / +2.2 | 7 s later |
+| `seed_build` 6 (`ob3`) | +5.9 / +6.7 | +1.7 / +3.4 / +1.1 | 8 s later |
+| `hold_late` 4, 2 for 8 (`ob8`, `ob9`) | 0 / -8.5, -17.8 | +0.1, +0.2 / +2.7, +3.3 / +0.4 | the same |
+| `hold_share` a third, no seed (`oh5`) | +10.7 / -3.3 | -1.6 / +8.8 / +3.5 | |
+| seed 2 and `hold_share` a fifth (`oh6`) | +9.7 / -15.1 | +2.6 / +9.1 / +3.2 | 3 s later |
+| seed 2 and a quarter (`oh1`) | +12.9 / -8.0 | +2.0 / +10.7 / +5.2 | 3 s later |
+| seed 2 and a third (`oh2`) | +16.2 / -0.2 | +0.1 / +11.3 / +6.0 | 3 s later |
+| seed 2 and two fifths (`oh3`) | +18.6 / +5.9 | -0.8 / +12.8 / +5.1 | 3 s later |
+| seed 2 and a half, the optimum of the proof (`oh4`) | +21.2 / +11.8 | -2.8 / +11.8 / +6.4 | 3 s later |
+
+The share is the dial the proof says it is: more inside early costs warriors at minute 6 and gives them back with
+interest at minutes 8 and 10, and the proof's own half, which counts minute 6 for no more than minute 10, pays 2.8
+warriors at minute 6. A quarter gives at all three. The first form of the rule (`hold_payback`: the k-th peon is
+kept while its payback time is under the seconds left to the cap at the pace of the moment) gave the same figures
+(`of1-vs16`: +0.1 / +12.1 / +5.3 at strength 1) but flips near the cap, since an empty quarters breeds slowly and
+says keep seven and a full one breeds fast and says keep none; the share needs only the unit count.
+
+**In whole games the army is there and the wins are not.** Seeding two and a quarter of the missing units
+(`seed_build=2`, `hold_share=0.25`) against `@f16`, on five blocks of 150 maps never used:
+
+| | wins | | our warriors at 6 / 8 / 10 / 12 min | model at minute 20 |
+|---|---|---|---|---|
+| N=16, 35301..35450 (`og1-vs16` against `og0`) | 115 for 106, 2 draws | +25 -16 | +2.9 / +10.7 / +5.8 / +2.6 | +3.5 +- 2.1 |
+| N=17, 33451..33600 (`og3-vs17` against `og2`) | 90 for 87, a draw each | +22 -19 | +2.4 / +12.0 / +4.8 / +2.5 | -1.1 +- 2.3 |
+| N=16, 35451..35600 (`oj1-vs16` against `oj0`) | 107 for 114, 1 draw | +7 -14 | +2.4 / +11.6 / +7.0 / +3.8 | -1.4 +- 2.1 |
+| N=17, 33601..33750 (`oj3-vs17` against `oj2`) | 89 for 92 | +23 -26 | +3.0 / +10.7 / +6.1 / +3.1 | +2.3 +- 2.5 |
+| N=18, 34151..34300 (`oj5-vs18` against `oj4`) | 50, 1 draw for 55 | +20 -25 | +2.6 / +10.0 / +5.9 / +0.6 | -2.0 +- 2.4 |
+
+451 of 750 for 454, +97 -100; the first two blocks, played first, were +12 and the three that were to confirm them
+-15. Every block has ten to twelve more warriors at minute 8 and none more at minute 15. The first enemy building
+falls at the same second with it and without (437 to 448 s), 0.2 to 0.35 more enemy buildings are down by minute 12
+of 8.6, and the copies housed are the same to a tenth at every minute. The warriors this adds come at minutes 7 to
+10, after the first attack has left: they are reinforcements, and the campaign of minutes 8 to 15 is not short of
+those (the reinforcements round; `@f15`'s six more warriors were there at minute 6). So the answer to the user's
+three questions is yes each time (there is a proof, a hold that changes with the game does what the proof says,
+and seeding pays what its arithmetic says), and none of it is worth a game at N=16 to 18.
+
+Made the default all the same, as waste taken out with no harm shown (the user's rule of 2026-11-19), and frozen
+as `@f17` (at commit b592bf59; with no params the code plays `oj1-vs16`'s games, `chk18a-vs16` 12 of 12, and with the two
+off `oj0-vs16`'s, `chk18b-vs16` 8 of 8). After the cap is first reached nothing changes: the quarters then hold 8 to 20 units between them
+through the rest of a game (`mt3log-vs16`, 11 on average, the chieftain's trainer among them), which is not worth
+a rule of its own.
+
 ## Reproduce
 
 ```bash
@@ -3292,6 +3431,11 @@ python lab/fable/openspeed.py os0-vs16 os1-vs16 os10-vs16 os18-vs16             
 ./lab/fable/dev.sh ot5log-vs16 "fable:opening_chain=2,opening_chain_m=60,opening_prewalk_first=true vs hard*16" 22078,22054,22081,22094,22013,22061,22023,22046,22040,22065,22011,22057,22051,22024,22070,22093 --logs --minutes 10
 ./lab/fable/dev.sh od0-vs16 "@f15 vs hard*16" 35151..35300     # od1: @f16
 ./lab/fable/dev.sh od2-vs17 "@f15 vs hard*17" 33301..33450     # od3: @f16
+./aisim.sh freeze f17 fable                    # and seed_build=2, hold_share=0.25, at commit b592bf59
+python lab/fable/breed.py check                # the model of the opening's breeding against the measured openings; flat, seed, search
+./lab/fable/dev.sh ob0-vs16 "@f16 vs hard*16" 22001..22100 --minutes 10   # the speed runs ob1..ob9, oe1..oe9, of1..of8, oh1..oh6, oi1..oi3 (made as fable): the specs are in each run.json
+./lab/fable/dev.sh og0-vs16 "@f16 vs hard*16" 35301..35450     # og1: @f17; og2, og3-vs17 on 33451..33600
+./lab/fable/dev.sh oj0-vs16 "@f16 vs hard*16" 35451..35600     # oj1: @f17; oj2, oj3-vs17 on 33601..33750; oj4, oj5-vs18 on 34151..34300
 ./aisim.sh freeze f16 fable                    # and the chain, its trees and no walk ahead before the first quarters, at commit d1eca39b
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
@@ -3395,6 +3539,12 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   of sixteen copies, and four in five are still walking when their copy first launches; (3) sixteen peons build
   towers from minute 5.5 on and six quarters hold 24 to 48: what the opening spends that is not army is settled
   by earlier screens, each read on 100 games.
+- After the breeding questions (2026-11-22, "What a quarters should keep inside" above): the opening now has 32 %,
+  45 % and 20 % more warriors at minutes 6, 8 and 10 than `@f14`'s, and of that only what was there by minute 6
+  moved the campaign. Ten more warriors at minute 8 leave the first enemy building falling at the same second and
+  the copies housed where they were. What the opening still has to give is therefore before the first attack
+  leaves, at about 5:30: the armory's own time (233 to 243 s whatever was tried here), the first weapons, and how
+  large that attack is when it goes.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
