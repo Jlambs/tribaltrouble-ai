@@ -269,8 +269,22 @@ plateau, four to eight, in the games and in a model of the opening fitted to the
 a new quarters with two of its builders is worth two peons a quarters by the law and 1.9, 3.0 and 0.9 warriors at
 minutes 6, 8 and 10 in the games; with a quarter of the missing units kept from the armory to the cap, 2.0, 10.7
 and 5.2. In whole games those warriors are there (ten to twelve more at minute 8 on every one of five blocks) and
-the wins are the same, 451 of 750 for 454: they come after the first attack has left. The default since, as waste
-taken out with no harm, frozen as `@f17`.
+the wins are the same, 451 of 750 for 454: they come after the first attack has left. As waste taken out with no
+harm, frozen as `@f17`.
+
+The army at minutes 5 to 6 (2026-11-22, the user's go-ahead; "The army at minutes 5 to 6" below). What sets it: 81
+units when the armory stands at 232 s, a warrior for every 185 peon-seconds from then on (80 in the forge, two
+trips for wood, one for iron), and 40 s in which the armory has five workers while the last two quarters are
+finished. Every way of moving warriors between minute 5 and minute 8 (fewer kept in the quarters until the first
+attack leaves, five quarters or seven, the armory a building sooner or later, the share kept inside) leaves the
+first campaign worse off or where it was by minute 10: the opening stands where neither end can be had cheaper.
+What was wrong is how the first attack leaves. In a quarter of the openings it was a strike of ten on a neighbour's
+quarters (a rule meant for towers going up in the base) that pulled one building down and walked home, so that the
+campaign began 100 s late; and a muster waited for a forge at work to have nothing queued, 45 s in a third of them.
+With no strikes and a muster that marches once four fifths of what is coming stand together the first attack
+leaves at 322 s for 333, the campaign has a tenth more buildings down by minute 10, and on four blocks of 150 maps
+never used 392 games are won for 377 (+68 -53; N=16 230 of 300, N=17 94 of 150, N=18 68 of 150), the state at
+minute 20 3.5 points better. The default since, frozen as `@f18`.
 
 Not done: nothing is pushed; the game itself was not run (headless games only).
 
@@ -3359,6 +3373,138 @@ off `oj0-vs16`'s, `chk18b-vs16` 8 of 8). After the cap is first reached nothing 
 through the rest of a game (`mt3log-vs16`, 11 on average, the chieftain's trainer among them), which is not worth
 a rule of its own.
 
+### The army at minutes 5 to 6: what sets it, a strike that walks home and a muster that waits for an empty queue (2026-11-22)
+
+The user's go-ahead after the breeding questions: what sets the army at minutes 5 to 6, since of everything the
+opening rounds added only what was there by minute 6 seemed to move the campaign.
+
+**The engine's forge** (`LandBuilding`, `WeaponsProducer`, `BuildProductionContainer`, `EnterController`). A rock
+axe is 2 wood and 1 rock and 40 man-seconds of the peons inside the armory, an iron axe 2 wood, 1 iron and 80, a
+chicken axe 2 wood, a rock, an iron and a chicken and 120. The work is linear in the peons inside and split evenly
+between the kinds that are on order, have their supplies and have room. A peon that walks into the armory with a
+load delivers it, so a builder's last piece of wood is not lost.
+
+**Where the units are** (`pa0log-vs16`, 60 logged ten-minute openings of `@f17`, `lab/fable/opentrace.py`). At
+minute 5 of 145 units: 26 in the quarters, 32.5 in the armory, 31 gathering wood and iron in equal parts, 16
+shepherds, 14 warriors, 14 building (the towers begin), 7 walking into a building. Aligned on the second the armory
+stands (232 s, the median 224; means):
+
+| after the armory | units | in the quarters (to keep) | in the armory | gatherers wood / iron | builders | shepherds | warriors |
+|---|---|---|---|---|---|---|---|
+| -10 s | 74 | 22 (24) | | | 39 | 12 | |
+| 0 | 81 | 24 (39) | 0 | | 40 | 13 | |
+| +20 s | 95 | 37 (39) | 6 | 3 / 3 | 27 | 14 | |
+| +40 s | 111 | 35 (35) | 13 | 9 / 8 | 10 | 15 | 1 |
+| +60 s | 129 | 31 (30) | 26 | 15 / 16 | 5 | 15 | 5 |
+| +90 s | 154 | 25 (24) | 37 | 17 / 18 | 11 | 16 | 15 |
+| +120 s | 177 | 19 (18) | 40 | 20 / 19 | 17 | 18 | 28 |
+
+- A warrior costs about 185 peon-seconds: 80 in the forge (which is at work nine tenths of the time), two trips for
+  wood of 25 s and one for iron of 49 s. From 70 s after the armory 0.42 warriors a second come out.
+- For 40 s the armory has five workers and half a dozen gatherers: thirty builders finish the last two quarters (the
+  sixth stands 41 s after the armory), and the share rule raises the quarters' hold from 24 to 39 the second the
+  armory stands and takes the next fourteen peons bred.
+- By the iron (the nearest node at the armory's first second): under 45 m 17 warriors 90 s after the armory, 45 to
+  65 m 12, beyond 8. In game time only the middle class is behind (27 warriors at minute 6 for 34, 68 at minute 8 for
+  80; 13 openings of 59): the far ones' armory stands by the start, 25 s sooner. Sixteen of these seventeen get a
+  second armory on the iron at 368 to 540 s, eleven by 420 s (the expansion check at 300 s finds a site at half the
+  cost). It is no
+  lever: in 600 whole games of `@f16` and `@f17` at N=16 the openings that place a second armory before 330 s win
+  78 %, those at 330 to 420 s 73 %, the rest 76 % and 72 %, with 65, 72, 81 and 75 warriors at minute 8.
+
+**The first attack** leaves at 341 s (the median 333, 105 s after the armory) 24 strong, and the first enemy
+building falls at 422 s, 81 s later and 146 m off: 35 s of marching, 21 fighting warriors, 10 peons, 8 holding for a
+group that closes, 6 on the building. Two faults in how it leaves:
+
+- **A strike that walks home.** `considerStrike` (Gauntlet's, for towers going up inside the base) sends the home
+  army, ten strong and twice what stands there, at any enemy building within 34 cells of a building of ours or 16
+  cells of a gatherer, and home again when it is down. Among sixteen copies that building is a neighbour's own
+  quarters or armory, up to 72 cells from the base: in 15 openings of 60 the first attack is a strike of ten at 283
+  to 382 s, which pulls one quarters down at 387 s, walks home, waits the 20 s between attacks and musters. Their
+  first attack of the campaign leaves at 443 s where the others' leaves at 346 s.
+- **A muster that waits for an empty queue.** `muster` marches when four fifths of the warriors out stand by the
+  staging point and the armory has neither a weapon in stock nor a warrior queued, or after 45 s. A forge at work
+  always has one or two on their way out: of 54 musters before minute 8, 17 wait out the 45 s, the openings with the
+  fastest forges (which then leave 31 to 47 strong), the others 13 s. And with a neighbour's units by the base, a
+  threat of level 1, nobody is called to the staging point at all (`holdStaging`), so the 45 s pass with none of 35
+  standing there (`pd5log-vs16` s22011).
+
+`strikes=false`: no strikes against several enemies, the muster's gate and its choice of target decide. `muster_share`:
+the weapons in stock and the warriors queued count as army not yet there, four fifths of it all by the staging point
+is enough, and under a threat of level 1 nobody is waited for. With both all 59 musters of the first 15 minutes march
+after 2 s, and the first attack leaves at 322 s (the median) 19 strong (`pe1log-vs16`).
+
+**The first campaign** (`lab/fable/firstwar.py`, new: the campaign's state at a second of the game, run against run,
+no logs needed; 99 maps of 22001..22100 cut at minute 15, differences to the default `pc0-vs16`, which at minute 10
+has 5.3 enemy buildings down, 13.5 copies housed of 15 and 157 enemy units killed, and at minute 15 15.8, 11.0 and
+444):
+
+| | buildings down at 10 / 15 min | copies housed at 10 / 15 | enemy units killed at 10 / 15 | the model at minute 10 / 15 |
+|---|---|---|---|---|
+| `strikes=false` (`pc1`) | +0.16 / -0.10 | -0.08 / 0 | +4.9 / +2.9 | +1.4 +- 0.8 / +0.4 +- 0.9 |
+| `strike_on` (`pc2`: the strike goes on as an attack) | +0.25 / +0.01 | -0.07 / -0.02 | +5.0 / +4.9 | +1.0 / +0.5 |
+| `muster_share` (`pe2`) | +0.32 / +0.13 | -0.11 / -0.07 | +6.0 / +5.9 | +0.2 / -0.3 |
+| **`strikes=false`, `muster_share`** (`pe1`) | **+0.51 / +0.57** | **-0.20 / -0.16** | **+11.0 / +13.1** | **+1.7 +- 1.0 / +2.4 +- 1.5** |
+| the same with a first form of the muster rule (`pc5`) | +0.58 / +0.63 | -0.21 / -0.14 | +13.8 / +7.8 | +2.0 +- 1.0 / +2.1 +- 1.4 |
+| `strike_on` and that (`pc4`) | +0.61 / +0.29 | -0.19 / -0.11 | +13.8 / +10.2 | +1.5 / +1.6 |
+| and a first attack from 12, not 18 (`pc6`) | +0.39 / +0.02 | -0.19 / -0.10 | +13.6 / +10.3 | +1.5 / -1.1 |
+| and from 26 (`pc7`) | +0.17 / -0.24 | -0.06 / +0.04 | +8.9 / +9.6 | -0.4 / -2.5 |
+
+Errors: 0.15 buildings and 0.05 copies at minute 10, 0.3 and 0.07 at minute 15, 2.5 and 7 kills. The model is
+`proxy.py`'s, fitted at those minutes on the 598 games of `og0`, `og1`, `oj0`, `oj1-vs16` (a copy housed at minute
+10 or 15 is 0.8 and 0.7 of log-odds). The two repairs add up, and eighteen stays the size to leave with.
+
+**Early army against late army: the default stands at the knee.** With the campaign readable at minute 10, every
+setting that moves warriors between minute 5 and minute 8, of this round and the last two:
+
+| | warriors at 5 / 6 / 8 min | enemy buildings down by minute 10 |
+|---|---|---|
+| `hold_first` 2 (new: the quarters keep two from the armory to the first attack; `pf2` against `pe1`) | +3.1 / -1.2 / -9.6 | -0.51 |
+| `hold_first` 4, 6 (`pf4`, `pf6`) | +2.0 / +0.1 / -3.1, +0.8 / -0.5 / -0.8 | -0.24, -0.33 |
+| five quarters in the opening, the sixth from minute 5 (`pg5`) | +2.4 / -0.4 / -3.1 | -0.41 |
+| seven quarters (`os29` against `os18`) | -3.2 / -3.3 / +0.8 | -0.43 |
+| the armory a quarters sooner, later (`os27`, `os28`) | -0.9 / -1.6 / -2.9, -1.2 / -0.1 / +1.4 | -0.35, -0.11 |
+| seeding alone (`ob1` against `ob0`) | +1.0 / +2.0 / +3.0 | +0.07 |
+| `hold_share` a fifth, a quarter (`@f17`), a third (`oh6`, `oh1`, `oh2` against `ob0`) | -0.2 / +2.6 / +9.2, -1.1 / +2.0 / +10.8, -2.2 / +0.1 / +11.4 | -0.01, +0.08, +0.10 |
+| `hold_share` two fifths, a half (`oh3`, `oh4`) | -3.1 / -0.8 / +12.9, -4.3 / -2.8 / +11.9 | -0.03, -0.27 |
+
+Errors 0.16 to 0.2 buildings. Three warriors more at minute 5 for three to ten fewer at minute 8 lose a third to a
+half of a building; three fewer at minute 5 and 6 lose as much whatever comes later; and `@f17`'s eleven more at
+minute 8 are worth nothing by minute 10, which is why they won no game. The opening is where neither end can be had
+cheaper: more army at minute 5 to 6 has to come without a price at minute 8, and nothing left in the build order
+gives that.
+
+**What the games already played say** (3,000 pairs of whole games, the same map under two versions: `@f14` to
+`@f17` and their arms at N=16 to 18; the pairings' means taken out). A warrior more at minute 6 on a map goes with
+0.53 +- 0.17 points more wins on it, a unit more at minute 5 with 0.47 +- 0.11, a warrior more at minute 8 with 0.31
++- 0.08, a tower more at minute 10 with 1.6 +- 0.7, the armory a second later with -0.10 +- 0.03 and nothing left
+once the units are in (-0.03 +- 0.04). Most of that is accidents: the armory stands within 4 s of the other
+version's in 1,414 pairs (-0.4 points), 4 to 30 s sooner in 746 (+2.2), 4 to 30 s later in 696 (+1.6), and 30 s and
+more later in 73, where 15 points of wins go (se 5). By arm the same: the four pairings with six more warriors at
+minute 6 (`@f15`) are +19 wins of 600, the seven with two or three more (`@f17`, the first screens) -5 of 1,050, the
+four with one or two fewer (`hold_mid` 6) -11 of 600. Across maps the armory's second sorts the games (88, 86, 75,
+69 and 55 % won by fifths, 202 to 269 s) and its exposure does not (the enemy starts within 100, 150 and 200 cells
+of it, the nearest, the nearest three, the edge: nothing once the armory's time is in).
+
+**In whole games** (`strikes=false`, `muster_share=true` against the default, four blocks of 150 maps never used):
+
+| | wins | | copies housed at 10 / 20 min | model at minute 20 | the games both win |
+|---|---|---|---|---|---|
+| N=16, 35601..35750 (`qa1-vs16` against `qa0`) | 118 for 117 | +12 -11 | -0.11 / -0.11 | +3.0 +- 1.3 | 81 min for 88 |
+| N=17, 33751..33900 (`qa3-vs17` against `qa2`) | 94 for 92 | +19 -17 | -0.11 / -0.19 | +4.2 +- 2.0 | 87 for 98 |
+| N=16, 35751..35900 (`qc1-vs16` against `qc0`) | 112 for 106 | +16 -10 | -0.12 / -0.27 | +5.5 +- 1.7 | 85 for 85 |
+| N=18, 34301..34450 (`qc3-vs18` against `qc2`) | 68 for 62 | +21 -15 | -0.21 / -0.11 | +1.3 +- 2.2 | 93 for 112 |
+
+392 of 600 for 377, +68 -53 (z 1.4), every block to the same side, the model 3.5 points on average; a tenth of a
+copy to a quarter fewer housed at minute 20, 17 fewer enemy warriors then on two of the blocks, and 5 to 10 % less
+CPU a game. By N: 230 of 300 at N=16 (76.7 %), 94 of 150 at N=17 (62.7 %), 68 of 150 at N=18 (45.3 %). The default
+since, frozen as `@f18`: it plays `qc1-vs16`'s games (`chk19a-vs16`, 12 of 12), and with `strikes=true,
+muster_share=false` the old default's (`chk19b-vs16`, 8 of 8).
+
+Not built: the armory's iron fetched while it is still going up, for the openings whose iron is 45 m and more away
+(the forge's first crew then stands 30 to 50 s over wood with no iron). It would be worth three or four warriors at
+90 s on a quarter of the maps, and those maps win as often as the others.
+
 ## Reproduce
 
 ```bash
@@ -3436,6 +3582,10 @@ python lab/fable/breed.py check                # the model of the opening's bree
 ./lab/fable/dev.sh ob0-vs16 "@f16 vs hard*16" 22001..22100 --minutes 10   # the speed runs ob1..ob9, oe1..oe9, of1..of8, oh1..oh6, oi1..oi3 (made as fable): the specs are in each run.json
 ./lab/fable/dev.sh og0-vs16 "@f16 vs hard*16" 35301..35450     # og1: @f17; og2, og3-vs17 on 33451..33600
 ./lab/fable/dev.sh oj0-vs16 "@f16 vs hard*16" 35451..35600     # oj1: @f17; oj2, oj3-vs17 on 33601..33750; oj4, oj5-vs18 on 34151..34300
+./lab/fable/dev.sh pa0log-vs16 "@f17 vs hard*16" 22001..22060 --logs --minutes 10   # the opening and the first attack traced (made as fable); pb0log the same with the muster's reason logged
+./lab/fable/dev.sh pc0-vs16 "@f17 vs hard*16" 22001..22100 --minutes 15   # read with lab/fable/firstwar.py [--at S]; pc1..pc7, pe1, pe2, pf2, pf4, pf6 (10 min), pg5 (made as fable): the specs are in each run.json
+./lab/fable/dev.sh qa0-vs16 "@f17 vs hard*16" 35601..35750     # qa1: @f18; qa2, qa3-vs17 on 33751..33900; qc0, qc1-vs16 on 35751..35900; qc2, qc3-vs18 on 34301..34450
+./aisim.sh freeze f18 fable                    # no strikes and the muster's share, at commit a6cb03af
 ./aisim.sh freeze f16 fable                    # and the chain, its trees and no walk ahead before the first quarters, at commit d1eca39b
 ./lab/fable/dev.sh f12m-vs16 "@f12 vs hard*16" 26001..26300  # f12n-vs17: "@f12 vs hard*17" 27001..27300
 ./lab/fable/dev.sh mbm-vs16 "@f11 vs hard*16" 26001..26300    # played as fable:bystander=0,stuck_still_ticks=1000,gather_parked=true
@@ -3545,6 +3695,14 @@ possible), and a kill cell that works (two launches of that kind were worth 39 a
   the copies housed where they were. What the opening still has to give is therefore before the first attack
   leaves, at about 5:30: the armory's own time (233 to 243 s whatever was tried here), the first weapons, and how
   large that attack is when it goes.
+- After the first attack's round (2026-11-22, "The army at minutes 5 to 6" above): the build order is at its knee
+  and the first attack now leaves when eighteen are out. What is left in the opening is its slowest fifth: with the
+  armory at 250 s and later (far sites, a fifth of the maps) there are 12 warriors at minute 6 for 32 to 45, the
+  first enemy building falls at 523 s for 410 and 12.2 copies are housed at minute 15 for 10.2 to 10.9, and neither
+  the armory a building sooner (33 s on those maps) nor five quarters moves that. The four faster fifths differ by
+  0.7 of a copy between them. And in whole games the army is at home 30 to 35 % of minutes 20 to 40 (`mt3log-vs16`:
+  home 14 to 24 %, mustering 3 to 6 %, retreating 6 to 13 %), 22 to 28 strong, held by the gate: what holds it there
+  has not been traced.
 - Builders killed on their way past a copy (`lab/fable/waylaid.py`, no logs needed: our units lost before 360 s
   within 30 cells of a copy's start and away from ours). Of `@f7`'s 1,800 first-start games at N=8-16, 49 lose 6
   and more that way (30 won) and 6 lose 12 and more (1 won); 7 are over within 16 minutes (22095 at N=11 and 12,
