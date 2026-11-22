@@ -1719,6 +1719,18 @@ class Strategy {
     /** Send the home army at enemy buildings going up in the base or next to our gatherers. */
     boolean strikes = true;
     /**
+     * strike_on: with more than one enemy in, a strike whose building has fallen goes on as an attack of the
+     * campaign (the next target is chosen as after any building) instead of walking home.
+     */
+    boolean strike_on = false;
+    /**
+     * muster_share: a muster marches once four fifths of its army stand by the staging point, the weapons in stock
+     * and the warriors queued counted as army not there yet, and at once under a threat of level 1, when nobody is
+     * called to the staging point; instead of waiting for an empty stock and queue with four fifths of the warriors
+     * out standing there, or 45 s.
+     */
+    boolean muster_share = false;
+    /**
      * sapper_refill: sappers (peons that pull down towers, 6 damage a swing) used to be recruited only when an attack
      * launched, and only if its first target stood under towers. Against many copies the campaign is one attack that
      * launches around minute 9, before any Hard has a tower, and never ends: the army then met every later base's
@@ -3500,6 +3512,8 @@ class Strategy {
         project_defense = params.getBoolean("project_defense", project_defense);
         precontact_ratio = (float) params.getDouble("precontact_ratio", precontact_ratio);
         strikes = params.getBoolean("strikes", strikes);
+        strike_on = params.getBoolean("strike_on", strike_on);
+        muster_share = params.getBoolean("muster_share", muster_share);
         forward_towers = params.getInt("forward_towers", forward_towers);
         forward_tower_ticks = (float) params.getDouble("forward_tower_ticks", forward_tower_ticks);
         forward_ratio = (float) params.getDouble("forward_ratio", forward_ratio);

@@ -4439,8 +4439,32 @@ final class Military {
             ai.aiLog().count("muster_dropped");
             return;
         }
-        if ((!stock_left && pending == 0 && gathered) || timeout)
+        boolean go = !stock_left && pending == 0 && gathered;
+        if (ai.strategy().muster_share && !go && !timeout) {
+            // muster_share: the weapons in stock and the warriors queued count as army not yet there, and four fifths
+            // of it all standing by the staging point is enough (a forge at work always has one or two on their way
+            // out). Under a small threat nobody is called to the staging point (holdStaging), so nobody is waited for.
+            float coming = total + pending + (stock_left ? stockStrength() : 0f);
+            if (threat_level == 1) {
+                go = true;
+                ai.aiLog().count("muster_threat_go");
+            } else if (total > 0 && near >= .8f * coming) {
+                go = true;
+                ai.aiLog().count("muster_share_go");
+            }
+        }
+        if (go || timeout) {
+            if (ai.logging()) {
+                int n = near;
+                int all = total;
+                int queued = pending;
+                float waited = FableAI.seconds(ai.now() - muster_start);
+                ai.log(String.format(
+                        "muster ends after %.0f s (%s): %d of %d by the staging point, stock %s, %d queued",
+                        waited, go ? "gathered" : "timeout", n, all, stock_left ? "left" : "out", queued));
+            }
             launchAttack();
+        }
     }
 
     private void launchAttack() {
@@ -6141,8 +6165,14 @@ final class Military {
         }
         if (target == null || target.isDead()) {
             if (strike) {
-                endAttack();
-                return;
+                // strike_on: among several copies the building struck was a neighbour's, and the attack goes on
+                if (!ai.strategy().strike_on || ai.enemiesAlive() <= 1) {
+                    endAttack();
+                    return;
+                }
+                strike = false;
+                ai.aiLog().count("strike_on");
+                ai.log("strike over, the attack goes on");
             }
             // remnant_ladder_ticks: the copy whose site or remnant fell is finished before anything else
             Selectable<?> next = ladder_owner != null ? remnantNext(target, c) : null;
