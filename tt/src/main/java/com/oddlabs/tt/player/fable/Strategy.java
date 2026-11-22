@@ -999,7 +999,10 @@ class Strategy {
     /**
      * Quarters completed before builders move to the armory. With the opening of 2026-11-22: 3 puts the armory up
      * 30 s sooner and has 1.6, 2.9 and 2.4 fewer warriors at minutes 6, 8 and 10; 5 puts it up 26 s later with the
-     * same warriors and 4 more units (os27, os28-vs16 against os18-vs16).
+     * same warriors and 4 more units (os27, os28-vs16 against os18-vs16). By minute 10 the campaign has 0.35 and 0.1
+     * fewer enemy buildings down of 5.2 (lab/fable/firstwar.py). The opening's quarters themselves (initial_quarters,
+     * 6): seven have 3.3 fewer warriors at minute 6 and 0.4 fewer buildings down by minute 10 (os29-vs16), five 2.4
+     * more warriors at minute 5, 3 fewer at minute 8 and 0.4 fewer buildings down (pg5-vs16 against pe1-vs16).
      */
     int quarters_before_armory = 4;
     /** Raise the opening quarters next to the first one instead of next to the armory site. */
@@ -1165,6 +1168,19 @@ class Strategy {
      * near the cap, an empty quarters breeding slowly and a full one fast: taken out again.
      */
     float hold_share = 0f;
+    /**
+     * hold_first (-1 = off): the hold from the armory's standing until the first attack has left (or hold_first_until,
+     * game ticks), in place of hold_share and the schedule: what is bred then goes to the forge and its gatherers.
+     *
+     * Off: it trades the army of minutes 7 to 10 for that of minute 5, and the first campaign loses by it. With 2,
+     * 4 and 6 an opening has 3.1, 2.0 and 0.8 more warriors at minute 5, 1.2 fewer, the same and 0.5 fewer at minute
+     * 6, and 9.6, 3.1 and 0.8 fewer at minute 8; by minute 10 it has 0.5, 0.2 and 0.3 fewer enemy buildings down of
+     * 5.8 (pf2, pf4, pf6-vs16 against pe1-vs16, 99 maps). The other way the same: hold_share a half has 2.8 fewer
+     * warriors at minute 6, 12 more at minute 8 and 0.3 fewer buildings down (oh4-vs16 against ob0-vs16). The default
+     * stands where neither end can be had cheaper.
+     */
+    int hold_first = -1;
+    float hold_first_until = 21000f; // 420 s
     /**
      * seed_build (0 = off): while the opening builds without an armory, a quarters takes this many of its builders
      * in the moment it stands (its hold at most), instead of breeding its hold up from empty: an empty quarters
@@ -1716,11 +1732,24 @@ class Strategy {
     boolean project_defense = true;
     /** Turn an attack back before contact when the whole defense in view is this much stronger; 0 disables. */
     float precontact_ratio = 1.1f;
-    /** Send the home army at enemy buildings going up in the base or next to our gatherers. */
+    /**
+     * Send the home army at enemy buildings going up in the base or next to our gatherers: as soon as it is 10 strong
+     * and twice what stands by the building, and home again when the building is down.
+     *
+     * Among sixteen copies the building is a neighbour's own quarters or armory, 16 cells from a gatherer of ours
+     * and up to 72 cells from the base: in 15 openings of 60 the first attack is such a strike of ten at 283 to
+     * 382 s, which pulls one quarters down, walks home, waits out the 20 s between attacks and musters, so that the
+     * campaign's first attack leaves at 443 s on average where the others' leaves at 346 s (pb0log-vs16,
+     * lab/fable/NOTES.md, the army at minutes 5 to 6). Off against several enemies on large maps since 2026-11-22
+     * (forGame). On 99 maps read at minute 10 and 15 (lab/fable/firstwar.py, pc1-vs16 against pc0-vs16): 4.9 more
+     * enemy units killed by minute 10 and nothing at minute 15 alone; with muster_share, see there.
+     */
     boolean strikes = true;
     /**
      * strike_on: with more than one enemy in, a strike whose building has fallen goes on as an attack of the
-     * campaign (the next target is chosen as after any building) instead of walking home.
+     * campaign (the next target is chosen as after any building) instead of walking home. As good as no strikes at
+     * minute 10 and no better (pc2, pc4-vs16); off, since a strike leaves without the muster's gate and its choice
+     * of target.
      */
     boolean strike_on = false;
     /**
@@ -1728,6 +1757,15 @@ class Strategy {
      * and the warriors queued counted as army not there yet, and at once under a threat of level 1, when nobody is
      * called to the staging point; instead of waiting for an empty stock and queue with four fifths of the warriors
      * out standing there, or 45 s.
+     *
+     * The old test asks what a working forge never has, an empty queue: of 54 musters before minute 8, 17 wait out
+     * the 45 s (the openings with the fastest forges, which then leave 31 to 47 strong), the rest 13 s on average
+     * (pb0log-vs16); and with a neighbour's units by the base, a threat of level 1, nobody is called to the staging
+     * point and the 45 s pass with none of 35 standing there (pd5log-vs16 s22011). With the share 59 of 59 first
+     * musters march after 2 s, 19 strong (pe1log-vs16). The default against several enemies on large maps since
+     * 2026-11-22 (forGame), with strikes off: on 99 maps the campaign has 0.5 more buildings down of 5.3 by minute 10
+     * and 0.6 of 15.8 by minute 15, 0.2 fewer copies housed and armed at both, 11 and 13 more enemy units killed
+     * (pe1-vs16 against pc0-vs16); alone 0.3 more buildings by minute 10 (pe2-vs16). Whole games: forGame.
      */
     boolean muster_share = false;
     /**
@@ -3388,6 +3426,8 @@ class Strategy {
                 hold_build_steps[i] = Integer.parseInt(parts[i].trim());
         }
         hold_share = (float) params.getDouble("hold_share", hold_share);
+        hold_first = params.getInt("hold_first", hold_first);
+        hold_first_until = (float) params.getDouble("hold_first_until", hold_first_until);
         seed_build = params.getInt("seed_build", seed_build);
         hold_mid = params.getInt("hold_mid", hold_mid);
         seed_quarters_ticks = (float) params.getDouble("seed_quarters_ticks", seed_quarters_ticks);
@@ -3820,6 +3860,16 @@ class Strategy {
                 // oj3-vs17, oj5-vs18: +97 -100). Waste taken out that shows no harm.
                 strategy.seed_build = 2;
                 strategy.hold_share = .25f;
+                // How the first attack leaves (lab/fable/NOTES.md, the army at minutes 5 to 6): no strike on a
+                // neighbour's own quarters or armory, which in a quarter of the openings sent ten warriors at one
+                // building and home again, so that the campaign began 100 s late; and a muster marches once four
+                // fifths of what is coming stand by the staging point, where it waited for a working forge to have
+                // nothing queued, up to 45 s. The first attack leaves at 322 s for 333 (the median) and the campaign
+                // has a tenth more buildings down by minute 10 (pe1-vs16). In whole games on four blocks of 150 maps
+                // never used 118 wins for 117 and 112 for 106 at N=16, 94 for 92 at N=17, 68 for 62 at N=18 (qa1,
+                // qc1-vs16, qa3-vs17, qc3-vs18: +68 -53), and the games both win are over 6 to 10 minutes sooner.
+                strategy.strikes = false;
+                strategy.muster_share = true;
             }
         }
         return strategy;

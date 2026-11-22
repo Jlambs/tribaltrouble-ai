@@ -3258,7 +3258,10 @@ final class Economy {
                     strategy.hold_build, strategy.hold_build_ramp * ai.intel().quarters.size()) : strategy.hold_build;
         }
         int hold;
-        if (strategy.hold_share > 0f && !cap_reached)
+        if (strategy.hold_first >= 0 && !cap_reached && !ai.military().hasLaunched()
+                && ai.now() < strategy.hold_first_until)
+            hold = strategy.hold_first;
+        else if (strategy.hold_share > 0f && !cap_reached)
             hold = shareHold(pop, max);
         else if (pop > max * 7 / 10)
             hold = strategy.hold_late;

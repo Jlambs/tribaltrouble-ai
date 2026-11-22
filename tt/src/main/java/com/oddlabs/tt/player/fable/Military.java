@@ -460,6 +460,13 @@ final class Military {
     private int attack_kills_start;
     private int attack_losses_start;
     private boolean attack_running;
+    /** hold_first: an attack has left once. */
+    private boolean launched_once;
+
+    boolean hasLaunched() {
+        return launched_once;
+    }
+
     private final Map<@NonNull Unit, Float> militia_orders = new LinkedHashMap<>();
     private float last_militia_log = -5000f;
     private float last_peon_rush = -5000f;
@@ -4516,6 +4523,7 @@ final class Military {
         best_line_dist = Integer.MAX_VALUE;
         sealed_logged = false;
         mode = s > 0 ? Mode.ATTACK : Mode.HOME;
+        launched_once |= s > 0;
         // Name the target without the engine's toString (a Unit's shows an identity hash, which differs between JVMs).
         String what = (t instanceof Building ? "building " : "unit ") + t.getTemplate().getClass().getSimpleName() + " of " + t.getOwner().getPlayerInfo().getName();
         ai.log(String.format("attack with %.1f on %s at %d,%d", s, what, t.getGridX(), t.getGridY()));
