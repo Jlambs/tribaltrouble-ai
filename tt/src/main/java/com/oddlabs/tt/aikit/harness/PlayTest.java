@@ -36,6 +36,11 @@ import java.util.logging.Logger;
 public final class PlayTest {
     /** The system property naming the AI for the Hard slots; aisim.sh gui sets it. */
     private static final String HARD_AI_PROPERTY = "com.oddlabs.tt.hard_ai";
+    /**
+     * The system property that lets that AI play the Hard slots of multiplayer games too; aisim.sh gui --multiplayer
+     * sets it.
+     */
+    private static final String MULTIPLAYER_PROPERTY = "com.oddlabs.tt.hard_ai.multiplayer";
     /** The system property naming the aisim snapshot the game runs from; aisim.sh gui sets it. */
     private static final String SNAP_PROPERTY = "aisim.snap";
     private static final Logger logger = Logger.getLogger(PlayTest.class.getName());
@@ -63,12 +68,17 @@ public final class PlayTest {
      * developer mode ({@code -Dcom.oddlabs.tt.developer=true}, which {@code ./aisim.sh gui} passes) and this is a
      * single-player skirmish: then that AI plays the slot and the game is recorded. Requiring developer mode too means
      * a stray property in a normal launch cannot swap the Hard AI.
+     *
+     * With {@value #MULTIPLAYER_PROPERTY} set to true as well, it plays the Hard slots of multiplayer games too, on
+     * the machines of players and spectators alike. Every machine of a game runs the AIs itself, so every machine in
+     * such a game must run the same build, started with the same AI and this property: one without them runs the
+     * stock Hard AI and the game desyncs. That is why a plain play-test never swaps the AI of a multiplayer game.
      */
     public static @NonNull AI hardAi(@NonNull Player player, @NonNull UnitInfo unit_info, @NonNull InGameInfo game,
             @NonNull WorldParameters params) {
         String spec = System.getProperty(HARD_AI_PROPERTY);
-        if (spec == null || !Settings.getSettings().inDeveloperMode() || game.isMultiplayer()
-                || !(game instanceof DefaultInGameInfo)) {
+        if (spec == null || !Settings.getSettings().inDeveloperMode() || !(game instanceof DefaultInGameInfo)
+                || (game.isMultiplayer() && !Boolean.getBoolean(MULTIPLAYER_PROPERTY))) {
             return stockHard(player, unit_info);
         }
         try {
